@@ -63,6 +63,7 @@ import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryCaptchaRequiredException
 import com.upcpocket.app.data.library.LibraryFilters
 import com.upcpocket.app.data.library.LibraryReservation
+import com.upcpocket.app.data.library.LibraryReservationMatch
 import com.upcpocket.app.data.library.LibraryRoom
 import com.upcpocket.app.data.library.LibrarySeat
 import com.upcpocket.app.data.library.LibrarySeatException
@@ -537,6 +538,12 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
         val start: LibraryTimeOption? = null,
         val end: LibraryTimeOption? = null,
         val reservations: List<LibraryReservation> = emptyList(),
+        /** 最近一次成功读取“我的预约”的时间；失败时保留它，界面据此标注旧数据。 */
+        val reservationsUpdatedAt: Long? = null,
+        val reservationsError: String? = null,
+        /** 已提交取消、但最终状态尚未核对的预约 id。 */
+        val pendingCancelIds: Set<String> = emptySet(),
+        val reservationsBusy: Boolean = false,
         val loading: Boolean = false,
         val error: String? = null,
         val notice: String? = null,
@@ -696,53 +703,166 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
         val seat = state.seat ?: return
         val start = state.start ?: return
         val end = state.end ?: return
+        val beforeIds = state.reservations.map { it.id }.toSet()
         state = state.copy(loading = true, error = null, notice = null, showConfirm = false)
         viewModelScope.launch {
-            try {
+            // 请求与最终状态分开：请求失败/超时也不等于“没预约上”，先查询核对再下结论。
+            val requestError = try {
                 repo.reserve(date, seat.id, start.id, end.id)
-                val list = runCatching { repo.myReservations() }.getOrDefault(state.reservations)
-                val matched = list.any { it.date == date && it.begin == start.value && it.end == end.value }
+                null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                e
+            }
+            if (requestError is LibrarySessionExpiredException) {
+                fail(requestError)
+                return@launch
+            }
+            val checked = runCatching { repo.myReservations() }
+            checked.onSuccess { list ->
+                val current = activeReservations(list)
+                val matched = current.firstOrNull { it.id !in beforeIds }?.takeIf {
+                    LibraryReservationMatch.matches(it, date, start.value, end.value, seat.name)
+                }
+                val legacyMatchWithoutNewId = current.firstOrNull {
+                    it.id in beforeIds && LibraryReservationMatch.matches(
+                        it, date, start.value, end.value, seat.name,
+                    )
+                }
+                val notice = when {
+                    matched != null ->
+                        "预约成功，已在“我的预约”中核对到该座位与完整时段（记录 ${matched.id}）。"
+                    legacyMatchWithoutNewId != null ->
+                        "学校已接受请求，但“我的预约”里只有同步前就存在的记录，不能证明本次预约成功；请刷新核对，不要重复提交。"
+                    requestError != null ->
+                        "预约请求结果不确定（${requestError.friendly()}），核对后也没有看到新记录；请先刷新核对，不要重复提交。"
+                    else ->
+                        "学校已接受预约请求，但“我的预约”暂未出现新记录；结果待核对，请刷新，不要重复提交。"
+                }
                 state = state.copy(
                     loading = false,
-                    reservations = list,
+                    reservations = current,
+                    reservationsUpdatedAt = System.currentTimeMillis(),
+                    reservationsError = null,
                     showTimeDialog = false,
-                    notice = if (matched) {
-                        "预约成功，已在“我的预约”中看到该记录。"
+                    notice = notice,
+                )
+            }.onFailure { error ->
+                state = state.copy(
+                    loading = false,
+                    notice = if (requestError == null) {
+                        "预约请求已提交，但核对“我的预约”失败（${error.friendly()}）；结果待确认，请稍后刷新，不要重复提交。"
                     } else {
-                        "学校已接受预约请求，但“我的预约”暂未出现该记录；请刷新核对，不要重复提交。"
+                        "预约请求与核对都没有成功（${requestError.friendly()}）；结果不确定，请先刷新核对，不要重复提交。"
                     },
                 )
-            } catch (e: Exception) {
-                fail(e)
             }
         }
     }
 
     fun refreshReservations() {
+        if (state.reservationsBusy) return
+        state = state.copy(reservationsBusy = true)
         viewModelScope.launch {
-            runCatching { repo.history() }
-                .onSuccess { list ->
-                    val current = list.filter { it.status == "RESERVE" || it.status == "CHECK_IN" || it.status == "AWAY" }
-                    state = state.copy(reservations = current)
-                }
+            loadReservations()
+            state = state.copy(reservationsBusy = false)
+        }
+    }
+
+    /** 读取“我的预约”。失败时保留上一次已确认的记录，只标记“刷新失败 + 旧数据时间”。 */
+    private suspend fun loadReservations() {
+        try {
+            val list = repo.myReservations()
+            state = state.copy(
+                reservations = activeReservations(list),
+                reservationsUpdatedAt = System.currentTimeMillis(),
+                reservationsError = null,
+                pendingCancelIds = state.pendingCancelIds.intersect(activeReservations(list).map { it.id }.toSet()),
+            )
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            if (e is LibrarySessionExpiredException) {
+                state = state.copy(sessionExpired = true)
+                return
+            }
+            state = state.copy(
+                reservationsError = "刷新“我的预约”失败：${e.friendly()}。" +
+                    "下面仍是上一次成功读取的记录" +
+                    (state.reservationsUpdatedAt?.let { "（${timeLabel(it)}）" } ?: "") +
+                    "，不代表当前状态。",
+            )
         }
     }
 
     fun cancel(reservation: LibraryReservation) {
-        state = state.copy(loading = true, error = null, notice = null)
+        state = state.copy(
+            loading = true,
+            error = null,
+            notice = null,
+            pendingCancelIds = state.pendingCancelIds + reservation.id,
+        )
         viewModelScope.launch {
-            try {
+            val requestError = try {
                 repo.cancel(reservation.id)
-                val list = runCatching { repo.history() }.getOrDefault(emptyList())
+                null
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                e
+            }
+            if (requestError is LibrarySessionExpiredException) {
+                fail(requestError)
+                return@launch
+            }
+            // 取消请求返回只说明“学校收到”，最终状态必须再查一次。
+            val checked = runCatching { repo.myReservations() }
+            checked.onSuccess { list ->
+                val current = activeReservations(list)
+                val stillThere = current.any { it.id == reservation.id }
                 state = state.copy(
                     loading = false,
-                    reservations = list.filter { it.status == "RESERVE" || it.status == "CHECK_IN" || it.status == "AWAY" },
-                    notice = "取消请求已提交；请以刷新后的预约状态为准。",
+                    reservations = current,
+                    reservationsUpdatedAt = System.currentTimeMillis(),
+                    reservationsError = null,
+                    pendingCancelIds = if (stillThere) {
+                        state.pendingCancelIds // 仍显示 = 结果未确认，保留“待确认”标记
+                    } else {
+                        state.pendingCancelIds - reservation.id
+                    },
+                    notice = when {
+                        !stillThere && requestError == null ->
+                            "取消已由学校确认，该记录不再出现在“我的预约”中。"
+                        !stillThere ->
+                            "取消请求返回不确定（${requestError?.friendly()}），但核对后记录已不在“我的预约”中。"
+                        requestError == null ->
+                            "取消请求已提交，但学校仍返回该预约；结果待确认，请稍后刷新，不会自动重试。"
+                        else ->
+                            "取消请求结果不确定（${requestError.friendly()}），学校仍返回该预约；请刷新核对，不会自动重试。"
+                    },
                 )
-            } catch (e: Exception) {
-                fail(e)
+            }.onFailure { error ->
+                // 关键：核对失败时不清空列表，也不能把“没读到”当成“已取消”。
+                state = state.copy(
+                    loading = false,
+                    reservationsError = "取消请求已提交，但核对最终状态失败：${error.friendly()}。" +
+                        "列表仍是取消前的记录；请稍后刷新，不会自动重复提交。",
+                    notice = "该预约标记为“待确认”：请求已发出，最终状态尚未核对。",
+                )
             }
         }
+    }
+
+    private fun activeReservations(list: List<LibraryReservation>) =
+        list.filter { it.status == "RESERVE" || it.status == "CHECK_IN" || it.status == "AWAY" }
+
+    private fun timeLabel(epochMs: Long): String {
+        val time = java.time.Instant.ofEpochMilli(epochMs)
+            .atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+        return "%02d:%02d".format(time.hour, time.minute)
+    }
+
+    private fun Throwable.friendly(): String = when (this) {
+        is LibrarySeatException -> message ?: "学校服务异常"
+        else -> message ?: javaClass.simpleName
     }
 
     fun logout() {

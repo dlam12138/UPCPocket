@@ -47,6 +47,10 @@ interface SemesterDao {
     @Query("SELECT * FROM semesters WHERE isCurrent = 1 LIMIT 1")
     suspend fun current(): SemesterEntity?
 
+    /** 学校学期身份（`school:year:term`）对应的本地学期；重复同步必须命中同一条。 */
+    @Query("SELECT * FROM semesters WHERE code = :code LIMIT 1")
+    suspend fun byCode(code: String): SemesterEntity?
+
     @Query("UPDATE semesters SET isCurrent = 0")
     suspend fun clearCurrent()
 
@@ -96,6 +100,10 @@ interface CourseDao {
 
     @Query("SELECT COUNT(*) FROM courses WHERE semesterId = :semesterId")
     suspend fun countBySemester(semesterId: Int): Int
+
+    /** 只清学校同步的课程聚合（课程 code 以 S 开头），不影响用户自建课程。 */
+    @Query("DELETE FROM courses WHERE semesterId = :semesterId AND code LIKE 'S%'")
+    suspend fun deleteSchoolCourses(semesterId: Int)
 
     /** 番茄钟的标签候选：所有学期出现过的课名（去重） */
     @Query("SELECT DISTINCT nameZh FROM courses ORDER BY nameZh ASC")
@@ -203,6 +211,10 @@ interface CourseSessionDao {
 
     @Query("SELECT COUNT(*) FROM course_sessions WHERE semesterId = :semesterId")
     suspend fun countBySemester(semesterId: Int): Int
+
+    /** 只清某一来源的整学期记录；同步替换时用它，用户自建日程不受影响。 */
+    @Query("DELETE FROM course_sessions WHERE semesterId = :semesterId AND source = :source")
+    suspend fun deleteBySemesterAndSource(semesterId: Int, source: String)
 }
 
 // ── 节次 ────────────────────────────────────────────────────────────────

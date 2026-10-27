@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.upcpocket.app.data.local.LocalDefaults
 import com.upcpocket.app.domain.Period
 
 /**
@@ -38,7 +39,8 @@ import com.upcpocket.app.domain.Period
  * 编辑规则：
  *  - 时间按 `HHmm` 四位数字填（0800 = 08:00），与数据层 `Period.startTime` 的口径一致；
  *  - 每行的结束时间必须晚于开始时间，否则这一行标红、整张表不能保存；
- *  - 节次数不在这里增删：网格与编辑器按固定节次排布，改节数会破坏已保存日程的语义。
+ *  - 默认 13 节；学校课表组件的槽位有第 14 节时，可以在这里**手动补一节并填时间**
+ *    （不预置来源不明的"官方作息"）。补出来的节次会同步用于网格、详情、今天页和组件。
  */
 @Composable
 fun PeriodsEditDialog(
@@ -53,10 +55,23 @@ fun PeriodsEditDialog(
         }
     }
     var error by remember { mutableStateOf<String?>(null) }
+    var added by remember { mutableStateOf(0) }
+    val maxExisting = periods.maxOfOrNull { it.indexNo } ?: 0
+    val canAdd = maxExisting + added < LocalDefaults.MAX_PERIOD
+
+    fun addPeriod() {
+        val next = maxExisting + added + 1
+        added += 1
+        edits[next] = "" to ""
+    }
 
     fun validate(): List<Period>? {
         val out = ArrayList<Period>()
-        for (p in periods.sortedBy { it.indexNo }) {
+        val rows = (periods + (1..added).map { i ->
+            val index = maxExisting + i
+            Period(index, "第 $index 节", 0, 0, "EVENING", (periods.maxOfOrNull { it.segmentIndex } ?: 0) + i)
+        }).sortedBy { it.indexNo }
+        for (p in rows) {
             val (sText, eText) = edits[p.indexNo] ?: (clock(p.startTime) to clock(p.endTime))
             val s = parseClock(sText)
             val e = parseClock(eText)
@@ -81,13 +96,13 @@ fun PeriodsEditDialog(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .height(380.dp)
+                    .height(400.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
                     text = "课表、今天页与桌面组件都按这里的时间显示。默认值只是常见排法（1–13 节），" +
-                        "请改成你们专业的实际上课时间。",
+                        "请改成你们专业的实际上课时间。若学校课表出现第 14 节，可在这里补一节并填写真实时间。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -98,15 +113,18 @@ fun PeriodsEditDialog(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-                periods.sortedBy { it.indexNo }.forEach { p ->
-                    val pair = edits[p.indexNo] ?: (clock(p.startTime) to clock(p.endTime))
+                val rows = (periods.map { it.indexNo } + (1..added).map { maxExisting + it })
+                    .sorted()
+                rows.forEach { index ->
+                    val p = periods.firstOrNull { it.indexNo == index }
+                    val pair = edits[index] ?: (clock(p?.startTime ?: 0) to clock(p?.endTime ?: 0))
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            text = "第 ${p.indexNo} 节",
+                            text = "第 $index 节",
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.width(52.dp),
                         )
@@ -114,12 +132,17 @@ fun PeriodsEditDialog(
                             value = pair.first,
                             label = "开始",
                             modifier = Modifier.weight(1f),
-                        ) { v -> edits[p.indexNo] = v to pair.second }
+                        ) { v -> edits[index] = v to pair.second }
                         ClockField(
                             value = pair.second,
                             label = "结束",
                             modifier = Modifier.weight(1f),
-                        ) { v -> edits[p.indexNo] = pair.first to v }
+                        ) { v -> edits[index] = pair.first to v }
+                    }
+                }
+                if (canAdd) {
+                    OutlinedButton(onClick = { addPeriod() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("添加第 ${maxExisting + added + 1} 节")
                     }
                 }
                 Spacer(Modifier.height(8.dp))

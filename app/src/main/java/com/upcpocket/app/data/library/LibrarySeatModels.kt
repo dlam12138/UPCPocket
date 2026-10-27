@@ -101,3 +101,42 @@ object LibrarySeatStatus {
         else -> status.ifBlank { "未知" }
     }
 }
+
+/**
+ * 预约成功与否的核对口径。
+ *
+ * 只用“日期 + 时间”匹配是不够的：同一时段可能本来就有别的座位预约，
+ * 旧列表也会被当成“新预约已出现”。这里要求座位身份也一致，并要求调用方
+ * 用同步前的 id 集合排除旧记录。
+ */
+object LibraryReservationMatch {
+    fun matches(
+        reservation: LibraryReservation,
+        date: String,
+        begin: String,
+        end: String,
+        seatName: String,
+    ): Boolean =
+        reservation.date.trim() == date.trim() &&
+            minutes(reservation.begin) == minutes(begin) &&
+            minutes(reservation.end) == minutes(end) &&
+            seatMatches(reservation.location, seatName)
+
+    /** 座位标识可能是“3F-A01”而本地是“A01”，做包含匹配；空名一律不匹配。 */
+    fun seatMatches(location: String, seatName: String): Boolean {
+        val a = location.trim().lowercase()
+        val b = seatName.trim().lowercase()
+        if (a.isEmpty() || b.isEmpty()) return false
+        return a == b || a.contains(b) || b.contains(a)
+    }
+
+    /** "8:00" / "08:00" / "08:00:00" → 分钟数；解析失败返回 null（不等于匹配）。 */
+    fun minutes(text: String): Int? {
+        val parts = text.trim().split(':')
+        if (parts.size < 2) return null
+        val h = parts[0].toIntOrNull() ?: return null
+        val m = parts[1].toIntOrNull() ?: return null
+        if (h !in 0..23 || m !in 0..59) return null
+        return h * 60 + m
+    }
+}

@@ -210,28 +210,56 @@ internal object LibrarySeatProtocol {
         )
     }
 
-    /** 当前预约（`/rest/v2/user/reservations`）返回数组；历史接口返回 `{reservations,count}`。 */
-    fun parseReservations(body: String): List<LibraryReservation> {
+    /**
+     * 当前预约（`/rest/v2/user/reservations`）。
+     *
+     * 学校前端对“没有当前预约”的明确形式是 `data: null`；此时返回空列表。
+     * `data` 是别的类型（对象/字符串/数字）说明协议变了，必须报错，
+     * 不能把结构变化过滤成“没有预约”。
+     */
+    fun parseCurrentReservations(body: String): List<LibraryReservation> {
         val root = objectOf(body)
         ensureBusinessSuccess(root)
-        val data = root["data"] ?: return emptyList()
-        if (data is JsonNull) return emptyList()
-        val arr = when (data) {
-            is JsonArray -> data
-            is JsonObject -> data["reservations"] as? JsonArray ?: emptyList()
-            else -> fail("预约记录格式异常")
+        return when (val data = root["data"]) {
+            null, is JsonNull -> emptyList()
+            is JsonArray -> parseReservationArray(data)
+            else -> fail("当前预约格式异常：data 既不是数组也不是 null")
         }
-        return arr.mapNotNull { item ->
-            val obj = item as? JsonObject ?: return@mapNotNull null
-            LibraryReservation(
-                id = string(obj, "id"),
-                date = string(obj, "date", "onDate"),
-                begin = string(obj, "begin"),
-                end = string(obj, "end"),
-                location = string(obj, "location", "loc"),
-                status = string(obj, "stat", "status"),
-            )
-        }.filter { it.id.isNotBlank() }
+    }
+
+    /**
+     * 历史预约（`/rest/v2/history/{page}/{size}`）：`data` 必须是
+     * `{reservations: [...], count: n}`。缺少 reservations 数组即协议异常。
+     */
+    fun parseHistoryReservations(body: String): List<LibraryReservation> {
+        val root = objectOf(body)
+        ensureBusinessSuccess(root)
+        val data = root["data"] as? JsonObject ?: fail("历史预约缺少 data 对象")
+        val arr = data["reservations"] as? JsonArray
+            ?: fail("历史预约缺少 reservations 数组")
+        return parseReservationArray(arr)
+    }
+
+    private fun parseReservationArray(arr: JsonArray): List<LibraryReservation> = arr.map { item ->
+        val obj = item as? JsonObject ?: fail("预约记录不是对象")
+        val id = string(obj, "id").takeIf { it.isNotBlank() }
+            ?: fail("预约记录缺少 id")
+        val date = string(obj, "date", "onDate").takeIf { it.isNotBlank() }
+            ?: fail("预约记录 $id 缺少日期")
+        val begin = string(obj, "begin").takeIf { it.isNotBlank() }
+            ?: fail("预约记录 $id 缺少开始时间")
+        val end = string(obj, "end").takeIf { it.isNotBlank() }
+            ?: fail("预约记录 $id 缺少结束时间")
+        val location = string(obj, "location", "loc").takeIf { it.isNotBlank() }
+            ?: fail("预约记录 $id 缺少座位标识")
+        LibraryReservation(
+            id = id,
+            date = date,
+            begin = begin,
+            end = end,
+            location = location,
+            status = string(obj, "stat", "status"),
+        )
     }
 
     fun ensureBooked(body: String) {

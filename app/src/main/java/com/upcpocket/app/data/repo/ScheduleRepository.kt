@@ -424,6 +424,99 @@ class ScheduleRepository(
         db.displayOverrideDao().deleteByCourse(semesterId, code)
     }
 
+    // ── 学校课表同步（App 内登录后读取，落库前由用户确认） ─────────────
+
+    /**
+     * 把一次已确认的学校同步结果写入本地。
+     *
+     * 只替换「该学期 + 学校来源」的记录：
+     *  - 用户自建日程（source=custom）与演示课（不落库）不受影响；
+     *  - 课程名/教室的显示覆盖不改动（按 courseCode 定位，同步后仍然生效）；
+     *  - 整个过程在一个 Room 事务里，[beforeCommit] 抛错会回滚全部写入
+     *    （测试用它模拟“中途失败”，生产调用不传）。
+     *
+     * @return 命中的本地学期 id，调用方据此切换显示。
+     */
+    suspend fun saveSchoolTerm(
+        plan: com.upcpocket.app.data.school.SchoolSyncPlan,
+        makeCurrent: Boolean,
+        beforeCommit: () -> Unit = {},
+    ): Int = db.withTransaction {
+        val now = System.currentTimeMillis()
+        val existing = db.semesterDao().byCode(plan.term.key)
+        val semesterId = existing?.id
+            ?: (db.semesterDao().all().maxOfOrNull { it.id } ?: 0) + 1
+        val weeks = (1..plan.term.totalWeeks).toList()
+        val endDate = plan.weekOneStart
+            ?.plusWeeks(plan.term.totalWeeks.toLong())
+            ?.minusDays(1)
+            ?.toString()
+        val schoolYear = plan.term.year.toIntOrNull()?.let { y -> "$y-${y + 1}" }
+            ?: plan.term.year
+        if (makeCurrent) db.semesterDao().clearCurrent()
+        db.semesterDao().upsertAll(
+            listOf(
+                SemesterEntity(
+                    id = semesterId,
+                    code = plan.term.key,
+                    nameZh = plan.term.displayName,
+                    schoolYear = schoolYear,
+                    startDate = plan.weekOneStart?.toString(),
+                    endDate = endDate,
+                    weekStartOnSunday = false,
+                    weekIndicesCsv = weeks.joinToString(","),
+                    isCurrent = makeCurrent,
+                    updatedAt = now,
+                ),
+            ),
+        )
+
+        db.courseSessionDao().deleteBySemesterAndSource(semesterId, SOURCE_SCHOOL)
+        db.courseDao().deleteSchoolCourses(semesterId)
+
+        val rows = plan.sessions.map { draft ->
+            CourseSessionEntity(
+                id = "$semesterId:${draft.id}",
+                courseKey = courseKeyOf(semesterId, draft.courseCode),
+                semesterId = semesterId,
+                source = SOURCE_SCHOOL,
+                courseName = draft.name,
+                weekIndex = draft.week,
+                weekday = draft.weekday,
+                startUnit = draft.startUnit,
+                endUnit = draft.endUnit,
+                date = draft.date,
+                startTime = draft.startTime,
+                endTime = draft.endTime,
+                teacherName = draft.teacher,
+                roomText = draft.room,
+                campusText = null,
+                color = null,
+                updatedAt = now,
+            )
+        }
+        if (rows.isNotEmpty()) db.courseSessionDao().upsertAll(rows)
+        if (plan.courses.isNotEmpty()) {
+            db.courseDao().upsertAll(
+                plan.courses.map { course ->
+                    CourseEntity(
+                        key = courseKeyOf(semesterId, course.code),
+                        semesterId = semesterId,
+                        code = course.code,
+                        nameZh = course.name,
+                        credits = 0.0,
+                        openDepartment = null,
+                        teachersCsv = course.teachers.joinToString(","),
+                        updatedAt = now,
+                    )
+                },
+            )
+        }
+
+        beforeCommit()
+        semesterId
+    }
+
     /**
      * 这个日程和哪些**自己添加的**内容撞了（同一天、周次有交集、节次有重叠）。
      *
@@ -543,8 +636,11 @@ class ScheduleRepository(
     ) = "$semesterId|$courseCode|$KIND_ROOM|$weekday|$startUnit|" + (weeks?.joinToString(",") ?: "all")
 
     companion object {
-        /** 用户自己创建的内容。**唯一会被写入 `course_sessions` 的来源。** */
+        /** 用户自己创建的内容。 */
         const val SOURCE_CUSTOM = "custom"
+
+        /** 学校登录后同步的课表；只由 [saveSchoolTerm] 写入和替换。 */
+        const val SOURCE_SCHOOL = "school"
 
         /** 显示覆盖的类型：课程名（整门课）/ 教室（单时段） */
         const val KIND_NAME = "name"

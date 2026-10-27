@@ -119,14 +119,14 @@ class LibrarySeatRepository {
         }
 
     suspend fun myReservations(): List<LibraryReservation> = withToken { token ->
-        LibrarySeatProtocol.parseReservations(
+        LibrarySeatProtocol.parseCurrentReservations(
             request("GET", "/rest/v2/user/reservations", mapOf("token" to token)),
         )
     }
 
     suspend fun history(page: Int = 1, pageSize: Int = 50): List<LibraryReservation> =
         withToken { token ->
-            LibrarySeatProtocol.parseReservations(
+            LibrarySeatProtocol.parseHistoryReservations(
                 request(
                     "GET",
                     "/rest/v2/history/$page/$pageSize",

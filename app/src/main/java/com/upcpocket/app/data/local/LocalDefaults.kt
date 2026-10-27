@@ -51,6 +51,15 @@ object LocalDefaults {
     /** 节次总数（课表网格与编辑器都用它做上限，避免出现空节次列） */
     val PERIOD_COUNT: Int get() = DEFAULT_PERIODS.size
 
+    /**
+     * 可配置节次的上限。
+     *
+     * 默认作息仍是 1–13 节；学校课表组件的槽位到第 14 节，用户可以在
+     * 「节次时间」里**自己补一节并填写真实时间**。这里只给上限，不预置 14 节的时间，
+     * 避免把"来源不明的时间"当成学校官方作息。
+     */
+    const val MAX_PERIOD = 14
+
     /** 只取尚未存在的节次，用于老安装补种 11–13 节，不覆盖用户改过的时间。 */
     fun missingPeriods(existing: Collection<Int>): List<Period> =
         DEFAULT_PERIODS.filterNot { it.indexNo in existing }

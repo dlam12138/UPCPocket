@@ -457,6 +457,10 @@ class ScheduleViewModel : ViewModel() {
                 _state.value.demoCourses.firstOrNull { it.code == session.courseCode }
                     ?.let { openDetail(it, demo = true) }
             }
+            ScheduleRepository.SOURCE_SCHOOL -> {
+                _state.value.courses.firstOrNull { it.code == session.courseCode }
+                    ?.let { openDetail(it, demo = false) }
+            }
         }
     }
 
@@ -473,6 +477,34 @@ class ScheduleViewModel : ViewModel() {
                 )
             }
             loadSemester(semester)
+        }
+    }
+
+    /**
+     * 学校课表同步写完之后调用：先重新读学期列表（同步可能新建了一条学期），
+     * 再切到它，并推一次桌面组件。
+     */
+    fun refreshSemestersAndSelect(id: Int) {
+        viewModelScope.launch {
+            val all = runCatching { repo.semesters() }
+                .onFailure { e -> _state.update { it.copy(error = e.readableMessage()) } }
+                .getOrDefault(emptyList())
+            _state.update { it.copy(semesters = all) }
+            all.firstOrNull { it.id == id }?.let { target ->
+                _state.update {
+                    it.copy(
+                        loading = true,
+                        error = null,
+                        selectedSemester = target,
+                        weekResolvedOn = null,
+                    )
+                }
+                loadSemester(target)
+                pushWidgets()
+                _state.update {
+                    it.copy(planNotice = "学校课表已同步 · 「今天」页与桌面小组件已更新")
+                }
+            }
         }
     }
 

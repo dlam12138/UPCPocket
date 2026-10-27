@@ -120,10 +120,35 @@ fun ScheduleScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs by AppGraph.uiPrefsStore.flow.collectAsStateWithLifecycle(initialValue = UiPrefs())
     var showCsvImport by remember { mutableStateOf(false) }
+    var showImportChoice by remember { mutableStateOf(false) }
+    var showSchoolSync by remember { mutableStateOf(false) }
     state.selectedSemester?.let { semester ->
         if (showCsvImport) androidx.compose.runtime.key(semester.id) {
             CsvImportDialog(semester, state.periods, vm) { showCsvImport = false }
         }
+    }
+    if (showImportChoice) {
+        ScheduleImportChoiceDialog(
+            onDismiss = { showImportChoice = false },
+            onSchoolSync = {
+                showImportChoice = false
+                showSchoolSync = true
+            },
+            onCsv = {
+                showImportChoice = false
+                showCsvImport = true
+            },
+        )
+    }
+    if (showSchoolSync) {
+        SchoolScheduleSyncScreen(
+            onClose = { showSchoolSync = false },
+            onSynced = { semesterId ->
+                showSchoolSync = false
+                vm.refreshSemestersAndSelect(semesterId)
+            },
+        )
+        return
     }
 
     var showSemesters by remember { mutableStateOf(false) }
@@ -140,7 +165,7 @@ fun ScheduleScreen(
                 // 左上角不显示"课表"二字，直接放学期切换
                 title = { SemesterButton(state.selectedSemester) { showSemesters = true } },
                 actions = {
-                    TextButton(enabled = state.selectedSemester != null, onClick = { showCsvImport = true }) { Text("导入") }
+                    TextButton(enabled = state.selectedSemester != null, onClick = { showImportChoice = true }) { Text("导入") }
                     IconButton(onClick = { vm.openPlanEditor() }) {
                         Icon(Icons.Filled.Add, contentDescription = "添加日程")
                     }
