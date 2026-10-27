@@ -30,5 +30,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ZZUPocket"
+rootProject.name = "UPCPocket"
 include(":app")

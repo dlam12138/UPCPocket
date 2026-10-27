@@ -1,156 +1,225 @@
-# ZZUPocket
+# UPC Pocket（石大校园助手）
 
-郑州大学校园助手（Android）
+中国石油大学（华东）校园助手的 **Android 本地原型**。
 
-[![License](https://img.shields.io/github/license/3beuml/ZZUPocket.svg?style=flat)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/3beuml/ZZUPocket?style=flat&label=release)](../../releases)
-[![Android](https://img.shields.io/badge/Android-12%2B-3ddc84?style=flat&logo=android&logoColor=white)](#构建)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0-7f52ff?style=flat&logo=kotlin&logoColor=white)](#技术栈)
-[![Tests](https://img.shields.io/badge/unit%20tests-223-brightgreen?style=flat)](#参与贡献)
+> **本项目是非官方、非商业的个人项目**，与学校不构成隶属或合作关系。
+> 本原型**不连接**任何校园系统、**不实现**校园认证、**不读取**任何受保护的业务数据 ——
+> 详见下方「隐私与边界」。
 
-> ⚠️ 本项目是非官方项目。
-> 接口来自公开网页的协议整理与社区项目经验，**随时可能失效或被学校调整**；
+> 当前阶段：**M1 · 本地原型**（2026-10-27）。
+> 产品与合规背景见 [`UPC-Pocket-总体计划-v0.1.md`](UPC-Pocket-总体计划-v0.1.md)（原文保留）；
+> 本次改造的范围、验证与已知问题见 [`docs/M1-本地原型进展.md`](docs/M1-本地原型进展.md)。
 
+---
 
+## 当前已支持
 
-## 功能特性
+**课表（本地）**
 
-**学习**
+- 手动添加课程 / 日程：名称、星期、节次、周次（每周 / 单周 / 双周）、地点、教师、颜色
+- 日程与"手动补录的课程"分开：日程按颜色块显示，课程进入「课程总览」
+- 撞课提醒（只与自己添加的内容比较，不拿演示数据制造冲突）
+- 教学周：开学日 / 当前周次 / 总周数 / 每周起始日，全部可在设置里改
+- 节次作息：10 节课的上下课时间可编辑，课表 / 今天 / 桌面组件共用同一份
+- 显示：周六周日开关、格子密度、描边样式、多彩/单色、当前课高亮、自定义课表背景（含模糊与浓淡）
 
-- **课表**：学期 / 教学周切换，周次表头带日期（`09-30`，今天高亮）、自定义日程（可与教务课混排、撞课提醒）、
-  课程总览、自定义课表背景图（含模糊与浓淡调节）、格子内容与密度可调
-- **今天**：一条时间轴看"我这一天长什么样"——上课、已完成的专注；外加宿舍电量、校园卡余额与今日消费
-- **专注（番茄钟）**：计时引擎 + 前台服务 + 常驻通知，标签管理，周 / 月 / 年统计与热力图
-- **教室占用**：按楼筛选，每间教室哪几节有课（数据来自教务系统）
+**今天**
 
-**生活**
+- 一条时间轴：今天的课 + 自己添加的日程 + 已完成的专注
+- 今日专注摘要（时长 / 番茄数 / 连续天数）与学期概览
 
-- **电费**：照明 / 空调两套表计的余额、每日用量、电费估算、按日明细、余额趋势；
-  房间号内置 59 栋楼的房间表（选楼栋 → 选房号），也支持手动填 ID
-- **校园卡**：余额、日 / 周 / 月 / 年消费、流水明细与筛选
-- **图书馆座位**：内嵌学校原版网页（自动用统一身份认证登录）
+**专注（番茄钟）**
 
-**桌面小组件**（RemoteViews + XML，不联网、只读本地数据）
+- 计时引擎（墙钟计时，进程被杀后可恢复）、前台服务 + 常驻通知
+- 三档预设（25/5、50/10、90/15）与自定义时长，自动开始下一段
+- 标签管理、手动补记、按课程 / 日程关联专注
 
-- **下一节课**（2×2）：一节课大字 + 完整时间段 + 地点，右上角圆气泡显示"这节课以及之后还有几节"
-- **今明课表**（4×2）：左列今天、右列明天，各列出还没上的课
-- **电量与校园卡**（4×2）：左半照明 / 空调余额与"可用约 N 天"，右半校园卡余额与本周消费；
-  两块分区可点，分别进电费页 / 校园卡页
+**学习统计**
 
+- 今日 / 本周 / 本月 / 本年 / 全部，热力图、标签分布、每日明细
 
-## 下载安装
+**桌面小组件（RemoteViews + XML）**
 
-到 [Releases](../../releases) 下载最新的 `ZZUPocket-x.y.z-Pn-release.apk`，在手机上安装即可
-（Android 12 / API 31 及以上）。
+- **下一节课**（2×2）：课名、完整时间段、地点、"还有几节"圆气泡、下一节预告
+- **今明课表**（4×2）：左列今天、右列明天
+- 只读本地数据，不联网；演示模式下表头标「演示」
 
-- 装在手机上会走系统的"未知来源应用"授权；Flyme / MIUI 这类系统还需要在
-  「设置 → 应用 → 权限」里给文件管理器或浏览器放行"安装未知应用"。
-- App 之间用同一套签名，所以**后续版本可以直接覆盖安装、数据不丢**。
+**校园服务导航**
 
+- 唐岛湾 / 古镇口两校区的官方入口（课表、空闲教室、宿舍电费、图书馆、校园卡、数字石大…）
+- **一律用系统浏览器打开**；每张卡写清适用范围与适用条件
+- 唐岛湾与古镇口电费是**两套互不相通的系统**，页面置顶分开说明
 
-## 首次使用
+**演示数据模式**
 
-1. **登录**：更多 → 登录 / 切换账号，走学校统一身份认证（CAS）。**App 不保存密码**，只保存加密后的登录令牌。
-   首次登录会让手机上的「豫见郑大」下线一次（学校统一认证机制导致），之后不会；
-   建议登录后到统一认证的「安全中心」把本设备设为可信设备，以后就不需要短信验证码了。
-2. **设置宿舍房间号**：电费按房间号查，每个人不一样，所以没有默认值。进「更多 → 电费」，两条路：
-   - **从学校账户读取**（省事）：读一次你账号当前绑定的房间，直接填进来（只填对应那一路，
-     另一路不动）。**内置房间表里没有的楼栋（例如亿达学生公寓）只能这样设**，或者手动填房间号。
-   - **选校区 → 选楼栋 → 选房号**：内置房间表覆盖主校区、北校区、东校区、南校区、护理学院、
-     洛阳校区六个区域（**房间号第一段就是校区**），选完自动带出照明与空调两套表计。
-     空调号通常就是照明号前面加 `8`（如 `…-101` ↔ `…-8101`）。
-     洛阳校区是按楼层分的，楼栋列表里会写成「1号宿舍楼 2层」这样，照自己的楼层选。
+- 虚构示例课程（课名以「（演示）」结尾），用来在无账号时体验完整界面
+- **只在内存生成、永不写数据库**；关掉即消失，用户数据不受影响
+- 在今天页、课表页、课程详情、课程总览、桌面组件上都有明确标识
 
-   ⚠️ **房间号规律因楼而异 —— App 已经按每栋楼各算一套，不用你手抄**：
-   - 照明和空调是**两套独立电表**，余额不能互抵，两个号都得对；
-   - 「空调号 = 照明号加前导 8」只是**主校区的多数派**规律：荷园 2–9 号楼是
-     **照明房号 + 一位住户序号**（`302` → `3021/3022/3023`，一间房每人一个空调户，
-     界面会让你选自己是哪一个）；北校区 = 房号 + 楼号×1000、南校区同理、东校区是负偏移、
-     护理学院 +8000。这些规律是**用照明/空调两侧的真实房号离线算好、覆盖率核过**的
-     （见 `assets/rooms.json` 里的 `acRule`），运行时只套用，不再靠猜房号后缀；
-   - 数据里**确实没有**对应关系的楼栋（如松园部分楼的 `2222`/`3333` 占位号）会如实说明，
-     并建议改用「在线选房间」（那是学校服务器给的确切编号），而不是让你手抄；
-   - 有些楼只有一套表（如留学生公寓），只填一路即可，不会一直提示"还没设置"。
-3. **离线可用**：课表、专注记录、电费历史都是本地数据，断网也能看；
-   教室占用、图书馆、校园卡需要联网。
+**外观**
 
-## 项目结构
+- Material You 动态取色 + 8 套内置配色、深浅色（跟随系统 / 强制浅 / 强制深）
+
+---
+
+## 明确未实现
+
+| 未实现 | 原因 |
+| --- | --- |
+| 教务课表导入 / 自动同步 | 未取得接口授权；本轮范围明确不接入受保护接口 |
+| 校园统一身份认证（CAS / 数字石大） | 同上；且**不采集任何账号密码、Cookie、Token** |
+| 空教室实时占用、宿舍电费查询、校园卡余额与流水 | 均为受保护业务数据，只提供官方入口跳转 |
+| 图书馆座位状态、自动抢座 | 只跳官方页面；**不做抢座** |
+| 成绩、考试安排、缴费、转账 | 不在原型范围 |
+| 后台定时联网同步 | **应用没有网络权限，也没有任何周期性后台任务** |
+| 自动更新 / 应用内下载 | 上游的 GitHub release 检查已整体删除 |
+| 多学期并存的新建 / 切换 UI | 目前首次启动按今天自动生成一个学期，可在设置里改参数 |
+| `.ics` / Excel 批量导入 | 课表内容暂时全靠手工添加 |
+
+---
+
+## 下载与安装
+
+本仓库**不发布 APK**。自行构建（见下）；构建产物在：
 
 ```
-app/src/main/java/com/zzupocket/app/
-├── core/            纯逻辑与基础设施：手动依赖容器 AppGraph、加密、HTTP 客户端、
-│                    错误文案、课表文本、登录输入体检、学期过滤
-├── data/
-│   ├── auth/        CAS 统一认证（MFA / 短信 / 令牌刷新）
-│   ├── eas/         教务系统（课表、节次、教室占用）
-│   ├── ecard/       一卡通（电费、校园卡流水）
-│   ├── lib/         图书馆（WebView 会话与探测）
-│   ├── db/          Room 实体与 DAO
-│   ├── prefs/       DataStore（界面偏好、专注偏好、登录冷却）+ 加密令牌
-│   ├── room/        宿舍楼房间表（assets/rooms.json）
-│   ├── repo/        Repository：把接口与本地库缝在一起
-│   └── work/        定时采样电量（WorkManager）
-├── domain/          纯数据模型与统计口径（课表、用电、专注、校园卡、周次对齐）
-├── focus/           番茄钟引擎、通知、前台服务
-└── ui/              Compose 界面：today / schedule / focus / campus / library /
-                     widget（桌面小组件）/ login / about / diag / theme / nav
-
-app/src/main/res/    资源：布局（含 widget_* 小组件布局）、配色、字符串、预览图
-docs/                项目文档（接口契约、实测坑、设计推演），见下方「文档」
-tools/               开发脚本（如按真机几何生成小组件预览图）
+app/build/outputs/apk/debug/app-debug.apk
 ```
+
+- 系统要求：**Android 12（API 31）及以上**
+- 应用标识：`com.upcpocket.app`，**与上游 ZZUPocket（`com.zzupocket.app`）是两个不同的应用**，
+  不能互相覆盖安装，也不会互相读到对方的数据
+- 首次启动会按"今天所在那一周的周一"生成一个学期，并按常见排法生成 10 节课的作息；
+  两者都可以在「更多 → 课程表设置」里改
+
+---
+
+## 构建
+
+### 环境
+
+| 项 | 版本 |
+| --- | --- |
+| JDK | 17 或以上（本轮在 **JDK 21** 上验证） |
+| Gradle | 8.9（wrapper 自带，国内镜像） |
+| AGP | 8.7.3 |
+| Kotlin | 2.0.21 |
+| compileSdk / targetSdk | 36 |
+| minSdk | 31 |
+
+`local.properties`（**不入库**）里写 SDK 路径：
+
+```properties
+sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
+```
+
+### 命令
+
+```bash
+# 调试包
+./gradlew :app:assembleDebug          # Windows: .\gradlew.bat
+
+# 单元测试
+./gradlew :app:testDebugUnitTest
+
+# 一起跑（本项目常规验证口径）
+./gradlew :app:assembleDebug :app:testDebugUnitTest
+```
+
+> 如果 `JAVA_HOME` 指向 JDK 8（某些机器默认如此），需要先切到 17+，否则 Gradle 起不来。
+
+### 签名
+
+`keystore.properties`（**不入库**）可选：
+
+```properties
+storeFile=/absolute/path/to/keystore.jks
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
+
+没有该文件时 release 会用 debug 签名。debug 与 release 刻意使用**同一套签名**，
+避免切换时因签名不同而必须卸载（本地数据会全丢）。
+
+---
 
 ## 技术栈
 
 | 方面 | 选型 |
 | --- | --- |
-| 语言 / UI | Kotlin 2.0 + Jetpack Compose + Material 3（含 Material You 动态取色与 8 套预设配色） |
-| 依赖注入 | **手写**（`core/AppGraph.kt`）—— 依赖不多，P1 最大的风险是接口协议而不是 DI |
-| 网络 | OkHttp + kotlinx.serialization（**不用 Retrofit**：接口少，且 CAS 登录的 POST 参数走 query string，裸 OkHttp 更直接） |
-| 本地存储 | Room（课表 / 专注 / 电量采样 / 流水）、DataStore（偏好）、EncryptedSharedPreferences + Tink（令牌） |
-| 后台 | WorkManager（每 4 小时采样一次电量）+ 前台服务（番茄钟）+ AlarmManager（小组件在上下课时刻刷新） |
-| 桌面小组件 | AppWidgetProvider + RemoteViews + XML（**不用 Glance**，理由见 `docs/design/UI与登录设计.md` §2.6） |
-| 后端 | **没有**。不经过任何自建中转服务器，账号凭据与数据只在设备和学校系统之间流动 |
+| 语言 / UI | Kotlin 2.0 + Jetpack Compose + Material 3 |
+| 依赖注入 | 手写容器 `core/AppGraph.kt`（依赖很少，不引入 Hilt） |
+| 本地存储 | Room（课表 / 日程 / 番茄钟）、DataStore（偏好）、kotlinx.serialization（计时快照） |
+| 桌面小组件 | AppWidgetProvider + RemoteViews + XML（不用 Glance：需要 `previewLayout` 与可变行数） |
+| 网络 | **无**。Manifest 没有 `INTERNET` 权限，依赖里没有 OkHttp |
+| 后台 | 前台服务（番茄钟）+ AlarmManager（组件在上下课时刻刷新）。**没有 WorkManager** |
+| 后端 | **没有**，也不会有 |
 
+### 代码结构
+
+```
+app/src/main/java/com/upcpocket/app/
+├── core/         手动依赖容器 AppGraph、教学周换算、课表文本工具
+├── data/
+│   ├── db/       Room 实体与 DAO（7 张表，version = 1）
+│   ├── local/    本地默认值、演示课表、官方入口目录
+│   ├── prefs/    DataStore：界面偏好（含演示模式）、番茄钟偏好
+│   └── repo/     课表仓库（纯本地）、专注仓库、今日课表口径
+├── domain/       纯数据模型与统计口径（课表、周次、专注、日程）
+├── focus/        番茄钟引擎、通知、前台服务
+└── ui/           Compose：today / schedule / focus / campus / about / theme / nav / widget
+```
+
+---
 
 ## 隐私与边界
 
-- **不保存密码**。登录只走学校统一身份认证，本机仅保存加密后的登录令牌；退出登录会清除。
-- **数据只在本机**：课表、专注记录、电费采样、校园卡流水都存在本机数据库，
-  **没有自建服务器，也不会上传**。卸载 App 会一并清掉。
-- **只读接口**：不做电费充值、不做校园卡转账、**不做自动抢座**；教室占用只显示"是否被占用"。
+- **不需要账号**，也不保存任何密码、Cookie 或令牌。
+- **没有网络权限**（`AndroidManifest.xml` 未声明 `INTERNET`）。所有本地能力离线可用。
+- **数据只在本机**：课表、日程、专注记录都在本机数据库，没有自建服务器，也不会上传。
+  卸载 App 会一并清掉。
+- **校园服务的登录与查询发生在系统浏览器里**，由学校自己的网页完成；
+  App 不内嵌页面、不代填账号、不读取页面内容。
 - **不采集**：没有统计 SDK、没有崩溃上报、没有广告。
-- 仓库本身**不接收**任何把账号密码、令牌、个人房间号写进代码或文档的提交。
+- 仓库本身**不接收**任何把账号密码、令牌、Cookie、学生业务数据写进代码或文档的提交。
 
+---
 
 ## 文档
 
 | 文档 | 内容 |
 | --- | --- |
-| [`docs/`](docs/README.md) | 文档索引 |
-| [`docs/interfaces/鉴权与登录契约.md`](docs/interfaces/鉴权与登录契约.md) | CAS / 教务 / 一卡通 / 校园卡 / 图书馆的登录方式与会话形态 |
-| [`docs/interfaces/接口现状核查.md`](docs/interfaces/接口现状核查.md) | 逐个接口的实测结果（含字段、单位、坑） |
-| [`docs/interfaces/接口实测坑.md`](docs/interfaces/接口实测坑.md) | 金额单位、必填字段、不存在的接口 |
-| [`docs/interfaces/图书馆WebView灰屏.md`](docs/interfaces/图书馆WebView灰屏.md) | 图书馆网页在 WebView 里的机制、排除过程与有效修法 |
-| [`docs/design/`](docs/design/) | 可行性与开发方案、Android 接入设计、UI 与登录设计、功能与工具清单 |
+| [`UPC-Pocket-总体计划-v0.1.md`](UPC-Pocket-总体计划-v0.1.md) | 产品定位、合规边界、校园服务台账、里程碑（原文保留） |
+| [`docs/M1-本地原型进展.md`](docs/M1-本地原型进展.md) | 本轮改造：ZZU 逻辑清单、删除/保留决策、演示数据约束、验证记录、已知限制 |
+| [`docs/android-skills.md`](docs/android-skills.md) | 引入的 android/skills 版本、索引与更新流程 |
+| [`AGENTS.md`](AGENTS.md) | 项目开发规范（对 Agent 与本人都适用） |
 
+> 上游留下的 `docs/interfaces/`、`docs/design/` 等文档记录的是**郑州大学**系统的接口契约与设计，
+> 与本项目当前能力无关，仅作为上游历史资料保留；**不要**据此接入任何校园系统。
 
-
+---
 
 ## 致谢
 
-接口协议（CAS 登录、教务 EAS、一卡通）参考 / 对齐了以下社区项目，均为 MIT 许可：
+本项目以 [ZZUPocket](https://github.com/3beuml/ZZUPocket)（MIT）为 Android 参考底座，
+保留了它的课表网格、番茄钟、统计与 RemoteViews 小组件的设计与实现。
+**上游的郑州大学认证、教务 / 一卡通接口、宿舍房间规则没有复用。**
 
-- [Illustar0/ZZU.Py](https://github.com/Illustar0/ZZU.Py) —— 豫见郑大的 Python API 封装（MIT）
-- [Elykia093/ZZU-Electricity-Monitor](https://github.com/Elykia093/ZZU-Electricity-Monitor) ——
-  宿舍电量监控（MIT）：**内置房间表（`assets/rooms.json`）由它的 `rooms/99.json` 精简而来**，
-  定时采样节奏与低电量阈值也参考了它
-- [rimrose/ZZU-Dorm-Electricity-Balance-Base](https://github.com/rimrose/ZZU-Dorm-Electricity-Balance-Base) ——
-  宿舍用电记录（MIT）
+桌面小组件的版式参考了 [拾光课程表](https://github.com/ShiGuangSchedule/shiguangschedule)
+（Apache-2.0；只参考设计，没有拷贝代码）。
 
-桌面小组件的版式参考了 [拾光课程表](https://github.com/ShiGuangSchedule/shiguangschedule) 的实现思路
-（Apache-2.0；只参考了设计，没有拷贝代码）。
+上游曾参考的社区项目（均为 MIT，本原型已不包含其代码）：
+[Illustar0/ZZU.Py](https://github.com/Illustar0/ZZU.Py)、
+[Elykia093/ZZU-Electricity-Monitor](https://github.com/Elykia093/ZZU-Electricity-Monitor)、
+[rimrose/ZZU-Dorm-Electricity-Balance-Base](https://github.com/rimrose/ZZU-Dorm-Electricity-Balance-Base)。
+
+Android 技术指导：[android/skills](https://github.com/android/skills)（Apache-2.0），见 `docs/android-skills.md`。
+
+---
 
 ## 许可证
 
-[MIT](LICENSE) © 2026 3beuml
+[MIT](LICENSE) © 2026 3beuml（上游作者）
+
+本项目作为 ZZUPocket 的衍生作品，沿用同一 MIT 许可证；上游版权声明保留在 `LICENSE` 中。

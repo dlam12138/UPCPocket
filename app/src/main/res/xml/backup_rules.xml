@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 以下使用的备份规则：当前不排除任何内容，凭据另存在 EncryptedSharedPreferences，
-     是否纳入备份由导入导出功能负责（本地数据以 JSON 导出为准）。 -->
-<full-backup-content>
-    <exclude domain="sharedpref" path="secure_prefs.xml" />
-</full-backup-content>
+<!--
+  Android 12 以下的备份规则。
+
+  本应用保存的都是**用户自己产生**的本地数据（课表、日程、专注记录）与界面偏好，
+  没有凭据、没有校园业务数据，所以没有需要排除的明文密钥。
+  上游那条 secure_prefs.xml 排除项随凭据存储一起删除。
+-->
+<full-backup-content />

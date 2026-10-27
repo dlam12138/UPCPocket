@@ -4,10 +4,6 @@
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
 
-# androidx.security:security-crypto 用的 Tink 引用了 google errorprone 的**编译期注解**，
-# 运行时不存在这些类。规则来自 AGP 生成的 app/build/outputs/mapping/release/missing_rules.txt。
--dontwarn com.google.errorprone.annotations.**
-
 # kotlinx.serialization：@Serializable 的 serializer 靠伴生对象与反射名查找，被裁掉就会运行时炸。
 -keepclassmembers class **$$serializer { *; }
 -keepclasseswithmembers class * {
@@ -16,6 +12,6 @@
 -if @kotlinx.serialization.Serializable class **
 -keep class <1>$$serializer { *; }
 
-# Tink（EncryptedSharedPreferences 背后）用反射注册 KeyManager，保守整包保留。
--keep class com.google.crypto.tink.** { *; }
--dontwarn com.google.crypto.tink.**
+# ⚠️ 上游这里还有两条针对 androidx.security:security-crypto / Tink 的 keep 规则。
+# 本原型不保存任何凭据，那个依赖已经从构建脚本移除，所以规则也一并删了 ——
+# 留着只会让 R8 去保留一个根本不存在的包。

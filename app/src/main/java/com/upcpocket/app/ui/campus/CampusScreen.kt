@@ -1,0 +1,174 @@
+package com.upcpocket.app.ui.campus
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.School
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
+
+/**
+ * 「更多」= 功能与信息入口页。
+ *
+ * M1 的边界很清楚：**本地能力**（课表设置、学习统计、外观）与
+ * **官方入口导航**（校园服务）分开摆放；没有"账号"分组，也没有"检测更新" ——
+ * 这个应用不需要登录，也不连上游的发布接口。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CampusScreen(
+    onOpenCampusServices: () -> Unit,
+    onOpenAbout: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenDisplaySettings: () -> Unit,
+    onOpenFocusStats: () -> Unit,
+) {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("更多") }) },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                // 悬浮 dock 是覆盖层：垫出尾部余量，末尾条目能完整滚出胶囊
+                .padding(bottom = DOCK_CLEARANCE),
+        ) {
+            GroupTitle("学习")
+            EntryCard {
+                Entry(
+                    Icons.Filled.CalendarMonth,
+                    "课程表设置",
+                    "教学周、节次时间、演示数据、显示样式",
+                    onOpenDisplaySettings,
+                )
+                Entry(
+                    Icons.Filled.Insights,
+                    "学习统计",
+                    "专注时长、热力图、标签分布",
+                    onOpenFocusStats,
+                )
+            }
+
+            GroupTitle("校园服务")
+            EntryCard {
+                Entry(
+                    Icons.Filled.School,
+                    "官方入口导航",
+                    "唐岛湾 / 古镇口 · 用系统浏览器打开",
+                    onOpenCampusServices,
+                )
+                // 这一行不是入口，是把边界讲清楚：不内嵌、不登录、不读数据
+                Text(
+                    text = "这些服务的登录、查询都在学校自己的网页里完成。" +
+                        "本应用不保存账号、Cookie 或 Token，也不读取任何校园业务数据。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
+            GroupTitle("外观")
+            EntryCard {
+                Entry(
+                    Icons.Filled.Palette,
+                    "配色与深色模式",
+                    "跟随壁纸动态取色，或选内置配色",
+                    onOpenAppearance,
+                )
+            }
+
+            GroupTitle("关于")
+            EntryCard {
+                Entry(
+                    Icons.Filled.Info,
+                    "关于 UPC Pocket",
+                    "当前能力、数据边界、开源与致谢",
+                    onOpenAbout,
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun GroupTitle(text: String) {
+    // 与卡片的屏幕边距（16dp）对齐；今天/课表页的页边距也是 16dp，全局一个节奏
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 18.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun EntryCard(content: @Composable () -> Unit) {
+    GlassCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+        Column(content = { content() })
+    }
+}
+
+@Composable
+private fun Entry(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        leadingContent = {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        trailingContent = {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+            )
+        },
+        modifier = Modifier.clickable(onClick = onClick),
+    )
+}

@@ -1,4 +1,4 @@
-﻿import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 // ── 签名 ───────────────────────────────────────────────────────────────
@@ -21,24 +21,24 @@ plugins {
 }
 
 android {
-    namespace = "com.zzupocket.app"
+    // ⚠️ 包名与应用标识都是 **UPC Pocket**，不是上游的 com.zzupocket.app。
+    // 这是两个不同的应用：改成自己的标识之后，上游的包不会被覆盖安装，
+    // 上游的数据库/令牌文件也不会被本应用读到（两者数据语义完全不同）。
+    namespace = "com.upcpocket.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.zzupocket.app"
+        applicationId = "com.upcpocket.app"
         minSdk = 31
         targetSdk = 36
-        versionCode = 97
-        // 版本号不带 -P6 那种阶段后缀（阶段划分是 docs 的事）；预发行用标准 rc 标记（如 0.33.0-rc1），
-        // AppUpdate.compareVersions 对它有专门规则：rc < 同号正式版，正式版发布后已装 rc 的用户能看到红点。
-        // ⚠️ 升级判断只认 versionCode（Android 的规则），versionName 是给人看的；
-        // 所以改名号（哪怕是"变小"的数字）都不会影响覆盖安装，每次发版 versionCode 必须 +1。
-        versionName = "0.33.1"
+        // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）
+        versionCode = 1
+        versionName = "0.1.0-m1"
     }
 
     signingConfigs {
         if (hasReleaseSigning) {
-            create("zzupocket") {
+            create("upcpocket") {
                 storeFile = releaseStoreFile
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
@@ -49,7 +49,7 @@ android {
 
     buildTypes {
         debug {
-            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("zzupocket")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("upcpocket")
         }
         release {
             isMinifyEnabled = true
@@ -59,7 +59,7 @@ android {
                 "proguard-rules.pro",
             )
             if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("zzupocket")
+                signingConfig = signingConfigs.getByName("upcpocket")
             } else {
                 logger.lifecycle("⚠️ 未找到 keystore.properties，release 包将使用 debug 签名")
                 signingConfig = signingConfigs.getByName("debug")
@@ -104,9 +104,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
 
-    // 定时采样电量：学校不提供历史用电量，只能靠自己按点采样差分（每 4 小时一次）
-    implementation(libs.androidx.work.runtime.ktx)
-
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -119,9 +116,8 @@ dependencies {
     // Material You 配色生成（由种子色算出整套 M3 浅/深配色，见 ui/theme/MaterialYouScheme.kt）
     implementation(libs.material.color.utilities)
 
-    // 网络（不用 Retrofit：接口少，且 CAS 登录的 POST 走 query string，裸 OkHttp 更直接）
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
+    // 本地序列化：番茄钟快照（FocusPrefsStore）用 kotlinx.serialization 落 DataStore。
+    // ⚠️ 这里**没有** OkHttp：本应用不请求任何网络接口（Manifest 里也没有 INTERNET 权限）。
     implementation(libs.kotlinx.serialization.json)
 
     // 本地存储
@@ -129,7 +125,11 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.security.crypto)
+
+    // ⚠️ 已移除、且**不要**加回来：
+    //  · androidx.work（上游用它每 4 小时采样宿舍电量；本原型没有任何后台联网任务）
+    //  · androidx.security.crypto（上游用它存 CAS 令牌；本原型不保存任何凭据）
+    //  · okhttp / okhttp-logging（本原型不访问校园系统）
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

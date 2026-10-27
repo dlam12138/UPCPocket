@@ -23,6 +23,4 @@
     <color name="widget_divider">#CAC4D0</color>
     <color name="widget_accent">#6750A4</color>
     <color name="widget_bar">#6750A4</color>
-    <!-- 警示色（欠费 / 电量偏低 / 余额偏低），与 App 主题的 error 同源 -->
-    <color name="widget_error">#B3261E</color>
 </resources>

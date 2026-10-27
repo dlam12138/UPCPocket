@@ -24,7 +24,6 @@
       参考的实现（拾光、HIT）也都用 dp。App 内部的正文仍然全部用 sp。
     -->
     <dimen name="widget_corner">@android:dimen/system_app_widget_background_radius</dimen>
-    <dimen name="widget_corner_inner">@android:dimen/system_app_widget_inner_radius</dimen>
 
     <!-- 内边距：14dp 与拾光课程表一致 -->
     <dimen name="widget_pad">14dp</dimen>
@@ -36,7 +35,7 @@
     <!-- ── 课表组件 ───────────────────────────────────────────── -->
     <dimen name="widget_week">10.5dp</dimen>        <!-- 右上角「第 5 周」 -->
     <dimen name="widget_col_header">12dp</dimen>    <!-- 列头「今天 9.29 周二」 -->
-    <dimen name="widget_side_title">12dp</dimen>    <!-- 左右分栏标题（宿舍电量 / 校园卡） -->
+
     <dimen name="widget_footer">9.5dp</dimen>       <!-- 「剩余 2 节」这种小字 -->
     <dimen name="widget_row_name">13dp</dimen>      <!-- 课程块里的课名（issue #6：略缩、可两行） -->
     <dimen name="widget_row_sub">12dp</dimen>       <!-- 课程块里的地点/时间段（小字） -->
@@ -51,14 +50,7 @@
     <dimen name="widget_bubble_text">13dp</dimen>   <!-- 气泡里的数字 -->
     <dimen name="widget_bar_h_lg">46dp</dimen>      <!-- 那节课左边的色条（贴着三行文字） -->
 
-    <!-- ── 电量与校园卡 ───────────────────────────────────────── -->
-    <dimen name="widget_block_label">12dp</dimen>   <!-- 块名「照明」 -->
-    <dimen name="widget_block_value">28dp</dimen>   <!-- 块里的数字（真实画布够大，才敢用 28dp） -->
-    <dimen name="widget_block_unit">11dp</dimen>    <!-- 「度」「元」 -->
-    <dimen name="widget_block_hint">10.5dp</dimen>  <!-- 「可用约 29 天」 -->
-
-    <!-- 课程色条 / 块色条 -->
+    <!-- 课程色条 -->
     <dimen name="widget_bar_w">3dp</dimen>
     <dimen name="widget_bar_h">26dp</dimen>     <!-- 课程块：贴着课名与副行 -->
-    <dimen name="widget_bar_h_sm">16dp</dimen>  <!-- 数据块：贴着块名 -->
 </resources>

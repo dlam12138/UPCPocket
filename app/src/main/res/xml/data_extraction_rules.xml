@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12+ 的备份/迁移规则。
-     ⚠️ 令牌（EncryptedSharedPreferences）刻意排除：换机必须重新登录，凭据不进任何备份。 -->
+<!--
+  Android 12+ 的备份/迁移规则。
+
+  本应用没有凭据可保护：不保存账号、密码、Cookie 或令牌（Manifest 里没有网络权限，
+  也不存在登录流程）。课表与专注记录都是用户自己的数据，纳入系统备份是合理的。
+-->
 <data-extraction-rules>
-    <cloud-backup>
-        <exclude domain="sharedpref" path="secure_prefs.xml" />
-    </cloud-backup>
-    <device-transfer>
-        <exclude domain="sharedpref" path="secure_prefs.xml" />
-    </device-transfer>
+    <cloud-backup />
+    <device-transfer />
 </data-extraction-rules>

@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 访问学校各系统（统一认证 / 一卡通 / 教务 / 图书馆）必需。
-         缺失时的报错是 "Permission denied (missing INTERNET permission?)"。 -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 用于判断"当前离线"，从而把界面标注成"数据截至 XX:XX"而不是白屏 -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!--
+        ⚠️ **没有 INTERNET 权限**，这是刻意的。
+
+        M1 的校园服务全部通过系统浏览器打开（隐式 ACTION_VIEW Intent），
+        那是浏览器在联网，不是本应用在联网。应用自己不请求任何校园接口，
+        所以也就不需要、并且不应该持有网络权限 —— 即使将来有人误加了一个
+        OkHttp 调用，没有这个权限它也发不出去。上游项目里的
+        ACCESS_NETWORK_STATE 也一并去掉了（不再判断"离线"状态，因为不存在远端数据）。
+    -->
 
     <!-- 番茄钟：倒计时通知 + 走完时的提醒。
          没有 POST_NOTIFICATIONS（Android 13+）时前台服务仍然能跑，但通知不可见。 -->
@@ -14,34 +18,47 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!--
+        校园服务入口要在系统浏览器里打开，Android 11+ 必须显式声明可查询的 Intent。
+        这里只声明 http/https 的浏览意图，查询范围最小。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+    </queries>
+
     <application
-        android:name=".ZZUPocketApp"
+        android:name=".UpcPocketApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
-        android:networkSecurityConfig="@xml/network_security_config"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.ZZUPocket">
+        android:theme="@style/Theme.UpcPocket">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
-            android:theme="@style/Theme.ZZUPocket">
+            android:theme="@style/Theme.UpcPocket">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- ── 桌面小组件（课表 + 电量/校园卡） ────────────────────────────────
-             三个组件都用 AppWidgetProvider + RemoteViews/XML 实现（不是 Glance）：
+        <!-- ── 桌面小组件（课表） ────────────────────────────────────────────
+             两个组件都用 AppWidgetProvider + RemoteViews/XML 实现（不是 Glance）：
              只有 RemoteViews 这条路拿得到 android:previewLayout（选择页里的实时预览）
-             和 RemoteViews.addView（行数可变的课程列表）。理由详见
-             ui/widget/TodayClassesWidget.kt 的类注释。
+             和 RemoteViews.addView（行数可变的课程列表）。
 
              exported="false" 是官方文档当前的口径：系统自己能往非导出的组件投
              APPWIDGET_UPDATE，导出反而给别的 App 留了乱发广播的口子。 -->
@@ -67,20 +84,6 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/today_classes_widget_info" />
-        </receiver>
-
-        <!-- 电量 + 校园卡余额合成一个 4×2：数字右对齐独占整行，只读本地
-             （校园卡余额读的是 App 查完存下的缓存 —— 组件不许联网） -->
-        <receiver
-            android:name=".ui.widget.EnergyCardWidget"
-            android:exported="false"
-            android:label="@string/widget_energy_card">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/energy_card_widget_info" />
         </receiver>
 
         <!-- 上下课时间点的刷新闹钟（显式 Intent，不需要 intent-filter）。
