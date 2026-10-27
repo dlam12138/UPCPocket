@@ -1,15 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!--
-        ⚠️ **没有 INTERNET 权限**，这是刻意的。
-
-        M1 的校园服务全部通过系统浏览器打开（隐式 ACTION_VIEW Intent），
-        那是浏览器在联网，不是本应用在联网。应用自己不请求任何校园接口，
-        所以也就不需要、并且不应该持有网络权限 —— 即使将来有人误加了一个
-        OkHttp 调用，没有这个权限它也发不出去。上游项目里的
-        ACCESS_NETWORK_STATE 也一并去掉了（不再判断"离线"状态，因为不存在远端数据）。
-    -->
+    <!-- 用户主动查询公开空闲教室；图书馆座位在官方 CAS 登录后使用正常接口。
+         不接入自建认证代理，不保存账号密码，不做后台轮询；HTTP 余额页仍交外部应用。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- 番茄钟：倒计时通知 + 走完时的提醒。
          没有 POST_NOTIFICATIONS（Android 13+）时前台服务仍然能跑，但通知不可见。 -->
@@ -23,6 +17,8 @@
         这里只声明 http/https 的浏览意图，查询范围最小。
     -->
     <queries>
+        <!-- 仅用于用户主动选择的微信分享/启动，不查询全部安装应用。 -->
+        <package android:name="com.tencent.mm" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -51,6 +47,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:theme="@style/Theme.UpcPocket">
 

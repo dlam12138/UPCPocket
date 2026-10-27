@@ -156,7 +156,7 @@ class DisplaySettingsViewModel : ViewModel() {
     /**
      * 保存节次作息。
      *
-     * 改完之后所有日程的显示时间都会跟着变（不复制进每条记录，只存节次表）——
+     * 节次表作为时间来源，同时在事务中同步已有日程的时间快照作为兜底——
      * 这样"学校调整作息"只需要改一处，也不用担心历史记录与新作息打架。
      */
     fun savePeriods(periods: List<com.upcpocket.app.domain.Period>) = viewModelScope.launch {
@@ -536,8 +536,8 @@ fun DisplaySettingsScreen(
 
             // 说明：为什么这里没有"同步课表"按钮
             Text(
-                text = "本原型不连接教务系统：课表内容只有你自己添加的日程，以及可关闭的演示数据。" +
-                    "校园服务入口在「更多 → 官方入口导航」。",
+                text = "课表内容只有你自己添加的日程、主动导入的 CSV，以及可关闭的演示数据；" +
+                    "App 不连接教务后台自动同步。教学周、节次和 11–13 节都在这里配置。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp),

@@ -55,6 +55,9 @@ import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
 import com.upcpocket.app.ui.campus.CampusServicesScreen
+import com.upcpocket.app.ui.classroom.FreeClassroomScreen
+import com.upcpocket.app.ui.library.LibrarySeatLoginScreen
+import com.upcpocket.app.ui.library.LibrarySeatScreen
 import com.upcpocket.app.ui.focus.FocusScreen
 import com.upcpocket.app.ui.focus.FocusStatsScreen
 import com.upcpocket.app.ui.schedule.BackgroundCropScreen
@@ -201,8 +204,26 @@ fun AppNav(initialRoute: String? = null, routeToken: Int = 0) {
                         )
                     }
                     composable(AppRoutes.CAMPUS_SERVICES) {
-                        // 官方入口一律交给系统浏览器；这里只负责展示与跳转
-                        CampusServicesScreen(onBack = { navController.popBackStack() })
+                        CampusServicesScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenClassrooms = { navController.navigate(AppRoutes.FREE_CLASSROOMS) },
+                            onOpenLibrary = { navController.navigate(AppRoutes.LIBRARY_SEAT) },
+                        )
+                    }
+                    composable(AppRoutes.FREE_CLASSROOMS) {
+                        FreeClassroomScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(AppRoutes.LIBRARY_SEAT) {
+                        LibrarySeatScreen(
+                            onBack = { navController.popBackStack() },
+                            onLogin = { navController.navigate(AppRoutes.LIBRARY_LOGIN) },
+                        )
+                    }
+                    composable(AppRoutes.LIBRARY_LOGIN) {
+                        LibrarySeatLoginScreen(
+                            onBack = { navController.popBackStack() },
+                            onLoggedIn = { navController.popBackStack() },
+                        )
                     }
                     composable(ROUTE_APPEARANCE) {
                         AppearanceScreen(onBack = { navController.popBackStack() })

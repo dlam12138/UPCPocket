@@ -2,6 +2,7 @@ package com.upcpocket.app.core
 
 import android.content.Context
 import com.upcpocket.app.data.db.AppDatabase
+import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.FocusRepository
@@ -17,10 +18,10 @@ import kotlinx.coroutines.launch
 /**
  * 极简手动依赖容器。
  *
- * M1 只保留**本地**依赖：数据库、偏好、课表仓库、番茄钟。
- * 上游项目里的 CAS 客户端、教务/一卡通客户端、令牌存储、房间表、更新检查
- * 已随郑州大学专属链路一起移除 —— 这个容器里现在拿不到任何能发校园请求的对象，
- * 这是"不再误连旧服务"最硬的保证（不是靠开关关掉的，是代码不存在）。
+ * M1 只保留**本地**依赖：数据库、偏好、课表仓库、番茄钟；
+ * 0.1.2 增加两个独立网络能力：公开空闲教室查询、图书馆座位（官方 CAS 登录后的内存会话）。
+ * 上游项目里的 CAS 客户端、教务/一卡通客户端、令牌存储、房间表、更新检查已删除；
+ * 图书馆 token 不落盘，退出/进程结束即清除。
  */
 object AppGraph {
 
@@ -58,6 +59,9 @@ object AppGraph {
     }
 
     val focusRepository: FocusRepository by lazy { FocusRepository(db) }
+
+    /** 图书馆座位：登录 token 只在这个单例的内存里，进程结束/退出即丢失。 */
+    val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
 
     val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }
 

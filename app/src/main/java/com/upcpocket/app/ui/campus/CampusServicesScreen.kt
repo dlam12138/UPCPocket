@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.Card
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,26 +45,23 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.data.local.CampusServices
+import com.upcpocket.app.data.wechat.WeChatDirect
+import com.upcpocket.app.data.wechat.WeChatSendResult
 import com.upcpocket.app.ui.components.GlassCard
 
 /**
- * 「校园服务」—— 官方入口导航。
- *
- * 这一页**只做一件事**：把学校的官方服务地址按校区整理好，点一下交给系统浏览器。
- *
- * 刻意不做的事（与总体计划书 §2/§3 一致）：
- *  - 不用 WebView 内嵌：登录页留在浏览器里，App 拿不到任何 Cookie / Token；
- *  - 不代填账号、不做单点登录代理；
- *  - 不请求任何校园接口：本应用连 INTERNET 权限都没有。
- *
- * 唐岛湾与古镇口的电费是**两套互不相通的系统**，所以那一组单独排在最前面，
- * 并在卡面上直接写明适用范围 —— 拿错校区是这个页面最可能犯的错。
+ * 原生空闲教室、微信交接与其余学校网页入口。各服务使用真实可用的数据来源。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CampusServicesScreen(onBack: () -> Unit) {
+fun CampusServicesScreen(
+    onBack: () -> Unit,
+    onOpenClassrooms: () -> Unit,
+    onOpenLibrary: () -> Unit,
+) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf<String?>(null) }
+    var weChatEntry by remember { mutableStateOf<CampusServices.Entry?>(null) }
 
     /**
      * 打开官方入口。
@@ -70,7 +69,7 @@ fun CampusServicesScreen(onBack: () -> Unit) {
      * 只发隐式 ACTION_VIEW，不附加任何 extra、不授予 URI 权限；
      * 系统找不到浏览器时给一句提示，而不是崩溃。
      */
-    fun open(entry: CampusServices.Entry) {
+    fun openInBrowser(entry: CampusServices.Entry) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(entry.url)).apply {
             addCategory(Intent.CATEGORY_BROWSABLE)
         }
@@ -79,6 +78,65 @@ fun CampusServicesScreen(onBack: () -> Unit) {
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(context, "没有找到可用的浏览器", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    fun open(entry: CampusServices.Entry) {
+        when (entry.id) {
+            "classroom" -> onOpenClassrooms()
+            "library_seat" -> onOpenLibrary()
+            "power_tangdaowan", "ecard" -> weChatEntry = entry
+            else -> openInBrowser(entry)
+        }
+    }
+
+    weChatEntry?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { weChatEntry = null },
+            title = { Text("通过微信打开 · ${entry.title}") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("将链接复制或分享到微信，再由你点击打开。不会自动发消息，也不会读取微信中的余额。")
+                    Text("如果页面提示登录失效或无效 token，请从学校公众号的服务菜单进入；仅打开微信不能补齐学校的认证。")
+                    if (WeChatDirect.isConfigured()) {
+                        TextButton(onClick = {
+                            val result = WeChatDirect.openWebPage(context, entry.url)
+                            val message = when (result) {
+                                WeChatSendResult.Sent ->
+                                    "已向微信发送请求。请在微信里确认是否进入目标页，并完成学校认证；" +
+                                        "发送成功不等于余额查询成功。"
+                                WeChatSendResult.WeChatNotInstalled -> "未安装微信，已保留复制/分享兜底。"
+                                WeChatSendResult.NotConfigured -> "未配置正式移动应用 AppID，直达不可用。"
+                                WeChatSendResult.RegistrationFailed -> "微信 SDK 注册失败，请核对 AppID、包名与签名。"
+                                WeChatSendResult.RequestRejected -> "微信未接受该请求，请使用复制/分享兜底并核对开放平台配置。"
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }) { Text("微信直达（需要真机验证）") }
+                    } else {
+                        Text(
+                            "尚未配置正式移动应用 AppID，微信 SDK 直达未启用；当前只提供复制/分享兜底，" +
+                                "不把打开微信首页当作直达完成。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    TextButton(onClick = {
+                        WeChatHandoff.copyAndOpen(context, entry.url)
+                        weChatEntry = null
+                    }) { Text("复制链接并打开微信") }
+                    TextButton(onClick = {
+                        WeChatHandoff.share(context, entry.url)
+                        weChatEntry = null
+                    }) { Text("分享链接到微信") }
+                    TextButton(onClick = {
+                        openInBrowser(entry)
+                        weChatEntry = null
+                    }) { Text("用外部浏览器打开") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { weChatEntry = null }) { Text("关闭") }
+            },
+        )
     }
 
     Scaffold(
@@ -112,13 +170,13 @@ fun CampusServicesScreen(onBack: () -> Unit) {
             ) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "这些入口用系统浏览器打开",
+                        text = "校园查询与学校服务",
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                     Text(
-                        text = "登录、查询、缴费都在学校自己的网页里完成。App 不保存账号、" +
-                            "Cookie 或 Token，也不读取页面内容；本应用没有网络权限。",
+                        text = "空闲教室和图书馆座位在 App 内查询/操作；唐岛湾电费和校园卡可转到微信。" +
+                            "其余服务打开学校页面。App 不保存登录凭据，不提供充值。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
@@ -132,7 +190,11 @@ fun CampusServicesScreen(onBack: () -> Unit) {
             CampusServices.ALL
                 .filter { CampusServices.isTangdaowanPower(it) || CampusServices.isGuzhenkouPower(it) }
                 .forEach { entry ->
-                    PowerEntryCard(entry = entry, onOpen = { open(entry) })
+                    PowerEntryCard(
+                        entry = entry,
+                        onOpen = { open(entry) },
+                        onWeChat = { weChatEntry = entry },
+                    )
                 }
 
             SectionTitle("学习")
@@ -185,7 +247,11 @@ private fun SectionTitle(text: String, emphasis: Boolean = false) {
  * 电费入口卡：适用范围直接摊开（不等用户点开），因为唐岛湾 / 古镇口真的不通用。
  */
 @Composable
-private fun PowerEntryCard(entry: CampusServices.Entry, onOpen: () -> Unit) {
+private fun PowerEntryCard(
+    entry: CampusServices.Entry,
+    onOpen: () -> Unit,
+    onWeChat: () -> Unit,
+) {
     GlassCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -209,7 +275,7 @@ private fun PowerEntryCard(entry: CampusServices.Entry, onOpen: () -> Unit) {
                 )
                 Icon(
                     Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "在浏览器中打开",
+                    contentDescription = if (entry.access == CampusServices.Access.WECHAT) "微信打开选项" else "打开学校页面",
                     tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(18.dp),
                 )
@@ -227,6 +293,7 @@ private fun PowerEntryCard(entry: CampusServices.Entry, onOpen: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            TextButton(onClick = onWeChat) { Text("通过微信打开") }
         }
     }
 }
@@ -267,7 +334,12 @@ private fun ServiceCard(
                 }
                 Icon(
                     Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = "在浏览器中打开",
+                    contentDescription = when (entry.id) {
+                        "classroom" -> "在应用中查询空闲教室"
+                        "library_seat" -> "在应用中预约图书馆座位"
+                        "ecard" -> "微信打开选项"
+                        else -> "打开学校页面"
+                    },
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .size(20.dp)

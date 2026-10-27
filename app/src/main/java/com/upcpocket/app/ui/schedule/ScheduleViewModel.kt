@@ -397,6 +397,24 @@ class ScheduleViewModel : ViewModel() {
         loadSemester(semester)
     }
 
+    fun importCsv(semesterId: Int, rows: List<com.upcpocket.app.domain.CsvScheduleImport.Row>,
+        onComplete: (String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val semester = _state.value.selectedSemester
+                require(semester?.id == semesterId) { "学期已切换，请重新预览" }
+                val (added, skipped) = repo.importCsvRows(semesterId, rows)
+                loadSemester(semester!!)
+                pushWidgets()
+                _state.update { it.copy(planNotice = "CSV 已导入 $added 条时段，跳过 $skipped 条重复记录") }
+                onComplete(null)
+            } catch (e: Exception) {
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                onComplete("导入失败，请重新选择文件或检查格式")
+            }
+        }
+    }
+
     fun deletePlan(code: String) {
         val semester = _state.value.selectedSemester ?: return
         viewModelScope.launch {

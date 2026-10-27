@@ -12,6 +12,15 @@ val keystoreProps = Properties().apply {
 val releaseStoreFile = keystoreProps.getProperty("storeFile")?.let { file(it) }
 val hasReleaseSigning = releaseStoreFile?.exists() == true
 
+// 微信开放平台移动应用 AppID。没有正式 AppID 时保持空字符串：界面只显示
+// 复制/分享兜底，不发送 SDK 请求，也不伪造“直达成功”。可写在 gitignore 的
+// keystore.properties 或本机 ~/.gradle/gradle.properties（wechatAppId=wx...）。
+val wechatAppId = (keystoreProps.getProperty("wechatAppId")
+    ?: providers.gradleProperty("wechatAppId").orNull)
+    ?.trim()
+    ?.takeIf { it.matches(Regex("wx[0-9a-f]{16}")) }
+    .orEmpty()
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -32,8 +41,9 @@ android {
         minSdk = 31
         targetSdk = 36
         // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）
-        versionCode = 1
-        versionName = "0.1.0-m1"
+        versionCode = 3
+        versionName = "0.1.2-preview"
+        buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
     }
 
     signingConfigs {
@@ -124,7 +134,7 @@ dependencies {
     implementation(libs.material.color.utilities)
 
     // 本地序列化：番茄钟快照（FocusPrefsStore）用 kotlinx.serialization 落 DataStore。
-    // ⚠️ 这里**没有** OkHttp：本应用不请求任何网络接口（Manifest 里也没有 INTERNET 权限）。
+    // 公开空闲教室查询使用平台 HTTPS 客户端；不引入认证客户端或后台轮询依赖。
     implementation(libs.kotlinx.serialization.json)
 
     // 本地存储
@@ -132,8 +142,9 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.wechat.sdk)
 
-    // ⚠️ 已移除、且**不要**加回来：
+    // 已移除的上游依赖，当前功能不需要：
     //  · androidx.work（上游用它每 4 小时采样宿舍电量；本原型没有任何后台联网任务）
     //  · androidx.security.crypto（上游用它存 CAS 令牌；本原型不保存任何凭据）
     //  · okhttp / okhttp-logging（本原型不访问校园系统）

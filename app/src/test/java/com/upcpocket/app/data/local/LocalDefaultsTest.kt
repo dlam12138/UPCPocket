@@ -16,11 +16,20 @@ import org.junit.Test
 class LocalDefaultsTest {
 
     @Test
-    fun `默认作息是连续的十节`() {
+    fun `默认作息是连续的十三节`() {
         val periods = LocalDefaults.DEFAULT_PERIODS
-        assertEquals(10, periods.size)
-        assertEquals((1..10).toList(), periods.map { it.indexNo })
-        assertEquals(10, LocalDefaults.PERIOD_COUNT)
+        assertEquals(13, periods.size)
+        assertEquals((1..13).toList(), periods.map { it.indexNo })
+        assertEquals(13, LocalDefaults.PERIOD_COUNT)
+    }
+
+    @Test
+    fun `老安装只补缺失节次且不覆盖已有时间`() {
+        val existing = (1..10).toList()
+        val missing = LocalDefaults.missingPeriods(existing)
+        assertEquals(listOf(11, 12, 13), missing.map { it.indexNo })
+        assertTrue(LocalDefaults.missingPeriods((1..13).toList()).isEmpty())
+        assertTrue(LocalDefaults.missingPeriods(listOf(1, 2, 11, 12)).none { it.indexNo in setOf(1, 2, 11, 12) })
     }
 
     @Test

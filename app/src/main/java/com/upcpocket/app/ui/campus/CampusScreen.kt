@@ -79,14 +79,13 @@ fun CampusScreen(
             EntryCard {
                 Entry(
                     Icons.Filled.School,
-                    "官方入口导航",
-                    "唐岛湾 / 古镇口 · 用系统浏览器打开",
+                    "校园服务",
+                    "原生空闲教室 · 微信打开 · 学校入口",
                     onOpenCampusServices,
                 )
-                // 这一行不是入口，是把边界讲清楚：不内嵌、不登录、不读数据
                 Text(
-                    text = "这些服务的登录、查询都在学校自己的网页里完成。" +
-                        "本应用不保存账号、Cookie 或 Token，也不读取任何校园业务数据。",
+                    text = "空闲教室读取学校公开查询结果。需要认证的服务交学校网页或微信完成，" +
+                        "本应用不保存账号、Cookie 或 Token。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

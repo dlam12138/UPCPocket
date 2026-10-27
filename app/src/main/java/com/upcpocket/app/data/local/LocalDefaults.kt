@@ -26,9 +26,11 @@ object LocalDefaults {
     const val FIRST_SEMESTER_ID = 1
 
     /**
-     * 默认作息：上午 4 节、下午 4 节、晚上 2 节，共 10 节。
+     * 默认作息：上午 4 节、下午 4 节、晚上 5 节，共 13 节。
      *
-     * 上下课时间只是常见排法，随时可在设置里改；`dayPart` 用于把节次分组显示。
+     * 学校空闲教室页面的节次上限是 13，课表也可能出现第 11–13 节，所以本地
+     * 作息不能停在 10 节。上下课时间只是常见排法，随时可在设置里改；
+     * `dayPart` 用于把节次分组显示。
      */
     val DEFAULT_PERIODS: List<Period> = listOf(
         period(1, "第 1 节", 800, 850, "MORNING", 1),
@@ -41,10 +43,17 @@ object LocalDefaults {
         period(8, "第 8 节", 1710, 1800, "AFTERNOON", 4),
         period(9, "第 9 节", 1900, 1950, "EVENING", 5),
         period(10, "第 10 节", 2000, 2050, "EVENING", 5),
+        period(11, "第 11 节", 2100, 2150, "EVENING", 6),
+        period(12, "第 12 节", 2200, 2250, "EVENING", 6),
+        period(13, "第 13 节", 2300, 2350, "EVENING", 7),
     )
 
     /** 节次总数（课表网格与编辑器都用它做上限，避免出现空节次列） */
     val PERIOD_COUNT: Int get() = DEFAULT_PERIODS.size
+
+    /** 只取尚未存在的节次，用于老安装补种 11–13 节，不覆盖用户改过的时间。 */
+    fun missingPeriods(existing: Collection<Int>): List<Period> =
+        DEFAULT_PERIODS.filterNot { it.indexNo in existing }
 
     /**
      * 新建学期的默认名称：按今天推断学年与学期。

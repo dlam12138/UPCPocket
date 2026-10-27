@@ -119,6 +119,13 @@ fun ScheduleScreen(
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val prefs by AppGraph.uiPrefsStore.flow.collectAsStateWithLifecycle(initialValue = UiPrefs())
+    var showCsvImport by remember { mutableStateOf(false) }
+    state.selectedSemester?.let { semester ->
+        if (showCsvImport) androidx.compose.runtime.key(semester.id) {
+            CsvImportDialog(semester, state.periods, vm) { showCsvImport = false }
+        }
+    }
+
     var showSemesters by remember { mutableStateOf(false) }
     var showWeekPicker by remember { mutableStateOf(false) }
 
@@ -133,6 +140,7 @@ fun ScheduleScreen(
                 // 左上角不显示"课表"二字，直接放学期切换
                 title = { SemesterButton(state.selectedSemester) { showSemesters = true } },
                 actions = {
+                    TextButton(enabled = state.selectedSemester != null, onClick = { showCsvImport = true }) { Text("导入") }
                     IconButton(onClick = { vm.openPlanEditor() }) {
                         Icon(Icons.Filled.Add, contentDescription = "添加日程")
                     }
@@ -274,7 +282,7 @@ fun ScheduleScreen(
             initial = state.editingPlan,
             semesterId = state.selectedSemester?.id ?: 0,
             availableWeeks = state.weeks.ifEmpty { (1..18).toList() },
-            maxUnit = state.periods.size.coerceAtLeast(10),
+            maxUnit = maxOf(10, state.periods.maxOfOrNull { it.indexNo } ?: 0),
             canStartFocus = true,
             currentWeek = state.weekIndex,
             onDismiss = vm::closePlanEditor,
@@ -451,6 +459,9 @@ private fun ScheduleGrid(
     val days = 1..prefs.dayCount
     val cellH = prefs.cellHeightDp.dp
     val gap = if (prefs.blockBorder == BlockBorder.NONE) 0.75.dp else 1.dp
+    // 网格至少 10 格；用户作息里有 11–13 节时自动长到最大节次。
+    // 不能把 10 写死，否则导入的 11–13 节课在网格里根本没有格子可画。
+    val unitCount = maxOf(10, periods.maxOfOrNull { it.indexNo } ?: 0)
     val dark = isSystemInDarkTheme()
     val todayIso = LocalDate.now().toString()
     val today = LocalDate.now()
@@ -509,7 +520,7 @@ private fun ScheduleGrid(
                     val stroke = 0.7.dp.toPx()
                     val dash = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 4.dp.toPx()))
                     // 横向虚线：每节课的上边界 + 最后一节的下边界
-                    for (i in 0 until 10) {
+                    for (i in 0 until unitCount) {
                         val y = (rowH + gapPx) * i
                         drawLine(gridLine, Offset(0f, y), Offset(size.width, y), stroke, pathEffect = dash)
                     }
@@ -529,12 +540,12 @@ private fun ScheduleGrid(
                     }
                 },
             ) {
-                // 左侧节次列：固定 10 格，与右侧各天严格对齐
+                // 左侧节次列：1..unitCount，与右侧各天严格对齐
                 Column(
                     modifier = Modifier.width(UNIT_COL_WIDTH),
                     verticalArrangement = Arrangement.spacedBy(gap),
                 ) {
-                    for (unit in 1..10) {
+                    for (unit in 1..unitCount) {
                         Column(
                             modifier = Modifier.fillMaxWidth().height(cellH),
                             horizontalAlignment = Alignment.CenterHorizontally,
@@ -570,6 +581,7 @@ private fun ScheduleGrid(
                         prefs = prefs,
                         cellH = cellH,
                         gap = gap,
+                        unitCount = unitCount,
                         dark = dark,
                         todayIso = todayIso,
                         now = now,
@@ -598,6 +610,7 @@ private fun DayColumn(
     prefs: UiPrefs,
     cellH: Dp,
     gap: Dp,
+    unitCount: Int,
     dark: Boolean,
     todayIso: String,
     now: LocalTime,
@@ -606,14 +619,14 @@ private fun DayColumn(
     val corner = RoundedCornerShape(6.dp)
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(gap)) {
         var unit = 1
-        while (unit <= 10) {
+        while (unit <= unitCount) {
             val session = sessions.firstOrNull { it.weekday == day && unit in it.startUnit..it.endUnit }
             if (session == null) {
                 Box(Modifier.fillMaxWidth().height(cellH))
                 unit += 1
                 continue
             }
-            val span = (session.endUnit - session.startUnit + 1).coerceIn(1, 11 - unit)
+            val span = (session.endUnit - session.startUnit + 1).coerceIn(1, unitCount - unit + 1)
             CourseBlock(
                 session = session,
                 span = span,

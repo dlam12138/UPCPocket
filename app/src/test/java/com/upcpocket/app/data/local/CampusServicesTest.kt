@@ -18,6 +18,31 @@ import org.junit.Test
 class CampusServicesTest {
 
     @Test
+    fun `服务列表不再展示两个部门导航`() {
+        assertTrue(CampusServices.ALL.none {
+            it.id in setOf("nic", "gzk") || it.title in setOf("信息化建设处", "古镇口校区综合办公室")
+        })
+    }
+
+    @Test
+    fun `校园卡余额使用用户提供的余额页面且不宣称支持流水`() {
+        val card = CampusServices.ALL.single { it.id == "ecard" }
+        assertEquals("校园卡余额", card.title)
+        assertEquals("http://jhzf.upc.edu.cn:20081/wechat/query/balance.html", card.url)
+        assertFalse(card.subtitle.contains("流水"))
+        assertFalse(card.scope.contains("流水"))
+        assertTrue(card.note.contains("不做充值"))
+    }
+
+    @Test
+    fun `唐岛湾电费提示用户实测需要微信打开`() {
+        val power = CampusServices.ALL.single { CampusServices.isTangdaowanPower(it) }
+        assertTrue(power.note.contains("需要微信打开"))
+        assertTrue(power.note.contains("普通浏览器"))
+        assertTrue(power.updatedNote.contains("用户实测"))
+    }
+
+    @Test
     fun `每个入口都是可打开的 http 或 https 地址`() {
         CampusServices.ALL.forEach { entry ->
             assertTrue(

@@ -18,6 +18,9 @@ object AppRoutes {
     /** 「更多」里的子页（不是 tab，进去之后底部导航栏会隐藏） */
     const val FOCUS_STATS = "focus_stats"
     const val CAMPUS_SERVICES = "campus_services"
+    const val FREE_CLASSROOMS = "free_classrooms"
+    const val LIBRARY_SEAT = "library_seat"
+    const val LIBRARY_LOGIN = "library_login"
     const val ABOUT = "about"
 
     /**

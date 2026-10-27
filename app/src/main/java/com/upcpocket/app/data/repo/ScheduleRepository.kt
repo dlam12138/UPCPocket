@@ -49,9 +49,14 @@ class ScheduleRepository(
      * 刻意**不**给学期种任何课程：课表要么是演示（内存），要么是用户自己加的。
      */
     suspend fun ensureSeeded(today: LocalDate = LocalDate.now()) {
-        if (db.periodDao().all().isEmpty()) {
-            val now = System.currentTimeMillis()
+        val now = System.currentTimeMillis()
+        val existingPeriods = db.periodDao().all()
+        if (existingPeriods.isEmpty()) {
             db.periodDao().upsertAll(LocalDefaults.DEFAULT_PERIODS.map { it.toEntity(now) })
+        } else {
+            // 老版本只有 1–10 节。这里只补缺失的 11–13 节，绝不覆盖用户改过的时间。
+            val missing = LocalDefaults.missingPeriods(existingPeriods.map { it.indexNo })
+            if (missing.isNotEmpty()) db.periodDao().upsertAll(missing.map { it.toEntity(now) })
         }
         if (db.semesterDao().all().isEmpty()) {
             val start = LocalDefaults.defaultStartDate(today)
@@ -107,7 +112,7 @@ class ScheduleRepository(
     }
 
     /**
-     * 覆盖写作息（用户在设置里改起止时间）。不满 10 节也允许，网格按最大节次收缩。
+     * 覆盖写作息（用户在设置里改起止时间）。支持 1–13 节；网格按实际最大节次收缩/扩展。
      *
      * ## 为什么要把时间快照一起补写
      *
@@ -386,6 +391,31 @@ class ScheduleRepository(
             }
         }
         return code
+    }
+
+    /** 全部校验后在同一事务落库；相同内容重复导入不覆盖既有记录。 */
+    suspend fun importCsvRows(semesterId: Int, rows: List<com.upcpocket.app.domain.CsvScheduleImport.Row>): Pair<Int, Int> = db.withTransaction {
+        require(rows.isNotEmpty() && rows.size <= 2000) { "导入记录数量无效" }
+        val semester = db.semesterDao().all().firstOrNull { it.id == semesterId }
+            ?: error("目标学期已不存在")
+        val weeks = semester.toDomain().weekIndices.toSet()
+        val units = periods().map { it.indexNo }.toSet()
+        rows.forEach { row ->
+            require(row.name.isNotBlank() && row.weekday in 1..7 && row.start <= row.end &&
+                (row.start..row.end).all { it in units } && row.weeks.isNotEmpty() &&
+                row.weeks.all { it in weeks }) { "导入记录超出当前学期或作息范围，请重新预览" }
+        }
+        val existing = db.courseSessionDao().bySemesterAndSource(semesterId, SOURCE_CUSTOM)
+            .map { it.courseKey }.toMutableSet()
+        var added = 0
+        rows.forEach { row ->
+            val spec = row.spec(semesterId)
+            if (existing.add(courseKeyOf(semesterId, spec.code!!))) {
+                savePlan(spec)
+                added++
+            }
+        }
+        added to (rows.size - added)
     }
 
     suspend fun deletePlan(semesterId: Int, code: String) = db.withTransaction {

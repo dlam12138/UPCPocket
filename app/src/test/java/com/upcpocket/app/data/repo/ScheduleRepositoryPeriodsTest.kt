@@ -10,7 +10,9 @@ import com.upcpocket.app.domain.PlanSpec
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import java.time.Duration
+import java.time.LocalTime
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -108,12 +110,15 @@ class ScheduleRepositoryPeriodsTest {
     @Test
     fun `作息里没有该节次时保留原快照而不是写空`() = runTest {
         seedPlan()
-        // 只留第 1 节，删掉第 2 节
+        val before = db.courseSessionDao().bySemester(semesterId).single()
+        // savePeriods 是部分更新，不删除未提交的节次；先制造真正缺失的第 2 节。
+        db.openHelper.writableDatabase.execSQL("DELETE FROM periods WHERE indexNo = 2")
+        assertTrue(periods().none { it.indexNo == 2 })
         repo.savePeriods(periods().filter { it.indexNo == 1 })
 
         val after = db.courseSessionDao().bySemester(semesterId).single()
-        assertNotNull("节次缺失不应把时间抹成 null", after.endTime)
-        // 第 1 节仍在，结束时间保持上次的值
+        assertTrue(periods().none { it.indexNo == 2 })
+        assertEquals("节次缺失应保留原结束快照", before.endTime, after.endTime)
         assertEquals("08:00", after.startTime)
     }
 
@@ -144,6 +149,29 @@ class ScheduleRepositoryPeriodsTest {
     }
 
     @Test
+    fun `老安装只有十节时补种十一到十三节且保留旧时间`() = runTest {
+        db.periodDao().upsertAll(
+            com.upcpocket.app.data.local.LocalDefaults.DEFAULT_PERIODS.take(10).map {
+                com.upcpocket.app.data.db.PeriodEntity(
+                    indexNo = it.indexNo,
+                    nameZh = it.nameZh,
+                    startTime = if (it.indexNo == 1) 815 else it.startTime,
+                    endTime = it.endTime,
+                    dayPart = it.dayPart,
+                    segmentIndex = it.segmentIndex,
+                    updatedAt = 1L,
+                )
+            },
+        )
+        repo.ensureSeeded()
+        val after = periods().associateBy { it.indexNo }
+        assertEquals((1..13).toList(), after.keys.sorted())
+        assertEquals("第 1 节不能被默认值覆盖", 815, after.getValue(1).startTime)
+        assertEquals("21:00", after.getValue(11).startText)
+        assertEquals("23:50", after.getValue(13).endText)
+    }
+
+    @Test
     fun `空作息列表被忽略_不会清空已有作息`() = runTest {
         val before = periods().size
         repo.savePeriods(emptyList())
@@ -154,11 +182,14 @@ class ScheduleRepositoryPeriodsTest {
     fun `改作息后课时长度按新时间计算`() = runTest {
         // 这条模拟展示层的口径：第 1-2 节从 08:00-09:50（110 分钟）改成 08:00-09:00
         seedPlan()
+        val before = db.courseSessionDao().bySemester(semesterId).single()
+        assertEquals(110L, Duration.between(LocalTime.parse(before.startTime), LocalTime.parse(before.endTime)).toMinutes())
         repo.savePeriods(
-            periods().map { if (it.indexNo == 2) it.copy(startTime = 900, endTime = 950) else it },
+            periods().map { if (it.indexNo == 2) it.copy(startTime = 850, endTime = 900) else it },
         )
         val session = db.courseSessionDao().bySemester(semesterId).single()
         assertEquals("08:00", session.startTime)
-        assertEquals("09:50", session.endTime)
+        assertEquals("09:00", session.endTime)
+        assertEquals(60L, Duration.between(LocalTime.parse(session.startTime), LocalTime.parse(session.endTime)).toMinutes())
     }
 }

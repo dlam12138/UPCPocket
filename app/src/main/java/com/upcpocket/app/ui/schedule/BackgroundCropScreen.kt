@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.local.LocalDefaults
 import com.upcpocket.app.data.prefs.UiPrefs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -137,7 +138,9 @@ fun BackgroundCropScreen(
 
     // 网格区域在整页里的位置（顶部栏 + 周次条），用来画参考线
     val gridTopPx = with(density) { (TOP_BAR_DP + WEEK_HEADER_DP).dp.toPx() }
-    val gridHeightPx = with(density) { (10 * prefs.cellHeightDp + 26).dp.toPx() }
+    val gridHeightPx = with(density) {
+        (LocalDefaults.PERIOD_COUNT * prefs.cellHeightDp + 26).dp.toPx()
+    }
 
     val bitmap = source
     val currentFrame = remember(bitmap, frameWpx, frameHpx, scale, offset) {
@@ -261,8 +264,8 @@ fun BackgroundCropScreen(
                         val x = innerLeft + innerW * c / cols
                         drawLine(line, Offset(x, gridTop), Offset(x, gridBottom), strokeWidth = 1f)
                     }
-                    for (r in 1 until 10) {
-                        val y = gridTop + (gridBottom - gridTop) * r / 10f
+                    for (r in 1 until LocalDefaults.PERIOD_COUNT) {
+                        val y = gridTop + (gridBottom - gridTop) * r / LocalDefaults.PERIOD_COUNT.toFloat()
                         drawLine(line, Offset(innerLeft, y), Offset(size.width, y), strokeWidth = 1f)
                     }
                     drawRect(Color.White.copy(alpha = 0.9f), style = Stroke(width = 2f))

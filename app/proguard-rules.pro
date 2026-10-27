@@ -12,6 +12,10 @@
 -if @kotlinx.serialization.Serializable class **
 -keep class <1>$$serializer { *; }
 
+# 微信 SDK：请求类通过 Bundle 跨进程传递，保留公开模型与 openapi 入口。
+-keep class com.tencent.mm.opensdk.** { *; }
+-dontwarn com.tencent.mm.opensdk.**
+
 # ⚠️ 上游这里还有两条针对 androidx.security:security-crypto / Tink 的 keep 规则。
 # 本原型不保存任何凭据，那个依赖已经从构建脚本移除，所以规则也一并删了 ——
 # 留着只会让 R8 去保留一个根本不存在的包。

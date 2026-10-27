@@ -3,20 +3,20 @@ package com.upcpocket.app.data.local
 /**
  * 校园服务**官方入口**目录。
  *
- * 这一份表就是「校园服务」页的全部数据源。它只做三件事：
+ * 这一份表是「校园服务」页的入口目录。它只做三件事：
  *  1. 告诉用户这个服务归哪个校区（唐岛湾 / 古镇口 / 两校区通用）；
  *  2. 说清打开它需要什么条件（校内网？统一认证登录？）；
- *  3. 交出一个**官方域名**的 HTTPS/HTTP 地址，由系统浏览器打开。
+ *  3. 交出学校服务地址；空闲教室进入原生查询，其余交外部浏览器或微信。
  *
  * ⚠️ 这里的 [Entry.title] / [Entry.scope] / [Entry.note] 会**直接显示在界面上**，
  * Compose 不解析 Markdown —— 不要在里面写 **加粗** 或反引号，否则星号会原样上屏
  * （真机验证时踩到过）。强调靠单独的 UI 组件（标签、颜色），不靠文本标记。
  *
  * 约束（与总体计划书一致）：
- *  - 不内嵌 WebView，不读取页面内容，不代填账号，不碰 Cookie/Token ——
- *    登录发生在用户自己的浏览器里，App 全程不知道发生了什么；
+ *  - 不代填账号，不碰持久 Cookie/Token；图书馆登录只使用官方 CAS 网页，
+ *    空闲教室使用单独的公开查询数据源，不访问其他受保护业务；
  *  - 地址一律是学校公布的服务入口，**不带任何 token / code / ticket 参数**；
- *  - 这里是"导航"，不是"数据接入"：本应用没有、也不会为这些入口实现任何解析器。
+ *  - 电费/校园卡目前仅为外部交接，不声称已经实现原生余额。
  *
  * ⚠️ 入口会变。改了学校入口之后同步更新本文件，并在 [Entry.updatedNote] 里写明依据。
  */
@@ -42,6 +42,12 @@ object CampusServices {
 
         /** 既需要登录、也建议在校园网内 */
         BOTH("需登录 · 建议校园网"),
+
+        /** 用户实测该入口依赖微信环境；外部浏览器跳转不保证可用 */
+        WECHAT("需要微信打开"),
+
+        /** 仅有页面地址，登录与网络要求尚未独立验证 */
+        SCHOOL_PAGE("使用条件以学校页面为准"),
     }
 
     /**
@@ -78,8 +84,8 @@ object CampusServices {
             url = "https://app.upc.edu.cn/site/weekschedule/index",
             scope = "两校区本科生与研究生的本人课表入口。唐岛湾、古镇口共用同一套教务系统，" +
                 "课表里的上课地点会写明校区或楼名。",
-            note = "本 App 不读取这里的课表；要把它变成可离线看的课表，请用「课表 → 手动补录」逐门添加。" +
-                "打开后需要先在学校的统一身份认证里登录。",
+            note = "可从教务导出 CSV，再在本 App 的「课表 → 导入 CSV」预览并导入。" +
+                "本 App 不代登录教务；此网页仍由你在学校统一认证中登录。具体 CSV 列名需要与导出文件核对。",
             updatedNote = "地址来自《UPC Pocket 总体计划》v0.1 第 4 节的服务入口台账（核对于 2026-10-24）。",
         ),
         Entry(
@@ -90,8 +96,8 @@ object CampusServices {
             access = Access.PUBLIC,
             url = "https://app.upc.edu.cn/freeclass/wap/default/all",
             scope = "两校区教学楼的分时占用查询。唐岛湾与古镇口的教学楼都在同一入口里，进入后按楼宇筛选。",
-            note = "匿名可打开不代表数据实时；考试周、临时调课期间以门口公告为准。",
-            updatedNote = "地址来自总体计划书第 4 节台账；2026-10-24 匿名访问返回 HTTP 200。",
+            note = "在 App 内按校区、楼宇、日期和节次查询，不提供预约。临时调课、考试和现场开放情况以学校公告为准。",
+            updatedNote = "2026-10-27 复核公开页面及正常查询返回；来源为总体计划书第 4 节台账。",
         ),
         Entry(
             id = "library_seat",
@@ -102,8 +108,10 @@ object CampusServices {
             url = "https://libspace.upc.edu.cn/libseat/",
             scope = "两校区图书馆的座位与研讨间预约。馆区覆盖范围随图书馆系统调整，" +
                 "古镇口西区求是图书馆已接入较新的智慧座位系统。",
-            note = "需要登录，且部分馆区要求校园网。App 不做自动抢座、不轮询座位状态。",
-            updatedNote = "地址来自总体计划书第 4 节；图书馆官网把该地址列为座位预约入口。",
+            note = "使用学校统一认证登录后，在 App 内查询馆区、选座、提交预约和取消；" +
+                "不自动抢座、不轮询。部分馆区要求校园网，图形验证码启用时原生提交会停止并提示。",
+            updatedNote = "地址来自总体计划书第 4 节；图书馆官网把该地址列为座位预约入口。" +
+                "2026-10-27 核验公开前端启用 CAS 与会话签名。",
         ),
         Entry(
             id = "library",
@@ -125,7 +133,7 @@ object CampusServices {
             title = "宿舍电费 · 唐岛湾",
             subtitle = "唐岛湾宿舍电费查询",
             campus = Campus.TANGDAOWAN,
-            access = Access.BOTH,
+            access = Access.WECHAT,
             url = "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
             // ⚠️ 只写能确认的事实。最初这里写过"照明与空调是两套独立表计、余额不能互抵、
             // 各有一个号"—— 那是上游 ZZUPocket 针对**郑州大学**的规则，总体计划书并未确认
@@ -133,10 +141,11 @@ object CampusServices {
             // 因此全部删除，改为把"以学校页面说明为准"讲清楚。
             scope = "只适用于唐岛湾校区宿舍。具体怎么选楼栋、填哪个房间号、有几个表计，" +
                 "都以学校页面上的说明为准。",
-            note = "原入口由学校系统带 code 参数跳转；这里只保留去掉 code 后的公开地址，" +
-                "登录、选楼与选房都在学校页面里完成。本 App 不保存房间号与余额。",
+            note = "用户实测：需要微信打开，普通浏览器不保证可查询。" +
+                "可复制链接并打开微信或分享到微信后点击；如无法查询，请通过学校公众号入口进入。" +
+                "本 App 不保存房间号与余额。",
             updatedNote = "地址来自总体计划书第 4 节（已去除 code 参数）。注意该站是 HTTP，" +
-                "计划书记录「去除参数后未得到可靠的有效业务响应」。",
+                "计划书记录「去除参数后未得到可靠的有效业务响应」；2026-10-27 用户实测需要微信环境。",
         ),
         Entry(
             id = "power_guzhenkou",
@@ -154,15 +163,15 @@ object CampusServices {
         ),
         Entry(
             id = "ecard",
-            title = "校园卡",
-            subtitle = "余额 · 消费流水",
+            title = "校园卡余额",
+            subtitle = "学校余额查询页面",
             campus = Campus.BOTH,
-            access = Access.CAS,
-            url = "https://i.upc.edu.cn/",
-            scope = "统一身份认证后进入「数字石大」，再从门户里的校园卡应用查余额与流水。" +
-                "两校区共用同一张校园卡。",
-            note = "App 只做入口跳转，不查询、不保存任何卡号、余额或流水；不做充值、转账。",
-            updatedNote = "数字石大门户是学校统一入口；校园卡应用挂在其内部。",
+            access = Access.SCHOOL_PAGE,
+            url = "http://jhzf.upc.edu.cn:20081/wechat/query/balance.html",
+            scope = "校园卡余额查询入口；账号、网络及打开环境等要求以学校页面说明为准。",
+            note = "本 App 可将链接交给微信，不读取或保存卡号与余额，不做充值、转账。" +
+                "裸链接匿名访问提示无效 token，可能需要从学校公众号入口进入；打开微信本身不会补齐认证。",
+            updatedNote = "2026-10-27 用户提供的校园卡余额查询地址；未携带个人凭据参数。",
         ),
         Entry(
             id = "portal",
@@ -174,28 +183,6 @@ object CampusServices {
             scope = "学校的统一门户：两校区通用的办事、通知、各业务系统入口都在这里。",
             note = "App 不接入 CAS，不做单点登录代理；账号密码只输在学校自己的页面上。",
             updatedNote = "学校门户地址；未登录访问会跳转统一认证。",
-        ),
-        Entry(
-            id = "nic",
-            title = "信息化建设处",
-            subtitle = "网络与信息服务",
-            campus = Campus.BOTH,
-            access = Access.PUBLIC,
-            url = "https://nic.upc.edu.cn/",
-            scope = "校园网、统一认证、信息系统集成的归口部门；服务指南与咨询电话在这里。",
-            note = "遇到统一认证、校园网问题优先看这里，而不是找一个第三方客户端。",
-            updatedNote = "学校信息化建设处官网。",
-        ),
-        Entry(
-            id = "gzk",
-            title = "古镇口校区综合办公室",
-            subtitle = "校区服务 · 班车",
-            campus = Campus.GUZHENKOU,
-            access = Access.PUBLIC,
-            url = "https://gzk.upc.edu.cn/",
-            scope = "古镇口校区的服务指南、班车与校区通知。唐岛湾的同学用不到。",
-            note = "",
-            updatedNote = "学校古镇口校区综合办公室官网。",
         ),
     )
 
@@ -209,7 +196,7 @@ object CampusServices {
     /**
      * 这条入口是否属于"唐岛湾宿舍电费"—— 用来在界面上把两个极易混淆的入口标开。
      *
-     * 唐岛湾与古镇口是两套互不相通的电费系统，用户在校园里最常犯的错就是拿错校区。
+     * 唐岛湾与古镇口的电费入口地址不同，界面应明确区分校区。
      */
     fun isTangdaowanPower(entry: Entry): Boolean = entry.id == "power_tangdaowan"
 

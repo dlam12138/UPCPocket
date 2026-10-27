@@ -1,6 +1,7 @@
 package com.upcpocket.app
 
 import android.app.Application
+import android.webkit.WebView
 import com.upcpocket.app.core.AppGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,10 @@ class UpcPocketApp : Application() {
         super.onCreate()
         AppGraph.init(this)
         AppGraph.pomodoroNotifications.ensureChannels()
+
+        // 仅调试包开启 WebView 远程调试，便于核对 CAS 登录页/课表导出页；
+        // release 包不会开启，也不暴露任何页面内容。
+        if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 
         // 番茄钟可能在上一轮进程里就被杀了 —— 启动时把状态接回来。
         // 剩余时间是用墙钟算的，所以"接回来"之后不用做任何补偿。

@@ -86,7 +86,7 @@ fun PeriodsEditDialog(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
-                    text = "课表、今天页与桌面组件都按这里的时间显示。默认值只是常见排法，" +
+                    text = "课表、今天页与桌面组件都按这里的时间显示。默认值只是常见排法（1–13 节），" +
                         "请改成你们专业的实际上课时间。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

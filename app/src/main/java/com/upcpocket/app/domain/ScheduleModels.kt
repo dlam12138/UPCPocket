@@ -69,7 +69,7 @@ data class Session(
     val courseName: String,
     val weekIndex: Int,
     val weekday: Int,       // 1..7
-    val startUnit: Int,     // 1..10
+    val startUnit: Int,     // 1..13（以当前作息表为准）
     val endUnit: Int,
     val date: String?,      // ISO，教务给的真实日期（处理调休靠它）
     val startTime: String?, // "08:00"
