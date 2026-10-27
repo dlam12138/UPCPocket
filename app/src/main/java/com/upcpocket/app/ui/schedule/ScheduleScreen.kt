@@ -261,6 +261,7 @@ fun ScheduleScreen(
             course = course,
             onDismiss = vm::closeDetail,
             overrides = state.detailOverrides,
+            periods = state.periods,
             // 演示课不可编辑：覆盖写进去也会被下一次生成盖掉，不如直接关掉入口
             onApplyEdits = if (state.detailIsDemo) null else vm::applyDisplayEdits,
             onResetOverrides = if (state.detailIsDemo) null else vm::resetDisplayOverrides,
@@ -1028,6 +1029,8 @@ internal fun CourseDetailSheet(
     onDismiss: () -> Unit,
     /** 该课的显示覆盖；有则显示「已自定义」与编辑/恢复入口 */
     overrides: DisplayOverridesView? = null,
+    /** 最新节次作息：详情里的时间与"每周课时"都优先按它算（改作息后要跟着变） */
+    periods: List<Period> = emptyList(),
     onApplyEdits: ((Course, String, Map<String, String>) -> Unit)? = null,
     onResetOverrides: ((Course) -> Unit)? = null,
     /** 演示课：详情只读，明确写出"演示数据、不可编辑" */
@@ -1112,8 +1115,13 @@ internal fun CourseDetailSheet(
             }
             val rooms = course.roomTexts.mapNotNull { ScheduleText.tidyPlace(it) }.distinct()
             if (rooms.isNotEmpty()) DetailRow("地点", rooms.joinToString("、"))
+            // 时间口径与网格/今天/组件保持一致：**先读最新的节次表**，
+            // 只有节次缺失（用户删过作息）才退回记录里那份写入时的快照。
+            // 早期这里直接读 session.startTime，改完作息后详情还显示旧时间（复核报告 P2-2）。
             val clock = course.sessions.firstOrNull()?.let { s ->
-                listOfNotNull(s.startTime, s.endTime).takeIf { it.size == 2 }?.joinToString("–")
+                val start = periods.firstOrNull { it.indexNo == s.startUnit }?.startText ?: s.startTime
+                val end = periods.firstOrNull { it.indexNo == s.endUnit }?.endText ?: s.endTime
+                listOfNotNull(start, end).takeIf { it.size == 2 }?.joinToString("–")
             }
             DetailRow("时间", listOfNotNull(ScheduleText.timeSlots(course.slots), clock).joinToString(" · "))
             DetailRow("周次", ScheduleText.compressWeeks(course.weeks))
@@ -1125,7 +1133,12 @@ internal fun CourseDetailSheet(
 
             // 计划 vs 实际：计划 = 每周课表时长，实际 = 这门课累计的番茄钟时长。
             // 演示课不给"开始专注"：那会把虚构课名写进用户真实的专注统计里。
-            CourseFocusSection(course = course, onStartFocus = onDismiss, allowStart = !demo)
+            CourseFocusSection(
+                course = course,
+                periods = periods,
+                onStartFocus = onDismiss,
+                allowStart = !demo,
+            )
 
             // 按「时段 → (地点, 教师)」归并：整学期都一样就只列一行，真的不同才拆开。
             // 只有一行时没必要显示（上面的汇总已经说清楚了）。
@@ -1170,6 +1183,8 @@ internal fun CourseDetailSheet(
 private fun CourseFocusSection(
     course: Course,
     onStartFocus: () -> Unit,
+    /** 最新节次作息；为空时退回记录里的时间快照 */
+    periods: List<Period> = emptyList(),
     /** 演示课不给"开始专注"入口（避免把虚构课名写进真实统计） */
     allowStart: Boolean = true,
 ) {
@@ -1181,9 +1196,16 @@ private fun CourseFocusSection(
     val focusedSeconds = records
         .filter { it.contextRef == ref && it.phase == Phase.FOCUS }
         .sumOf { it.actualSeconds }
+    // 每周课时同样以**最新节次表**为准：用户把第 1 节从 08:00 改到 08:30 之后，
+    // 这里必须跟着变，否则"计划 vs 实际"里的计划是个过期数字（复核报告 P2-2）。
+    val periodsByUnit = periods.associateBy { it.indexNo }
     val plannedMinutes = course.sessions
         .distinctBy { Triple(it.weekday, it.startUnit, it.endUnit) }
-        .sumOf { minutesBetween(it.startTime, it.endTime) }
+        .sumOf { s ->
+            val start = periodsByUnit[s.startUnit]?.startText ?: s.startTime
+            val end = periodsByUnit[s.endUnit]?.endText ?: s.endTime
+            minutesBetween(start, end)
+        }
 
     HorizontalDivider(Modifier.padding(vertical = 4.dp))
     Text("计划 vs 实际", style = MaterialTheme.typography.titleSmall)

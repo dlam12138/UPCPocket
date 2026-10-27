@@ -118,6 +118,7 @@ fun CourseOverviewScreen(
             course = course,
             onDismiss = vm::closeDetail,
             overrides = state.detailOverrides,
+            periods = state.periods,
             onApplyEdits = if (state.detailIsDemo) null else vm::applyDisplayEdits,
             onResetOverrides = if (state.detailIsDemo) null else vm::resetDisplayOverrides,
             demo = state.detailIsDemo,

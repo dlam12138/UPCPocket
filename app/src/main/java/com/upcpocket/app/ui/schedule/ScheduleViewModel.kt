@@ -283,8 +283,15 @@ class ScheduleViewModel : ViewModel() {
         val start = st.weekOneStart ?: return
         val today = LocalDate.now()
         val week = WeekMath.weekIndexAt(start, today).coerceIn(1, st.totalWeeks ?: Int.MAX_VALUE)
+
+        // ⚠️ 作息也可能刚在设置页里改过。网格、今天页、详情与桌面组件的时间都由 periods
+        // 决定，只刷新周次而不同步 periods，回到课表页看到的还是旧时间
+        // （复核报告 P2-2 的另一半）。这里把最新作息一起读进状态。
+        val freshPeriods = runCatching { repo.periods() }.getOrDefault(_state.value.periods)
+
         _state.update {
             it.copy(
+                periods = freshPeriods,
                 weekStart = start,
                 weekStartDay = st.startDay,
                 weekTotal = st.totalWeeks,

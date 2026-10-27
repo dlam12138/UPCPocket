@@ -13,6 +13,7 @@ import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.domain.Course
 import com.upcpocket.app.domain.Period
 import com.upcpocket.app.domain.Plan
+import com.upcpocket.app.domain.PlanKind
 import com.upcpocket.app.domain.PlanSpec
 import com.upcpocket.app.domain.Semester
 import com.upcpocket.app.domain.Session
@@ -105,11 +106,41 @@ class ScheduleRepository(
         )
     }
 
-    /** 覆盖写作息（用户在设置里改起止时间）。不满 10 节也允许，网格按最大节次收缩。 */
+    /**
+     * 覆盖写作息（用户在设置里改起止时间）。不满 10 节也允许，网格按最大节次收缩。
+     *
+     * ## 为什么要把时间快照一起补写
+     *
+     * `course_sessions.start_time / end_time` 是**写入那一刻**的作息快照。网格、今天页、
+     * 桌面组件都优先读节次表，但还有若干展示路径（详情、每周课时）会退回快照。
+     * 只在节次表里改时间，快照就永远是旧的 —— 一处改动、两套时间，是界面不一致的根源。
+     *
+     * 所以这里在同一个事务里把**所有已有记录**的快照按新作息重写一遍：作息只有一个真相，
+     * 快照退化成"节次缺失时的兜底"，而不是第二份事实。
+     */
     suspend fun savePeriods(periods: List<Period>) {
         if (periods.isEmpty()) return
         val now = System.currentTimeMillis()
-        db.periodDao().upsertAll(periods.map { it.toEntity(now) })
+        val byUnit = periods.associateBy { it.indexNo }
+        db.withTransaction {
+            db.periodDao().upsertAll(periods.map { it.toEntity(now) })
+            // 快照跟着作息走：先把所有学期取出来，再逐条重写（数据量是一个人的课表，可接受）
+            db.semesterDao().all().forEach { s ->
+                val rows = db.courseSessionDao().bySemester(s.id)
+                if (rows.isEmpty()) return@forEach
+                db.courseSessionDao().upsertAll(
+                    rows.map { row ->
+                        val start = byUnit[row.startUnit]?.startText ?: row.startTime
+                        val end = byUnit[row.endUnit]?.endText ?: row.endTime
+                        if (start == row.startTime && end == row.endTime) {
+                            row
+                        } else {
+                            row.copy(startTime = start, endTime = end, updatedAt = now)
+                        }
+                    },
+                )
+            }
+        }
     }
 
     /** 当前是否开着演示模式（读 DataStore；每次读都是最新值） */
@@ -266,18 +297,32 @@ class ScheduleRepository(
             }
             .sortedWith(compareBy({ it.weekday }, { it.startUnit }))
 
-    /** 新建或改写一个日程；返回它的 code（新建时是刚生成的） */
+    /**
+     * 新建或改写一个日程；返回它的 code（新建时是刚生成的）。
+     *
+     * ## 为什么这里必须记住"原 code"
+     *
+     * 类型（日程 / 课程）记在 code 的首位前缀上（`P…` / `C…`），而 code 同时是
+     * `course_sessions.courseKey`、`courses.code`、`display_overrides.courseCode` 的标识。
+     * 于是"编辑时切换类型"等于**换了身份**：
+     *
+     *  - 旧 code 的 sessions 必须删（否则网格里同一门课出现两次）；
+     *  - 旧 code 的 courses 行必须删（否则课程总览留一条删不掉的残留）；
+     *  - 旧 code 的显示覆盖必须删（否则改回来的课名/教室莫名其妙生效）。
+     *
+     * 早期实现是"先把前缀换成新 code，再按新 code 删"，删的其实是新标识 ——
+     * 旧记录一条都没清掉。这里改成：**先记下原 code，用原 code 清旧行，
+     * 再按新 code 写新行，整个过程放在同一个事务里**，避免中途失败留下半套数据。
+     */
     suspend fun savePlan(spec: PlanSpec): String {
-        val wanted = com.upcpocket.app.domain.PlanKind.codePrefix(spec.kind)
-        // 类型记在 code 前缀上：编辑时如果换了类型（日程↔课程），前缀也要跟着换，
-        // 否则读回来的 kind 还是旧的（2026-10-25 真机验证时踩到）
-        val code = spec.code
-            ?.takeIf { it.isNotBlank() }
-            ?.let { if (it.startsWith(wanted)) it else wanted + it.drop(1) }
-            ?: newPlanCode(spec.kind)
+        val original = spec.code?.takeIf { it.isNotBlank() }
+        // 类型位跟着 spec.kind 走；基名不变，所以频次/顺序都不会变
+        val code = original?.let { PlanKind.retarget(it, spec.kind) } ?: newPlanCode(spec.kind)
+        val renamed = original != null && original != code
+
         val dao = db.courseSessionDao()
-        // 先删旧行：改了周次/时段之后不能留下孤儿记录
-        dao.deleteByCourseKey(courseKeyOf(spec.semesterId, code))
+        val oldKey = original?.let { courseKeyOf(spec.semesterId, it) }
+        val newKey = courseKeyOf(spec.semesterId, code)
 
         val periods = periods().associateBy { it.indexNo }
         val startTime = periods[spec.startUnit]?.startText
@@ -286,7 +331,7 @@ class ScheduleRepository(
         val rows = spec.weeks.distinct().sorted().map { week ->
             CourseSessionEntity(
                 id = sessionIdOf(spec.semesterId, code, week, spec.weekday, spec.startUnit),
-                courseKey = courseKeyOf(spec.semesterId, code),
+                courseKey = newKey,
                 semesterId = spec.semesterId,
                 source = SOURCE_CUSTOM,
                 courseName = spec.name.trim(),
@@ -306,14 +351,25 @@ class ScheduleRepository(
                 updatedAt = now,
             )
         }
+
         db.withTransaction {
+            // ① 清旧标识的一切痕迹（只有换过类型才需要，但条件判断放在事务里更安全）
+            if (oldKey != null && oldKey != newKey) {
+                dao.deleteByCourseKey(oldKey)
+                db.courseDao().deleteOne(spec.semesterId, original!!)
+                db.displayOverrideDao().deleteByCourse(spec.semesterId, original)
+            }
+            // ② 同一标识下的旧周次也要清：改了周次/时段不能留孤儿行
+            dao.deleteByCourseKey(newKey)
+
             if (rows.isNotEmpty()) dao.upsertAll(rows)
-            // 课程总览的数据源：手动补录的「课程」才进 courses 表，普通日程不进
-            if (spec.kind == com.upcpocket.app.domain.PlanKind.COURSE) {
+
+            // ③ 课程总览的数据源：手动补录的「课程」才进 courses 表，普通日程不进
+            if (spec.kind == PlanKind.COURSE) {
                 db.courseDao().upsertAll(
                     listOf(
                         CourseEntity(
-                            key = courseKeyOf(spec.semesterId, code),
+                            key = newKey,
                             semesterId = spec.semesterId,
                             code = code,
                             nameZh = spec.name.trim(),
@@ -325,7 +381,7 @@ class ScheduleRepository(
                     ),
                 )
             } else {
-                // 普通日程不进 courses 表；如果这个 code 曾经是「课程」后改成日程，把旧行清掉
+                // 普通日程不进 courses 表
                 db.courseDao().deleteOne(spec.semesterId, code)
             }
         }

@@ -79,6 +79,51 @@ class CampusServicesTest {
     }
 
     @Test
+    fun `电费说明只说已核实的事实_不夹带未确认的计费规则`() {
+        // 回归测试（复核报告 P2-3）：最初这里写过"照明与空调是两套独立表计、余额不能互抵、
+        // 各有一个号"—— 那是上游 ZZUPocket 针对**郑州大学**的规则，总体计划书并未确认
+        // UPC 也如此。这类断言会直接引导用户去填错的房间号，属于**不能出现**的内容。
+        val unverified = listOf(
+            "独立表计", "两套表计", "不能互抵", "互不相通",
+            "照明号", "空调号", "加前导", "各有一个号",
+        )
+        CampusServices.ALL
+            .filter { CampusServices.isTangdaowanPower(it) || CampusServices.isGuzhenkouPower(it) }
+            .forEach { entry ->
+                val blob = entry.title + entry.subtitle + entry.scope + entry.note + entry.updatedNote
+                unverified.forEach { phrase ->
+                    assertFalse(
+                        "电费入口 ${entry.id} 出现未核实的规则「$phrase」：${entry.scope}",
+                        blob.contains(phrase),
+                    )
+                }
+            }
+    }
+
+    @Test
+    fun `电费说明把判断权交回学校页面`() {
+        // 删掉未经核实的断言之后，必须留下"以学校页面为准"这句指引，
+        // 否则用户不知道该按什么填房间号。
+        val tdw = CampusServices.ALL.first { CampusServices.isTangdaowanPower(it) }
+        assertTrue(
+            "唐岛湾电费缺少「以学校页面为准」的引导",
+            tdw.scope.contains("学校页面"),
+        )
+    }
+
+    @Test
+    fun `电费入口记录了核对依据`() {
+        CampusServices.ALL
+            .filter { CampusServices.isTangdaowanPower(it) || CampusServices.isGuzhenkouPower(it) }
+            .forEach { entry ->
+                assertTrue(
+                    "${entry.id} 的核对依据没有指向计划书：${entry.updatedNote}",
+                    entry.updatedNote.contains("总体计划书"),
+                )
+            }
+    }
+
+    @Test
     fun `两校区电费是两个不同的系统`() {
         val tdw = CampusServices.ALL.first { CampusServices.isTangdaowanPower(it) }
         val gzk = CampusServices.ALL.first { CampusServices.isGuzhenkouPower(it) }

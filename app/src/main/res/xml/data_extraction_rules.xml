@@ -1,11 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Android 12+ 的备份/迁移规则。
+  Android 12+ 的备份 / 设备迁移规则。
 
-  本应用没有凭据可保护：不保存账号、密码、Cookie 或令牌（Manifest 里没有网络权限，
-  也不存在登录流程）。课表与专注记录都是用户自己的数据，纳入系统备份是合理的。
+  ⚠️ 与 backup_rules.xml 同一口径：**排除**数据库、偏好与文件，
+  这样 README 里"数据只在本机、不上传"才是真的。
+
+  注意这里特意**保留** device-transfer 元素（内容为空 = 不排除）会很危险：
+  空元素等于"全部纳入"。所以两边都显式写排除项，语义一致、不依赖默认值。
+
+  为什么连"设备迁移"也排除：本原型没有账号也没有服务端，数据只此一份是设计前提；
+  真要做换机迁移，应该做成用户可见、可审查的本地导入/导出，而不是暗地里跟随系统备份。
 -->
 <data-extraction-rules>
-    <cloud-backup />
-    <device-transfer />
+    <cloud-backup>
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
 </data-extraction-rules>

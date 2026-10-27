@@ -77,6 +77,13 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            // Robolectric 需要真实的资源与清单（Room 的 schema 校验、Context 都依赖它们）
+            isIncludeAndroidResources = true
+        }
+    }
+
     packaging {
         resources.excludes += setOf(
             "/META-INF/{AL2.0,LGPL2.1}",
@@ -133,4 +140,11 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // 真实 Room（内存 SQLite）+ Android 运行时。
+    // 为什么需要：日程换类型、作息改动这类缺陷只在**真的读写数据库**时才暴露 ——
+    // "旧行有没有被清掉"用纯函数测不出来（见 ScheduleRepositoryPlanKindTest）。
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
 }

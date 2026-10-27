@@ -23,6 +23,25 @@ enum class PlanKind(val label: String) {
         fun codePrefix(kind: PlanKind): String = if (kind == COURSE) "C" else "P"
 
         fun ofCode(code: String?): PlanKind = if (code?.startsWith("C") == true) COURSE else EVENT
+
+        /**
+         * 把一个 code 的类型位换成 [kind] 的前缀，**基名保持不变**。
+         *
+         * 为什么单独抽出来：类型记在 code 上，而 code 同时是 `course_sessions.courseKey`、
+         * `courses.code` 与 `display_overrides.courseCode` 的标识。编辑时把「日程」改成
+         * 「课程」就等于**换了身份** —— 只改前缀而不清理旧标识的行，会留下一份孤儿课表
+         * （网格里同一门课出现两次）和一条课程总览残留。所以"新 code 是什么"必须是纯函数、
+         * 可测，调用方才能可靠地拿它去清旧行。
+         *
+         * 例：`Pm1abc` + COURSE → `Cm1abc`；`Cm1abc` + COURSE → 原样。
+         */
+        fun retarget(code: String, kind: PlanKind): String {
+            val wanted = codePrefix(kind)
+            if (code.startsWith(wanted)) return code
+            // 只有一位类型位（C/P）。不是这两种开头的数据（防御性）整体当基名，不啃掉首字符
+            val base = if (code.startsWith("C") || code.startsWith("P")) code.drop(1) else code
+            return wanted + base
+        }
     }
 }
 

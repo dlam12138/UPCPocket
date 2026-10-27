@@ -33,9 +33,19 @@
         </intent>
     </queries>
 
+    <!--
+        系统备份：**关掉**。
+
+        README 承诺"数据只在本机、不上传"，而系统云备份由**操作系统**代劳上传，
+        完全不经过本应用的网络栈 —— 没有 INTERNET 权限也拦不住。
+        所以这里两道保险：
+          · android:allowBackup="false"
+          · 两份规则文件里逐域排除（覆盖某些 ROM 忽略 allowBackup 的情况，
+            以及 Android 11 及以下走 fullBackupContent 的路径）
+    -->
     <application
         android:name=".UpcPocketApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
