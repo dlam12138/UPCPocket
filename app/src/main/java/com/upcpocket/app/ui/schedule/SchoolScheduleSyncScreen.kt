@@ -20,12 +20,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -46,6 +48,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.school.SchoolClassBlock
+import com.upcpocket.app.data.school.SchoolDateSource
 import com.upcpocket.app.data.school.SchoolScheduleException
 import com.upcpocket.app.data.school.SchoolScheduleFormatException
 import com.upcpocket.app.data.school.SchoolScheduleProtocol
@@ -147,7 +150,7 @@ fun SchoolScheduleSyncScreen(
                     Modifier.size(1.dp)
                 },
                 factory = { context ->
-                    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+                    @SuppressLint("SetJavaScriptEnabled")
                     val view = WebView(context).apply {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
@@ -157,7 +160,7 @@ fun SchoolScheduleSyncScreen(
                             android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        addJavascriptInterface(vm.bridge, "upcPocketBridge")
+                        // 数据桥由 ViewModel 仅在业务页挂载；这里不预先暴露给登录页。
                         webViewClient = object : WebViewClient() {
                             override fun shouldOverrideUrlLoading(
                                 view: WebView,
@@ -165,11 +168,12 @@ fun SchoolScheduleSyncScreen(
                             ): Boolean = !allowedSchoolUrl(request.url.toString())
 
                             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                                vm.onPageStarted()
                                 vm.clearError()
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
-                                vm.onPageReady(url)
+                                vm.onPageFinished(url)
                             }
 
                             override fun onReceivedError(
@@ -294,23 +298,45 @@ private fun PreviewPanel(
         Text("学期：${plan.term.displayName}")
         Text("周范围：第 1–${plan.weekCount} 周")
         Text("课程：${plan.courseCount} 门 · 时段：${plan.slotCount} 条（逐周计）")
-        Text(
-            plan.weekOneStart?.let { "第 1 周周一：$it（由学校当前周次推算，可在设置里改）" }
-                ?: "开学日期：学校未提供当前周次，请在「课程表设置」里填写开学日。",
-            style = MaterialTheme.typography.bodySmall,
+        OutlinedTextField(
+            value = state.previewDate,
+            onValueChange = { vm.setPreviewDate(it) },
+            label = { Text("第 1 周周一（YYYY-MM-DD）") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
         )
+        Text(
+            "日期来源：${dateSourceLabel(plan.dateSource)}。写入前会以此日期重算每节课的日期，" +
+                "并保留你之后在设置里做的修正。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = state.makeCurrent, onCheckedChange = { vm.setMakeCurrent(it) })
+            Text("把该学期设为当前学期", style = MaterialTheme.typography.bodySmall)
+        }
+        if (plan.sessions.isEmpty()) {
+            Text(
+                "该学期学校返回 0 条课程。确认后会用空课表替换该学期的学校数据。",
+                color = MaterialTheme.colorScheme.error,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = state.confirmEmptyReplace,
+                    onCheckedChange = { vm.setConfirmEmptyReplace(it) },
+                )
+                Text(
+                    "我确认用空课表替换该学期已同步的学校课程",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         if (plan.emptyWeeks.isNotEmpty()) {
             Text(
                 "学校明确返回空课表的周：${plan.emptyWeeks.joinToString(",")}" +
                     "（空周是合法结果，不会当作读取失败）",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (plan.sessions.isEmpty()) {
-            Text(
-                "该学期学校返回 0 条课程。确认后会用空课表替换该学期的学校数据。",
-                color = MaterialTheme.colorScheme.error,
             )
         }
         Text(
@@ -409,6 +435,11 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
         val loading: Boolean = false,
         val savedSemesterId: Int? = null,
         val savedSemesterName: String = "",
+        /** 预览里可编辑/确认的第 1 周周一（YYYY-MM-DD）。 */
+        val previewDate: String = "",
+        val makeCurrent: Boolean = false,
+        /** 学校返回空学期时，必须显式确认才会替换。 */
+        val confirmEmptyReplace: Boolean = false,
     )
 
     var ui by mutableStateOf(Ui())
@@ -421,58 +452,97 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
     private var syncJob: Job? = null
     private var weekly: List<List<SchoolClassBlock>> = emptyList()
 
-    val bridge = object {
-        @JavascriptInterface
-        fun post(id: String, payload: String) {
-            val continuation = pending.remove(id) ?: return
-            try {
-                val obj = JSONObject(payload)
-                val status = obj.optInt("status", -1)
-                val body = obj.optString("body")
-                if (status == 200 && body.isNotBlank()) {
-                    continuation.resume(body)
-                } else {
-                    val detail = obj.optString("error")
-                    continuation.resumeWithException(
-                        SchoolScheduleException(
-                            if (detail.isNotBlank()) "读取请求失败：$detail" else "学校返回 HTTP $status",
-                        ),
-                    )
-                }
-            } catch (e: Exception) {
-                continuation.resumeWithException(SchoolScheduleException("读取结果无法解析"))
+    val bridge = ScheduleDataBridge { id, payload -> onBridgePayload(id, payload) }
+
+    private fun onBridgePayload(id: String, payload: String) {
+        val continuation = pending.remove(id) ?: return
+        if (payload.length > MAX_BRIDGE_PAYLOAD) {
+            continuation.resumeWithException(
+                SchoolScheduleException("学校响应过大，已停止读取"),
+            )
+            return
+        }
+        try {
+            val obj = JSONObject(payload)
+            val status = obj.optInt("status", -1)
+            val body = obj.optString("body")
+            if (status == 200 && body.isNotBlank()) {
+                continuation.resume(body)
+            } else {
+                val detail = obj.optString("error")
+                continuation.resumeWithException(
+                    SchoolScheduleException(
+                        if (detail.isNotBlank()) "读取请求失败：$detail" else "学校返回 HTTP $status",
+                    ),
+                )
             }
+        } catch (e: Exception) {
+            continuation.resumeWithException(SchoolScheduleException("读取结果无法解析"))
         }
     }
+
+    private var bridgeAttached = false
+
+    /** 主框架加载失败时不要再发起“读取学期”，否则会白等一次超时。 */
+    private var mainFrameFailed = false
 
     fun attach(view: WebView) {
         webView = view
     }
 
     fun detach() {
+        disableBridge()
         webView = null
         pending.values.forEach { it.cancel() }
         pending.clear()
     }
 
-    fun clearError() {
+    /** 页面开始跳转：先撤掉数据桥，并作废上一页所有未完成请求（迟到回调直接丢弃）。 */
+    fun onPageStarted() {
+        disableBridge()
+        mainFrameFailed = false
+        pending.values.forEach { it.cancel() }
+        pending.clear()
+    }
+
+    /**
+     * 只有 `https://app.upc.edu.cn/site/weekschedule/...` 这个业务页面才挂数据桥；
+     * CAS 等登录导航页全程不接触课表数据接口。
+     */
+    fun onPageFinished(url: String) {
+        if (isScheduleDataPage(url)) enableBridge()
+        if (mainFrameFailed) return
+        if (ui.phase != Phase.LOGIN || ui.loading) return
+        if (!isScheduleDataPage(url)) return
+        loadTerms()
+    }
+
+    private fun enableBridge() {
+        if (bridgeAttached) return
+        webView?.addJavascriptInterface(bridge, BRIDGE_NAME)
+        bridgeAttached = true
+    }
+
+    fun disableBridge() {
+        if (!bridgeAttached) return
+        webView?.removeJavascriptInterface(BRIDGE_NAME)
+        bridgeAttached = false
+    }    fun clearError() {
         if (ui.phase == Phase.LOGIN) ui = ui.copy(error = null)
     }
 
     fun onPageError(message: String) {
-        ui = ui.copy(error = message)
+        mainFrameFailed = true
+        ui = ui.copy(error = message, loading = false)
     }
 
     fun reloadLogin() {
         syncJob?.cancel()
+        disableBridge()
+        pending.values.forEach { it.cancel() }
+        pending.clear()
         ui = Ui(phase = Phase.LOGIN)
         webView?.loadUrl(SchoolScheduleProtocol.PAGE_URL)
-    }
-
-    fun onPageReady(url: String) {
-        if (ui.phase != Phase.LOGIN || ui.loading) return
-        if (!allowedSchoolUrl(url) || !url.contains("/site/weekschedule")) return
-        loadTerms()
     }
 
     fun loadTerms() {
@@ -545,13 +615,19 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
 
     private suspend fun plan(selected: SchoolTerm) {
         val periods = repo.periods()
+        val saved = repo.semesterByCode(selected.key)
+        val isCurrentTerm = ui.page?.current?.key == selected.key
         try {
             val plan = withContext(Dispatchers.Default) {
                 SchoolScheduleSync.build(
                     term = selected,
                     weeklyWeeks = weekly,
                     periods = periods,
-                    schoolCurrentWeek = ui.page?.currentWeek,
+                    // 只有确认所选学期就是学校当前学期，才允许用当前周/当前学期字段推算日期。
+                    schoolCurrentWeek = if (isCurrentTerm) ui.page?.currentWeek else null,
+                    schoolTermStart = if (isCurrentTerm) ui.page?.currentTermStart else null,
+                    // 已有本地日期（用户可能校正过）优先，重复同步不会改回推算值。
+                    savedStart = saved?.startDate,
                 )
             }
             ui = ui.copy(
@@ -563,6 +639,9 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
                 retryTerm = null,
                 outOfRange = null,
                 error = null,
+                previewDate = plan.weekOneStart?.toString().orEmpty(),
+                makeCurrent = isCurrentTerm || (saved?.isCurrent == true),
+                confirmEmptyReplace = false,
             )
         } catch (e: SchoolUnitsOutOfRangeException) {
             ui = ui.copy(
@@ -575,6 +654,18 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
                 periods = periods,
             )
         }
+    }
+
+    fun setPreviewDate(value: String) {
+        ui = ui.copy(previewDate = value.filter { it.isDigit() || it == '-' }.take(10), error = null)
+    }
+
+    fun setMakeCurrent(value: Boolean) {
+        ui = ui.copy(makeCurrent = value)
+    }
+
+    fun setConfirmEmptyReplace(value: Boolean) {
+        ui = ui.copy(confirmEmptyReplace = value)
     }
 
     fun savePeriodsAndReplan(list: List<Period>) {
@@ -598,16 +689,29 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
 
     fun commit() {
         val plan = ui.plan ?: return
-        val makeCurrent = ui.page?.current?.key == plan.term.key
+        val start = runCatching { java.time.LocalDate.parse(ui.previewDate.trim()) }.getOrNull()
+        if (start == null) {
+            ui = ui.copy(error = "请填写有效的第 1 周周一日期（YYYY-MM-DD）后再确认。")
+            return
+        }
+        if (plan.sessions.isEmpty() && !ui.confirmEmptyReplace) {
+            ui = ui.copy(error = "学校返回空学期；请先勾选“确认用空课表替换”，避免误删已有学校课程。")
+            return
+        }
+        val rebased = SchoolScheduleSync.rebase(plan, start)
         ui = ui.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
-                val id = repo.saveSchoolTerm(plan, makeCurrent)
+                val id = repo.saveSchoolTerm(
+                    plan = rebased,
+                    makeCurrent = ui.makeCurrent,
+                    startDateOverride = start,
+                )
                 ui = ui.copy(
                     phase = Phase.DONE,
                     loading = false,
                     savedSemesterId = id,
-                    savedSemesterName = plan.term.displayName,
+                    savedSemesterName = rebased.term.displayName,
                 )
             } catch (e: Exception) {
                 ui = ui.copy(
@@ -650,6 +754,9 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
     }
 
     private suspend fun fetch(path: String, method: String, body: String?): String {
+        if (path != SchoolScheduleProtocol.INDEX_PATH && path != SchoolScheduleProtocol.DATA_PATH) {
+            throw SchoolScheduleException("只允许读取两个固定的课表端点")
+        }
         val view = webView ?: throw SchoolScheduleException("登录页面尚未准备好")
         val id = UUID.randomUUID().toString()
         return suspendCancellableCoroutine { continuation ->
@@ -668,6 +775,18 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
               var path = ${JSONObject.quote(path)};
               var method = ${JSONObject.quote(method)};
               var body = $quotedBody;
+              function post(payload) {
+                if (window.upcPocketBridge && window.upcPocketBridge.post) {
+                  window.upcPocketBridge.post(id, JSON.stringify(payload));
+                }
+              }
+              // 只允许最外层、且来自课表业务页的请求；登录/子框架拿不到数据桥。
+              if (window.top !== window ||
+                  location.origin !== 'https://app.upc.edu.cn' ||
+                  !/^\/site\/weekschedule(\/|$)/.test(location.pathname)) {
+                post({status: -3, error: '当前页面不是课表业务页'});
+                return;
+              }
               try {
                 fetch(path, {
                   method: method,
@@ -679,13 +798,13 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
                   body: body
                 }).then(function(r){
                   return r.text().then(function(t){
-                    window.upcPocketBridge.post(id, JSON.stringify({status: r.status, body: t}));
+                    post({status: r.status, body: t});
                   });
                 }).catch(function(e){
-                  window.upcPocketBridge.post(id, JSON.stringify({status: 0, error: String(e)}));
+                  post({status: 0, error: String(e)});
                 });
               } catch (e) {
-                window.upcPocketBridge.post(id, JSON.stringify({status: -1, error: String(e)}));
+                post({status: -1, error: String(e)});
               }
             })();
         """.trimIndent()
@@ -694,10 +813,48 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
     private fun enc(value: String): String = java.net.URLEncoder.encode(value, "UTF-8")
 }
 
-/** 只允许学校域名的 HTTPS 页面；登录链路上的 CAS 与业务页都在 `upc.edu.cn` 下。 */
+private const val BRIDGE_NAME = "upcPocketBridge"
+
+/** 具名桥类：Lint 要求被注入的方法来自一个有 `@JavascriptInterface` 的具体类型。 */
+internal class ScheduleDataBridge(private val onPost: (String, String) -> Unit) {
+    @JavascriptInterface
+    fun post(id: String, payload: String) {
+        onPost(id, payload)
+    }
+}
+
+/** 单次响应上限；正常 20 周课表远小于此值。 */
+private const val MAX_BRIDGE_PAYLOAD = 2 * 1024 * 1024
+
+private fun dateSourceLabel(source: SchoolDateSource): String = when (source) {
+    SchoolDateSource.SAVED -> "本地已保存的开学日（重复同步不会改回推算值）"
+    SchoolDateSource.SCHOOL_PARAMS -> "学校 params.startday（当前学期线索，写入前请核对）"
+    SchoolDateSource.DERIVED_CURRENT_WEEK -> "由学校当前教学周推算"
+    SchoolDateSource.USER_CONFIRMED -> "你确认的日期"
+    SchoolDateSource.NONE -> "学校未提供；请填写后确认"
+}
+
+/** 登录导航允许的页面：UPC 域名的 HTTPS（CAS、门户、业务页）。 */
 internal fun allowedSchoolUrl(url: String): Boolean {
     val parsed = runCatching { java.net.URI(url) }.getOrNull() ?: return false
     if (!parsed.scheme.equals("https", ignoreCase = true)) return false
     val host = parsed.host?.lowercase() ?: return false
     return host == "upc.edu.cn" || host.endsWith(".upc.edu.cn")
+}
+
+/**
+ * 允许读取课表数据、挂载消息桥的**唯一**来源：
+ * `https://app.upc.edu.cn/site/weekschedule`（含子路径）。
+ *
+ * 与 [allowedSchoolUrl] 分开：登录可能经过 CAS/门户，但那些页面只负责导航，
+ * 不能调用课表读取桥。
+ */
+internal fun isScheduleDataPage(url: String): Boolean {
+    val parsed = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    if (!parsed.scheme.equals("https", ignoreCase = true)) return false
+    if (!parsed.host.equals("app.upc.edu.cn", ignoreCase = true)) return false
+    val port = parsed.port
+    if (port != -1 && port != 443) return false
+    val path = parsed.path.orEmpty()
+    return path == "/site/weekschedule" || path.startsWith("/site/weekschedule/")
 }

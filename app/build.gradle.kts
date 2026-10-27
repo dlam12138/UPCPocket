@@ -41,8 +41,8 @@ android {
         minSdk = 31
         targetSdk = 36
         // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）
-        versionCode = 3
-        versionName = "0.1.2-preview"
+        versionCode = 4
+        versionName = "0.1.3-preview"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
     }
 

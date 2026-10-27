@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.library.LibrarySeatProtocol
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -56,8 +57,8 @@ fun LibrarySeatLoginScreen(
     var finished by remember { mutableStateOf(false) }
 
     fun clearWebSession() {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
+        // 只清本业务的 Cookie；不能 removeAllCookies，否则会把课表/统一认证会话一起清掉。
+        LibrarySeatCookies.clearSeatCookies()
     }
 
     fun finish(token: String, alreadySeatToken: Boolean) {
@@ -66,10 +67,14 @@ fun LibrarySeatLoginScreen(
         error = null
         scope.launch {
             try {
-                if (alreadySeatToken) {
+                val session = if (alreadySeatToken) {
                     AppGraph.librarySeatRepository.adoptSeatToken(token)
                 } else {
                     AppGraph.librarySeatRepository.exchangeAppToken(token)
+                }
+                // 只有用户打开“记住登录”才落盘；密文由 Keystore 保护（见 SchoolSessionStore）。
+                if (AppGraph.uiPrefsStore.flow.first().rememberSchoolLogin) {
+                    AppGraph.schoolSessionStore.saveLibrary(session.token, session.user)
                 }
                 finished = true
                 clearWebSession()
@@ -163,9 +168,12 @@ fun LibrarySeatLoginScreen(
                                 view: WebView,
                                 request: WebResourceRequest,
                             ): Boolean {
-                                val host = request.url.host.orEmpty()
-                                // 只允许学校 CAS/座位站点；外部链接不在登录 WebView 里打开。
-                                return !(host == "upc.edu.cn" || host.endsWith(".upc.edu.cn"))
+                                val uri = request.url
+                                val host = uri.host.orEmpty()
+                                // 只允许 UPC 域名的 HTTPS；拒绝 http、外部站点与自定义 scheme。
+                                val allowed = uri.scheme.equals("https", ignoreCase = true) &&
+                                    (host == "upc.edu.cn" || host.endsWith(".upc.edu.cn"))
+                                return !allowed
                             }
 
                             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
@@ -214,5 +222,38 @@ private fun tokenFromUrl(url: String): String? {
     return listOf(query, fragment).firstNotNullOfOrNull { part ->
         part.split('&').firstOrNull { it.startsWith("token=") }
             ?.substringAfter("token=")?.takeIf { it.isNotBlank() }
+    }
+}
+
+/**
+ * 只清理图书馆座位系统自己的 Cookie。
+ *
+ * Android 的 CookieManager 是应用级的：`removeAllCookies()` 会把课表 / 统一认证
+ * 会话一并清掉。这里按 libspace 域名逐个过期，别的业务不受影响；
+ * 不声称 WebView Cookie 已加密（它由系统 WebView 管理，见交付说明）。
+ */
+internal object LibrarySeatCookies {
+    private const val BASE = "https://libspace.upc.edu.cn"
+    private val paths = listOf("/", "/libseat", "/libseat/", "/remote", "/rest")
+
+    fun clearSeatCookies() {
+        val manager = CookieManager.getInstance()
+        val header = manager.getCookie("$BASE/libseat/").orEmpty()
+        if (header.isBlank()) {
+            manager.flush()
+            return
+        }
+        val names = header.split(';')
+            .mapNotNull { part ->
+                part.trim().substringBefore('=', "").trim()
+                    .takeIf { it.isNotEmpty() && it != "token" }
+            }
+            .distinct() + "token"
+        names.forEach { name ->
+            paths.forEach { path ->
+                manager.setCookie(BASE, "$name=; Max-Age=0; Path=$path")
+            }
+        }
+        manager.flush()
     }
 }

@@ -163,6 +163,10 @@ class ScheduleRepository(
     suspend fun semester(id: Int): Semester? =
         db.semesterDao().all().firstOrNull { it.id == id }?.toDomain()
 
+    /** 按学校学期身份找本地学期（同步用于保留用户已校正的开学日与名称）。 */
+    suspend fun semesterByCode(code: String): Semester? =
+        db.semesterDao().byCode(code)?.toDomain()
+
     suspend fun currentSemester(): Semester? =
         db.semesterDao().current()?.toDomain() ?: db.semesterDao().all().firstOrNull()?.toDomain()
 
@@ -440,6 +444,8 @@ class ScheduleRepository(
     suspend fun saveSchoolTerm(
         plan: com.upcpocket.app.data.school.SchoolSyncPlan,
         makeCurrent: Boolean,
+        /** 用户在预览里确认/校正的第 1 周周一；null = 不改已有日期。 */
+        startDateOverride: LocalDate? = null,
         beforeCommit: () -> Unit = {},
     ): Int = db.withTransaction {
         val now = System.currentTimeMillis()
@@ -447,25 +453,33 @@ class ScheduleRepository(
         val semesterId = existing?.id
             ?: (db.semesterDao().all().maxOfOrNull { it.id } ?: 0) + 1
         val weeks = (1..plan.term.totalWeeks).toList()
-        val endDate = plan.weekOneStart
+        // 已有学期：必须使用用户确认的日期或本地已保存日期；不能拿本次推算值覆盖。
+        val startDate = startDateOverride
+            ?: existing?.startDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: plan.weekOneStart
+        val endDate = startDate
             ?.plusWeeks(plan.term.totalWeeks.toLong())
             ?.minusDays(1)
             ?.toString()
         val schoolYear = plan.term.year.toIntOrNull()?.let { y -> "$y-${y + 1}" }
             ?: plan.term.year
+        // 只有用户明确选择“设为当前学期”时才动 isCurrent；否则保留原状态。
+        val current = if (makeCurrent) true else (existing?.isCurrent ?: false)
         if (makeCurrent) db.semesterDao().clearCurrent()
         db.semesterDao().upsertAll(
             listOf(
                 SemesterEntity(
                     id = semesterId,
                     code = plan.term.key,
-                    nameZh = plan.term.displayName,
-                    schoolYear = schoolYear,
-                    startDate = plan.weekOneStart?.toString(),
+                    // 用户可能改过学期名；有本地名就保留，只有新建时用学校名。
+                    nameZh = existing?.nameZh?.takeIf { it.isNotBlank() } ?: plan.term.displayName,
+                    schoolYear = existing?.schoolYear?.takeIf { it.isNotBlank() } ?: schoolYear,
+                    startDate = startDate?.toString(),
                     endDate = endDate,
-                    weekStartOnSunday = false,
+                    // 用户选过的每周起始日不在同步里改写。
+                    weekStartOnSunday = existing?.weekStartOnSunday ?: false,
                     weekIndicesCsv = weeks.joinToString(","),
-                    isCurrent = makeCurrent,
+                    isCurrent = current,
                     updatedAt = now,
                 ),
             ),

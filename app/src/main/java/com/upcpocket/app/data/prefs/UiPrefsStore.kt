@@ -99,6 +99,11 @@ data class UiPrefs(
      * 默认开着，因为 M1 的验收前提就是"装完不用登录也能看到课表"。
      */
     val demoMode: Boolean = true,
+    /**
+     * 记住学校登录：把图书馆业务 token 用 Keystore 加密保存，并保留 WebView 的课表会话。
+     * 默认关闭。关闭或“退出学校登录”会清理持久副本与 UPC 业务 Cookie。
+     */
+    val rememberSchoolLogin: Boolean = false,
 ) {
     val dayCount: Int get() = if (showWeekend) 7 else 5
 
@@ -158,11 +163,16 @@ class UiPrefsStore(context: Context) {
             darkMode = p[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.SYSTEM,
             demoMode = p[KEY_DEMO_MODE] ?: true,
+            rememberSchoolLogin = p[KEY_REMEMBER_SCHOOL_LOGIN] ?: false,
         )
     }
 
     /** 打开/关闭演示课表。只改 DataStore，不动数据库（演示课从来不落库）。 */
     suspend fun setDemoMode(v: Boolean) = store.edit { it[KEY_DEMO_MODE] = v }
+
+    /** “记住学校登录”开关。清理动作由调用方负责（token/密文/Cookie）。 */
+    suspend fun setRememberSchoolLogin(v: Boolean) =
+        store.edit { it[KEY_REMEMBER_SCHOOL_LOGIN] = v }
 
     suspend fun setShowWeekend(v: Boolean) = store.edit { it[KEY_SHOW_WEEKEND] = v }
     suspend fun setBlockBorder(v: BlockBorder) = store.edit { it[KEY_BLOCK_BORDER] = v.name }
@@ -276,6 +286,9 @@ class UiPrefsStore(context: Context) {
 
         /** 演示课表开关（只影响显示，不影响数据库） */
         val KEY_DEMO_MODE = booleanPreferencesKey("demo_mode")
+
+        /** 记住学校登录（图书馆 token 加密保存；课表依赖 WebView Cookie） */
+        val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")
 
         // 教学周参数按学期分开存：键名里带学期 id
         fun weekOneKey(semesterId: Int) = androidx.datastore.preferences.core.longPreferencesKey("week_one_$semesterId")

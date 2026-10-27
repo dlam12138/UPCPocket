@@ -115,7 +115,7 @@ class LibrarySeatProtocolTest {
             """{"status":true,"data":{"endTimes":[{"id":600,"value":"10:00"}]}}""",
         )
         assertEquals("10:00", ends.single().value)
-        val reservations = LibrarySeatProtocol.parseReservations(
+        val reservations = LibrarySeatProtocol.parseCurrentReservations(
             """{"status":true,"data":[{"id":"r1","date":"2026-10-27","begin":"08:00","end":"10:00",
                "location":"A101-1","stat":"RESERVE"}]}""",
         )
@@ -125,7 +125,7 @@ class LibrarySeatProtocolTest {
 
     @Test
     fun `历史记录外层 reservations 也兼容`() {
-        val list = LibrarySeatProtocol.parseReservations(
+        val list = LibrarySeatProtocol.parseHistoryReservations(
             """{"status":true,"data":{"count":1,"reservations":[
               {"id":"r2","date":"2026-10-27","begin":"10:00","end":"12:00","loc":"B201","stat":"CANCEL"}
             ]}}""",
@@ -136,8 +136,43 @@ class LibrarySeatProtocolTest {
 
     @Test
     fun `当前没有预约时 data 为 null 不是失败`() {
-        val list = LibrarySeatProtocol.parseReservations("""{"code":0,"data":null}""")
+        val list = LibrarySeatProtocol.parseCurrentReservations("""{"code":0,"data":null}""")
         assertTrue(list.isEmpty())
+    }
+
+    @Test
+    fun `当前预约 data 变成对象时必须报格式错误而不是空列表`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":{"reservations":[]}}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertFalse(e is LibrarySessionExpiredException)
+    }
+
+    @Test
+    fun `缺少 id 或座位标识的预约记录不能被过滤成成功`() {
+        val missingId = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":[{"date":"2026-10-27","begin":"08:00","end":"10:00","location":"A1","stat":"RESERVE"}]}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(missingId is LibrarySeatException)
+        val missingSeat = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":[{"id":"r1","date":"2026-10-27","begin":"08:00","end":"10:00","stat":"RESERVE"}]}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(missingSeat is LibrarySeatException)
+    }
+
+    @Test
+    fun `历史记录缺少 reservations 数组报错`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseHistoryReservations("""{"status":true,"data":[]}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
     }
 
     @Test

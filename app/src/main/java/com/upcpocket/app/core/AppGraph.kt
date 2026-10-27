@@ -4,6 +4,7 @@ import android.content.Context
 import com.upcpocket.app.data.db.AppDatabase
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.prefs.FocusPrefsStore
+import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.FocusRepository
 import com.upcpocket.app.data.repo.ScheduleRepository
@@ -60,8 +61,14 @@ object AppGraph {
 
     val focusRepository: FocusRepository by lazy { FocusRepository(db) }
 
-    /** 图书馆座位：登录 token 只在这个单例的内存里，进程结束/退出即丢失。 */
+    /**
+     * 图书馆座位：token 默认只在这个单例的内存里；开启“记住登录”时另有
+     * [SchoolSessionStore] 的 Keystore 加密副本，退出/关闭开关时清理。
+     */
     val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
+
+    /** “记住登录”的加密持久副本（仅图书馆 token；课表依赖 WebView Cookie）。 */
+    val schoolSessionStore: SchoolSessionStore by lazy { SchoolSessionStore(appContext) }
 
     val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }
 

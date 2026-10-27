@@ -22,15 +22,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.core.SchoolWebCookies
+import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
+import kotlinx.coroutines.launch
 
 /**
  * 「更多」= 功能与信息入口页。
@@ -84,12 +93,67 @@ fun CampusScreen(
                     onOpenCampusServices,
                 )
                 Text(
-                    text = "空闲教室读取学校公开查询结果。需要认证的服务交学校网页或微信完成，" +
-                        "本应用不保存账号、Cookie 或 Token。",
+                    text = "空闲教室读取学校公开查询结果。需要认证的服务交学校网页完成；" +
+                        "图书馆 token 只在开启“记住登录”时加密保存，课表会话由 WebView Cookie 保持。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
+            }
+
+            GroupTitle("学校登录")
+            EntryCard {
+                val prefs by AppGraph.uiPrefsStore.flow
+                    .collectAsStateWithLifecycle(initialValue = UiPrefs())
+                val scope = rememberCoroutineScope()
+                val librarySession by AppGraph.librarySeatRepository.session
+                    .collectAsStateWithLifecycle()
+                ListItem(
+                    headlineContent = { Text("记住学校登录") },
+                    supportingContent = {
+                        Text(
+                            "图书馆 token 用 Android Keystore 加密保存（不随系统备份）；" +
+                                "课表会话由 WebView Cookie 保持。关闭或退出会清理持久副本与 UPC 业务 Cookie。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = prefs.rememberSchoolLogin,
+                            onCheckedChange = { enabled ->
+                                scope.launch {
+                                    AppGraph.uiPrefsStore.setRememberSchoolLogin(enabled)
+                                    if (!enabled) {
+                                        AppGraph.schoolSessionStore.clear()
+                                        AppGraph.librarySeatRepository.clearSession()
+                                        SchoolWebCookies.clearAllSchoolCookies()
+                                    }
+                                }
+                            },
+                        )
+                    },
+                )
+                Text(
+                    "图书馆会话：" + (
+                        librarySession?.let { "内存中（${it.user.name.ifBlank { "已登录" }}）" }
+                            ?: "未登录（未保存时进程结束即需重登）"
+                        ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            AppGraph.uiPrefsStore.setRememberSchoolLogin(false)
+                            AppGraph.schoolSessionStore.clear()
+                            AppGraph.librarySeatRepository.clearSession()
+                            SchoolWebCookies.clearAllSchoolCookies()
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                ) { Text("退出学校登录（清理图书馆 token 与学校 Cookie）") }
             }
 
             GroupTitle("外观")

@@ -17,7 +17,9 @@ object SchoolScheduleSync {
     /**
      * @param weeklyWeeks 下标 0 对应第 1 周；长度必须等于 [SchoolTerm.totalWeeks]，
      *   少一周就说明同步不完整，直接报错，不生成半份课表。
-     * @param schoolCurrentWeek 学校页面 params 的当前教学周，用于推算第 1 周周一。
+     * @param schoolCurrentWeek 学校页面 params 的当前教学周，仅在所选学期**就是学校当前学期**时传入。
+     * @param savedStart 本地已保存的第 1 周周一（用户可能校正过），优先级最高。
+     * @param schoolTermStart 学校 params.startday 给出的第 1 周周一（仅当前学期线索）。
      */
     fun build(
         term: SchoolTerm,
@@ -25,6 +27,8 @@ object SchoolScheduleSync {
         periods: List<Period>,
         today: LocalDate = LocalDate.now(),
         schoolCurrentWeek: Int? = null,
+        savedStart: LocalDate? = null,
+        schoolTermStart: LocalDate? = null,
     ): SchoolSyncPlan {
         if (weeklyWeeks.size != term.totalWeeks) {
             throw SchoolScheduleFormatException(
@@ -33,7 +37,13 @@ object SchoolScheduleSync {
         }
         val byUnit = periods.associateBy { it.indexNo }
         val maxUnit = periods.maxOfOrNull { it.indexNo } ?: 0
-        val weekOneStart = weekOneStart(today, schoolCurrentWeek, term.totalWeeks)
+        val (weekOneStart, dateSource) = when {
+            savedStart != null -> savedStart to SchoolDateSource.SAVED
+            schoolTermStart != null -> schoolTermStart to SchoolDateSource.SCHOOL_PARAMS
+            else -> weekOneStart(today, schoolCurrentWeek, term.totalWeeks)
+                ?.let { it to SchoolDateSource.DERIVED_CURRENT_WEEK }
+                ?: (null to SchoolDateSource.NONE)
+        }
         val sessions = LinkedHashMap<String, SchoolSessionDraft>()
         val courses = LinkedHashMap<String, SchoolCourseDraft>()
         val emptyWeeks = ArrayList<Int>()
@@ -95,10 +105,27 @@ object SchoolScheduleSync {
             sessions = sessions.values.toList(),
             courses = courses.values.toList(),
             weekOneStart = weekOneStart,
+            dateSource = dateSource,
             emptyWeeks = emptyWeeks,
             slotCount = slotCount,
         )
     }
+
+    /**
+     * 用户在预览里确认/校正了第 1 周日期后，按新日期重算每节课的日期。
+     * 课程、周次、节次都不变，只改 `date` 与日期来源。
+     */
+    fun rebase(plan: SchoolSyncPlan, start: LocalDate?): SchoolSyncPlan = plan.copy(
+        weekOneStart = start,
+        dateSource = if (start == null) SchoolDateSource.NONE else SchoolDateSource.USER_CONFIRMED,
+        sessions = plan.sessions.map { draft ->
+            draft.copy(
+                date = start?.plusDays(
+                    ((draft.week - 1) * 7 + (draft.weekday - 1)).toLong(),
+                )?.toString(),
+            )
+        },
+    )
 
     /**
      * 第 1 周周一。
@@ -132,11 +159,30 @@ data class SchoolSyncPlan(
     val sessions: List<SchoolSessionDraft>,
     val courses: List<SchoolCourseDraft>,
     val weekOneStart: LocalDate?,
+    /** 第 1 周日期来自哪里；界面必须如实标注“推算”与“用户确认”。 */
+    val dateSource: SchoolDateSource,
     val emptyWeeks: List<Int>,
     val slotCount: Int,
 ) {
     val weekCount: Int get() = term.totalWeeks
     val courseCount: Int get() = courses.size
+}
+
+enum class SchoolDateSource {
+    /** 本地学期里已保存的日期（可能是用户校正过的）。 */
+    SAVED,
+
+    /** 学校 params.startday（只观察到当前学期线索）。 */
+    SCHOOL_PARAMS,
+
+    /** 由“今天 + 学校当前教学周”反推。 */
+    DERIVED_CURRENT_WEEK,
+
+    /** 用户在预览里确认/修改。 */
+    USER_CONFIRMED,
+
+    /** 没有可用日期，需要用户确认。 */
+    NONE,
 }
 
 data class SchoolSessionDraft(

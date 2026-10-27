@@ -176,7 +176,8 @@ fun CampusServicesScreen(
                     )
                     Text(
                         text = "空闲教室和图书馆座位在 App 内查询/操作；唐岛湾电费和校园卡可转到微信。" +
-                            "其余服务打开学校页面。App 不保存登录凭据，不提供充值。",
+                            "其余服务打开学校页面。只有开启“记住登录”时才用 Keystore 加密保存图书馆 token；" +
+                            "课表会话由 WebView Cookie 保持，可在“更多 → 退出学校登录”清理。不提供充值。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )

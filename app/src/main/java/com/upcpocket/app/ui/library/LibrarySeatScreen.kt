@@ -73,6 +73,7 @@ import com.upcpocket.app.data.library.LibrarySessionExpiredException
 import com.upcpocket.app.data.library.LibraryTimeOption
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** 原生座位预约：登录走官方网页，查询、选座、确认、取消都在 App 内完成。 */
@@ -93,18 +94,48 @@ fun LibrarySeatScreen(
     }
     val vm: LibrarySeatViewModel = viewModel(factory = factory)
     val state = vm.state
+    var restoringSession by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        // 开启“记住登录”时，重启后先用加密保存的 token 验证会话；失效就清掉重登。
+        if (repo.session.value == null && AppGraph.uiPrefsStore.flow.first().rememberSchoolLogin) {
+            restoringSession = true
+            val saved = AppGraph.schoolSessionStore.loadLibrary()
+            if (saved != null) {
+                runCatching { repo.adoptSeatToken(saved.token) }
+                    .onFailure {
+                        AppGraph.schoolSessionStore.clear()
+                        repo.clearSession()
+                    }
+            }
+            restoringSession = false
+        }
+    }
     LaunchedEffect(session) {
         if (session != null) vm.ensureLoaded()
     }
     LaunchedEffect(state.sessionExpired) {
-        if (state.sessionExpired) vm.logout()
+        if (state.sessionExpired) {
+            vm.logout()
+            AppGraph.schoolSessionStore.clear()
+        }
     }
 
     var buildingMenu by remember { mutableStateOf(false) }
     var dateMenu by remember { mutableStateOf(false) }
 
     if (session == null) {
-        LibraryLoginGate(onBack = onBack, onLogin = onLogin)
+        if (restoringSession) {
+            Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CircularProgressIndicator()
+                Text("正在验证已保存的图书馆会话…")
+            }
+        } else {
+            LibraryLoginGate(onBack = onBack, onLogin = onLogin)
+        }
         return
     }
 
@@ -261,29 +292,56 @@ fun LibrarySeatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("我的预约", style = MaterialTheme.typography.titleSmall)
+                    Column {
+                        Text("我的预约", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            state.reservationsUpdatedAt?.let { "上次成功读取：${clockLabel(it)}" }
+                                ?: "尚未成功读取预约状态",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(
+                        onClick = vm::refreshReservations,
+                        enabled = !state.loading && !state.reservationsBusy,
+                    ) { Text(if (state.reservationsBusy) "刷新中…" else "刷新") }
+                }
+            }
+            state.reservationsError?.let { message ->
+                item {
+                    Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = vm::refreshReservations, enabled = !state.loading) {
-                        Text("刷新")
+                        Text("重新核对")
                     }
                 }
             }
             if (state.reservations.isEmpty()) {
                 item {
                     Text(
-                        "当前没有预约记录。",
+                        if (state.reservationsError == null && state.reservationsUpdatedAt != null) {
+                            "本次成功读取到 0 条当前预约。"
+                        } else {
+                            "还没有成功读取到预约列表，不能判断是否有预约。"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             } else {
                 items(state.reservations, key = { it.id }) { reservation ->
-                    ReservationCard(reservation, enabled = !state.loading, onCancel = { vm.cancel(reservation) })
+                    ReservationCard(
+                        reservation = reservation,
+                        enabled = !state.loading && state.reservationsError == null,
+                        pending = reservation.id in state.pendingCancelIds,
+                        onCancel = { vm.cancel(reservation) },
+                    )
                 }
             }
             item {
                 Text(
-                    "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。登录 token 只在本次运行内存中，" +
-                        "退出登录会清除；不保存密码、Cookie 或预约历史到本地数据库。",
+                    "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。" +
+                        "当前版本登录 token 只在本次运行内存中，退出登录会清除；不保存密码、" +
+                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉课表登录。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -439,23 +497,42 @@ private fun RoomCard(room: LibraryRoom, selected: Boolean, onClick: () -> Unit) 
 private fun ReservationCard(
     reservation: LibraryReservation,
     enabled: Boolean,
+    pending: Boolean,
     onCancel: () -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(reservation.location.ifBlank { "座位" }, fontWeight = FontWeight.SemiBold)
-                Text(reservation.statusLabel, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    if (pending) "待确认" else reservation.statusLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (pending) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                )
             }
             Text(
                 "${reservation.date} · ${reservation.begin}–${reservation.end}",
                 style = MaterialTheme.typography.bodySmall,
             )
-            if (reservation.cancellable) {
+            if (pending) {
+                Text(
+                    "取消请求已发出，最终状态尚未核对；请刷新，不会自动重试。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (reservation.cancellable && !pending) {
                 TextButton(enabled = enabled, onClick = onCancel) { Text("取消预约") }
             }
         }
     }
+}
+
+/** 上一次成功读取的时间（HH:mm）。 */
+private fun clockLabel(epochMs: Long): String {
+    val time = java.time.Instant.ofEpochMilli(epochMs)
+        .atZone(java.time.ZoneId.systemDefault()).toLocalTime()
+    return "%02d:%02d".format(time.hour, time.minute)
 }
 
 @Composable
@@ -867,6 +944,8 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
 
     fun logout() {
         repo.clearSession()
+        AppGraph.schoolSessionStore.clear()
+        LibrarySeatCookies.clearSeatCookies()
         state = UiState()
     }
 

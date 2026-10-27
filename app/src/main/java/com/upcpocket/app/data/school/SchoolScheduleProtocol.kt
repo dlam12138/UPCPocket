@@ -64,11 +64,17 @@ internal object SchoolScheduleProtocol {
         val currentYear = params?.let { stringOf(it, "year") }
         val currentTerm = params?.let { stringOf(it, "term") }
         val currentWeek = params?.let { intOf(it, "week") }
+        val termStart = params?.let { stringOf(it, "startday") }
+            ?.take(10)
+            ?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+            ?.takeIf { it.year in 2000..2100 }
         val current = terms.firstOrNull { it.year == currentYear && it.term == currentTerm }
+        // `params.startday` 目前只观察到当前学期的线索，不能推给其它学期。
         return SchoolTermPage(
             terms = terms,
             current = current,
             currentWeek = currentWeek?.takeIf { it in 1..(current?.totalWeeks ?: 0) },
+            currentTermStart = termStart,
         )
     }
 
@@ -89,7 +95,8 @@ internal object SchoolScheduleProtocol {
                 ?: fail("第 $week 周《$name》缺少 lessArr 节次数组")
             if (rawUnits.isEmpty()) fail("第 $week 周《$name》的 lessArr 为空")
             val units = rawUnits.map { element ->
-                val value = (element as? JsonPrimitive)?.intOrNull
+                val primitive = element as? JsonPrimitive
+                val value = primitive?.takeIf { !it.isString }?.intOrNull
                     ?: fail("第 $week 周《$name》的节次不是整数")
                 if (value !in 1..MAX_UNITS) {
                     fail("第 $week 周《$name》的节次 $value 超出 1–$MAX_UNITS")
@@ -200,6 +207,8 @@ data class SchoolTermPage(
     val current: SchoolTerm?,
     /** 学校页面 params 里的当前教学周；可能为空。 */
     val currentWeek: Int?,
+    /** 学校页面 params.startday（仅当前学期线索）；字段不存在或格式异常时为 null。 */
+    val currentTermStart: java.time.LocalDate? = null,
 )
 
 data class SchoolClassBlock(
