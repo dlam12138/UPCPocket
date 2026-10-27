@@ -293,7 +293,11 @@ private fun PowerEntryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TextButton(onClick = onWeChat) { Text("通过微信打开") }
+            if (entry.access == CampusServices.Access.WECHAT) {
+                TextButton(onClick = onWeChat) { Text("通过微信打开") }
+            } else {
+                TextButton(onClick = onOpen) { Text("打开学校页面") }
+            }
         }
     }
 }
