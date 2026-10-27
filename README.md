@@ -226,10 +226,14 @@ app/src/main/java/com/upcpocket/app/
 | [`docs/0.1.2-功能实现与验收-2026-10-27.md`](docs/0.1.2-功能实现与验收-2026-10-27.md) | 本轮新增：图书馆原生预约、微信 SDK 适配、CSV 多时段与 1–13 节、测试与缺失材料 |
 | [`docs/手机测试说明-0.1.2.md`](docs/手机测试说明-0.1.2.md) | 0.1.2-preview 真机验收步骤与已知边界 |
 | [`docs/android-skills.md`](docs/android-skills.md) | 引入的 android/skills 版本、索引与更新流程 |
+| [`docs/upc/官方入口.md`](docs/upc/官方入口.md) | UPC 官方入口台账与匿名核查状态（当前有效） |
+| [`docs/README.md`](docs/README.md) | 文档总索引：UPC 入口、研究方法与历史归档 |
 | [`AGENTS.md`](AGENTS.md) | 项目开发规范（对 Agent 与本人都适用） |
 
-> 上游留下的 `docs/interfaces/`、`docs/design/` 等文档记录的是**郑州大学**系统的接口契约与设计，
-> 与本项目当前能力无关，仅作为上游历史资料保留；**不要**据此接入任何校园系统。
+> 郑州大学的接口契约与设计资料已移入 [`docs/archive/zzu/`](docs/archive/zzu/README.md)，
+> 仅作为上游历史参考；**不要**据此接入任何校园系统。UPC 的入口和数据契约以
+> [`docs/upc/官方入口.md`](docs/upc/官方入口.md) 与 `docs/upc/official-entrypoints.json` 为准。
+
 
 ---
 
