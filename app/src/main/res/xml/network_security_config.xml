@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    明文网络**只**对两个已核实的具体主机放开，其余一律要求 HTTPS。
+
+    为什么要放开（2026-10-28 实测，不是猜测）：
+      · dfcz.upc.edu.cn —— 唐岛湾用电查询系统只有 HTTP 入口，HTTPS 端口握手直接失败；
+        查询本身是公开的“楼号＋房间号 → 剩余电量”，不带任何凭据。
+      · mb-xyk.upc.edu.cn —— 校园卡平台的数据接口本身支持 HTTPS（App 一律用 HTTPS 访问），
+        但平台自己的登录回跳会落到 http://mb-xyk.upc.edu.cn/plat/…；WebView 里如果
+        禁止明文，用户会在登录成功的那一刻看到白页。
+
+    其余学校站点（app / cas / i / libspace / gzkdf）保持 HTTPS 强制；
+    古镇口 gzkdf 的证书已过期，这里**不**为它放开任何限制，也不允许绕过证书校验。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">dfcz.upc.edu.cn</domain>
+        <domain includeSubdomains="false">mb-xyk.upc.edu.cn</domain>
+    </domain-config>
+</network-security-config>

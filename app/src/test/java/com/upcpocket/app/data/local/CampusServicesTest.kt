@@ -25,21 +25,30 @@ class CampusServicesTest {
     }
 
     @Test
-    fun `校园卡余额使用用户提供的余额页面且不宣称支持流水`() {
+    fun `校园卡余额指向学校平台并说明不做流水与充值`() {
         val card = CampusServices.ALL.single { it.id == "ecard" }
         assertEquals("校园卡余额", card.title)
-        assertEquals("http://jhzf.upc.edu.cn:20081/wechat/query/balance.html", card.url)
+        // 2026-10-28 核验：旧微信专用地址只返回“无效token”，实际数据由平台前端接口提供。
+        assertEquals("https://mb-xyk.upc.edu.cn/plat/", card.url)
+        assertEquals(CampusServices.Access.CAS, card.access)
         assertFalse(card.subtitle.contains("流水"))
         assertFalse(card.scope.contains("流水"))
         assertTrue(card.note.contains("不做充值"))
+        assertTrue(card.note.contains("待圈存"))
     }
 
     @Test
-    fun `唐岛湾电费提示用户实测需要微信打开`() {
+    fun `唐岛湾电费是无需登录的公开查询_并记录真实入口条件`() {
         val power = CampusServices.ALL.single { CampusServices.isTangdaowanPower(it) }
-        assertTrue(power.note.contains("需要微信打开"))
-        assertTrue(power.note.contains("普通浏览器"))
-        assertTrue(power.updatedNote.contains("用户实测"))
+        // 页面对缺 code 的请求会 302 到微信 OAuth，但带占位 code 就能拿到公开查询表单；
+        // 因此它既不是“必须微信”，也不是“需要登录”，如实标成公网可访问。
+        assertEquals(CampusServices.Access.PUBLIC, power.access)
+        assertTrue(power.note.contains("不需要登录"))
+        assertTrue(power.note.contains("房间号"))
+        assertTrue(power.updatedNote.contains("302"))
+        assertTrue(power.updatedNote.contains("当前剩余电量"))
+        // 旧的“必须微信打开”结论已被本轮核验推翻，不能留在界面文案里。
+        assertFalse(power.note.contains("需要微信打开"))
     }
 
     @Test
@@ -171,9 +180,11 @@ class CampusServicesTest {
                     "电费入口 ${entry.id} 的适用范围没写校区：${entry.scope}",
                     entry.scope.contains("唐岛湾") || entry.scope.contains("古镇口"),
                 )
+                // 唐岛湾已核实为无需登录的公开查询；古镇口仍需校园网/浏览器条件。
+                // 这里只钉住“条件必须如实写出来”，不把某一项钉死成必须登录。
                 assertTrue(
-                    "电费入口 ${entry.id} 没写适用条件",
-                    entry.access != CampusServices.Access.PUBLIC,
+                    "电费入口 ${entry.id} 没写使用条件",
+                    entry.note.isNotBlank() && entry.access != CampusServices.Access.SCHOOL_PAGE,
                 )
             }
     }

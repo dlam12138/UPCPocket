@@ -103,7 +103,8 @@ fun LibrarySeatScreen(
             if (saved != null) {
                 runCatching { repo.adoptSeatToken(saved.token) }
                     .onFailure {
-                        AppGraph.schoolSessionStore.clear()
+                        // 只清图书馆这一份；课前/校园卡等其他业务的密文不动。
+                        AppGraph.schoolSessionStore.clearLibrary()
                         repo.clearSession()
                     }
             }
@@ -116,7 +117,7 @@ fun LibrarySeatScreen(
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) {
             vm.logout()
-            AppGraph.schoolSessionStore.clear()
+            AppGraph.schoolSessionStore.clearLibrary()
         }
     }
 
@@ -942,9 +943,10 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
         else -> message ?: javaClass.simpleName
     }
 
+    /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动校园卡令牌与课表会话。 */
     fun logout() {
         repo.clearSession()
-        AppGraph.schoolSessionStore.clear()
+        AppGraph.schoolSessionStore.clearLibrary()
         LibrarySeatCookies.clearSeatCookies()
         state = UiState()
     }

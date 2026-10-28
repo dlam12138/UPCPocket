@@ -173,6 +173,9 @@ fun SchoolScheduleSyncScreen(
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
+                                // 登录成功后 WebView 会落下业务 Cookie；不 flush，它可能只在
+                                // 内存里，进程被杀就丢，重启又要重登。
+                                CookieManager.getInstance().flush()
                                 vm.onPageFinished(url)
                             }
 

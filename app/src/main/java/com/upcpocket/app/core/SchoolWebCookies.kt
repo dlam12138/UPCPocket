@@ -17,10 +17,14 @@ object SchoolWebCookies {
         "https://cas.upc.edu.cn",
         "https://i.upc.edu.cn",
         "https://libspace.upc.edu.cn",
+        // 校园卡平台的登录页也在 WebView 里打开，它自己的 Cookie 同样属于学校登录。
+        "https://mb-xyk.upc.edu.cn",
     )
 
     private val paths = listOf(
         "/", "/site", "/site/weekschedule", "/uc", "/cas", "/libseat", "/remote", "/rest",
+        // 校园卡平台自己的路径前缀
+        "/plat", "/plat/", "/berserker-auth", "/berserker-base", "/berserker-app",
     )
 
     fun clearAllSchoolCookies() {

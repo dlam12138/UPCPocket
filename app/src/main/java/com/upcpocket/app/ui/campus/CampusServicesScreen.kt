@@ -58,6 +58,8 @@ fun CampusServicesScreen(
     onBack: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenLibrary: () -> Unit,
+    onOpenCampusCard: () -> Unit,
+    onOpenTangdaowanPower: () -> Unit,
 ) {
     val context = LocalContext.current
     var expanded by remember { mutableStateOf<String?>(null) }
@@ -84,7 +86,10 @@ fun CampusServicesScreen(
         when (entry.id) {
             "classroom" -> onOpenClassrooms()
             "library_seat" -> onOpenLibrary()
-            "power_tangdaowan", "ecard" -> weChatEntry = entry
+            "ecard" -> onOpenCampusCard()
+            "power_tangdaowan" -> onOpenTangdaowanPower()
+            // 古镇口仍是外部入口：证书过期且页面不是同一套查询表单，不绕过 TLS。
+            "power_guzhenkou" -> openInBrowser(entry)
             else -> openInBrowser(entry)
         }
     }
@@ -175,8 +180,9 @@ fun CampusServicesScreen(
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                     Text(
-                        text = "空闲教室和图书馆座位在 App 内查询/操作；唐岛湾电费和校园卡可转到微信。" +
-                            "其余服务打开学校页面。只有开启“记住登录”时才用 Keystore 加密保存图书馆 token；" +
+                        text = "空闲教室、图书馆座位、校园卡余额、唐岛湾剩余电量都在 App 内原生查询；" +
+                            "校园卡与图书馆用学校官方登录，唐岛湾电费按楼号＋房间号公开查询。" +
+                            "开启“记住登录”时，图书馆 token 与校园卡令牌才用 Keystore 加密保存；" +
                             "课表会话由 WebView Cookie 保持，可在“更多 → 退出学校登录”清理。不提供充值。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -276,7 +282,10 @@ private fun PowerEntryCard(
                 )
                 Icon(
                     Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = if (entry.access == CampusServices.Access.WECHAT) "微信打开选项" else "打开学校页面",
+                    contentDescription = when (entry.id) {
+                        "power_tangdaowan" -> "在应用中查询剩余电量"
+                        else -> if (entry.access == CampusServices.Access.WECHAT) "微信打开选项" else "打开学校页面"
+                    },
                     tint = MaterialTheme.colorScheme.outline,
                     modifier = Modifier.size(18.dp),
                 )
@@ -294,7 +303,10 @@ private fun PowerEntryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (entry.access == CampusServices.Access.WECHAT) {
+            if (entry.id == "power_tangdaowan") {
+                TextButton(onClick = onOpen) { Text("在应用中查询剩余电量") }
+                TextButton(onClick = onWeChat) { Text("改用微信打开（备用）") }
+            } else if (entry.access == CampusServices.Access.WECHAT) {
                 TextButton(onClick = onWeChat) { Text("通过微信打开") }
             } else {
                 TextButton(onClick = onOpen) { Text("打开学校页面") }
@@ -342,7 +354,7 @@ private fun ServiceCard(
                     contentDescription = when (entry.id) {
                         "classroom" -> "在应用中查询空闲教室"
                         "library_seat" -> "在应用中预约图书馆座位"
-                        "ecard" -> "微信打开选项"
+                        "ecard" -> "在应用中查询校园卡余额"
                         else -> "打开学校页面"
                     },
                     tint = MaterialTheme.colorScheme.primary,

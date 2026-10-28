@@ -89,12 +89,12 @@ fun CampusScreen(
                 Entry(
                     Icons.Filled.School,
                     "校园服务",
-                    "原生空闲教室 · 微信打开 · 学校入口",
+                    "空闲教室 · 校园卡余额 · 宿舍电费 · 图书馆",
                     onOpenCampusServices,
                 )
                 Text(
-                    text = "空闲教室读取学校公开查询结果。需要认证的服务交学校网页完成；" +
-                        "图书馆 token 只在开启“记住登录”时加密保存，课表会话由 WebView Cookie 保持。",
+                    text = "空闲教室、校园卡余额、唐岛湾剩余电量、图书馆座位都在 App 内原生查询；" +
+                        "校园卡与图书馆走学校官方登录，课表会话由 WebView Cookie 保持。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -112,7 +112,7 @@ fun CampusScreen(
                     headlineContent = { Text("记住学校登录") },
                     supportingContent = {
                         Text(
-                            "图书馆 token 用 Android Keystore 加密保存（不随系统备份）；" +
+                            "图书馆 token 与校园卡令牌用 Android Keystore 加密保存（不随系统备份）；" +
                                 "课表会话由 WebView Cookie 保持。关闭或退出会清理持久副本与 UPC 业务 Cookie。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -127,6 +127,7 @@ fun CampusScreen(
                                     if (!enabled) {
                                         AppGraph.schoolSessionStore.clear()
                                         AppGraph.librarySeatRepository.clearSession()
+                                        AppGraph.campusCardService.signOut()
                                         SchoolWebCookies.clearAllSchoolCookies()
                                     }
                                 }
@@ -143,17 +144,27 @@ fun CampusScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+                Text(
+                    "校园卡会话：" + (
+                        if (AppGraph.campusCardService.hasSession()) "内存中（已登录）"
+                        else "未登录"
+                        ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
                 TextButton(
                     onClick = {
                         scope.launch {
                             AppGraph.uiPrefsStore.setRememberSchoolLogin(false)
                             AppGraph.schoolSessionStore.clear()
                             AppGraph.librarySeatRepository.clearSession()
+                            AppGraph.campusCardService.signOut()
                             SchoolWebCookies.clearAllSchoolCookies()
                         }
                     },
                     modifier = Modifier.padding(horizontal = 8.dp),
-                ) { Text("退出学校登录（清理图书馆 token 与学校 Cookie）") }
+                ) { Text("退出学校登录（清理图书馆与校园卡会话、学校 Cookie）") }
             }
 
             GroupTitle("外观")

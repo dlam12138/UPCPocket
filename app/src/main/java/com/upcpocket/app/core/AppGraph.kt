@@ -2,7 +2,9 @@ package com.upcpocket.app.core
 
 import android.content.Context
 import com.upcpocket.app.data.db.AppDatabase
+import com.upcpocket.app.data.ecard.CampusCardService
 import com.upcpocket.app.data.library.LibrarySeatRepository
+import com.upcpocket.app.data.power.TangdaowanElectricityService
 import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
@@ -21,8 +23,10 @@ import kotlinx.coroutines.launch
  *
  * M1 只保留**本地**依赖：数据库、偏好、课表仓库、番茄钟；
  * 0.1.2 增加两个独立网络能力：公开空闲教室查询、图书馆座位（官方 CAS 登录后的内存会话）。
+ * 0.1.4 增加两个余额/电费数据层：校园卡（学校官方登录换来的平台令牌）与
+ * 唐岛湾宿舍剩余电量（无需登录的只读页面查询）。
  * 上游项目里的 CAS 客户端、教务/一卡通客户端、令牌存储、房间表、更新检查已删除；
- * 图书馆 token 不落盘，退出/进程结束即清除。
+ * 只有开启“记住登录”时，图书馆 token 与校园卡令牌才写入 Keystore 密文。
  */
 object AppGraph {
 
@@ -67,7 +71,20 @@ object AppGraph {
      */
     val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
 
-    /** “记住登录”的加密持久副本（仅图书馆 token；课表依赖 WebView Cookie）。 */
+    /**
+     * 校园卡余额：登录由学校官方页面完成，令牌由 [CampusCardService] 持有，
+     * 开启“记住登录”时才写入 Keystore 密文。
+     */
+    val campusCardService: CampusCardService by lazy {
+        CampusCardService(schoolSessionStore)
+    }
+
+    /** 唐岛湾宿舍剩余电量：无需登录的只读查询，不保存房间号。 */
+    val tangdaowanElectricityService: TangdaowanElectricityService by lazy {
+        TangdaowanElectricityService()
+    }
+
+    /** “记住登录”的加密持久副本（图书馆 token / 校园卡令牌；课表依赖 WebView Cookie）。 */
     val schoolSessionStore: SchoolSessionStore by lazy { SchoolSessionStore(appContext) }
 
     val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }
