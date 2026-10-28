@@ -280,6 +280,18 @@ internal object LibrarySeatProtocol {
             it.intOrNull ?: it.contentOrNull?.toIntOrNull()
         }
         if (code == 12) throw LibrarySessionExpiredException()
+        // 2026-10-28 实测：code 20 的唯一成因是**签名/时间不匹配**（把 HMAC 密钥带上
+        // PKCS#5 填充就会触发），原文是“请检查手机时间…另外手机app已停用，请使用微信小程序”。
+        // 剥掉填充后同一请求返回 code 12，说明功能在线。所以这里保留学校原文（便于排查），
+        // 但补一句我们自己的判断，避免用户以为预约功能真的被停用而放弃。
+        if (code == 20) {
+            val raw = (root["message"] as? JsonPrimitive)?.contentOrNull
+            throw LibrarySeatException(
+                (raw ?: "学校拒绝了这次请求") +
+                    "（本地判断：这是请求签名或手机时间不匹配，不是预约功能停用；" +
+                    "请先校准手机时间后重试）",
+            )
+        }
         val statusPrimitive = root["status"] as? JsonPrimitive
         val statusBoolean = statusPrimitive?.booleanOrNull
         val statusText = statusPrimitive?.contentOrNull?.lowercase()

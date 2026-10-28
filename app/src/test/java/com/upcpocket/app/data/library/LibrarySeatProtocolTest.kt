@@ -9,6 +9,22 @@ class LibrarySeatProtocolTest {
     private val uuid = "123e4567-e89b-42d3-a456-426614174000"
     private val timestamp = 1_700_000_000_000L
 
+    /**
+     * 2026-10-28 实测：把解密结果**连 PKCS#5 填充一起**当 HMAC 密钥，服务端返回
+     * `code 20`（“请检查手机时间…手机app已停用，请使用微信小程序”）；剥掉填充后
+     * 同一请求返回 `code 12`（未登录）。也就是说 code 20 是**签名/时间**不匹配的
+     * 统一提示，不是功能已停用的证据。
+     *
+     * 这条测试钉住“密钥必须是剥掉填充的 9 字节”：长度一变，真实登录会立刻退回 code 20，
+     * 而界面会误报成“系统停用”。
+     */
+    @Test
+    fun `配置密钥必须是剥掉 PKCS5 填充的 9 字节`() {
+        val key = LibrarySeatProtocol.configKey()
+        assertEquals(9, key.size)
+        assertEquals("6c656f733363723374", key.joinToString("") { "%02x".format(it) })
+    }
+
     @Test
     fun `公开配置密钥可解出且长度正确`() {
         assertTrue(LibrarySeatProtocol.configKey().isNotEmpty())
@@ -25,6 +41,25 @@ class LibrarySeatProtocolTest {
             LibrarySeatProtocol.signedHeaders("token", "POST", uuid, timestamp)
                 .getValue("X-hmac-request-key")
                 .matches(Regex("[0-9a-f]{64}")),
+        )
+    }
+
+    @Test
+    fun `code 20 原样带出学校提示并补上本地判断`() {
+        // 真实响应体（2026-10-28 抓到的文案，不含任何个人数据）。
+        val body = """{"status":"fail","code":"20","message":"请检查手机时间是否准确,另外手机app已停用,请使用微信小程序\"一考即过座位预约\"等方式预约","data":null}"""
+        val error = runCatching { LibrarySeatProtocol.parseUser(body) }.exceptionOrNull()
+        assertTrue(error is LibrarySeatException)
+        assertTrue("必须保留学校原文", error!!.message!!.contains("一考即过"))
+        assertTrue("必须说明不是停用", error.message!!.contains("不是预约功能停用"))
+    }
+
+    @Test
+    fun `code 12 是会话过期而不是停用`() {
+        val body = """{"status":"fail","code":"12","message":"登录失败: 用户名或密码不正确"}"""
+        assertTrue(
+            runCatching { LibrarySeatProtocol.parseUser(body) }.exceptionOrNull()
+                is LibrarySessionExpiredException,
         )
     }
 
