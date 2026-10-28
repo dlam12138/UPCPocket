@@ -118,6 +118,13 @@ internal object SchoolScheduleProtocol {
         if (dates != null && dates.size != 7) {
             fail("第 $week 周的 weekdays 不是 7 天（${dates.size}），不能确定每天对应哪一天")
         }
+        // `weekdays` 必须与 `classes[]` 的位置一一对应；这句是“下标 0 = 周一”的机械证据。
+        // 前端按 index 取日期显示，若服务端某天给的是周二，整周的星期都会错位。
+        dates?.firstOrNull()?.let { monday ->
+            if (monday.dayOfWeek != java.time.DayOfWeek.MONDAY) {
+                fail("第 $week 周的第一天是 ${monday.dayOfWeek}，不是周一，日期与星期无法对齐")
+            }
+        }
         val blocks = ArrayList<SchoolClassBlock>()
         rawDays.forEachIndexed { dayIndex, dayElement ->
             if (dayIndex > 6) fail("第 $week 周的 classes 超过 7 天")

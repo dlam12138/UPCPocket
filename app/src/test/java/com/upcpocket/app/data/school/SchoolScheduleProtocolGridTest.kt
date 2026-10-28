@@ -80,6 +80,23 @@ class SchoolScheduleProtocolGridTest {
     }
 
     @Test
+    fun `weekdays 首日不是周一时报错_避免整周星期错位`() {
+        // 前端按下标把 weekdays[i] 配给第 i 天；首日若不是周一，所有课的星期都会偏移。
+        val shifted = grid(
+            weekdays = """["2026-10-27","2026-10-28","2026-10-29","2026-10-30","2026-10-31","2026-11-01","2026-11-02"]""",
+        )
+        val error = runCatching { SchoolScheduleProtocol.parseGridWeek(shifted, 3) }.exceptionOrNull()
+        assertTrue(error is SchoolScheduleFormatException)
+        assertTrue(error!!.message!!.contains("不是周一"))
+    }
+
+    @Test
+    fun `真实的 2026-10-26 是周一_首日校验不会误报`() {
+        val parsed = SchoolScheduleProtocol.parseGridWeek(grid(), week = 3)
+        assertEquals(java.time.DayOfWeek.MONDAY, parsed.dates!!.first().dayOfWeek)
+    }
+
+    @Test
     fun `没有 weekdays 时如实返回空日期由调用方决定`() {
         val parsed = SchoolScheduleProtocol.parseGridWeek(grid(weekdays = null), week = 3)
         assertNull(parsed.dates)
@@ -125,6 +142,24 @@ class SchoolScheduleProtocolGridTest {
             .exceptionOrNull()
         assertTrue(error is SchoolScheduleException)
         assertTrue(error!!.message!!.contains("400"))
+    }
+
+    /**
+     * `weekschedule` 的 `week` 参数是否真的分周，只能真机验证；这里把“不可信就不采用”的
+     * 判定写成测试：第 2 周不是第 1 周 +7 天时，调用方不应把 firstWeekStart 当锚点。
+     */
+    @Test
+    fun `第2周不是第1周加7天时不能把首日当锚点`() {
+        val weekOne = java.time.LocalDate.of(2026, 10, 26)
+        fun trusted(second: java.time.LocalDate?): Boolean =
+            second == null || second == weekOne.plusDays(7)
+
+        assertTrue(trusted(java.time.LocalDate.of(2026, 11, 2)))
+        assertTrue(trusted(null))
+        // 学校忽略 week 参数：每周回同一周
+        assertTrue(!trusted(weekOne))
+        // 服务端按别的锚点给周（例如从周三起算）
+        assertTrue(!trusted(java.time.LocalDate.of(2026, 10, 28)))
     }
 
     @Test

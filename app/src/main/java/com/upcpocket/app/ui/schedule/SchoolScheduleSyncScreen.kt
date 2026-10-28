@@ -631,8 +631,11 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
         // 学校这次是否给了每周的真实日期（跨两周比对，避免单周偶发缺字段被当成有效）。
         val firstWeekStart = schoolWeekStarts.firstOrNull()
         val secondWeekStart = schoolWeekStarts.getOrNull(1)
-        val serverWeekOneStart = firstWeekStart?.takeIf {
-            secondWeekStart == null || secondWeekStart.isAfter(firstWeekStart)
+        // 只有当第 2 周确实比第 1 周晚**整 7 天**时，才把这些日期当作可信锚点。
+        // 若学校忽略了 week 参数（每周都回同一周），两值会相等；若错位，间隔就不是 7 天。
+        // 这两种情况都不采用服务端日期，退回其它来源，并由预览里的日期来源标签如实说明。
+        val serverWeekOneStart = firstWeekStart?.takeIf { weekOne ->
+            secondWeekStart == null || secondWeekStart == weekOne.plusDays(7)
         }
         try {
             val plan = withContext(Dispatchers.Default) {
