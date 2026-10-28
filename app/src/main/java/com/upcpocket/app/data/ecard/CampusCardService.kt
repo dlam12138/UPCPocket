@@ -137,6 +137,7 @@ class CampusCardService(
             _session.value = fetched
             val account = fetched.cards.firstOrNull()?.account.orEmpty()
             if (account.isNotEmpty()) store.saveCampusCard(value, account)
+            rememberSnapshot(fetched.toBalance())
             CampusCardOutcome.Success(fetched.toBalance())
         } catch (_: CampusCardSessionExpiredException) {
             signOut()
@@ -149,7 +150,53 @@ class CampusCardService(
 
     fun rememberedAccount(): String = store.loadCampusCard()?.account.orEmpty()
 
-    /** 只退出校园卡这一项，不动图书馆 token 与课表 Cookie。 */
+    /**
+     * 上一次成功读到的余额（跨重启保留）。
+     *
+     * 只用于“这次没读到”时展示，且必须带时间；它**不是**实时值。
+     * 读不到密文或字段异常时返回 null，不回退成 0。
+     */
+    fun lastSuccess(): CampusCardBalance? {
+        val saved = store.loadCampusCardSnapshot() ?: return null
+        val basis = runCatching { CampusCardProtocol.Basis.valueOf(saved.basis) }.getOrNull()
+            ?: return null
+        val card = CampusCardProtocol.Card(
+            cardName = saved.cardName.ifBlank { "校园卡" },
+            account = saved.account,
+            cents = saved.cents,
+            pendingCents = saved.pendingCents,
+            wallets = emptyList(),
+            lost = false,
+            frozen = false,
+            basis = basis,
+        )
+        return CampusCardBalance(
+            account = saved.account,
+            cards = listOf(card),
+            basis = basis,
+        )
+    }
+
+    /** 上次成功值的读取时间（millis）；没有则为 null。 */
+    fun lastSuccessAt(): Long? = store.loadCampusCardSnapshot()?.fetchedAt
+
+    private fun rememberSnapshot(balance: CampusCardBalance) {
+        val card = balance.cards.firstOrNull() ?: return
+        runCatching {
+            store.saveCampusCardSnapshot(
+                SchoolSessionStore.SavedCampusCardSnapshot(
+                    account = card.account,
+                    cents = card.cents,
+                    pendingCents = card.pendingCents,
+                    basis = balance.basis.name,
+                    cardName = card.cardName,
+                    fetchedAt = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
+    /** 只退出校园卡这一项：令牌与上次成功值一起清，不动图书馆 token 与课表 Cookie。 */
     fun signOut() {
         token = null
         _session.value = null

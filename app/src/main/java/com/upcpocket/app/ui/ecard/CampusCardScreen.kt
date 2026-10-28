@@ -79,7 +79,8 @@ fun CampusCardScreen(
                 is CampusCardOutcome.Success -> {
                     needsLogin = false
                     balance = outcome.balance
-                    val now = Instant.now()
+                    val now = AppGraph.campusCardService.lastSuccessAt()
+                        ?.let { Instant.ofEpochMilli(it) } ?: Instant.now()
                     fetchedAt = now
                     lastSuccess = outcome.balance to now
                 }
@@ -109,6 +110,12 @@ fun CampusCardScreen(
     LaunchedEffect(Unit) {
         if (restored) return@LaunchedEffect
         restored = true
+        // 先取上一次成功值：它跨重启存活，断网时才不会退化成“从没查过”。
+        AppGraph.campusCardService.lastSuccess()?.let { previous ->
+            val at = AppGraph.campusCardService.lastSuccessAt()
+                ?.let { Instant.ofEpochMilli(it) }
+            if (at != null) lastSuccess = previous to at
+        }
         val remember = AppGraph.uiPrefsStore.flow.first().rememberSchoolLogin
         val verified = remember && AppGraph.campusCardService.restore()
         val unavailable = AppGraph.campusCardService.lastFailure

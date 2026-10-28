@@ -178,6 +178,34 @@ class CampusCardServiceTest {
     }
 
     @Test
+    fun `上次成功值跨重启保留_并在退出时清掉`() = runTest {
+        val tokens = mutableMapOf("tok-a" to "9000000001")
+        val service = CampusCardService(store, FakeClient(tokens))
+        assertTrue(service.adoptToken("tok-a", remember = true) is CampusCardAdoptResult.Accepted)
+        assertTrue(service.refresh() is CampusCardOutcome.Success)
+        assertNotNull(service.lastSuccessAt())
+
+        // 模拟重启 + 断网：令牌还在但这次读不到，旧值必须仍然可见且带时间。
+        val restarted = CampusCardService(store, FakeClient(tokens, offline = true))
+        val previous = restarted.lastSuccess()
+        assertNotNull(previous)
+        assertEquals(1000L, previous!!.totalCents)
+        assertEquals(CampusCardProtocol.Basis.CARD_ONLY, previous.basis)
+
+        // 退出后不能留下上一个人的余额。
+        restarted.signOut()
+        assertNull(restarted.lastSuccess())
+        assertNull(restarted.lastSuccessAt())
+    }
+
+    @Test
+    fun `没有成功过时不伪造上次成功值`() = runTest {
+        val service = CampusCardService(store, FakeClient(mutableMapOf()))
+        assertNull(service.lastSuccess())
+        assertNull(service.lastSuccessAt())
+    }
+
+    @Test
     fun `换号后旧账号的密文与缓存都不再适用`() = runTest {
         val tokens = mutableMapOf("tok-a" to "9000000001", "tok-b" to "9000000002")
         val first = CampusCardService(store, FakeClient(tokens))

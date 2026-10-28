@@ -137,10 +137,73 @@ class SchoolSessionStore(
     }
 
     @Synchronized
+    /** 退出校园卡：令牌与“上次成功值”一起清，避免换人后看到上一个人的余额。 */
     fun clearCampusCard() {
-        prefs.edit().remove(KEY_CAMPUS_CARD).apply()
+        prefs.edit().remove(KEY_CAMPUS_CARD).remove(KEY_CAMPUS_CARD_SNAPSHOT).apply()
     }
 
+    // ── 校园卡上次成功读取（断网/失败时展示用） ──────────────────────────
+
+    /**
+     * 上一次**成功**读到的校园卡余额。
+     *
+     * 与令牌分开存：令牌失效要先清掉，但“上次成功值”仍应可见并带时间，
+     * 否则断网重启后界面会退化成“从没查过”，用户以为余额丢了。
+     *
+     * 只存展示所需的字段（分、口径、账号、时间），不存令牌；
+     * 账号只用于换人时丢弃缓存，不写入日志。
+     */
+    data class SavedCampusCardSnapshot(
+        val account: String,
+        val cents: Long,
+        val pendingCents: Long,
+        val basis: String,
+        val cardName: String,
+        val fetchedAt: Long,
+    )
+
+    @Synchronized
+    fun saveCampusCardSnapshot(snapshot: SavedCampusCardSnapshot) {
+        val payload = JSONObject()
+            .put("account", snapshot.account)
+            .put("cents", snapshot.cents)
+            .put("pending", snapshot.pendingCents)
+            .put("basis", snapshot.basis)
+            .put("cardName", snapshot.cardName)
+            .put("fetchedAt", snapshot.fetchedAt)
+            .toString()
+        runCatching { prefs.edit().putString(KEY_CAMPUS_CARD_SNAPSHOT, encrypt(payload)).apply() }
+            .onFailure { prefs.edit().remove(KEY_CAMPUS_CARD_SNAPSHOT).apply() }
+    }
+
+    @Synchronized
+    fun loadCampusCardSnapshot(): SavedCampusCardSnapshot? {
+        val stored = prefs.getString(KEY_CAMPUS_CARD_SNAPSHOT, null) ?: return null
+        return runCatching {
+            val json = JSONObject(decrypt(stored))
+            val account = json.optString("account")
+            val fetchedAt = json.optLong("fetchedAt")
+            if (fetchedAt <= 0L) return dropSnapshot()
+            SavedCampusCardSnapshot(
+                account = account,
+                cents = json.optLong("cents"),
+                pendingCents = json.optLong("pending"),
+                basis = json.optString("basis"),
+                cardName = json.optString("cardName"),
+                fetchedAt = fetchedAt,
+            )
+        }.getOrElse { dropSnapshot() }
+    }
+
+    @Synchronized
+    fun clearCampusCardSnapshot() {
+        prefs.edit().remove(KEY_CAMPUS_CARD_SNAPSHOT).apply()
+    }
+
+    private fun dropSnapshot(): SavedCampusCardSnapshot? {
+        prefs.edit().remove(KEY_CAMPUS_CARD_SNAPSHOT).apply()
+        return null
+    }
     // ── 唐岛湾电费会话表单 ────────────────────────────────────────────────
 
     @Synchronized
@@ -203,6 +266,7 @@ class SchoolSessionStore(
     }
 
     private fun dropCampusCard(): SavedCampusCardSession? {
+        // 令牌损坏时只丢令牌，保留上次成功值供离线参考（它有账号与时间，不会被误当成实时）。
         prefs.edit().remove(KEY_CAMPUS_CARD).apply()
         return null
     }
@@ -233,6 +297,7 @@ class SchoolSessionStore(
         private const val PREFS_NAME = "school_session"
         private const val KEY_LIBRARY = "library"
         private const val KEY_CAMPUS_CARD = "campus_card"
+        private const val KEY_CAMPUS_CARD_SNAPSHOT = "campus_card_snapshot"
         private const val KEY_POWER_FORM = "power_form"
     }
 }
