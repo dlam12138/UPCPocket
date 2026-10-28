@@ -205,18 +205,35 @@ internal fun allowedCampusCardUrl(url: String): Boolean {
     if (scheme == "http") {
         if (host != "mb-xyk.upc.edu.cn") return false
         val path = uri.path.orEmpty()
-        return path.startsWith("/plat") || path.startsWith("/berserker")
+        // 必须按**路径段**判断，不能用 startsWith 子串："/platform-evil" 也会命中 "/plat"。
+        val segments = path.trim('/').split('/').filter { it.isNotEmpty() }
+        return segments.firstOrNull() in setOf("plat", "plat-pc", "berserker")
+            || segments.firstOrNull()?.startsWith("berserker-") == true
     }
     return false
 }
 
 /** 从回跳 URL 的查询参数里读平台令牌；没有就返回 null。 */
 internal fun tokenFromUrl(url: String): String? {
-    val query = url.substringAfter('?', "").substringBefore('#')
-    if (query.isBlank()) return null
-    return query.split('&').firstNotNullOfOrNull { part ->
-        val name = part.substringBefore('=', "")
-        if (name != CampusCardProtocol.TOKEN_PARAM) return@firstNotNullOfOrNull null
-        part.substringAfter('=', "").takeIf { it.isNotBlank() }
+    if (url.isBlank()) return null
+    // 平台自己的解析器（dist 里的 getRequest）在 `?` 出现在 `#` **之后**时，
+    // 会去解析 `#` 后面的查询串。所以 #/query 与 ?query 两种形态都要认，
+    // 否则“登录成功却读不到令牌”会表现成令牌无效。
+    val candidates = buildList {
+        url.substringAfter('?', "").substringBefore('#').takeIf { it.isNotBlank() }?.let(::add)
+        val hash = url.substringAfter('#', "")
+        if (hash.contains('?')) add(hash.substringAfter('?'))
     }
+    candidates.forEach { query ->
+        query.split('&').forEach { part ->
+            val name = part.substringBefore('=', "")
+            if (name != CampusCardProtocol.TOKEN_PARAM) return@forEach
+            val raw = part.substringAfter('=', "")
+            if (raw.isBlank()) return@forEach
+            // 平台解析时会 decodeURIComponent；令牌里出现 %2B/ 等编码字符时不解码就会拿到坏值。
+            val decoded = runCatching { java.net.URLDecoder.decode(raw, "UTF-8") }.getOrDefault(raw)
+            if (decoded.isNotBlank()) return decoded
+        }
+    }
+    return null
 }
