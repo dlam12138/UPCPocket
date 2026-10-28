@@ -48,7 +48,7 @@ open class CampusCardClient(
             // 平台前端自己也会带这个来源标记；缺省时服务端按 h5 处理。
             connection.setRequestProperty("synAccessSource", "h5")
             if (!token.isNullOrBlank()) {
-                connection.setRequestProperty("synjones-auth", "bearer $token")
+                connection.setRequestProperty("synjones-auth", authorizationValue(token))
             }
             val status = connection.responseCode
             when (status) {
@@ -85,5 +85,23 @@ open class CampusCardClient(
 
     private companion object {
         const val MAX_RESPONSE_BYTES = 1024 * 1024
+
+
     }
+}
+/**
+ * 把令牌整理成 `bearer <token>`。
+ *
+ * 平台在 URL 里传递令牌时值可能是 `bearer xxx`（前端写过
+ * `"&synjones-auth=bearer "+this.token`），而页面路由守卫又把 URL 里的值直接当令牌用
+ * （`state.token || getRequest(...)["synjones-auth"]`）。两种形态都可能到我们手里；
+ * 先剥掉已有前缀再拼一次，避免生成 `bearer bearer xxx` 这种必然 401 的头。
+ */
+internal fun authorizationValue(raw: String): String {
+    var bare = raw.trim()
+    // 反复剥离：回调里可能出现 `bearer bearer xxx`（服务端与前端各加一次）。
+    while (bare.startsWith("bearer", ignoreCase = true)) {
+        bare = bare.substring(6).trim()
+    }
+    return "bearer $bare"
 }

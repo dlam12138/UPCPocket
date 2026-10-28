@@ -12,6 +12,15 @@ import org.junit.Test
  */
 class CampusCardProtocolTest {
 
+    @Test
+    fun `令牌自带 bearer 前缀时不会重复拼成 bearer bearer`() {
+        // 平台在 URL 里写过 `&synjones-auth=bearer xxx`；直接再拼一次必然 401。
+        assertEquals("bearer abc", authorizationValue("abc"))
+        assertEquals("bearer abc", authorizationValue("bearer abc"))
+        assertEquals("bearer abc", authorizationValue("Bearer   abc  "))
+        assertEquals("bearer abc", authorizationValue("bearer bearer abc"))
+    }
+
     private fun frontInfo(type: String) = """
         {"code":200,"success":true,"data":{
           "getFrontConfig":"{\"plat\":\"https://example.test/plat/\"}",
