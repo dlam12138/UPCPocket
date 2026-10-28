@@ -51,6 +51,14 @@ class CampusCardService(
 
     private var token: String? = null
 
+    /**
+     * 是否允许把令牌/余额快照写进磁盘。
+     *
+     * 由“记住学校登录”开关在接管令牌时决定，并在恢复时沿用；
+     * 关闭时内存里照常能用，但**不落盘**。
+     */
+    private var persistAllowed: Boolean = false
+
     /** 当前内存中的令牌（只读快照，供界面判断“是否有会话”，不用于展示）。 */
     fun hasSession(): Boolean = !token.isNullOrBlank()
 
@@ -85,7 +93,11 @@ class CampusCardService(
             }
             token = value
             _session.value = fetched
-            if (remember) store.saveCampusCard(value, account)
+            persistAllowed = remember
+            if (remember) {
+                store.saveCampusCard(value, account)
+                rememberSnapshot(fetched.toBalance())
+            }
             CampusCardAdoptResult.Accepted(fetched.toBalance())
         }
 
@@ -120,6 +132,7 @@ class CampusCardService(
         }
         token = saved.token
         _session.value = fetched
+        persistAllowed = true
         lastFailure = null
         // 服务端可能返回新的账号标识，刷新一次密文里的账号。
         if (account.isNotEmpty() && account != saved.account) store.saveCampusCard(saved.token, account)
@@ -136,8 +149,12 @@ class CampusCardService(
             val fetched = client.fetch(value)
             _session.value = fetched
             val account = fetched.cards.firstOrNull()?.account.orEmpty()
-            if (account.isNotEmpty()) store.saveCampusCard(value, account)
-            rememberSnapshot(fetched.toBalance())
+            // “记住登录”关闭时不留任何持久副本（令牌与余额快照都不写）；
+            // 否则用户以为关掉开关就没痕迹，实际上余额还躺在磁盘上。
+            if (persistAllowed) {
+                if (account.isNotEmpty()) store.saveCampusCard(value, account)
+                rememberSnapshot(fetched.toBalance())
+            }
             CampusCardOutcome.Success(fetched.toBalance())
         } catch (_: CampusCardSessionExpiredException) {
             signOut()
@@ -201,6 +218,7 @@ class CampusCardService(
         token = null
         _session.value = null
         lastFailure = null
+        persistAllowed = false
         store.clearCampusCard()
     }
 

@@ -178,6 +178,33 @@ class CampusCardServiceTest {
     }
 
     @Test
+    fun `关闭记住登录时不写令牌也不写余额快照`() = runTest {
+        val tokens = mutableMapOf("tok-a" to "9000000001")
+        val service = CampusCardService(store, FakeClient(tokens))
+        assertTrue(service.adoptToken("tok-a", remember = false) is CampusCardAdoptResult.Accepted)
+        // 内存里可用
+        assertTrue(service.refresh() is CampusCardOutcome.Success)
+        assertNotNull(service.snapshot())
+        // 但磁盘上什么都没有：开关含义必须真实。
+        assertNull(store.loadCampusCard())
+        assertNull(store.loadCampusCardSnapshot())
+        assertNull(service.lastSuccess())
+    }
+
+    @Test
+    fun `恢复的会话继续写快照_关闭开关后停止`() = runTest {
+        val tokens = mutableMapOf("tok-a" to "9000000001")
+        val first = CampusCardService(store, FakeClient(tokens))
+        assertTrue(first.adoptToken("tok-a", remember = true) is CampusCardAdoptResult.Accepted)
+        assertNotNull(store.loadCampusCardSnapshot())
+
+        // 重启后恢复：属于“记住登录”场景，后续查询仍应更新快照。
+        val restarted = CampusCardService(store, FakeClient(tokens))
+        assertTrue(restarted.restore())
+        assertTrue(restarted.refresh() is CampusCardOutcome.Success)
+        assertNotNull(store.loadCampusCardSnapshot())
+    }
+    @Test
     fun `上次成功值跨重启保留_并在退出时清掉`() = runTest {
         val tokens = mutableMapOf("tok-a" to "9000000001")
         val service = CampusCardService(store, FakeClient(tokens))
