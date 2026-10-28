@@ -68,6 +68,33 @@ class CampusCardLoginUrlTest {
     }
 
     @Test
+    fun `令牌在 hash 查询串里也能读到`() {
+        // 平台自己的 getRequest 在 `?` 位于 `#` 之后时会解析 `#` 后面的查询串。
+        assertEquals(
+            "abc",
+            tokenFromUrl("https://mb-xyk.upc.edu.cn/plat/#/loginTransit?synjones-auth=abc"),
+        )
+        assertEquals(
+            "xyz",
+            tokenFromUrl("https://mb-xyk.upc.edu.cn/plat-pc/#/?synjones-auth=xyz"),
+        )
+    }
+
+    @Test
+    fun `令牌的百分号编码会被解码`() {
+        // 未解码会把 %2B 当字面量发给服务端，表现为“令牌无效”。
+        assertEquals("a+b/c=", tokenFromUrl("https://mb-xyk.upc.edu.cn/plat/?synjones-auth=a%2Bb%2Fc%3D"))
+    }
+
+    @Test
+    fun `明文白名单按路径段判断_不会被子串骗过`() {
+        assertTrue(allowedCampusCardUrl("http://mb-xyk.upc.edu.cn/plat-pc/#/notfound"))
+        assertTrue(allowedCampusCardUrl("http://mb-xyk.upc.edu.cn/berserker-app/frontInfo"))
+        // 子串匹配会把下面这些也放行，这是典型的开放重定向面。
+        assertFalse(allowedCampusCardUrl("http://mb-xyk.upc.edu.cn/platform-evil/x"))
+        assertFalse(allowedCampusCardUrl("http://mb-xyk.upc.edu.cn/berserkerX/y"))
+    }
+    @Test
     fun `没有令牌参数时返回空_不把空值当登录成功`() {
         assertNull(tokenFromUrl("https://mb-xyk.upc.edu.cn/plat/"))
         assertNull(tokenFromUrl("https://mb-xyk.upc.edu.cn/plat/?synjones-auth="))
