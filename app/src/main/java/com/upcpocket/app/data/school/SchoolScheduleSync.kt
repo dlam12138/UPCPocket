@@ -29,6 +29,8 @@ object SchoolScheduleSync {
         schoolCurrentWeek: Int? = null,
         savedStart: LocalDate? = null,
         schoolTermStart: LocalDate? = null,
+        /** 学校服务端返回的第 1 周周一（网格端点的 weekdays[0]）。比任何推算都可信。 */
+        serverWeekOneStart: LocalDate? = null,
     ): SchoolSyncPlan {
         if (weeklyWeeks.size != term.totalWeeks) {
             throw SchoolScheduleFormatException(
@@ -39,6 +41,7 @@ object SchoolScheduleSync {
         val maxUnit = periods.maxOfOrNull { it.indexNo } ?: 0
         val (weekOneStart, dateSource) = when {
             savedStart != null -> savedStart to SchoolDateSource.SAVED
+            serverWeekOneStart != null -> serverWeekOneStart to SchoolDateSource.SERVER_DATES
             schoolTermStart != null -> schoolTermStart to SchoolDateSource.SCHOOL_PARAMS
             else -> weekOneStart(today, schoolCurrentWeek, term.totalWeeks)
                 ?.let { it to SchoolDateSource.DERIVED_CURRENT_WEEK }
@@ -174,6 +177,9 @@ enum class SchoolDateSource {
 
     /** 学校 params.startday（只观察到当前学期线索）。 */
     SCHOOL_PARAMS,
+
+    /** 课表接口自己返回的该周真实日期（`weekdays[0]`），最可信。 */
+    SERVER_DATES,
 
     /** 由“今天 + 学校当前教学周”反推。 */
     DERIVED_CURRENT_WEEK,

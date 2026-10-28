@@ -455,6 +455,9 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
     private var syncJob: Job? = null
     private var weekly: List<List<SchoolClassBlock>> = emptyList()
 
+    /** 每周第一天（周一）的**学校返回日期**；只有服务端给了日期才有值，否则为 null。 */
+    private var schoolWeekStarts: List<java.time.LocalDate?> = emptyList()
+
     val bridge = ScheduleDataBridge { id, payload -> onBridgePayload(id, payload) }
 
     private fun onBridgePayload(id: String, payload: String) {
@@ -592,23 +595,28 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
         )
         syncJob = viewModelScope.launch {
             val weeks = ArrayList<List<SchoolClassBlock>>()
+            val weekDates = ArrayList<java.time.LocalDate?>()
             try {
                 for (week in 1..selected.totalWeeks) {
                     ui = ui.copy(progress = (week - 1) to selected.totalWeeks)
                     val body = withTimeout(25_000) {
                         fetch(
-                            SchoolScheduleProtocol.DATA_PATH,
+                            // weekschedule 页面自己用的端点：网格 + 该周真实日期。
+                            SchoolScheduleProtocol.GRID_PATH,
                             "POST",
                             "year=${enc(selected.year)}&term=${enc(selected.term)}" +
-                                "&week=$week&type=1",
+                                "&week=$week&type=${SchoolScheduleProtocol.GRID_TYPE}",
                         )
                     }
-                    weeks += withContext(Dispatchers.Default) {
-                        SchoolScheduleProtocol.parseWeek(body, week)
+                    val parsed = withContext(Dispatchers.Default) {
+                        SchoolScheduleProtocol.parseGridWeek(body, week)
                     }
+                    weeks += parsed.blocks
+                    weekDates += parsed.dates?.firstOrNull()
                     ui = ui.copy(progress = week to selected.totalWeeks)
                 }
                 weekly = weeks
+                schoolWeekStarts = weekDates
                 plan(selected)
             } catch (e: Exception) {
                 fail(e, fromTerm = true)
@@ -620,6 +628,12 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
         val periods = repo.periods()
         val saved = repo.semesterByCode(selected.key)
         val isCurrentTerm = ui.page?.current?.key == selected.key
+        // 学校这次是否给了每周的真实日期（跨两周比对，避免单周偶发缺字段被当成有效）。
+        val firstWeekStart = schoolWeekStarts.firstOrNull()
+        val secondWeekStart = schoolWeekStarts.getOrNull(1)
+        val serverWeekOneStart = firstWeekStart?.takeIf {
+            secondWeekStart == null || secondWeekStart.isAfter(firstWeekStart)
+        }
         try {
             val plan = withContext(Dispatchers.Default) {
                 SchoolScheduleSync.build(
@@ -629,6 +643,8 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
                     // 只有确认所选学期就是学校当前学期，才允许用当前周/当前学期字段推算日期。
                     schoolCurrentWeek = if (isCurrentTerm) ui.page?.currentWeek else null,
                     schoolTermStart = if (isCurrentTerm) ui.page?.currentTermStart else null,
+                    // 服务端返回的真实第 1 周周一，优先于任何推算。
+                    serverWeekOneStart = serverWeekOneStart,
                     // 已有本地日期（用户可能校正过）优先，重复同步不会改回推算值。
                     savedStart = saved?.startDate,
                 )
@@ -757,8 +773,13 @@ internal class SchoolScheduleSyncViewModel : ViewModel() {
     }
 
     private suspend fun fetch(path: String, method: String, body: String?): String {
-        if (path != SchoolScheduleProtocol.INDEX_PATH && path != SchoolScheduleProtocol.DATA_PATH) {
-            throw SchoolScheduleException("只允许读取两个固定的课表端点")
+        // 固定白名单：学期列表 + weekschedule 实际使用的网格端点。多一个都不行。
+        val allowed = setOf(
+            SchoolScheduleProtocol.INDEX_PATH to "GET",
+            SchoolScheduleProtocol.GRID_PATH to "POST",
+        )
+        if (allowed.none { it.first == path && it.second == method }) {
+            throw SchoolScheduleException("只允许读取固定的课表端点")
         }
         val view = webView ?: throw SchoolScheduleException("登录页面尚未准备好")
         val id = UUID.randomUUID().toString()
@@ -831,6 +852,7 @@ private const val MAX_BRIDGE_PAYLOAD = 2 * 1024 * 1024
 
 private fun dateSourceLabel(source: SchoolDateSource): String = when (source) {
     SchoolDateSource.SAVED -> "本地已保存的开学日（重复同步不会改回推算值）"
+    SchoolDateSource.SERVER_DATES -> "学校课表接口返回的第 1 周日期"
     SchoolDateSource.SCHOOL_PARAMS -> "学校 params.startday（当前学期线索，写入前请核对）"
     SchoolDateSource.DERIVED_CURRENT_WEEK -> "由学校当前教学周推算"
     SchoolDateSource.USER_CONFIRMED -> "你确认的日期"

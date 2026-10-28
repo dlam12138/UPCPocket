@@ -34,6 +34,20 @@ internal object SchoolScheduleProtocol {
     const val INDEX_PATH = "/timetable/wap/default/get-index"
     const val DATA_PATH = "/timetable/wap/default/get-data"
 
+    /**
+     * `weekschedule` 页面**实际**使用的端点。
+     *
+     * 2026-10-28 读取学校自己发布的前端包确认：
+     *  - `/site/weekschedule/` 组件（chunk 331）提交 `scheduleLists` → `get-datatmp`，`type=2`；
+     *  - `get-data` + `type=1` 属于另一个 `schedule` 页面（chunk 427）。
+     * 两者返回结构不同：`get-datatmp` 是「一天一格的网格 + 该周真实日期」，
+     * `get-data` 是「一条课一行」。同步必须用前者的日期，不能拿今天反推。
+     */
+    const val GRID_PATH = "/timetable/wap/default/get-datatmp"
+
+    /** 与页面一致：`weekschedule` 用 type=2 拿网格。 */
+    const val GRID_TYPE = 2
+
     /** 学校页面组件最多 14 个节次槽（公开前端的时间表也是 14 项）。 */
     const val MAX_UNITS = 14
 
@@ -78,6 +92,72 @@ internal object SchoolScheduleProtocol {
         )
     }
 
+    /**
+     * 解析 `weekschedule` 实际使用的网格响应（`get-datatmp`、`type=2`）。
+     *
+     * 真实结构（学校前端 chunk 331 的 `reorganizeScheduleData` 为证）：
+     *   {"e":0,"d":{"weekdays":["2026-10-26", ...该周 7 天真实日期],
+     *               "classes":[{"c_1":[{"course_name":...,"totalLength":2}]}, {}, ...]}}
+     *
+     * `classes[]` 的**下标 0 是周一**，每个元素是一天，键是 `c_<起始节次>`。
+     * 页面用 `weekdays` 显示日期、用 `c_N` 定位单元格，所以这里按同一套语义解析：
+     *  - 有 `weekdays` 时**必须**能对出 7 个合法日期，并以它为这一周的日期来源；
+     *  - 下标 → 星期几（1=周一）是页面自己的约定，不再另外猜；
+     *  - 空数组/空对象是合法空天；非数组、非对象、节次越界一律报错。
+     */
+    fun parseGridWeek(body: String, week: Int): GridWeek {
+        val data = successData(body, "第 $week 周课表")
+        val rawDays = data["classes"] as? JsonArray
+            ?: fail("第 $week 周的课表缺少 classes 数组，不能确认本周是否为空")
+        val dates = (data["weekdays"] as? JsonArray)?.map { element ->
+            val text = (element as? JsonPrimitive)?.contentOrNull?.trim()
+                ?: fail("第 $week 周的 weekdays 里有非文本项")
+            runCatching { java.time.LocalDate.parse(text.take(10)) }.getOrNull()
+                ?: fail("第 $week 周的 weekdays 日期无法解析：$text")
+        }
+        if (dates != null && dates.size != 7) {
+            fail("第 $week 周的 weekdays 不是 7 天（${dates.size}），不能确定每天对应哪一天")
+        }
+        val blocks = ArrayList<SchoolClassBlock>()
+        rawDays.forEachIndexed { dayIndex, dayElement ->
+            if (dayIndex > 6) fail("第 $week 周的 classes 超过 7 天")
+            val day = dayElement as? JsonObject ?: fail("第 $week 周第 ${dayIndex + 1} 天不是对象")
+            val weekday = dayIndex + 1
+            day.forEach { (key, value) ->
+                val match = UNIT_KEY.find(key) ?: fail("第 $week 周出现无法识别的节次键：$key")
+                val startUnit = match.groupValues[1].toInt()
+                if (startUnit !in 1..MAX_UNITS) {
+                    fail("第 $week 周《$key》的起始节次 $startUnit 超出 1–$MAX_UNITS")
+                }
+                val entries = value as? JsonArray ?: fail("第 $week 周《$key》不是数组")
+                entries.forEach { item ->
+                    val obj = item as? JsonObject ?: fail("第 $week 周《$key》存在非对象课程")
+                    val name = stringOf(obj, "course_name")?.takeIf { it.isNotBlank() }
+                        ?: return@forEach  // 页面本身会跳过空课程名
+                    val length = intOf(obj, "totalLength")?.takeIf { it in 1..MAX_UNITS }
+                    val endUnit = (startUnit + (length ?: 1) - 1).coerceAtMost(MAX_UNITS)
+                    blocks += SchoolClassBlock(
+                        name = name,
+                        weekday = weekday,
+                        startUnit = startUnit,
+                        endUnit = endUnit,
+                        teacher = stringOf(obj, "teacher")?.takeIf { it.isNotBlank() },
+                        room = stringOf(obj, "location")?.takeIf { it.isNotBlank() },
+                        courseId = stringOf(obj, "course_id")?.takeIf { it.isNotBlank() },
+                    )
+                }
+            }
+        }
+        return GridWeek(dates = dates, blocks = blocks)
+    }
+
+    /** 网格响应里这一周的结构化结果；[dates] 为空表示学校没给日期，不能反推。 */
+    data class GridWeek(
+        val dates: List<java.time.LocalDate>?,
+        val blocks: List<SchoolClassBlock>,
+    )
+
+    private val UNIT_KEY = Regex("^c_(\\d{1,2})$")
     /**
      * 解析某一周。返回按「连续节次」拆好的课程块；[week] 只用于错误信息。
      * 该周没有课是正常结果（空列表），结构不符则抛错。
