@@ -26,7 +26,7 @@ class UpcPocketApp : Application() {
         AppGraph.init(this)
         AppGraph.pomodoroNotifications.ensureChannels()
 
-        // 仅调试包开启 WebView 远程调试，便于核对图书馆/校园卡的官方登录页；
+        // 仅调试包开启 WebView 远程调试，便于核对图书馆的官方登录页；
         // release 包不会开启，也不暴露任何页面内容。
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 

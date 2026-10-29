@@ -10,6 +10,7 @@ package com.upcpocket.app.data.local
  *     原生页面，其余交外部浏览器或微信。
  *
  * 轻量版已移除课表（教务）入口：应用内不再有课表导入、展示或同步。
+ * 第二步又移除了「图书馆主页」与「数字石大」两个外部入口；图书馆只保留原生座位预约。
  *
  * ⚠️ 这里的 [Entry.title] / [Entry.scope] / [Entry.note] 会**直接显示在界面上**，
  * Compose 不解析 Markdown —— 不要在里面写 **加粗** 或反引号，否则星号会原样上屏
@@ -37,7 +38,7 @@ object CampusServices {
         /** 公网可访问，通常不需要登录 */
         PUBLIC("公网可访问"),
 
-        /** 需要统一身份认证（数字石大 / CAS）。App 不代填，跳过去由用户自己登录 */
+        /** 需要统一身份认证（CAS）。App 不代填，跳过去由用户自己登录 */
         CAS("需统一认证登录"),
 
         /** 校园网内才稳定可用；校外可能超时或 503 */
@@ -103,17 +104,6 @@ object CampusServices {
             updatedNote = "地址来自总体计划书第 4 节；图书馆官网把该地址列为座位预约入口。" +
                 "2026-10-27 核验公开前端启用 CAS 与会话签名。",
         ),
-        Entry(
-            id = "library",
-            title = "图书馆主页",
-            subtitle = "检索 · 借阅 · 数据库",
-            campus = Campus.BOTH,
-            access = Access.PUBLIC,
-            url = "https://library.upc.edu.cn/",
-            scope = "图书馆总入口：馆藏检索、数据库、开馆时间、两校区馆舍信息。",
-            note = "数据库等资源通常需要校园网或登录后使用。",
-            updatedNote = "学校图书馆官网首页。",
-        ),
     )
 
     /** 生活与办事类入口 */
@@ -154,25 +144,15 @@ object CampusServices {
         ),
         Entry(
             id = "ecard",
-            title = "校园卡余额与流水",
-            subtitle = "本人学号查余额 · 流水另需会话",
+            title = "校园卡余额",
+            subtitle = "本人学号 · 校园卡与过渡余额",
             campus = Campus.BOTH,
             access = Access.PUBLIC,
             url = "http://jhzf.upc.edu.cn:20081/wechat/query/balance.html",
             scope = "输入本人学号查询校园卡余额与过渡余额，两项分别展示。",
-            note = "余额直接在 App 查询，无需先登录微信；不提供充值。流水需要单独的有效会话，当前平台登录方案仍待手机验证。",
-            updatedNote = "2026-10-28 用户提供已实测方法：getCardInfo 接收本人学号；余额快照保存在本机，不把入口页无效 token 推断为余额接口不可用。",
-        ),
-        Entry(
-            id = "portal",
-            title = "数字石大",
-            subtitle = "统一门户 · 办事大厅",
-            campus = Campus.BOTH,
-            access = Access.CAS,
-            url = "https://i.upc.edu.cn/",
-            scope = "学校的统一门户：两校区通用的办事、通知、各业务系统入口都在这里。",
-            note = "App 不接入 CAS，不做单点登录代理；账号密码只输在学校自己的页面上。",
-            updatedNote = "学校门户地址；未登录访问会跳转统一认证。",
+            note = "余额直接在 App 查询，不需要登录微信；不提供充值。",
+            updatedNote = "2026-10-28 用户提供已实测方法：getCardInfo 接收本人学号；余额快照保存在本机。" +
+                "2026-10-29 复核：本版只保留按学号查询余额。",
         ),
     )
 

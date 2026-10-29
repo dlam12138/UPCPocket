@@ -25,13 +25,13 @@ class CampusServicesTest {
     }
 
     @Test
-    fun `校园卡提供本人余额与流水但不充值`() {
+    fun `校园卡只提供本人余额查询且不需要平台登录`() {
         val card = CampusServices.ALL.single { it.id == "ecard" }
-        assertEquals("校园卡余额与流水", card.title)
+        assertEquals("校园卡余额", card.title)
         assertEquals("http://jhzf.upc.edu.cn:20081/wechat/query/balance.html", card.url)
         assertEquals(CampusServices.Access.PUBLIC, card.access)
-        assertTrue(card.subtitle.contains("流水"))
-        assertTrue(card.note.contains("流水"))
+        assertTrue(card.subtitle.contains("过渡余额"))
+        assertTrue(card.note.contains("不需要登录"))
         assertTrue(card.note.contains("不提供充值"))
         assertTrue(card.scope.contains("过渡余额"))
     }

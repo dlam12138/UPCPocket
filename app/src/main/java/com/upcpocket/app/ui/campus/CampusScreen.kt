@@ -42,7 +42,7 @@ import kotlinx.coroutines.launch
 /**
  * 「更多」= 设置与信息入口页。
  *
- * 轻量版保留：学习统计、学校登录开关、外观、关于。
+ * 轻量版保留：学习统计、学校登录开关（只服务图书馆座位）、外观、关于。
  * 课表设置的入口（教学周、节次、演示数据、显示样式）已随课表功能一起删除。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,8 +84,9 @@ fun CampusScreen(
                     headlineContent = { Text("记住学校登录") },
                     supportingContent = {
                         Text(
-                            "图书馆 token 与校园卡令牌用 Android Keystore 加密保存（不随系统备份）。" +
-                                "关闭或退出会清理持久副本与 UPC 业务 Cookie。",
+                            "目前只有图书馆座位会话需要登录：开启后 token 用 Android Keystore 加密保存" +
+                                "（不随系统备份）；关闭或退出会清理持久副本与 UPC 业务 Cookie。" +
+                                "校园卡余额不需要登录。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -99,7 +100,6 @@ fun CampusScreen(
                                     if (!enabled) {
                                         AppGraph.schoolSessionStore.clear()
                                         AppGraph.librarySeatRepository.clearSession()
-                                        AppGraph.campusCardService.signOut()
                                         SchoolWebCookies.clearAllSchoolCookies()
                                     }
                                 }
@@ -116,27 +116,17 @@ fun CampusScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                Text(
-                    "校园卡平台会话（余额查询不需要）：" + (
-                        if (AppGraph.campusCardService.hasSession()) "内存中（已登录）"
-                        else "未登录"
-                        ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
                 TextButton(
                     onClick = {
                         scope.launch {
                             AppGraph.uiPrefsStore.setRememberSchoolLogin(false)
                             AppGraph.schoolSessionStore.clear()
                             AppGraph.librarySeatRepository.clearSession()
-                            AppGraph.campusCardService.signOut()
                             SchoolWebCookies.clearAllSchoolCookies()
                         }
                     },
                     modifier = Modifier.padding(horizontal = 8.dp),
-                ) { Text("退出学校登录（清理图书馆与校园卡会话）") }
+                ) { Text("退出学校登录（清理图书馆会话与学校 Cookie）") }
             }
 
             GroupTitle("外观")

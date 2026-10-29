@@ -45,7 +45,6 @@ import androidx.navigation.compose.rememberNavController
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
 import com.upcpocket.app.ui.classroom.FreeClassroomScreen
-import com.upcpocket.app.ui.ecard.CampusCardLoginScreen
 import com.upcpocket.app.ui.ecard.CampusCardScreen
 import com.upcpocket.app.ui.focus.FocusScreen
 import com.upcpocket.app.ui.focus.FocusStatsScreen
@@ -139,16 +138,7 @@ fun AppNav() {
                         )
                     }
                     composable(AppRoutes.CAMPUS_CARD) {
-                        CampusCardScreen(
-                            onBack = { navController.popBackStack() },
-                            onLogin = { navController.navigate(AppRoutes.CAMPUS_CARD_LOGIN) },
-                        )
-                    }
-                    composable(AppRoutes.CAMPUS_CARD_LOGIN) {
-                        CampusCardLoginScreen(
-                            onBack = { navController.popBackStack() },
-                            onLoggedIn = { navController.popBackStack() },
-                        )
+                        CampusCardScreen(onBack = { navController.popBackStack() })
                     }
                     composable(AppRoutes.POWER_TANGDAOWAN) {
                         TangdaowanElectricityScreen(onBack = { navController.popBackStack() })

@@ -44,14 +44,11 @@ internal fun isNativeSchoolAuthUrl(url: String): Boolean {
     val uri = runCatching { URI(url) }.getOrNull() ?: return false
     if (uri.rawUserInfo != null) return false
     val https = uri.scheme.equals("https", true) && uri.port in setOf(-1, 443)
-    val http = uri.scheme.equals("http", true) && uri.port in setOf(-1, 80)
     return when (uri.host?.lowercase()) {
+        // 图书馆座位是当前唯一走原生登录的业务；校园卡余额不登录。
         "libspace.upc.edu.cn" -> https &&
             (uri.path == "/remote/static/sso/login" ||
                 uri.path == "/remote/static/casAuth/getServiceByVerifyTicket/casLogin")
-        "mb-xyk.upc.edu.cn" -> (https || http) &&
-            (uri.path == "/berserker-auth/cas/redirect/wislearn" ||
-                uri.path == "/berserker-auth/cas/login/wislearn")
         else -> false
     }
 }

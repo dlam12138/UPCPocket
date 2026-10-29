@@ -103,7 +103,7 @@ fun LibrarySeatScreen(
             if (saved != null) {
                 runCatching { repo.adoptSeatToken(saved.token) }
                     .onFailure {
-                        // 只清图书馆这一份；课前/校园卡等其他业务的密文不动。
+                        // 只清图书馆这一份；其它业务的密文不动。
                         AppGraph.schoolSessionStore.clearLibrary()
                         repo.clearSession()
                     }
@@ -342,7 +342,7 @@ fun LibrarySeatScreen(
                 Text(
                     "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。" +
                         "当前版本登录 token 只在本次运行内存中，退出登录会清除；不保存密码、" +
-                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉校园卡或统一认证的登录状态。",
+                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉统一认证或其它业务的登录状态。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -943,7 +943,7 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
         else -> message ?: javaClass.simpleName
     }
 
-    /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动校园卡令牌。 */
+    /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动其它业务。 */
     fun logout() {
         repo.clearSession()
         AppGraph.schoolSessionStore.clearLibrary()

@@ -1,6 +1,5 @@
 package com.upcpocket.app.data.power
 
-import com.upcpocket.app.data.ecard.CampusCardSessionExpiredException
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -92,14 +91,12 @@ class TangdaowanElectricityClient(
             connection.requestMethod = "GET"
             when (val status = connection.responseCode) {
                 in 200..299 -> Unit
-                in 300..399 -> throw CampusCardSessionExpiredException("学校电费页面要求先完成微信授权")
+                in 300..399 -> throw ElectricityException("学校电费页面要求先完成微信授权，当前无法直接查询")
                 else -> throw ElectricityException("电费查询暂时不可用（HTTP $status）")
             }
             return connection.inputStream.use { read(it) }
         } catch (e: ElectricityException) {
             throw e
-        } catch (e: CampusCardSessionExpiredException) {
-            throw ElectricityException("学校电费页面要求先完成微信授权，当前无法直接查询", e)
         } catch (e: ElectricityProtocol.PageException) {
             throw ElectricityException(e.message ?: "电费页面解析失败", e)
         } catch (e: IOException) {

@@ -102,7 +102,7 @@ fun HomeScreen(
             title = { Text("通过微信打开 · ${entry.title}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("将链接复制或分享到微信，再由你点击打开。不会自动发消息，也不会读取微信中的余额。")
+                    Text("将链接复制或分享到微信，再由你点击打开。不会自动发消息，也不会读取微信中的任何数据。")
                     Text("如果页面提示登录失效或无效 token，请从学校公众号的服务菜单进入；仅打开微信不能补齐学校的认证。")
                     if (WeChatDirect.isConfigured()) {
                         TextButton(onClick = {
@@ -110,7 +110,7 @@ fun HomeScreen(
                             val message = when (result) {
                                 WeChatSendResult.Sent ->
                                     "已向微信发送请求。请在微信里确认是否进入目标页，并完成学校认证；" +
-                                        "发送成功不等于余额查询成功。"
+                                        "发送成功不等于页面查询成功。"
                                 WeChatSendResult.WeChatNotInstalled -> "未安装微信，已保留复制/分享兜底。"
                                 WeChatSendResult.NotConfigured -> "未配置正式移动应用 AppID，直达不可用。"
                                 WeChatSendResult.RegistrationFailed -> "微信 SDK 注册失败，请核对 AppID、包名与签名。"
@@ -176,7 +176,7 @@ fun HomeScreen(
                     Text(
                         text = "空闲教室、图书馆座位、校园卡余额、唐岛湾剩余电量都在 App 内原生查询；" +
                             "校园卡余额输入本人学号，图书馆用学校官方登录，唐岛湾电费按楼号＋房间号查询。" +
-                            "开启“记住登录”时，图书馆 token 与校园卡令牌才用 Keystore 加密保存。" +
+                            "开启“记住登录”时，只有图书馆 token 用 Keystore 加密保存；校园卡余额不需要登录。" +
                             "不提供充值。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,

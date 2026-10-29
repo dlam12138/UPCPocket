@@ -2,7 +2,6 @@ package com.upcpocket.app.core
 
 import android.content.Context
 import com.upcpocket.app.data.db.AppDatabase
-import com.upcpocket.app.data.ecard.CampusCardService
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.power.TangdaowanElectricityService
 import com.upcpocket.app.data.prefs.FocusPrefsStore
@@ -20,7 +19,7 @@ import kotlinx.serialization.json.Json
  *  - 番茄钟：数据库、偏好、前台计时；
  *  - 空闲教室：公开查询；
  *  - 图书馆座位：学校官方 CAS 登录后的内存会话；
- *  - 校园卡余额/流水：官方登录换来的平台令牌；
+ *  - 校园卡余额：输入本人学号直接读取学校余额接口，不需要平台登录；
  *  - 唐岛湾宿舍剩余电量：无需登录的只读页面查询。
  *
  * 课表（教务导入、旧学校同步、CSV 导入、展示编辑、桌面组件）已整体删除，
@@ -56,20 +55,12 @@ object AppGraph {
      */
     val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
 
-    /**
-     * 校园卡余额：登录由学校官方页面完成，令牌由 [CampusCardService] 持有，
-     * 开启“记住登录”时才写入 Keystore 密文。
-     */
-    val campusCardService: CampusCardService by lazy {
-        CampusCardService(schoolSessionStore)
-    }
-
     /** 唐岛湾宿舍剩余电量：无需登录的只读查询，不保存房间号。 */
     val tangdaowanElectricityService: TangdaowanElectricityService by lazy {
         TangdaowanElectricityService()
     }
 
-    /** “记住登录”的加密持久副本（图书馆 token / 校园卡令牌）。 */
+    /** “记住登录”的加密持久副本（目前只有图书馆座位 token）。 */
     val schoolSessionStore: SchoolSessionStore by lazy { SchoolSessionStore(appContext) }
 
     val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }

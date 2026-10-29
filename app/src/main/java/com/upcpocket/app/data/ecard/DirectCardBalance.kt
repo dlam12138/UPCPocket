@@ -12,6 +12,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
+/**
+ * 校园卡余额查询的业务异常。
+ *
+ * 轻量版第二步删除了平台登录与流水，这个异常仍被余额查询的传输/解析使用，
+ * 因此保留在余额实现文件里（原先定义在已删除的平台客户端中）。
+ */
+class CampusCardException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+
 /** Contract supplied in 用户资料“石大校园卡余额查询实现方法”; no authenticated-session claim. */
 object DirectCardBalanceProtocol {
     const val ENDPOINT = "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html"

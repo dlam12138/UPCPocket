@@ -42,8 +42,8 @@ data class UiPrefs(
     /** 深浅色（默认跟随系统） */
     val darkMode: DarkMode = DarkMode.SYSTEM,
     /**
-     * 记住学校登录：把各业务自己签发的可复用凭据（图书馆 token、校园卡令牌）
-     * 用 Keystore 加密保存。默认关闭。关闭或“退出学校登录”会清理持久副本。
+     * 记住学校登录：把图书馆座位业务签发的 token 用 Keystore 加密保存。
+     * 默认关闭。关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
      */
     val rememberSchoolLogin: Boolean = false,
     /**
@@ -93,7 +93,7 @@ class UiPrefsStore(context: Context) {
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
 
-        /** 记住学校登录（图书馆 token / 校园卡令牌加密保存） */
+        /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")
 
         /** 唐岛湾电费上次选的楼号（不含房间号） */
