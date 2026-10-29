@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "school": {
+    "id": "upc",
+    "name": "中国石油大学（华东）"
+  },
+  "scope": "development_catalog_not_runtime_api_configuration",
+  "release": "v0.2.7",
+  "entries": [
+    {
+      "id": "free_classroom",
+      "name": "空闲教室",
+      "campus": null,
+      "url": "https://app.upc.edu.cn/freeclass/wap/default/all",
+      "integration": "native_query"
+    },
+    {
+      "id": "electricity_tangdaowan",
+      "name": "唐岛湾剩余电量",
+      "campus": "唐岛湾",
+      "url": "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
+      "integration": "native_query"
+    },
+    {
+      "id": "electricity_guzhenkou",
+      "name": "古镇口电费",
+      "campus": "古镇口",
+      "url": "https://gzkdf.upc.edu.cn/acmswx/index.aspx",
+      "integration": "official_external_page"
+    },
+    {
+      "id": "library_seat",
+      "name": "图书馆座位",
+      "campus": null,
+      "url": "https://libspace.upc.edu.cn/libseat/",
+      "integration": "official_login_native_business"
+    },
+    {
+      "id": "campus_card_balance",
+      "name": "校园卡余额",
+      "campus": null,
+      "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
+      "integration": "native_read_only_balance"
+    }
+  ]
+}

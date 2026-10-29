@@ -1,6 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android 12 以下使用的备份规则：当前不排除任何内容，凭据另存在 EncryptedSharedPreferences，
-     是否纳入备份由导入导出功能负责（本地数据以 JSON 导出为准）。 -->
+<!--
+  Android 12 以下的备份规则。
+
+  ⚠️ 这里**排除**数据库与偏好，与 README 的"数据只在本机、不上传"保持一致。
+
+  为什么不能只靠"没有 INTERNET 权限"：系统备份是**操作系统**代劳的，由设备上的备份服务
+  （Google Drive / 厂商云）上传，完全不经过本应用的网络栈。只要 allowBackup=true 且没有
+  排除规则，本机数据就会被系统传走 —— 应用自己有没有网络权限都拦不住。
+
+  取舍：本原型的目标是"数据只留在本机"。跨设备自动迁移的价值，小于"以为没上传、其实上传了"
+  的风险，所以选择排除，而不是在文案里补免责说明。
+-->
 <full-backup-content>
-    <exclude domain="sharedpref" path="secure_prefs.xml" />
+    <exclude domain="root" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="external" path="." />
+    <exclude domain="device_root" path="." />
+    <exclude domain="device_database" path="." />
+    <exclude domain="device_sharedpref" path="." />
+    <exclude domain="device_file" path="." />
 </full-backup-content>

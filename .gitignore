@@ -16,3 +16,15 @@ app/schemas/
 *.aab
 *.jks
 *.keystore
+
+
+# Local-only archives, attachments and generated release artifacts
+/.local/
+/.lody/
+/artifacts/
+/release/
+/官方入口.txt
+*.hprof
+*.db
+*.db-shm
+*.db-wal

@@ -1,4 +1,4 @@
-﻿import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
 // ── 签名 ───────────────────────────────────────────────────────────────
@@ -12,6 +12,15 @@ val keystoreProps = Properties().apply {
 val releaseStoreFile = keystoreProps.getProperty("storeFile")?.let { file(it) }
 val hasReleaseSigning = releaseStoreFile?.exists() == true
 
+// 微信开放平台移动应用 AppID。没有正式 AppID 时保持空字符串：界面只显示
+// 复制/分享兜底，不发送 SDK 请求，也不伪造“直达成功”。可写在 gitignore 的
+// keystore.properties 或本机 ~/.gradle/gradle.properties（wechatAppId=wx...）。
+val wechatAppId = (keystoreProps.getProperty("wechatAppId")
+    ?: providers.gradleProperty("wechatAppId").orNull)
+    ?.trim()
+    ?.takeIf { it.matches(Regex("wx[0-9a-f]{16}")) }
+    .orEmpty()
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -21,24 +30,28 @@ plugins {
 }
 
 android {
-    namespace = "com.zzupocket.app"
+    // ⚠️ 包名与应用标识都是 **UPC Pocket**，不是上游的 com.zzupocket.app。
+    // 这是两个不同的应用：改成自己的标识之后，上游的包不会被覆盖安装，
+    // 上游的数据库/令牌文件也不会被本应用读到（两者数据语义完全不同）。
+    namespace = "com.upcpocket.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.zzupocket.app"
+        applicationId = "com.upcpocket.app"
         minSdk = 31
         targetSdk = 36
-        versionCode = 97
-        // 版本号不带 -P6 那种阶段后缀（阶段划分是 docs 的事）；预发行用标准 rc 标记（如 0.33.0-rc1），
-        // AppUpdate.compareVersions 对它有专门规则：rc < 同号正式版，正式版发布后已装 rc 的用户能看到红点。
-        // ⚠️ 升级判断只认 versionCode（Android 的规则），versionName 是给人看的；
-        // 所以改名号（哪怕是"变小"的数字）都不会影响覆盖安装，每次发版 versionCode 必须 +1。
-        versionName = "0.33.1"
+        // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）。
+        // 轻量版在 0.1.10（code 11）之上递增，保证覆盖安装不会触发降级。
+        // 第二步在 0.2.0（code 12）之上继续递增；第三步 0.2.2 / code 14；
+        // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
+        versionCode = 19
+        versionName = "0.2.7-lightly-preview"
+        buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
     }
 
     signingConfigs {
         if (hasReleaseSigning) {
-            create("zzupocket") {
+            create("upcpocket") {
                 storeFile = releaseStoreFile
                 storePassword = keystoreProps.getProperty("storePassword")
                 keyAlias = keystoreProps.getProperty("keyAlias")
@@ -49,7 +62,7 @@ android {
 
     buildTypes {
         debug {
-            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("zzupocket")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("upcpocket")
         }
         release {
             isMinifyEnabled = true
@@ -59,7 +72,7 @@ android {
                 "proguard-rules.pro",
             )
             if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("zzupocket")
+                signingConfig = signingConfigs.getByName("upcpocket")
             } else {
                 logger.lifecycle("⚠️ 未找到 keystore.properties，release 包将使用 debug 签名")
                 signingConfig = signingConfigs.getByName("debug")
@@ -75,6 +88,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric 需要真实的资源与清单（Room 的 schema 校验、Context 都依赖它们）
+            isIncludeAndroidResources = true
+        }
     }
 
     packaging {
@@ -104,9 +124,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.android)
 
-    // 定时采样电量：学校不提供历史用电量，只能靠自己按点采样差分（每 4 小时一次）
-    implementation(libs.androidx.work.runtime.ktx)
-
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
@@ -119,9 +136,8 @@ dependencies {
     // Material You 配色生成（由种子色算出整套 M3 浅/深配色，见 ui/theme/MaterialYouScheme.kt）
     implementation(libs.material.color.utilities)
 
-    // 网络（不用 Retrofit：接口少，且 CAS 登录的 POST 走 query string，裸 OkHttp 更直接）
-    implementation(libs.okhttp)
-    implementation(libs.okhttp.logging)
+    // 本地序列化：番茄钟快照（FocusPrefsStore）用 kotlinx.serialization 落 DataStore。
+    // 公开空闲教室查询使用平台 HTTPS 客户端；不引入认证客户端或后台轮询依赖。
     implementation(libs.kotlinx.serialization.json)
 
     // 本地存储
@@ -129,8 +145,22 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.security.crypto)
+    implementation(libs.wechat.sdk)
+
+    // 桌面小组件：只有用户点刷新时才入队一次性联网任务；没有周期任务，也没有后台轮询。
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // 已移除的上游依赖，当前功能不需要：
+    //  · androidx.security.crypto（上游用它存 CAS 令牌；本原型不保存任何凭据）
+    //  · okhttp / okhttp-logging（本原型不访问校园系统）
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    // 真实 Room（内存 SQLite）+ Android 运行时。
+    // 为什么需要：日程换类型、作息改动这类缺陷只在**真的读写数据库**时才暴露 ——
+    // "旧行有没有被清掉"用纯函数测不出来（见 ScheduleRepositoryPlanKindTest）。
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.room.testing)
 }

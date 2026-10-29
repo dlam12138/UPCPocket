@@ -1,11 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  应用图标前景：一个简化的「U」+ 一条信息横线，代表"校园信息与专注工具"。
+
+  刻意**不使用**任何校徽、校名缩写或官方标识 —— 本项目是非官方原型，
+  借用学校标识会暗示得到授权（总体计划书 §2「明确不做」）。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- 简化的 "Z" 字标，落在自适应图标 72dp 安全区内 -->
+    <!-- U 形描边，落在自适应图标 72dp 安全区内 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M40,34 L40,56 C40,66 46,72 54,72 C62,72 68,66 68,56 L68,34" />
+    <!-- 一条信息横线，压在 U 的开口里 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M38,38 L70,38 L70,46 L52,66 L70,66 L70,74 L38,74 L38,66 L56,46 L38,46 Z" />
+        android:pathData="M46,44 L62,44 L62,49 L46,49 Z" />
 </vector>

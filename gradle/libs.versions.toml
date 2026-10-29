@@ -19,6 +19,10 @@ work = "2.10.0"
 vico = "2.0.0-beta.2"
 # Material You 配色生成：Google material-color-utilities 的 Kotlin 移植（MIT）
 materialColorUtilities = "2.0.0"
+# 单元测试用的真实 Room（Robolectric 提供 Android 运行时，跑内存 SQLite）
+robolectric = "4.14.1"
+# 微信开放平台 Android SDK（OpenWebview / 小程序请求）；AppID 由本地配置提供
+wechatSdk = "6.8.40"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -40,6 +44,8 @@ androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+androidx-test-core = { module = "androidx.test:core", version = "1.6.1" }
 
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-logging = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
@@ -56,6 +62,7 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 vico-compose-m3 = { module = "com.patrykandpatrick.vico:compose-m3", version.ref = "vico" }
 material-color-utilities = { module = "com.materialkolor:material-color-utilities", version.ref = "materialColorUtilities" }
+wechat-sdk = { module = "com.tencent.mm.opensdk:wechat-sdk-android", version.ref = "wechatSdk" }
 
 junit = { module = "junit:junit", version = "4.13.2" }
 mockk = { module = "io.mockk:mockk", version = "1.13.13" }

@@ -1,0 +1,220 @@
+package com.upcpocket.app.data.library
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class LibrarySeatProtocolTest {
+    private val uuid = "123e4567-e89b-42d3-a456-426614174000"
+    private val timestamp = 1_700_000_000_000L
+
+    /**
+     * 2026-10-28 实测：把解密结果**连 PKCS#5 填充一起**当 HMAC 密钥，服务端返回
+     * `code 20`（“请检查手机时间…手机app已停用，请使用微信小程序”）；剥掉填充后
+     * 同一请求返回 `code 12`（未登录）。也就是说 code 20 是**签名/时间**不匹配的
+     * 统一提示，不是功能已停用的证据。
+     *
+     * 这条测试钉住“密钥必须是剥掉填充的 9 字节”：长度一变，真实登录会立刻退回 code 20，
+     * 而界面会误报成“系统停用”。
+     */
+    @Test
+    fun `配置密钥必须是剥掉 PKCS5 填充的 9 字节`() {
+        val key = LibrarySeatProtocol.configKey()
+        assertEquals(9, key.size)
+        assertEquals("6c656f733363723374", key.joinToString("") { "%02x".format(it) })
+    }
+
+    @Test
+    fun `公开配置密钥可解出且长度正确`() {
+        assertTrue(LibrarySeatProtocol.configKey().isNotEmpty())
+    }
+
+    @Test
+    fun `HMAC 与页面算法一致`() {
+        // 固定向量由页面同一算法计算；不把密钥本身写进测试。
+        assertEquals(
+            "9c02f7a76fcc185d6e5395a4a4e822c4b8a82b926b88a620d948ddabde804710",
+            LibrarySeatProtocol.sign("GET", uuid, timestamp),
+        )
+        assertTrue(
+            LibrarySeatProtocol.signedHeaders("token", "POST", uuid, timestamp)
+                .getValue("X-hmac-request-key")
+                .matches(Regex("[0-9a-f]{64}")),
+        )
+    }
+
+    @Test
+    fun `code 20 原样带出学校提示并补上本地判断`() {
+        // 真实响应体（2026-10-28 抓到的文案，不含任何个人数据）。
+        val body = """{"status":"fail","code":"20","message":"请检查手机时间是否准确,另外手机app已停用,请使用微信小程序\"一考即过座位预约\"等方式预约","data":null}"""
+        val error = runCatching { LibrarySeatProtocol.parseUser(body) }.exceptionOrNull()
+        assertTrue(error is LibrarySeatException)
+        assertTrue("必须保留学校原文", error!!.message!!.contains("一考即过"))
+        assertTrue("必须说明不是停用", error.message!!.contains("不是预约功能停用"))
+    }
+
+    @Test
+    fun `code 12 是会话过期而不是停用`() {
+        val body = """{"status":"fail","code":"12","message":"登录失败: 用户名或密码不正确"}"""
+        assertTrue(
+            runCatching { LibrarySeatProtocol.parseUser(body) }.exceptionOrNull()
+                is LibrarySessionExpiredException,
+        )
+    }
+
+    @Test
+    fun `登录响应取 seat token`() {
+        assertEquals("seat-token", LibrarySeatProtocol.parseToken("""{"status":true,"data":{"token":"seat-token"}}"""))
+    }
+
+    @Test
+    fun `token 过期被单独识别`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseToken("""{"code":12,"message":"token已过期"}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySessionExpiredException)
+    }
+
+    @Test
+    fun `字符串状态和字符串 code 也按真实响应处理`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseFilters("""{"status":"fail","code":"12","message":"登录失败"}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySessionExpiredException)
+        val fail = runCatching {
+            LibrarySeatProtocol.parseFilters("""{"status":"fail","message":"未登录"}""")
+        }.exceptionOrNull()
+        assertTrue(fail is LibrarySeatException)
+    }
+
+    @Test
+    fun `业务失败不会被当成空数据`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseFilters("""{"status":false,"message":"未登录"}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertTrue(e!!.message!!.contains("未登录"))
+    }
+
+    @Test
+    fun `筛选条件解析日期和馆区数组`() {
+        val filters = LibrarySeatProtocol.parseFilters(
+            """{"status":true,"data":{"dates":["2026-10-27","2026-10-28"],
+               "buildings":[[1,"总馆"],[3,"古镇口"]]}}""",
+        )
+        assertEquals(listOf("2026-10-27", "2026-10-28"), filters.dates)
+        assertEquals(listOf(LibraryBuilding("1", "总馆"), LibraryBuilding("3", "古镇口")), filters.buildings)
+    }
+
+    @Test
+    fun `房间按 floor 和 roomId 解析并去重`() {
+        val rooms = LibrarySeatProtocol.parseRooms(
+            """{"status":true,"data":[
+              {"roomId":"r1","room":"A101","floor":1},
+              {"roomId":"r2","room":"A102","floor":1},
+              {"roomId":"r1","room":"A101","floor":1}
+            ]}""",
+            LibraryBuilding("1", "总馆"),
+        )
+        assertEquals(2, rooms.size)
+        assertEquals(1, rooms.first().floor)
+    }
+
+    @Test
+    fun `座位布局用页面数值 key 还原行列`() {
+        val layout = LibrarySeatProtocol.parseLayout(
+            """{"status":true,"data":{"rows":2,"cols":3,"layout":{
+              "1001":{"id":"s1","name":"A1","type":"seat","enabled":true,"status":"FREE"},
+              "1002":{"id":"s2","name":"A2","type":"seat","enabled":false,"status":"IN_USE"},
+              "1003":{"id":"wall","name":"墙","type":"wall","enabled":true,"status":"FREE"}
+            }}}""",
+        )
+        assertEquals(2, layout.rows)
+        assertEquals(3, layout.cols)
+        assertEquals(1, layout.seats.first { it.id == "s1" }.row)
+        assertEquals(1, layout.seats.first { it.id == "s1" }.col)
+        assertEquals(2, layout.seats.first { it.id == "s2" }.col)
+        assertTrue(layout.seats.first { it.id == "s1" }.selectable)
+        assertFalse(layout.seats.first { it.id == "s2" }.selectable)
+        assertFalse(layout.seats.first { it.id == "wall" }.selectable)
+    }
+
+    @Test
+    fun `开始结束时间和预约记录字段`() {
+        val starts = LibrarySeatProtocol.parseStartTimes(
+            """{"status":true,"data":{"startTimes":[{"id":480,"value":"08:00"},{"id":-1,"value":"现在"}]}}""",
+        )
+        assertEquals(listOf("480", "-1"), starts.map { it.id })
+        val ends = LibrarySeatProtocol.parseEndTimes(
+            """{"status":true,"data":{"endTimes":[{"id":600,"value":"10:00"}]}}""",
+        )
+        assertEquals("10:00", ends.single().value)
+        val reservations = LibrarySeatProtocol.parseCurrentReservations(
+            """{"status":true,"data":[{"id":"r1","date":"2026-10-27","begin":"08:00","end":"10:00",
+               "location":"A101-1","stat":"RESERVE"}]}""",
+        )
+        assertEquals("已预约", reservations.single().statusLabel)
+        assertTrue(reservations.single().cancellable)
+    }
+
+    @Test
+    fun `历史记录外层 reservations 也兼容`() {
+        val list = LibrarySeatProtocol.parseHistoryReservations(
+            """{"status":true,"data":{"count":1,"reservations":[
+              {"id":"r2","date":"2026-10-27","begin":"10:00","end":"12:00","loc":"B201","stat":"CANCEL"}
+            ]}}""",
+        )
+        assertEquals("已取消", list.single().statusLabel)
+        assertFalse(list.single().cancellable)
+    }
+
+    @Test
+    fun `当前没有预约时 data 为 null 不是失败`() {
+        val list = LibrarySeatProtocol.parseCurrentReservations("""{"code":0,"data":null}""")
+        assertTrue(list.isEmpty())
+    }
+
+    @Test
+    fun `当前预约 data 变成对象时必须报格式错误而不是空列表`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":{"reservations":[]}}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertFalse(e is LibrarySessionExpiredException)
+    }
+
+    @Test
+    fun `缺少 id 或座位标识的预约记录不能被过滤成成功`() {
+        val missingId = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":[{"date":"2026-10-27","begin":"08:00","end":"10:00","location":"A1","stat":"RESERVE"}]}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(missingId is LibrarySeatException)
+        val missingSeat = runCatching {
+            LibrarySeatProtocol.parseCurrentReservations(
+                """{"status":true,"data":[{"id":"r1","date":"2026-10-27","begin":"08:00","end":"10:00","stat":"RESERVE"}]}""",
+            )
+        }.exceptionOrNull()
+        assertTrue(missingSeat is LibrarySeatException)
+    }
+
+    @Test
+    fun `历史记录缺少 reservations 数组报错`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseHistoryReservations("""{"status":true,"data":[]}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+    }
+
+    @Test
+    fun `非法布局尺寸不会被解释成空座位`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseLayout("""{"status":true,"data":{"rows":0,"cols":1,"layout":{}}}""")
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+    }
+}

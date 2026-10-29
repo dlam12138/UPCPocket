@@ -1,0 +1,188 @@
+{
+  "repository": "https://github.com/android/skills",
+  "revision": "45fd1739a4dbca5452c3e936570797f7f6261cd7",
+  "pluginVersion": "1.0.18",
+  "license": "Apache-2.0",
+  "skills": [
+    {
+      "name": "agp-9-upgrade",
+      "upstreamPath": "build-system/agp/agp-9-upgrade",
+      "projectPath": ".agents/skills/agp-9-upgrade"
+    },
+    {
+      "name": "camerax",
+      "upstreamPath": "camera/camerax",
+      "projectPath": ".agents/skills/camerax"
+    },
+    {
+      "name": "android-for-cars-parked-apps",
+      "upstreamPath": "cars/android-for-cars-parked-apps",
+      "projectPath": ".agents/skills/android-for-cars-parked-apps"
+    },
+    {
+      "name": "appfunctions",
+      "upstreamPath": "device-ai/appfunctions",
+      "projectPath": ".agents/skills/appfunctions"
+    },
+    {
+      "name": "litert-lm",
+      "upstreamPath": "device-ai/litert/litert-lm",
+      "projectPath": ".agents/skills/litert-lm"
+    },
+    {
+      "name": "litert-runtime",
+      "upstreamPath": "device-ai/litert/litert-runtime",
+      "projectPath": ".agents/skills/litert-runtime"
+    },
+    {
+      "name": "ml-kit-genai-prompt-api",
+      "upstreamPath": "device-ai/ml-kit-genai-prompt-api",
+      "projectPath": ".agents/skills/ml-kit-genai-prompt-api"
+    },
+    {
+      "name": "mlkit-agent-api",
+      "upstreamPath": "device-ai/mlkit-agent-api",
+      "projectPath": ".agents/skills/mlkit-agent-api"
+    },
+    {
+      "name": "android-cli",
+      "upstreamPath": "devtools/android-cli",
+      "projectPath": ".agents/skills/android-cli"
+    },
+    {
+      "name": "restore-credentials",
+      "upstreamPath": "identity/restore-credentials",
+      "projectPath": ".agents/skills/restore-credentials"
+    },
+    {
+      "name": "verified-email",
+      "upstreamPath": "identity/verified-email",
+      "projectPath": ".agents/skills/verified-email"
+    },
+    {
+      "name": "adaptive",
+      "upstreamPath": "jetpack-compose/adaptive",
+      "projectPath": ".agents/skills/adaptive"
+    },
+    {
+      "name": "ink-app-builder",
+      "upstreamPath": "jetpack-compose/ink/ink-app-builder",
+      "projectPath": ".agents/skills/ink-app-builder"
+    },
+    {
+      "name": "ink-custom-brush-builder",
+      "upstreamPath": "jetpack-compose/ink/ink-custom-brush-builder",
+      "projectPath": ".agents/skills/ink-custom-brush-builder"
+    },
+    {
+      "name": "jetpack-compose-performance",
+      "upstreamPath": "jetpack-compose/jetpack-compose-performance",
+      "projectPath": ".agents/skills/jetpack-compose-performance"
+    },
+    {
+      "name": "migrate-xml-views-to-jetpack-compose",
+      "upstreamPath": "jetpack-compose/migration/migrate-xml-views-to-jetpack-compose",
+      "projectPath": ".agents/skills/migrate-xml-views-to-jetpack-compose"
+    },
+    {
+      "name": "media3-cast-integration",
+      "upstreamPath": "media/media3-cast-integration",
+      "projectPath": ".agents/skills/media3-cast-integration"
+    },
+    {
+      "name": "navigation-3",
+      "upstreamPath": "navigation/navigation-3",
+      "projectPath": ".agents/skills/navigation-3"
+    },
+    {
+      "name": "navigation-event",
+      "upstreamPath": "navigation/navigation-event",
+      "projectPath": ".agents/skills/navigation-event"
+    },
+    {
+      "name": "anr-audit-and-fix",
+      "upstreamPath": "performance/anr-audit-and-fix",
+      "projectPath": ".agents/skills/anr-audit-and-fix"
+    },
+    {
+      "name": "r8-analyzer",
+      "upstreamPath": "performance/r8-analyzer",
+      "projectPath": ".agents/skills/r8-analyzer"
+    },
+    {
+      "name": "engage-sdk-integration",
+      "upstreamPath": "play/engage-sdk-integration",
+      "projectPath": ".agents/skills/engage-sdk-integration"
+    },
+    {
+      "name": "play-billing-library-version-upgrade",
+      "upstreamPath": "play/play-billing-library-version-upgrade",
+      "projectPath": ".agents/skills/play-billing-library-version-upgrade"
+    },
+    {
+      "name": "play-policy-insights",
+      "upstreamPath": "play/play-policy-insights",
+      "projectPath": ".agents/skills/play-policy-insights"
+    },
+    {
+      "name": "android-profiler",
+      "upstreamPath": "profilers/android-profiler",
+      "projectPath": ".agents/skills/android-profiler"
+    },
+    {
+      "name": "android-intent-security",
+      "upstreamPath": "security/android-intent-security",
+      "projectPath": ".agents/skills/android-intent-security"
+    },
+    {
+      "name": "android-permissions-security",
+      "upstreamPath": "security/android-permissions-security",
+      "projectPath": ".agents/skills/android-permissions-security"
+    },
+    {
+      "name": "edge-to-edge",
+      "upstreamPath": "system/edge-to-edge",
+      "projectPath": ".agents/skills/edge-to-edge"
+    },
+    {
+      "name": "glance-appwidget-updates-and-memory",
+      "upstreamPath": "system/glance-appwidget-updates-and-memory",
+      "projectPath": ".agents/skills/glance-appwidget-updates-and-memory"
+    },
+    {
+      "name": "glance-canonical-layouts",
+      "upstreamPath": "system/glance-canonical-layouts",
+      "projectPath": ".agents/skills/glance-canonical-layouts"
+    },
+    {
+      "name": "testing-setup",
+      "upstreamPath": "testing/testing-setup",
+      "projectPath": ".agents/skills/testing-setup"
+    },
+    {
+      "name": "leanback-to-compose-tv-migration",
+      "upstreamPath": "tv/leanback-to-compose-tv-migration",
+      "projectPath": ".agents/skills/leanback-to-compose-tv-migration"
+    },
+    {
+      "name": "wear-compose-m3",
+      "upstreamPath": "wear/wear-compose-m3",
+      "projectPath": ".agents/skills/wear-compose-m3"
+    },
+    {
+      "name": "wear-widgets",
+      "upstreamPath": "wear/wear-widgets",
+      "projectPath": ".agents/skills/wear-widgets"
+    },
+    {
+      "name": "display-glasses-with-jetpack-compose-glimmer",
+      "upstreamPath": "xr/display-glasses-with-jetpack-compose-glimmer",
+      "projectPath": ".agents/skills/display-glasses-with-jetpack-compose-glimmer"
+    },
+    {
+      "name": "projected-hardware",
+      "upstreamPath": "xr/projected-hardware",
+      "projectPath": ".agents/skills/projected-hardware"
+    }
+  ]
+}
