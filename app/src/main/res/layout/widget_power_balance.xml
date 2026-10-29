@@ -37,13 +37,22 @@
     </LinearLayout>
 
     <TextView
-        android:id="@+id/widget_power_room"
+        android:id="@+id/widget_power_building"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="1dp"
         android:ellipsize="end"
         android:maxLines="1"
-        android:text="@string/widget_room_none"
+        android:text="@string/widget_power_building_none"
+        android:textColor="@color/widget_secondary"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/widget_power_room"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:maxLines="1"
+        android:text="@string/widget_power_room_none"
         android:textColor="@color/widget_secondary"
         android:textSize="12sp" />
 
@@ -51,7 +60,7 @@
         android:id="@+id/widget_power_value"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:autoSizeMaxTextSize="30sp"
         android:autoSizeMinTextSize="17sp"
         android:autoSizeStepGranularity="1sp"
@@ -70,22 +79,12 @@
         android:importantForAccessibility="no" />
 
     <TextView
-        android:id="@+id/widget_power_status"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="@color/widget_accent"
-        android:textSize="11sp"
-        android:visibility="gone" />
-
-    <TextView
         android:id="@+id/widget_power_updated"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:ellipsize="end"
-        android:maxLines="1"
+        android:maxLines="3"
         android:text="@string/widget_no_record"
         android:textColor="@color/widget_secondary"
         android:textSize="11sp" />

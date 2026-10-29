@@ -40,7 +40,8 @@ enum class WidgetKind(
  * 组件按钮的小状态：是否正在刷新、上一次失败提示。
  *
  * 只是界面反馈，不是业务数据；写入应用私有 SharedPreferences。刷新开始时间也用于
- * 进程被杀后的恢复：超过 [STALE_MS] 视为过期，避免永久卡在“正在刷新”。
+ * 进程被杀后的恢复：**只有下一次点击/重绘读取状态时**才会发现已超过 [STALE_MS] 并清除；
+ * 这里没有定时器，不会到 90 秒主动重绘桌面。
  */
 @SuppressLint("ApplySharedPref")
 class WidgetStateStore(context: Context) {

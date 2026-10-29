@@ -3,7 +3,7 @@
     android:description="@string/widget_card_description"
     android:initialLayout="@layout/widget_card_balance"
     android:minHeight="180dp"
-    android:minResizeHeight="160dp"
+    android:minResizeHeight="260dp"
     android:minResizeWidth="120dp"
     android:minWidth="130dp"
     android:previewLayout="@layout/widget_card_balance"

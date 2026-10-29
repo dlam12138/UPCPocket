@@ -4,22 +4,22 @@
 
     <!-- 桌面小组件：默认 2×3，校园卡与唐岛湾剩余电量各一个。 -->
     <string name="widget_card_title">校园卡</string>
-    <string name="widget_power_title">唐岛湾电费</string>
-    <string name="widget_card_description">显示脱敏学号、校园卡余额和更新时间，可手动刷新</string>
-    <string name="widget_power_description">显示唐岛湾上次成功查询的房间与剩余电量，可手动刷新</string>
+    <string name="widget_power_title">唐岛湾</string>
+    <string name="widget_card_description">显示脱敏学号、校园卡余额和查询时间，可手动刷新</string>
+    <string name="widget_power_description">显示唐岛湾上次成功查询的房间、剩余电量和查询时间，可手动刷新</string>
     <string name="widget_card_account">学号 %1$s</string>
     <string name="widget_card_account_none">未设置学号</string>
-    <string name="widget_room">%1$s · %2$s</string>
-    <string name="widget_room_none">未设置房间</string>
+    <string name="widget_power_building_none">未设置楼号</string>
+    <string name="widget_power_room_none">未设置房间</string>
     <string name="widget_empty_value">尚未查询</string>
     <string name="widget_empty_hint">先在应用查询一次</string>
     <string name="widget_no_record">尚无本地记录</string>
     <string name="widget_balance_value">%1$s 元</string>
     <string name="widget_kwh_value">%1$s 度</string>
     <string name="widget_transition">过渡 %1$s 元 · 不计入</string>
-    <string name="widget_updated">更新于 %1$s</string>
+    <string name="widget_query_label">查询于</string>
     <string name="widget_refreshing">正在刷新…</string>
-    <string name="widget_refresh_failed">刷新失败，保留上次结果</string>
+    <string name="widget_refresh_failed">刷新失败</string>
     <string name="widget_refresh_card">刷新校园卡余额</string>
     <string name="widget_refresh_power">刷新剩余电量</string>
     <string name="widget_open_card">打开应用查询校园卡余额</string>

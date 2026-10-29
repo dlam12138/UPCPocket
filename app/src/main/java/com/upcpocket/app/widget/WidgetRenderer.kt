@@ -17,6 +17,9 @@ import java.time.format.DateTimeFormatter
  *
  * RemoteViews 不申请截屏/壁纸权限，也不拿大位图硬模拟模糊：用半透明渐变底 + 细描边
  * 做“玻璃”观感，所有文字用高对比色。亮/暗资源由 values-night 提供。
+ *
+ * 时间必须是**绝对查询时间**。组件没有周期重绘，写“刚刚 / 15 分钟前”会在桌面上
+ * 永久停留成过期文案；这里只在用户查询成功时记录时间，失败不覆盖它。
  */
 object WidgetRenderer {
 
@@ -56,16 +59,13 @@ object WidgetRenderer {
                 context.getString(R.string.widget_empty_value),
             )
             views.setViewVisibility(R.id.widget_card_transition, View.GONE)
-            showStatus(
-                context,
-                views,
-                R.id.widget_card_status,
-                context.getString(R.string.widget_empty_hint),
-                R.color.widget_accent,
-            )
-            views.setTextViewText(
-                R.id.widget_card_updated,
-                context.getString(R.string.widget_no_record),
+            setMeta(
+                context = context,
+                views = views,
+                viewId = R.id.widget_card_updated,
+                text = context.getString(R.string.widget_empty_hint) + "\n" +
+                    context.getString(R.string.widget_no_record),
+                colorRes = R.color.widget_accent,
             )
             views.setOnClickPendingIntent(
                 R.id.widget_card_refresh,
@@ -95,30 +95,13 @@ object WidgetRenderer {
             R.id.widget_card_transition,
             context.getString(R.string.widget_transition, snapshot.transitionText),
         )
-        views.setTextViewText(
-            R.id.widget_card_updated,
-            context.getString(R.string.widget_updated, relativeTime(snapshot.fetchedAt)),
+        setMeta(
+            context = context,
+            views = views,
+            viewId = R.id.widget_card_updated,
+            text = metaText(context, snapshot.fetchedAt, refreshing, failed),
+            colorRes = metaColor(refreshing, failed),
         )
-
-        if (refreshing) {
-            showStatus(
-                context,
-                views,
-                R.id.widget_card_status,
-                context.getString(R.string.widget_refreshing),
-                R.color.widget_accent,
-            )
-        } else if (failed) {
-            showStatus(
-                context,
-                views,
-                R.id.widget_card_status,
-                context.getString(R.string.widget_refresh_failed),
-                R.color.widget_error,
-            )
-        } else {
-            views.setViewVisibility(R.id.widget_card_status, View.GONE)
-        }
 
         views.setOnClickPendingIntent(
             R.id.widget_card_refresh,
@@ -147,23 +130,24 @@ object WidgetRenderer {
 
         if (snapshot == null) {
             views.setTextViewText(
+                R.id.widget_power_building,
+                context.getString(R.string.widget_power_building_none),
+            )
+            views.setTextViewText(
                 R.id.widget_power_room,
-                context.getString(R.string.widget_room_none),
+                context.getString(R.string.widget_power_room_none),
             )
             views.setTextViewText(
                 R.id.widget_power_value,
                 context.getString(R.string.widget_empty_value),
             )
-            showStatus(
-                context,
-                views,
-                R.id.widget_power_status,
-                context.getString(R.string.widget_empty_hint),
-                R.color.widget_accent,
-            )
-            views.setTextViewText(
-                R.id.widget_power_updated,
-                context.getString(R.string.widget_no_record),
+            setMeta(
+                context = context,
+                views = views,
+                viewId = R.id.widget_power_updated,
+                text = context.getString(R.string.widget_empty_hint) + "\n" +
+                    context.getString(R.string.widget_no_record),
+                colorRes = R.color.widget_accent,
             )
             views.setOnClickPendingIntent(
                 R.id.widget_power_refresh,
@@ -177,38 +161,20 @@ object WidgetRenderer {
             return views
         }
 
-        views.setTextViewText(
-            R.id.widget_power_room,
-            context.getString(R.string.widget_room, snapshot.building, snapshot.room),
-        )
+        // 楼号与房间号拆成两行：2.0× 字号或窄宽时，房号不会再被楼号挤掉。
+        views.setTextViewText(R.id.widget_power_building, snapshot.building)
+        views.setTextViewText(R.id.widget_power_room, snapshot.room)
         views.setTextViewText(
             R.id.widget_power_value,
             context.getString(R.string.widget_kwh_value, snapshot.kwh),
         )
-        views.setTextViewText(
-            R.id.widget_power_updated,
-            context.getString(R.string.widget_updated, relativeTime(snapshot.fetchedAt)),
+        setMeta(
+            context = context,
+            views = views,
+            viewId = R.id.widget_power_updated,
+            text = metaText(context, snapshot.fetchedAt, refreshing, failed),
+            colorRes = metaColor(refreshing, failed),
         )
-
-        if (refreshing) {
-            showStatus(
-                context,
-                views,
-                R.id.widget_power_status,
-                context.getString(R.string.widget_refreshing),
-                R.color.widget_accent,
-            )
-        } else if (failed) {
-            showStatus(
-                context,
-                views,
-                R.id.widget_power_status,
-                context.getString(R.string.widget_refresh_failed),
-                R.color.widget_error,
-            )
-        } else {
-            views.setViewVisibility(R.id.widget_power_status, View.GONE)
-        }
 
         views.setOnClickPendingIntent(
             R.id.widget_power_refresh,
@@ -222,30 +188,56 @@ object WidgetRenderer {
         return views
     }
 
-    private fun showStatus(
+    /**
+     * 两行结构：第一行状态（查询于/正在刷新/刷新失败），第二行是**上次成功查询**的
+     * 绝对时间。失败和刷新中都不改这个时间。
+     */
+    private fun metaText(
+        context: Context,
+        fetchedAt: Long,
+        refreshing: Boolean,
+        failed: Boolean,
+    ): String {
+        val label = when {
+            refreshing -> context.getString(R.string.widget_refreshing)
+            failed -> context.getString(R.string.widget_refresh_failed)
+            else -> context.getString(R.string.widget_query_label)
+        }
+        return label + "\n" + queryTime(fetchedAt)
+    }
+
+    private fun metaColor(refreshing: Boolean, failed: Boolean): Int = when {
+        refreshing -> R.color.widget_accent
+        failed -> R.color.widget_error
+        else -> R.color.widget_secondary
+    }
+
+    private fun setMeta(
         context: Context,
         views: RemoteViews,
         viewId: Int,
         text: String,
         colorRes: Int,
     ) {
-        views.setViewVisibility(viewId, View.VISIBLE)
         views.setTextViewText(viewId, text)
         views.setTextColor(viewId, ContextCompat.getColor(context, colorRes))
     }
 
-    private val DATE = DateTimeFormatter.ofPattern("M月d日 HH:mm")
+    private val SAME_YEAR_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+    private val CROSS_YEAR_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-    internal fun relativeTime(fetchedAt: Long, now: Long = System.currentTimeMillis()): String {
-        val diff = (now - fetchedAt).coerceAtLeast(0L)
-        val minutes = diff / 60_000L
-        val hours = diff / 3_600_000L
-        return when {
-            minutes < 1 -> "刚刚"
-            minutes < 60 -> "$minutes 分钟前"
-            hours < 24 -> "$hours 小时前"
-            else -> DATE.withZone(ZoneId.systemDefault())
-                .format(Instant.ofEpochMilli(fetchedAt))
-        }
+    /**
+     * 本地时区的绝对查询时间。同年用 `MM-dd HH:mm`，跨年补全年份。
+     * 参数 `now` / `zone` 仅用于可重复测试。
+     */
+    internal fun queryTime(
+        fetchedAt: Long,
+        now: Long = System.currentTimeMillis(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): String {
+        val at = Instant.ofEpochMilli(fetchedAt).atZone(zone)
+        val current = Instant.ofEpochMilli(now).atZone(zone)
+        val formatter = if (at.year == current.year) SAME_YEAR_TIME else CROSS_YEAR_TIME
+        return formatter.format(at)
     }
 }
