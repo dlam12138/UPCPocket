@@ -1,5 +1,6 @@
 package com.upcpocket.app.ui.power
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,15 +8,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -23,6 +26,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,16 +34,18 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.power.ElectricityCampus
 import com.upcpocket.app.data.power.ElectricityProtocol
 import com.upcpocket.app.data.power.ElectricityReading
 import com.upcpocket.app.data.power.ElectricityResult
@@ -47,29 +53,109 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
  * 唐岛湾宿舍剩余电量（原生只读）。
  *
- * 这是**按楼号＋房间号**的公开查询，没有登录态，所以界面不出现“已登录”字样；
- * 换房间就重新查，不做任何“记住房间号”的默认填充（楼号会记住，因为它是公共信息）。
+ * 流程只有一件事：选楼号 → 填房间号 → 查询结果。
+ *
+ * 输入（楼号＋房间号）通过 [AppGraph.powerInputRepository] 持久保存，进入页面和进程重启
+ * 都会回填；保存与查询成功无关，查询失败或断网不会清空。用户改动输入时旧结果立即隐藏，
+ * 结果卡片也自带楼号/房间号，不会把旧房间的电量挂到新输入下面。
+ *
+ * 楼号只来自学校页面下发的列表；加载失败时保留已保存的楼号，并提供“重新加载楼号”，
+ * 不编造静态楼号，也不把选择器做成无法恢复的禁用按钮。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TangdaowanElectricityScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var buildings by remember { mutableStateOf<List<String>>(emptyList()) }
+    val savedInput by AppGraph.powerInputRepository.input
+        .collectAsStateWithLifecycle(initialValue = null)
+
+    var hydrated by rememberSaveable { mutableStateOf(false) }
     var building by rememberSaveable { mutableStateOf("") }
     var room by rememberSaveable { mutableStateOf("") }
-    var menu by remember { mutableStateOf(false) }
+    var buildings by remember { mutableStateOf<List<String>>(emptyList()) }
+    var buildingsLoading by remember { mutableStateOf(false) }
+    var buildingsError by remember { mutableStateOf<String?>(null) }
+    var showPicker by remember { mutableStateOf(false) }
+
     var loading by remember { mutableStateOf(false) }
     var reading by remember { mutableStateOf<ElectricityReading?>(null) }
     var fetchedAt by remember { mutableStateOf<Instant?>(null) }
     var candidates by remember { mutableStateOf<List<ElectricityProtocol.Candidate>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
-    var started by remember { mutableStateOf(false) }
+    var requestId by remember { mutableIntStateOf(0) }
+
+    fun persist(buildingValue: String = building, roomValue: String = room) {
+        scope.launch { AppGraph.powerInputRepository.save(buildingValue, roomValue) }
+    }
+
+    /** 输入一变就作废旧结果，避免旧房间的电量被当成新输入的结果。 */
+    fun invalidateResult() {
+        requestId++
+        reading = null
+        fetchedAt = null
+        candidates = emptyList()
+        error = null
+    }
+
+    fun selectBuilding(value: String) {
+        if (value == building) {
+            showPicker = false
+            return
+        }
+        building = value
+        showPicker = false
+        invalidateResult()
+        persist(buildingValue = value, roomValue = room)
+    }
+
+    fun changeRoom(value: String) {
+        room = value
+        invalidateResult()
+        persist(buildingValue = building, roomValue = value)
+    }
+
+    fun clearInput() {
+        building = ""
+        room = ""
+        showPicker = false
+        invalidateResult()
+        scope.launch { AppGraph.powerInputRepository.clear() }
+    }
+
+    fun loadBuildings() {
+        if (buildingsLoading) return
+        buildingsLoading = true
+        buildingsError = null
+        scope.launch {
+            try {
+                buildings = AppGraph.tangdaowanElectricityService.buildings()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                buildingsError = failure.message ?: "无法加载学校楼号列表，请重试"
+            } finally {
+                buildingsLoading = false
+            }
+        }
+    }
+
+    // 第一次进入：先回填持久输入；楼号列表单独加载，失败也不影响已保存的输入。
+    LaunchedEffect(savedInput) {
+        val saved = savedInput ?: return@LaunchedEffect
+        if (!hydrated && building.isBlank() && room.isBlank()) {
+            building = saved.building
+            room = saved.room
+        }
+        hydrated = true
+    }
+    LaunchedEffect(Unit) {
+        if (buildings.isEmpty() && !buildingsLoading) loadBuildings()
+    }
 
     fun runQuery() {
         if (loading) return
@@ -83,57 +169,93 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
             error = "请填写房间号"
             return
         }
+        val id = ++requestId
         loading = true
         error = null
         candidates = emptyList()
+        reading = null
+        fetchedAt = null
         scope.launch {
             try {
-                when (val result = AppGraph.tangdaowanElectricityService.query(selected, target)) {
+                val result = AppGraph.tangdaowanElectricityService.query(selected, target)
+                if (id != requestId || building != selected || room.trim() != target) return@launch
+                when (result) {
                     is ElectricityResult.Success -> {
                         reading = result.reading
                         fetchedAt = Instant.now()
-                        scope.launch { AppGraph.uiPrefsStore.setPowerBuilding(selected) }
                     }
                     is ElectricityResult.Ambiguous -> {
-                        reading = null
-                        fetchedAt = null
                         candidates = result.candidates
                     }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
-                reading = null
-                error = e.message ?: "查询电费失败，请稍后重试"
+                if (id == requestId && building == selected && room.trim() == target) {
+                    error = e.message ?: "查询电费失败，请稍后重试"
+                }
             } finally {
-                loading = false
+                if (id == requestId) loading = false
             }
         }
     }
 
-    // key 必须是常量：若在 effect 内改自己的 key，协程会被取消，首屏就停在空状态。
-    LaunchedEffect(Unit) {
-        if (started) return@LaunchedEffect
-        started = true
-        building = AppGraph.uiPrefsStore.flow.first().powerBuilding
-        scope.launch {
-            runCatching { AppGraph.tangdaowanElectricityService.buildings() }
-                .onSuccess { list ->
-                    buildings = list
-                    if (building.isBlank() || list.none { it == building }) {
-                        building = list.firstOrNull().orEmpty()
+    if (showPicker) {
+        AlertDialog(
+            onDismissRequest = { showPicker = false },
+            title = { Text("选择楼号") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp)) {
+                    when {
+                        buildingsLoading -> Row(
+                            Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.padding(end = 12.dp))
+                            Text("正在加载学校楼号列表…")
+                        }
+                        buildingsError != null -> Column {
+                            Text(
+                                buildingsError.orEmpty(),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                        }
+                        buildings.isEmpty() -> Column {
+                            Text("学校页面没有返回楼号列表。")
+                            TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                        }
+                        else -> LazyColumn {
+                            items(buildings) { option ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { selectBuilding(option) }
+                                        .padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = building == option,
+                                        onClick = { selectBuilding(option) },
+                                    )
+                                    Text(option)
+                                }
+                            }
+                        }
                     }
                 }
-                .onFailure {
-                    error = it.message ?: "学校电费页面暂时不可用，请稍后重试"
-                }
-        }
+            },
+            confirmButton = {
+                TextButton(onClick = { showPicker = false }) { Text("关闭") }
+            },
+        )
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("宿舍电费 · 唐岛湾") },
+                title = { Text("电费 · 唐岛湾") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -151,69 +273,102 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "学校用电查询系统按“楼号＋房间号”返回数据，不需要登录。" +
-                    "本页只查询剩余电量，不做充值、缴费或批量遍历房间。",
+                text = "选择楼号并填写房间号，查询学校返回的剩余电量。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Column {
                 OutlinedButton(
-                    onClick = { menu = true },
-                    enabled = !loading && buildings.isNotEmpty(),
+                    onClick = { showPicker = true },
+                    enabled = !loading,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 ) {
                     Text(
-                        if (building.isBlank()) "选择楼号" else "楼号：$building",
+                        when {
+                            building.isNotBlank() -> "楼号：$building"
+                            buildingsLoading -> "正在加载楼号…"
+                            else -> "选择楼号"
+                        },
                         maxLines = 1,
                     )
                 }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    buildings.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option) },
-                            onClick = {
-                                building = option
-                                menu = false
-                                error = null
-                            },
+                when {
+                    buildingsLoading -> Text(
+                        "正在加载学校楼号列表…",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    )
+                    buildingsError != null -> {
+                        Text(
+                            "楼号加载失败：${buildingsError.orEmpty()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
+                        TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
                     }
+                    buildings.isEmpty() -> {
+                        Text(
+                            "尚未获取学校楼号列表。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                        )
+                        TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                    }
+                    else -> Unit
+                }
+                if (buildings.isNotEmpty() && building.isNotBlank() && building !in buildings) {
+                    Text(
+                        "上次保存的楼号不在学校当前列表里，请重新选择。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    )
                 }
             }
+
             OutlinedTextField(
                 value = room,
-                onValueChange = { room = it; error = null },
+                onValueChange = ::changeRoom,
                 label = { Text("房间号") },
                 singleLine = true,
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
-                    Text("按学校页面上的写法填，例如 1101。房间号不会被保存。")
+                    Text("会记住这台设备的楼号与房间号；查询失败也不会清空，可随时清除。")
                 },
             )
+
             Button(
-                onClick = { runQuery() },
-                enabled = !loading && buildings.isNotEmpty(),
+                onClick = ::runQuery,
+                enabled = !loading && building.isNotBlank() && room.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
-                Text(if (loading) "正在查询…" else if (error != null) "重试查询" else "查询剩余电量")
+                Text(if (loading) "正在查询…" else "查询剩余电量")
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+            if (building.isNotBlank() || room.isNotBlank()) {
+                TextButton(onClick = ::clearInput, enabled = !loading) {
+                    Text("清除楼号与房间号")
+                }
+            }
 
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error)
                 if (it.contains("微信")) {
                     Text(
-                        text = "学校电费页面在没有 code 参数时会跳转到微信授权；本 App 使用学校页面" +
-                            "自带的公开查询表单，如果这次仍被要求授权，说明学校调整了入口条件，暂不绕过。",
+                        text = "学校页面要求微信授权时，App 不会绕过；请稍后重试或改用学校官方入口。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
 
-            reading?.let { value ->
+            reading?.takeIf { it.matches(building, room) }?.let { value ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -269,8 +424,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             TextButton(onClick = {
-                                room = candidate.room
-                                error = null
+                                changeRoom(candidate.room)
                                 candidates = emptyList()
                             }) { Text("用这个房间号再查") }
                         }
@@ -279,8 +433,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
             }
 
             Text(
-                text = "数据来源：学校用电查询系统 /ShiYou/Default.aspx。字段名是“当前剩余电量”，" +
-                    "单位为度；空调与照明是否分表以学校页面为准。",
+                text = "只查询剩余电量，不提供充值。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

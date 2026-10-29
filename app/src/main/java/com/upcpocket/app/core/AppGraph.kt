@@ -7,7 +7,9 @@ import com.upcpocket.app.data.power.TangdaowanElectricityService
 import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
+import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.FocusRepository
+import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.PomodoroEngine
 import com.upcpocket.app.focus.PomodoroNotifications
 import kotlinx.serialization.json.Json
@@ -55,9 +57,21 @@ object AppGraph {
      */
     val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
 
-    /** 唐岛湾宿舍剩余电量：无需登录的只读查询，不保存房间号。 */
+    /** 唐岛湾宿舍剩余电量：无需登录的只读查询。 */
     val tangdaowanElectricityService: TangdaowanElectricityService by lazy {
         TangdaowanElectricityService()
+    }
+
+    /**
+     * 电费输入（楼号＋房间号）与校园卡学号的持久层。
+     * 供当前页面和将来的桌面组件复用；只读写本机配置，不查网络。
+     */
+    val powerInputRepository: PowerInputRepository by lazy {
+        PowerInputRepository(uiPrefsStore)
+    }
+
+    val cardInputRepository: CardInputRepository by lazy {
+        CardInputRepository(uiPrefsStore)
     }
 
     /** “记住登录”的加密持久副本（目前只有图书馆座位 token）。 */

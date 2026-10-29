@@ -18,7 +18,7 @@ object AppRoutes {
     const val FREE_CLASSROOMS = "free_classrooms"
     const val LIBRARY_SEAT = "library_seat"
     const val LIBRARY_LOGIN = "library_login"
-    const val CAMPUS_CARD = "campus_card"
+    const val ELECTRICITY = "electricity"
     const val POWER_TANGDAOWAN = "power_tangdaowan"
     const val APPEARANCE = "appearance"
     const val ABOUT = "about"

@@ -45,12 +45,12 @@ import androidx.navigation.compose.rememberNavController
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
 import com.upcpocket.app.ui.classroom.FreeClassroomScreen
-import com.upcpocket.app.ui.ecard.CampusCardScreen
 import com.upcpocket.app.ui.focus.FocusScreen
 import com.upcpocket.app.ui.focus.FocusStatsScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.library.LibrarySeatLoginScreen
 import com.upcpocket.app.ui.library.LibrarySeatScreen
+import com.upcpocket.app.ui.power.ElectricityScreen
 import com.upcpocket.app.ui.power.TangdaowanElectricityScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 
@@ -106,10 +106,9 @@ fun AppNav() {
                 ) {
                     composable(Destination.HOME.route) {
                         HomeScreen(
+                            onOpenElectricity = { navController.navigate(AppRoutes.ELECTRICITY) },
                             onOpenClassrooms = { navController.navigate(AppRoutes.FREE_CLASSROOMS) },
                             onOpenLibrary = { navController.navigate(AppRoutes.LIBRARY_SEAT) },
-                            onOpenCampusCard = { navController.navigate(AppRoutes.CAMPUS_CARD) },
-                            onOpenTangdaowanPower = { navController.navigate(AppRoutes.POWER_TANGDAOWAN) },
                         )
                     }
                     composable(Destination.FOCUS.route) {
@@ -137,8 +136,11 @@ fun AppNav() {
                             onLoggedIn = { navController.popBackStack() },
                         )
                     }
-                    composable(AppRoutes.CAMPUS_CARD) {
-                        CampusCardScreen(onBack = { navController.popBackStack() })
+                    composable(AppRoutes.ELECTRICITY) {
+                        ElectricityScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenTangdaowan = { navController.navigate(AppRoutes.POWER_TANGDAOWAN) },
+                        )
                     }
                     composable(AppRoutes.POWER_TANGDAOWAN) {
                         TangdaowanElectricityScreen(onBack = { navController.popBackStack() })

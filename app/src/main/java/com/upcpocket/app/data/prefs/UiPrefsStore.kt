@@ -47,19 +47,30 @@ data class UiPrefs(
      */
     val rememberSchoolLogin: Boolean = false,
     /**
-     * 唐岛湾电费查询上次选的楼号。
+     * 唐岛湾电费上次选的楼号与房间号。
      *
-     * 只记楼号这一个下拉项，**不记房间号** —— 房间号是可推断的居住信息，
-     * 同一台设备换人后更不该自动代入；用户每次自己填。
+     * 用户已明确授权记住房间号，方便下次进入和将来的桌面组件直接回填；
+     * 两者以同一次 DataStore 编辑保存，提供明确的“清除”动作。
+     * 只保存在应用私有空间，不随输入自动发起网络查询。
      */
     val powerBuilding: String = "",
+    val powerRoom: String = "",
+    /**
+     * 校园卡余额功能区上次输入的本人学号。
+     *
+     * 与余额快照分开保存：即使从未查询成功，重启后也能恢复输入；
+     * 不查询时只保存这个字段。清除动作会同时删除它。
+     */
+    val cardStudentId: String = "",
 )
 
 private val Context.uiPrefsStore: DataStore<Preferences> by preferencesDataStore(name = "ui_prefs")
 
-class UiPrefsStore(context: Context) {
+class UiPrefsStore internal constructor(
+    private val store: DataStore<Preferences>,
+) {
 
-    private val store = context.applicationContext.uiPrefsStore
+    constructor(context: Context) : this(context.applicationContext.uiPrefsStore)
 
     val flow: Flow<UiPrefs> = store.data.map { p ->
         UiPrefs(
@@ -69,6 +80,8 @@ class UiPrefsStore(context: Context) {
                 ?: DarkMode.SYSTEM,
             rememberSchoolLogin = p[KEY_REMEMBER_SCHOOL_LOGIN] ?: false,
             powerBuilding = p[KEY_POWER_BUILDING].orEmpty(),
+            powerRoom = p[KEY_POWER_ROOM].orEmpty(),
+            cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
         )
     }
 
@@ -76,14 +89,26 @@ class UiPrefsStore(context: Context) {
     suspend fun setRememberSchoolLogin(v: Boolean) =
         store.edit { it[KEY_REMEMBER_SCHOOL_LOGIN] = v }
 
-    /** 记住唐岛湾电费上次选的楼号（只记楼号，不记房间号）。 */
-    suspend fun setPowerBuilding(v: String) = store.edit {
-        if (v.isBlank()) {
-            it.remove(KEY_POWER_BUILDING)
-        } else {
-            it[KEY_POWER_BUILDING] = v
-        }
+    /**
+     * 一次编辑同时保存楼号与房间号，避免两个字段在不同版本/进程里各写一半。
+     * 空串表示删除对应键。
+     */
+    suspend fun savePowerInput(building: String, room: String) = store.edit { p ->
+        if (building.isBlank()) p.remove(KEY_POWER_BUILDING) else p[KEY_POWER_BUILDING] = building
+        if (room.isBlank()) p.remove(KEY_POWER_ROOM) else p[KEY_POWER_ROOM] = room
     }
+
+    suspend fun clearPowerInput() = store.edit { p ->
+        p.remove(KEY_POWER_BUILDING)
+        p.remove(KEY_POWER_ROOM)
+    }
+
+    /** 校园卡学号与余额快照分离，只保存输入本身。 */
+    suspend fun setCardStudentId(v: String) = store.edit { p ->
+        if (v.isBlank()) p.remove(KEY_CARD_STUDENT_ID) else p[KEY_CARD_STUDENT_ID] = v
+    }
+
+    suspend fun clearCardStudentId() = store.edit { p -> p.remove(KEY_CARD_STUDENT_ID) }
 
     suspend fun setThemePreset(v: ThemePreset) = store.edit { p -> p[KEY_THEME_PRESET] = v.name }
 
@@ -96,7 +121,11 @@ class UiPrefsStore(context: Context) {
         /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")
 
-        /** 唐岛湾电费上次选的楼号（不含房间号） */
+        /** 唐岛湾电费上次选的楼号与房间号（用户已授权记住） */
         val KEY_POWER_BUILDING = stringPreferencesKey("power_building")
+        val KEY_POWER_ROOM = stringPreferencesKey("power_room")
+
+        /** 校园卡余额功能区上次输入的学号（与余额快照无关） */
+        val KEY_CARD_STUDENT_ID = stringPreferencesKey("card_student_id")
     }
 }

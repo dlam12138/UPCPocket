@@ -111,7 +111,7 @@ object CampusServices {
         Entry(
             id = "power_tangdaowan",
             title = "宿舍电费 · 唐岛湾",
-            subtitle = "余额查询 · 剩余电量",
+            subtitle = "剩余电量 · 应用内查询",
             campus = Campus.TANGDAOWAN,
             access = Access.PUBLIC,
             url = "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
@@ -121,7 +121,7 @@ object CampusServices {
             // 因此全部删除，改为把"以学校页面说明为准"讲清楚。
             scope = "只适用于唐岛湾校区宿舍。按学校页面自己的楼号与房间号查询，不要套用古镇口的入口。",
             note = "在 App 内按楼号＋房间号查询剩余电量，不需要登录，也没有充值或缴费记录。" +
-                "房间号不保存；空调与照明是否分表以学校页面为准。",
+                "楼号与房间号保存在本机，可随时清除；空调与照明是否分表以学校页面为准。",
             updatedNote = "地址来自总体计划书第 4 节（已去除 code 参数）。2026-10-28 核验：" +
                 "页面缺 code 时 302 到微信 OAuth，带占位 code 即可拿到公开查询表单；" +
                 "查询后返回“当前剩余电量 xx度”。",

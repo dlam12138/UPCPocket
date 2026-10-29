@@ -25,7 +25,16 @@ data class ElectricityReading(
     val room: String,
     val systemNo: String,
     val kwh: java.math.BigDecimal,
-)
+) {
+    /**
+     * 这条结果是否确实属于当前输入。
+     *
+     * 界面用它做最后一道归属校验：即使用户改了楼号/房间号而旧请求的回调才到，
+     * 也不会把旧房间的电量显示在新输入下面。
+     */
+    fun matches(building: String, room: String): Boolean =
+        this.building == building.trim() && this.room == room.trim()
+}
 
 sealed interface ElectricityResult {
     data class Success(val reading: ElectricityReading) : ElectricityResult
