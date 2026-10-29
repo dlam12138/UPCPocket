@@ -44,8 +44,8 @@ android {
         // 轻量版在 0.1.10（code 11）之上递增，保证覆盖安装不会触发降级。
         // 第二步在 0.2.0（code 12）之上继续递增；第三步 0.2.2 / code 14；
         // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
-        versionCode = 18
-        versionName = "0.2.6-lightly-preview"
+        versionCode = 19
+        versionName = "0.2.7-lightly-preview"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
     }
 

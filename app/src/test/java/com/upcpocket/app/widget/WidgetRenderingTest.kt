@@ -1,6 +1,7 @@
 package com.upcpocket.app.widget
 
 import android.app.Application
+import android.content.res.Configuration
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
@@ -45,7 +46,7 @@ class WidgetRenderingTest {
         root.findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `card shows masked id balance and separate transition`() {
+    fun `compact card shows masked id main balance and hides secondary transition`() {
         val id = "2099000123"
         val root = render(
             kind = WidgetKind.CARD,
@@ -61,9 +62,10 @@ class WidgetRenderingTest {
         val transition = text(root, R.id.widget_card_transition)
         assertTrue(transition.contains("6.78"))
         assertTrue(transition.contains("不计入"))
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_card_transition).visibility)
 
         val meta = text(root, R.id.widget_card_updated)
-        assertTrue(meta.startsWith("查询于\n"))
+        assertEquals(WidgetRenderer.queryTime(now), meta)
         assertFalse(meta.contains("刚刚"))
         assertFalse(meta.contains("分钟前"))
 
@@ -89,7 +91,7 @@ class WidgetRenderingTest {
     }
 
     @Test
-    fun `power keeps building and room on separate complete lines`() {
+    fun `power keeps building and room as separately rendered fields`() {
         val root = render(
             kind = WidgetKind.POWER,
             power = PowerSnapshot("01号楼(1)", "1101", "17.34", now),
@@ -104,7 +106,7 @@ class WidgetRenderingTest {
         assertTrue(text(root, R.id.widget_power_value).contains("17.34 度"))
         assertFalse(text(root, R.id.widget_power_value).contains("元"))
         val meta = text(root, R.id.widget_power_updated)
-        assertTrue(meta.startsWith("查询于\n"))
+        assertEquals(WidgetRenderer.queryTime(now), meta)
         assertFalse(meta.contains("刚刚"))
         assertFalse(meta.contains("分钟前"))
     }
@@ -133,6 +135,25 @@ class WidgetRenderingTest {
         assertTrue(failedMeta.contains("刷新失败"))
         assertTrue(failedMeta.contains(WidgetRenderer.queryTime(now)))
         assertFalse(failedMeta.contains("刚刚"))
+    }
+
+    @Test
+    fun `time color resolves in the launcher theme rather than the rendering process theme`() {
+        fun themed(mode: Int) = context.createConfigurationContext(
+            Configuration(context.resources.configuration).apply {
+                uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or mode
+            },
+        )
+        val light = themed(Configuration.UI_MODE_NIGHT_NO)
+        val dark = themed(Configuration.UI_MODE_NIGHT_YES)
+        val views = WidgetRenderer.cardViews(
+            light, 7, DirectCardSnapshot("12345678", 12345, 0, now), false, false,
+        )
+        val root = views.apply(dark, FrameLayout(dark))
+        assertEquals(
+            dark.getColor(R.color.widget_secondary),
+            root.findViewById<TextView>(R.id.widget_card_updated).currentTextColor,
+        )
     }
 
     @Test

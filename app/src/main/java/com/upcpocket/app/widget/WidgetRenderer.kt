@@ -3,7 +3,6 @@ package com.upcpocket.app.widget
 import android.content.Context
 import android.view.View
 import android.widget.RemoteViews
-import androidx.core.content.ContextCompat
 import com.upcpocket.app.R
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.data.power.PowerSnapshot
@@ -60,7 +59,6 @@ object WidgetRenderer {
             )
             views.setViewVisibility(R.id.widget_card_transition, View.GONE)
             setMeta(
-                context = context,
                 views = views,
                 viewId = R.id.widget_card_updated,
                 text = context.getString(R.string.widget_empty_hint) + "\n" +
@@ -90,13 +88,13 @@ object WidgetRenderer {
             R.id.widget_card_balance,
             context.getString(R.string.widget_balance_value, snapshot.balanceText),
         )
-        views.setViewVisibility(R.id.widget_card_transition, View.VISIBLE)
+        // 2×2 只突出主余额；过渡余额仍可在应用里查看。
+        views.setViewVisibility(R.id.widget_card_transition, View.GONE)
         views.setTextViewText(
             R.id.widget_card_transition,
             context.getString(R.string.widget_transition, snapshot.transitionText),
         )
         setMeta(
-            context = context,
             views = views,
             viewId = R.id.widget_card_updated,
             text = metaText(context, snapshot.fetchedAt, refreshing, failed),
@@ -142,7 +140,6 @@ object WidgetRenderer {
                 context.getString(R.string.widget_empty_value),
             )
             setMeta(
-                context = context,
                 views = views,
                 viewId = R.id.widget_power_updated,
                 text = context.getString(R.string.widget_empty_hint) + "\n" +
@@ -161,7 +158,7 @@ object WidgetRenderer {
             return views
         }
 
-        // 楼号与房间号拆成两行：2.0× 字号或窄宽时，房号不会再被楼号挤掉。
+        // 楼号与房号独立渲染；紧凑行优先给房号留出空间。
         views.setTextViewText(R.id.widget_power_building, snapshot.building)
         views.setTextViewText(R.id.widget_power_room, snapshot.room)
         views.setTextViewText(
@@ -169,7 +166,6 @@ object WidgetRenderer {
             context.getString(R.string.widget_kwh_value, snapshot.kwh),
         )
         setMeta(
-            context = context,
             views = views,
             viewId = R.id.widget_power_updated,
             text = metaText(context, snapshot.fetchedAt, refreshing, failed),
@@ -189,8 +185,8 @@ object WidgetRenderer {
     }
 
     /**
-     * 两行结构：第一行状态（查询于/正在刷新/刷新失败），第二行是**上次成功查询**的
-     * 绝对时间。失败和刷新中都不改这个时间。
+     * 正常状态只显示绝对时间；刷新中/失败时增加一行状态。
+     * 时间始终来自上次成功查询，不能改成失败发生的时间。
      */
     private fun metaText(
         context: Context,
@@ -203,7 +199,8 @@ object WidgetRenderer {
             failed -> context.getString(R.string.widget_refresh_failed)
             else -> context.getString(R.string.widget_query_label)
         }
-        return label + "\n" + queryTime(fetchedAt)
+        return if (!refreshing && !failed) queryTime(fetchedAt)
+        else label + "\n" + queryTime(fetchedAt)
     }
 
     private fun metaColor(refreshing: Boolean, failed: Boolean): Int = when {
@@ -213,14 +210,14 @@ object WidgetRenderer {
     }
 
     private fun setMeta(
-        context: Context,
         views: RemoteViews,
         viewId: Int,
         text: String,
         colorRes: Int,
     ) {
         views.setTextViewText(viewId, text)
-        views.setTextColor(viewId, ContextCompat.getColor(context, colorRes))
+        // Resolve colors in the launcher host, including when night mode changes.
+        views.setColorStateList(viewId, "setTextColor", colorRes)
     }
 
     private val SAME_YEAR_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm")
