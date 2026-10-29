@@ -12,6 +12,11 @@ import org.junit.Test
  */
 class SchoolScheduleProtocolTest {
 
+    @Test
+    fun `schedule login opens the official index route instead of the 404 directory route`() {
+        assertEquals("https://app.upc.edu.cn/site/weekschedule/index", SchoolScheduleProtocol.PAGE_URL)
+    }
+
     private val indexJson = """
         {"e":0,"m":"","d":{
           "termInfo":[

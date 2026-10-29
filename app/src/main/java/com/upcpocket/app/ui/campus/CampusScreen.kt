@@ -94,7 +94,7 @@ fun CampusScreen(
                 )
                 Text(
                     text = "空闲教室、校园卡余额、唐岛湾剩余电量、图书馆座位都在 App 内原生查询；" +
-                        "校园卡与图书馆走学校官方登录，课表会话由 WebView Cookie 保持。",
+                        "校园卡余额输入本人学号查询；图书馆使用学校登录，课表会话由 WebView Cookie 保持。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -145,7 +145,7 @@ fun CampusScreen(
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
                 Text(
-                    "校园卡会话：" + (
+                    "校园卡平台会话（余额查询不需要）：" + (
                         if (AppGraph.campusCardService.hasSession()) "内存中（已登录）"
                         else "未登录"
                         ),

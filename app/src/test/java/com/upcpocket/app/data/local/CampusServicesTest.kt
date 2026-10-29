@@ -25,16 +25,15 @@ class CampusServicesTest {
     }
 
     @Test
-    fun `校园卡余额指向学校平台并说明不做流水与充值`() {
+    fun `校园卡提供本人余额与流水但不充值`() {
         val card = CampusServices.ALL.single { it.id == "ecard" }
-        assertEquals("校园卡余额", card.title)
-        // 2026-10-28 核验：旧微信专用地址只返回“无效token”，实际数据由平台前端接口提供。
-        assertEquals("https://mb-xyk.upc.edu.cn/plat/", card.url)
-        assertEquals(CampusServices.Access.CAS, card.access)
-        assertFalse(card.subtitle.contains("流水"))
-        assertFalse(card.scope.contains("流水"))
-        assertTrue(card.note.contains("不做充值"))
-        assertTrue(card.note.contains("待圈存"))
+        assertEquals("校园卡余额与流水", card.title)
+        assertEquals("http://jhzf.upc.edu.cn:20081/wechat/query/balance.html", card.url)
+        assertEquals(CampusServices.Access.PUBLIC, card.access)
+        assertTrue(card.subtitle.contains("流水"))
+        assertTrue(card.note.contains("流水"))
+        assertTrue(card.note.contains("不提供充值"))
+        assertTrue(card.scope.contains("过渡余额"))
     }
 
     @Test

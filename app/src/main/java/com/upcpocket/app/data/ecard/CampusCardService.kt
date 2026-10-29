@@ -165,6 +165,17 @@ class CampusCardService(
         }
     }
 
+    /** 流水仅在调用页内存中保留；过期清会话，网络失败不登出。 */
+    suspend fun transactions(from: java.time.LocalDate, to: java.time.LocalDate, page: Int): CampusCardTransactions.Page {
+        val value = token ?: throw CampusCardSessionExpiredException("请先登录校园卡")
+        try {
+            return client.transactions(value, from, to, page)
+        } catch (expired: CampusCardSessionExpiredException) {
+            signOut()
+            throw expired
+        }
+    }
+
     fun rememberedAccount(): String = store.loadCampusCard()?.account.orEmpty()
 
     /**

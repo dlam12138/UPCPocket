@@ -21,6 +21,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,14 +36,17 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CampusCardAdoptResult
 import com.upcpocket.app.data.ecard.CampusCardProtocol
+import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.runtime.LaunchedEffect
+import org.json.JSONTokener
 
 /**
  * 校园卡官方登录页。
  *
- * 只做一件事：让用户在学校自己的统一认证页面上完成登录，然后把平台**回带给自己应用**
- * 的令牌（`synjones-auth` 查询参数）交给 [AppGraph.campusCardService]。
+ * 用户在学校官方平台页面完成登录，采用 URL 回调或同源 sessionStorage 的令牌交给 [AppGraph.campusCardService]。
  *
  * 边界：
  *  - 页面里的学校域名之外不放行；http 明文只在 `mb-xyk` 上暂时不可避免（平台回跳是 http），
@@ -61,9 +65,14 @@ fun CampusCardLoginScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var finished by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var pageLoading by remember { mutableStateOf(true) }
+    var loginClient by remember { mutableStateOf<SchoolLoginWebViewClient?>(null) }
+
+    var attemptedToken by remember { mutableStateOf<String?>(null) }
 
     fun finish(token: String) {
-        if (busy || finished) return
+        if (busy || finished || token == attemptedToken) return
+        attemptedToken = token
         busy = true
         error = null
         scope.launch {
@@ -88,7 +97,26 @@ fun CampusCardLoginScreen(
                 is CampusCardAdoptResult.Unavailable -> {
                     // 网络问题不等于登录失败：不说“令牌无效”，也不假装成功。
                     error = "登录已完成，但这次读不到余额：${result.message}。" +
-                        "可以稍后在余额页重试，无需重复登录。"
+                        "请点击重新检测；确认余额成功后才会保存这次登录。"
+                }
+            }
+        }
+    }
+
+    // 官方登录组件把 access_token 写入同源 sessionStorage，而不一定回带到 URL。
+    // 只在该业务的 HTTPS /plat 页面读取此单一字段；不挂全域 JS bridge，不读取表单。
+    LaunchedEffect(webView) {
+        val view = webView ?: return@LaunchedEffect
+        while (true) {
+            delay(750)
+            val origin = view.url.orEmpty()
+            if (!busy && !finished && isCampusCardStoragePage(origin)) {
+                view.evaluateJavascript(CARD_LOGIN_LAYOUT_REPAIR, null)
+                view.evaluateJavascript("(function(){return sessionStorage.getItem('access_token')||'';})()") { raw ->
+                    if (view.url == origin && isCampusCardStoragePage(view.url.orEmpty()) && raw.length <= 16_384) {
+                        val token = runCatching { JSONTokener(raw).nextValue() as? String }.getOrNull()
+                        if (!token.isNullOrBlank()) finish(token)
+                    }
                 }
             }
         }
@@ -96,6 +124,7 @@ fun CampusCardLoginScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            loginClient?.dispose(webView)
             webView?.stopLoading()
             webView?.destroy()
             webView = null
@@ -105,7 +134,7 @@ fun CampusCardLoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("校园卡统一认证") },
+                title = { Text("登录校园卡") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -118,11 +147,9 @@ fun CampusCardLoginScreen(
             Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy || pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(
-                text = "登录由学校统一认证页面完成。成功后本页会立即关闭，只保留 App 自己拿到的" +
-                    "校园卡平台令牌；开启“记住学校登录”时该令牌用 Keystore 加密保存。" +
-                    "不保存密码，也不会读取微信中的任何数据。",
+                text = "在学校校园卡页面登录，可选择学号登录或统一认证。成功后返回查看余额与流水。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -134,7 +161,12 @@ fun CampusCardLoginScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+                TextButton(onClick = {
+                    attemptedToken = null
+                    webView?.let { view -> loginClient?.load(view, loginUrl()) }
+                }) { Text("重新加载登录页") }
             }
+            TextButton(onClick = { attemptedToken = null; error = null }) { Text("已完成登录，重新检测") }
             if (busy) {
                 CircularProgressIndicator(Modifier.padding(horizontal = 16.dp))
             }
@@ -151,32 +183,32 @@ fun CampusCardLoginScreen(
                         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest,
-                            ): Boolean = !allowedCampusCardUrl(request.url.toString())
+                        val client = object : SchoolLoginWebViewClient(
+                            scope, ::allowedCampusCardUrl,
+                            onLoading = { pageLoading = it }, onError = { error = it },
+                            onResolved = { url ->
+                                val token = campusCardTokenFromUrl(url)
+                                if (token != null) finish(token)
+                                token != null
+                            },
+                        ) {
+                            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? =
+                                cardPageGet(request) ?: super.shouldInterceptRequest(view, request)
 
                             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
                                 // 学校平台把令牌放在回跳 URL 里；页面一开始加载就能判断。
-                                tokenFromUrl(url)?.let { finish(it) }
+                                campusCardTokenFromUrl(url)?.let { finish(it) }
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
-                                tokenFromUrl(url)?.let { finish(it) }
-                            }
-
-                            override fun onReceivedError(
-                                view: WebView,
-                                request: WebResourceRequest,
-                                webError: android.webkit.WebResourceError,
-                            ) {
-                                if (request.isForMainFrame && !finished) {
-                                    error = "登录页加载失败，请检查网络后重试"
-                                }
+                                super.onPageFinished(view, url)
+                                campusCardTokenFromUrl(url)?.let { finish(it) }
                             }
                         }
-                        loadUrl(loginUrl())
+                        loginClient = client
+                        webViewClient = client
+                        post { client.load(this, loginUrl()) }
                     }
                     webView = view
                     view
@@ -187,9 +219,13 @@ fun CampusCardLoginScreen(
 }
 
 /** 学校平台自己使用的登录入口；`targetUrl` 是平台首页，登录后会回带令牌。 */
-internal fun loginUrl(): String {
-    val target = java.net.URLEncoder.encode(CampusCardProtocol.PLAT_LANDING, "UTF-8")
-    return CampusCardProtocol.BASE + CampusCardProtocol.LOGIN_PATH + "?targetUrl=" + target
+internal fun loginUrl(): String = CampusCardProtocol.BASE + "/plat/?name=Login"
+
+internal fun isCampusCardStoragePage(url: String): Boolean {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    return uri.scheme == "https" && uri.host == "mb-xyk.upc.edu.cn" &&
+        uri.port in setOf(-1, 443) && uri.rawUserInfo == null &&
+        (uri.path == "/plat" || uri.path.startsWith("/plat/"))
 }
 
 /**
@@ -201,6 +237,7 @@ internal fun allowedCampusCardUrl(url: String): Boolean {
     val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
     val host = uri.host?.lowercase() ?: return false
     val scheme = uri.scheme?.lowercase() ?: return false
+    if (uri.rawUserInfo != null || uri.port !in setOf(-1, if (scheme == "https") 443 else 80)) return false
     if (scheme == "https") return host == "upc.edu.cn" || host.endsWith(".upc.edu.cn")
     if (scheme == "http") {
         if (host != "mb-xyk.upc.edu.cn") return false
@@ -211,6 +248,12 @@ internal fun allowedCampusCardUrl(url: String): Boolean {
             || segments.firstOrNull()?.startsWith("berserker-") == true
     }
     return false
+}
+
+internal fun campusCardTokenFromUrl(url: String): String? {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return null
+    if (!allowedCampusCardUrl(url) || !uri.host.equals("mb-xyk.upc.edu.cn", true)) return null
+    return tokenFromUrl(url)
 }
 
 /** 从回跳 URL 的查询参数里读平台令牌；没有就返回 null。 */
@@ -237,3 +280,18 @@ internal fun tokenFromUrl(url: String): String? {
     }
     return null
 }
+
+/** Official card page clips its loaded form when its viewport roots collapse to zero. */
+internal const val CARD_LOGIN_LAYOUT_REPAIR = """
+(function(){
+  if(location.protocol!=='https:' || location.hostname!=='mb-xyk.upc.edu.cn' ||
+     !/^\/plat(?:\/|$)/.test(location.pathname)) return;
+  var roots=[document.documentElement,document.body,document.querySelector('.login-page')];
+  roots.forEach(function(e){
+    if(e && (e.getBoundingClientRect().height<16 || e.dataset.upcPocketHeight==='1')) {
+      e.style.setProperty('height',window.innerHeight+'px','important');
+      e.dataset.upcPocketHeight='1';
+    }
+  });
+})();
+"""

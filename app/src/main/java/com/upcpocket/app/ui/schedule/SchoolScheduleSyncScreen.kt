@@ -38,11 +38,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -93,9 +95,19 @@ fun SchoolScheduleSyncScreen(
     val state = vm.ui
     var showPeriodEditor by remember { mutableStateOf(false) }
     val loginVisible = state.phase == SchoolScheduleSyncViewModel.Phase.LOGIN
+    val loginScope = rememberCoroutineScope()
+    var pageLoading by remember { mutableStateOf(true) }
+    var loginClient by remember { mutableStateOf<SchoolLoginWebViewClient?>(null) }
+    var loginView by remember { mutableStateOf<WebView?>(null) }
 
     DisposableEffect(Unit) {
-        onDispose { vm.detach() }
+        onDispose {
+            vm.detach()
+            loginClient?.dispose(loginView)
+            loginView?.stopLoading()
+            loginView?.destroy()
+            loginView = null
+        }
     }
 
     if (showPeriodEditor) {
@@ -127,8 +139,7 @@ fun SchoolScheduleSyncScreen(
         ) {
             if (loginVisible) {
                 Text(
-                    "请在学校统一认证页面完成本人登录。登录只用于读取本人课表；" +
-                        "App 不读取密码，也不把课程页面整套当成原生界面。登录完成后会自动读取学期列表。",
+                    "在学校页面登录，随后选择学期并预览要导入的课程。",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
@@ -139,8 +150,9 @@ fun SchoolScheduleSyncScreen(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp),
                     )
+                    TextButton(onClick = vm::reloadLogin) { Text("重新加载登录页") }
                 }
-                if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if (state.loading || pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
 
             AndroidView(
@@ -161,36 +173,33 @@ fun SchoolScheduleSyncScreen(
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                         // 数据桥由 ViewModel 仅在业务页挂载；这里不预先暴露给登录页。
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest,
-                            ): Boolean = !allowedSchoolUrl(request.url.toString())
-
+                        val client = object : SchoolLoginWebViewClient(
+                            loginScope, ::allowedSchoolUrl,
+                            onLoading = { pageLoading = it },
+                            onError = { message ->
+                                if (message != null) vm.onPageError(message) else vm.clearError()
+                            },
+                        ) {
                             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                                super.onPageStarted(view, url, favicon)
                                 vm.onPageStarted()
                                 vm.clearError()
                             }
 
                             override fun onPageFinished(view: WebView, url: String) {
+                                super.onPageFinished(view, url)
                                 // 登录成功后 WebView 会落下业务 Cookie；不 flush，它可能只在
                                 // 内存里，进程被杀就丢，重启又要重登。
                                 CookieManager.getInstance().flush()
                                 vm.onPageFinished(url)
                             }
 
-                            override fun onReceivedError(
-                                view: WebView,
-                                request: WebResourceRequest,
-                                error: android.webkit.WebResourceError,
-                            ) {
-                                if (request.isForMainFrame) {
-                                    vm.onPageError("课表页加载失败，请检查网络后重试")
-                                }
-                            }
                         }
+                        loginClient = client
+                        loginView = this
+                        webViewClient = client
                         vm.attach(this)
-                        loadUrl(SchoolScheduleProtocol.PAGE_URL)
+                        post { client.load(this, SchoolScheduleProtocol.PAGE_URL) }
                     }
                     view
                 },

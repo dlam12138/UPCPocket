@@ -18,7 +18,7 @@ class CampusCardException(message: String, cause: Throwable? = null) : IOExcepti
  *
  * 只做两件事：带平台自己签发的 bearer 令牌读 `/berserker-app/ykt/tsm/queryCard`，
  * 以及读公开的 `/berserker-app/frontInfo` 确认金额口径。**没有**充值、绑定、改密、
- * 解绑、流水查询等写操作或扩展查询。
+ * 解绑等写操作。流水只读取本人账单。
  *
  * 令牌只在本类与调用方的内存/加密存储之间传递，不写入日志与导出。
  */
@@ -34,6 +34,10 @@ open class CampusCardClient(
             basis = basis,
         )
         CampusCardProtocol.Result(basis = basis, cards = cards)
+    }
+
+    open suspend fun transactions(token: String, from: java.time.LocalDate, to: java.time.LocalDate, page: Int): CampusCardTransactions.Page = withContext(Dispatchers.IO) {
+        CampusCardTransactions.parse(get(CampusCardTransactions.query(from, to, page), token), page)
     }
 
     private fun get(path: String, token: String? = null): String {

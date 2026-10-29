@@ -122,6 +122,7 @@ fun ScheduleScreen(
     var showCsvImport by remember { mutableStateOf(false) }
     var showImportChoice by remember { mutableStateOf(false) }
     var showSchoolSync by remember { mutableStateOf(false) }
+    var showJwxtImport by remember { mutableStateOf(false) }
     state.selectedSemester?.let { semester ->
         if (showCsvImport) androidx.compose.runtime.key(semester.id) {
             CsvImportDialog(semester, state.periods, vm) { showCsvImport = false }
@@ -134,11 +135,25 @@ fun ScheduleScreen(
                 showImportChoice = false
                 showSchoolSync = true
             },
+            onJwxtSync = {
+                showImportChoice = false
+                showJwxtImport = true
+            },
             onCsv = {
                 showImportChoice = false
                 showCsvImport = true
             },
         )
+    }
+    if (showJwxtImport) {
+        JwxtScheduleImportScreen(
+            onClose = { showJwxtImport = false },
+            onSynced = { semesterId ->
+                showJwxtImport = false
+                vm.refreshSemestersAndSelect(semesterId)
+            },
+        )
+        return
     }
     if (showSchoolSync) {
         SchoolScheduleSyncScreen(

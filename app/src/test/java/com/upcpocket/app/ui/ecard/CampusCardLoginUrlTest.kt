@@ -15,11 +15,26 @@ import org.junit.Test
 class CampusCardLoginUrlTest {
 
     @Test
+    fun `storage token capture is restricted to exact HTTPS business page`() {
+        assertTrue(isCampusCardStoragePage("https://mb-xyk.upc.edu.cn/plat/login"))
+        listOf("http://mb-xyk.upc.edu.cn/plat/", "https://cas.upc.edu.cn/plat/",
+            "https://mb-xyk.upc.edu.cn/platform-evil/", "https://mb-xyk.upc.edu.cn:8443/plat/",
+            "https://user@mb-xyk.upc.edu.cn/plat/").forEach { assertFalse(isCampusCardStoragePage(it)) }
+    }
+
+    @Test
+    fun `only campus card origin supplies its token`() {
+        assertEquals("fixture", campusCardTokenFromUrl("https://mb-xyk.upc.edu.cn/plat/?synjones-auth=fixture"))
+        assertNull(campusCardTokenFromUrl("https://cas.upc.edu.cn/cas/login?synjones-auth=fixture"))
+        assertNull(campusCardTokenFromUrl("https://mb-xyk.upc.edu.cn:8443/plat/?synjones-auth=fixture"))
+        assertNull(campusCardTokenFromUrl("https://somebody@mb-xyk.upc.edu.cn/plat/?synjones-auth=fixture"))
+    }
+
+    @Test
     fun `统一认证入口是学校域名且带平台首页作为回跳`() {
         val url = loginUrl()
-        assertTrue(url.startsWith("https://mb-xyk.upc.edu.cn/berserker-auth/cas/redirect/wislearn?targetUrl="))
-        assertTrue(url.contains("mb-xyk.upc.edu.cn"))
-        assertTrue(url.contains("%3A%2F%2F"))
+        assertEquals("https://mb-xyk.upc.edu.cn/plat/?name=Login", url)
+
     }
 
     @Test

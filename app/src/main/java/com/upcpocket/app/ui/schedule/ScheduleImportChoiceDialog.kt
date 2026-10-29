@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 fun ScheduleImportChoiceDialog(
     onDismiss: () -> Unit,
     onSchoolSync: () -> Unit,
+    onJwxtSync: () -> Unit,
     onCsv: () -> Unit,
 ) {
     AlertDialog(
@@ -31,12 +32,21 @@ fun ScheduleImportChoiceDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "推荐：用学校统一认证登录后，直接读取本人整学期课表。登录只在官方页面完成，" +
-                        "读取完成后会先给你预览，确认后才写入。",
+                    "推荐：在 App 内登录教务系统，自己打开「学期理论课表」，再点「读取当前页」。" +
+                        "App 只读当前显示的表格，读取后先预览，确认才写入。",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Button(onClick = onSchoolSync, modifier = Modifier.fillMaxWidth()) {
-                    Text("登录并同步学校课表")
+                Button(onClick = onJwxtSync, modifier = Modifier.fillMaxWidth()) {
+                    Text("登录教务系统并读取当前课表")
+                }
+                Text(
+                    "另一个入口：校园 App 的课表页（app.upc.edu.cn）。两个入口写入同一个学期，" +
+                        "重复同步只替换学校来源的课程。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = onSchoolSync, modifier = Modifier.fillMaxWidth()) {
+                    Text("从校园 App 课表页同步")
                 }
                 Text(
                     "备用：CSV 文件 / 剪贴板（也支持学校课表页的导出脚本）。" +

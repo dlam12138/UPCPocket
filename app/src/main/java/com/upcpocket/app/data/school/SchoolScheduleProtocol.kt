@@ -30,7 +30,7 @@ import kotlinx.serialization.json.intOrNull
  */
 internal object SchoolScheduleProtocol {
     const val BASE_URL = "https://app.upc.edu.cn"
-    const val PAGE_URL = "$BASE_URL/site/weekschedule/"
+    const val PAGE_URL = "$BASE_URL/site/weekschedule/index"
     const val INDEX_PATH = "/timetable/wap/default/get-index"
     const val DATA_PATH = "/timetable/wap/default/get-data"
 

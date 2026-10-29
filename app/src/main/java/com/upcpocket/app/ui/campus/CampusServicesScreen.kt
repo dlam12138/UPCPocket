@@ -181,7 +181,7 @@ fun CampusServicesScreen(
                     )
                     Text(
                         text = "空闲教室、图书馆座位、校园卡余额、唐岛湾剩余电量都在 App 内原生查询；" +
-                            "校园卡与图书馆用学校官方登录，唐岛湾电费按楼号＋房间号公开查询。" +
+                            "校园卡余额输入本人学号，图书馆用学校官方登录，唐岛湾电费按楼号＋房间号查询。" +
                             "开启“记住登录”时，图书馆 token 与校园卡令牌才用 Keystore 加密保存；" +
                             "课表会话由 WebView Cookie 保持，可在“更多 → 退出学校登录”清理。不提供充值。",
                         style = MaterialTheme.typography.bodySmall,

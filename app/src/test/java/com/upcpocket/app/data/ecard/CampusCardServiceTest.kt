@@ -69,6 +69,12 @@ class CampusCardServiceTest {
         var offline: Boolean = false,
         var expired: Boolean = false,
     ) : CampusCardClient() {
+        override suspend fun transactions(accessToken: String, from: java.time.LocalDate, to: java.time.LocalDate, page: Int): CampusCardTransactions.Page {
+            if (offline) throw CampusCardException("offline")
+            if (expired) throw CampusCardSessionExpiredException("expired")
+            return CampusCardTransactions.Page(emptyList(), page, 0, 0)
+        }
+
         override suspend fun fetch(accessToken: String) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Unconfined) {
             if (offline) throw CampusCardException("无法连接校园卡服务，请检查网络后重试")
             if (expired) throw CampusCardSessionExpiredException("校园卡会话已失效，需要重新登录")
@@ -280,4 +286,34 @@ class CampusCardServiceTest {
         assertTrue(service.adoptToken("   ", remember = true) is CampusCardAdoptResult.Rejected)
         assertFalse(service.hasSession())
     }
+    @Test
+    fun transactionExpiryClearsSessionAndEncryptedCopy() = runTest {
+        val client = FakeClient(mutableMapOf("fixture-token" to "9000000001"))
+        val service = CampusCardService(store, client)
+        assertTrue(service.adoptToken("fixture-token", remember = true) is CampusCardAdoptResult.Accepted)
+        client.expired = true
+        try {
+            service.transactions(java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 10, 28), 1)
+            org.junit.Assert.fail("must expire")
+        } catch (_: CampusCardSessionExpiredException) { }
+        assertFalse(service.hasSession())
+        assertNull(store.loadCampusCard())
+        assertNull(service.lastSuccess())
+    }
+
+    @Test
+    fun transactionNetworkFailureRetainsSessionAndPreviousBalance() = runTest {
+        val client = FakeClient(mutableMapOf("fixture-token" to "9000000001"))
+        val service = CampusCardService(store, client)
+        assertTrue(service.adoptToken("fixture-token", remember = true) is CampusCardAdoptResult.Accepted)
+        client.offline = true
+        try {
+            service.transactions(java.time.LocalDate.of(2026, 10, 1), java.time.LocalDate.of(2026, 10, 28), 1)
+            org.junit.Assert.fail("must report network failure")
+        } catch (_: CampusCardException) { }
+        assertTrue(service.hasSession())
+        assertNotNull(store.loadCampusCard())
+        assertNotNull(service.lastSuccess())
+    }
+
 }

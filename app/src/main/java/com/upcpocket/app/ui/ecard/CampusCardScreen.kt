@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CampusCardScreen(
+internal fun PlatformCampusCardScreen(
     onBack: () -> Unit,
     onLogin: () -> Unit,
 ) {
@@ -141,7 +141,7 @@ fun CampusCardScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("校园卡余额") },
+                title = { Text("校园卡") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -160,7 +160,7 @@ fun CampusCardScreen(
         ) {
             Text(
                 text = "余额由学校校园卡平台（慧新E校）自己的接口返回，App 只读不改。" +
-                    "不提供充值、绑定、改密或流水查询。",
+                    "支持本人流水查询；不提供充值、绑定或改密。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -269,14 +269,14 @@ fun CampusCardScreen(
                             SchoolSessionStore.maskAccount(AppGraph.campusCardService.rememberedAccount()) +
                             "。会话已失效，需要重新登录。"
                     } else {
-                        "需要先在学校统一认证页面登录，才能读到本人余额。"
+                        "需要先登录学校校园卡平台，才能读取本人余额与流水。"
                     },
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Button(
                     onClick = onLogin,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) { Text("登录学校统一认证") }
+                ) { Text("登录校园卡平台") }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
@@ -302,6 +302,15 @@ fun CampusCardScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            if (!needsLogin && balance != null) {
+                CampusCardTransactionsSection(onExpired = {
+                    balance = null
+                    lastSuccess = null
+                    needsLogin = true
+                    error = "校园卡会话已失效，请重新登录"
+                })
             }
 
             Text(

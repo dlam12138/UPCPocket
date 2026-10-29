@@ -20,6 +20,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.library.LibrarySeatProtocol
+import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -55,6 +57,8 @@ fun LibrarySeatLoginScreen(
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var finished by remember { mutableStateOf(false) }
+    var pageLoading by remember { mutableStateOf(true) }
+    var loginClient by remember { mutableStateOf<SchoolLoginWebViewClient?>(null) }
 
     fun clearWebSession() {
         // 只清本业务的 Cookie；不能 removeAllCookies，否则会把课表/统一认证会话一起清掉。
@@ -88,7 +92,7 @@ fun LibrarySeatLoginScreen(
 
     fun capture(attempt: Int) {
         val view = webView ?: return
-        if (finished) return
+        if (finished || !isLibraryTokenPage(view.url.orEmpty())) return
         view.evaluateJavascript(CAPTURE_JS) { raw ->
             val decoded = runCatching {
                 (JSONTokener(raw).nextValue() as? String).orEmpty()
@@ -111,6 +115,7 @@ fun LibrarySeatLoginScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            loginClient?.dispose(webView)
             clearWebSession()
             webView?.stopLoading()
             webView?.destroy()
@@ -134,10 +139,9 @@ fun LibrarySeatLoginScreen(
             Modifier.fillMaxSize().padding(padding),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (busy || pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(
-                text = "登录由学校统一认证页面完成。登录成功后本页立即关闭，只保留本次运行所需的会话；" +
-                    "退出图书馆页会清理会话。",
+                text = "在学校页面登录后，即可在应用内查看和预约座位。可在“学校登录”中设置记住登录。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -149,6 +153,9 @@ fun LibrarySeatLoginScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+                TextButton(onClick = {
+                    webView?.let { view -> loginClient?.load(view, LibrarySeatProtocol.LOGIN_URL) }
+                }) { Text("重新加载登录页") }
             }
             AndroidView(
                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -163,38 +170,23 @@ fun LibrarySeatLoginScreen(
                         settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
                         CookieManager.getInstance().setAcceptCookie(true)
                         CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView,
-                                request: WebResourceRequest,
-                            ): Boolean {
-                                val uri = request.url
-                                val host = uri.host.orEmpty()
-                                // 只允许 UPC 域名的 HTTPS；拒绝 http、外部站点与自定义 scheme。
-                                val allowed = uri.scheme.equals("https", ignoreCase = true) &&
-                                    (host == "upc.edu.cn" || host.endsWith(".upc.edu.cn"))
-                                return !allowed
-                            }
-
-                            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                                error = null
-                            }
-
+                        val client = object : SchoolLoginWebViewClient(
+                            scope, ::allowedLibraryLoginUrl,
+                            onLoading = { pageLoading = it }, onError = { error = it },
+                            onResolved = { url ->
+                                val token = if (isLibraryTokenPage(url)) tokenFromUrl(url) else null
+                                if (token != null) finish(token, alreadySeatToken = false)
+                                token != null
+                            },
+                        ) {
                             override fun onPageFinished(view: WebView, url: String) {
+                                super.onPageFinished(view, url)
                                 capture(0)
                             }
-
-                            override fun onReceivedError(
-                                view: WebView,
-                                request: WebResourceRequest,
-                                webError: android.webkit.WebResourceError,
-                            ) {
-                                if (request.isForMainFrame) {
-                                    error = "登录页加载失败，请检查网络后重试"
-                                }
-                            }
                         }
-                        loadUrl(LibrarySeatProtocol.LOGIN_URL)
+                        loginClient = client
+                        webViewClient = client
+                        post { client.load(this, LibrarySeatProtocol.LOGIN_URL) }
                     }
                     webView = view
                     view
@@ -202,6 +194,19 @@ fun LibrarySeatLoginScreen(
             )
         }
     }
+}
+
+internal fun allowedLibraryLoginUrl(url: String): Boolean {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    val host = uri.host?.lowercase() ?: return false
+    return uri.scheme.equals("https", true) && uri.rawUserInfo == null &&
+        uri.port in setOf(-1, 443) && (host == "upc.edu.cn" || host.endsWith(".upc.edu.cn"))
+}
+
+internal fun isLibraryTokenPage(url: String): Boolean {
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    return allowedLibraryLoginUrl(url) && uri.host.equals("libspace.upc.edu.cn", true) &&
+        (uri.path == "/libseat" || uri.path.orEmpty().startsWith("/libseat/"))
 }
 
 /** 读取页面自己的 sessionStorage；只读取座位系统 token，不读取微信或其他站点数据。 */

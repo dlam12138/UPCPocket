@@ -164,16 +164,14 @@ object CampusServices {
         ),
         Entry(
             id = "ecard",
-            title = "校园卡余额",
-            subtitle = "卡余额 · 待圈存",
+            title = "校园卡余额与流水",
+            subtitle = "本人学号查余额 · 流水另需会话",
             campus = Campus.BOTH,
-            access = Access.CAS,
-            url = "https://mb-xyk.upc.edu.cn/plat/",
-            scope = "校园卡余额查询。账号、网络及打开环境等要求以学校页面说明为准。",
-            note = "在 App 内用学校统一认证登录后，读取本人卡余额与待圈存，不做充值、绑定、改密或流水。" +
-                "关掉“记住学校登录”或退出校园卡时清除令牌。",
-            updatedNote = "2026-10-28 核验：平台前端余额页调用 /berserker-app/ykt/tsm/queryCard，" +
-                "口径取自 frontInfo 的 ecardConfig。原微信专用地址 jhzf 只返回“无效token”，不再作为入口。",
+            access = Access.PUBLIC,
+            url = "http://jhzf.upc.edu.cn:20081/wechat/query/balance.html",
+            scope = "输入本人学号查询校园卡余额与过渡余额，两项分别展示。",
+            note = "余额直接在 App 查询，无需先登录微信；不提供充值。流水需要单独的有效会话，当前平台登录方案仍待手机验证。",
+            updatedNote = "2026-10-28 用户提供已实测方法：getCardInfo 接收本人学号；余额快照保存在本机，不把入口页无效 token 推断为余额接口不可用。",
         ),
         Entry(
             id = "portal",
