@@ -218,13 +218,21 @@ class CampusServicesTest {
     }
 
     @Test
-    fun `课表与空教室指向学校的教务入口`() {
-        val schedule = CampusServices.ALL.first { it.id == "schedule" }
+    fun `轻量版不再提供课表入口`() {
+        // 课表功能整体删除后，入口目录里不能残留任何教务/课表跳转，
+        // 否则用户仍可以从首页绕回已删除的页面。
+        assertTrue(CampusServices.ALL.none { it.id == "schedule" })
+        assertTrue(
+            CampusServices.ALL.none {
+                it.title.contains("课表") || it.url.contains("weekschedule")
+            },
+        )
+    }
+
+    @Test
+    fun `空闲教室指向学校的公开查询入口`() {
         val classroom = CampusServices.ALL.first { it.id == "classroom" }
-        assertTrue(domainOf(schedule.url).endsWith("upc.edu.cn"))
         assertTrue(domainOf(classroom.url).endsWith("upc.edu.cn"))
-        // 课表要登录，空教室匿名可看 —— 这个差别要如实写出来
-        assertEquals(CampusServices.Access.CAS, schedule.access)
         assertEquals(CampusServices.Access.PUBLIC, classroom.access)
     }
 

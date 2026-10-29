@@ -224,7 +224,7 @@ class CampusCardService(
         }
     }
 
-    /** 只退出校园卡这一项：令牌与上次成功值一起清，不动图书馆 token 与课表 Cookie。 */
+    /** 只退出校园卡这一项：令牌与上次成功值一起清，不动图书馆 token。 */
     fun signOut() {
         token = null
         _session.value = null

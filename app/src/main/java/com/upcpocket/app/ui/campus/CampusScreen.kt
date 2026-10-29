@@ -12,11 +12,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -42,20 +40,17 @@ import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
 import kotlinx.coroutines.launch
 
 /**
- * 「更多」= 功能与信息入口页。
+ * 「更多」= 设置与信息入口页。
  *
- * M1 的边界很清楚：**本地能力**（课表设置、学习统计、外观）与
- * **官方入口导航**（校园服务）分开摆放；没有"账号"分组，也没有"检测更新" ——
- * 这个应用不需要登录，也不连上游的发布接口。
+ * 轻量版保留：学习统计、学校登录开关、外观、关于。
+ * 课表设置的入口（教学周、节次、演示数据、显示样式）已随课表功能一起删除。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusScreen(
-    onOpenCampusServices: () -> Unit,
-    onOpenAbout: () -> Unit,
-    onOpenAppearance: () -> Unit,
-    onOpenDisplaySettings: () -> Unit,
     onOpenFocusStats: () -> Unit,
+    onOpenAppearance: () -> Unit,
+    onOpenAbout: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("更多") }) },
@@ -71,33 +66,10 @@ fun CampusScreen(
             GroupTitle("学习")
             EntryCard {
                 Entry(
-                    Icons.Filled.CalendarMonth,
-                    "课程表设置",
-                    "教学周、节次时间、演示数据、显示样式",
-                    onOpenDisplaySettings,
-                )
-                Entry(
                     Icons.Filled.Insights,
                     "学习统计",
                     "专注时长、热力图、标签分布",
                     onOpenFocusStats,
-                )
-            }
-
-            GroupTitle("校园服务")
-            EntryCard {
-                Entry(
-                    Icons.Filled.School,
-                    "校园服务",
-                    "空闲教室 · 校园卡余额 · 宿舍电费 · 图书馆",
-                    onOpenCampusServices,
-                )
-                Text(
-                    text = "空闲教室、校园卡余额、唐岛湾剩余电量、图书馆座位都在 App 内原生查询；" +
-                        "校园卡余额输入本人学号查询；图书馆使用学校登录，课表会话由 WebView Cookie 保持。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
 
@@ -112,8 +84,8 @@ fun CampusScreen(
                     headlineContent = { Text("记住学校登录") },
                     supportingContent = {
                         Text(
-                            "图书馆 token 与校园卡令牌用 Android Keystore 加密保存（不随系统备份）；" +
-                                "课表会话由 WebView Cookie 保持。关闭或退出会清理持久副本与 UPC 业务 Cookie。",
+                            "图书馆 token 与校园卡令牌用 Android Keystore 加密保存（不随系统备份）。" +
+                                "关闭或退出会清理持久副本与 UPC 业务 Cookie。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -164,7 +136,7 @@ fun CampusScreen(
                         }
                     },
                     modifier = Modifier.padding(horizontal = 8.dp),
-                ) { Text("退出学校登录（清理图书馆与校园卡会话、学校 Cookie）") }
+                ) { Text("退出学校登录（清理图书馆与校园卡会话）") }
             }
 
             GroupTitle("外观")
@@ -194,7 +166,6 @@ fun CampusScreen(
 
 @Composable
 private fun GroupTitle(text: String) {
-    // 与卡片的屏幕边距（16dp）对齐；今天/课表页的页边距也是 16dp，全局一个节奏
     Text(
         text = text,
         style = MaterialTheme.typography.titleSmall,

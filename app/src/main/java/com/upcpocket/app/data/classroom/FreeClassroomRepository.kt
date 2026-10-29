@@ -21,7 +21,7 @@ enum class FreeClassroomCampus(val label: String) {
     TANGDAOWAN("唐岛湾校区"), GUZHENKOU("古镇口校区"),
 }
 
-/** 教室查询的节次来自学校公开页（1–13），与用户本地课表的作息无关。 */
+/** 教室查询的节次来自学校公开页（1–13），与 App 内其它页面的作息设置无关。 */
 data class FreeClassroomQuery(
     val campus: FreeClassroomCampus,
     val date: LocalDate,

@@ -68,7 +68,7 @@ class SchoolLoginWebViewClientTest {
     }
 
     @Test fun `CAS repair checks the document even when redirect callback retains entry URL`() {
-        client.onPageCommitVisible(view, "https://jwxt.upc.edu.cn/jsxsd/")
+        client.onPageCommitVisible(view, "https://libspace.upc.edu.cn/libseat/")
         assertEquals(CAS_VIEWPORT_REPAIR, shadowOf(view).lastEvaluatedJavascript)
         assertTrue(CAS_VIEWPORT_REPAIR.contains("location.origin !== 'https://cas.upc.edu.cn'"))
         assertTrue(CAS_VIEWPORT_REPAIR.contains("location.pathname !== '/cas/login'"))

@@ -60,8 +60,9 @@ data class FocusSessionEntity(
     @ColumnInfo(defaultValue = "0") val sequenceInDay: Int = 0,
     val note: String = "",
     /**
-     * 关联对象。P3-3 起：课表里的一节课 `"session:<id>"`、
-     * 自定义日程 `"plan:<id>"`。空串 = 无关联系自由专注。
+     * 关联对象。早期版本用于关联课表的一节课（`"session:<id>"`）或自定义日程
+     * （`"plan:<id>"`）；轻量版删除课表后始终为空串。旧记录里的历史值只作为
+     * 字符串保留，不参与任何计算或展示。
      */
     val contextRef: String = "",
 )

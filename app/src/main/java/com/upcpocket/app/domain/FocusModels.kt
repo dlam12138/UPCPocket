@@ -41,7 +41,7 @@ data class TimerSnapshot(
     val sessionId: Long = 0L,
     /** 本轮已完成的专注段数，用来决定第几段之后进长休息 */
     val focusRound: Int = 0,
-    /** 关联对象（课表里的一节课 / 自定义日程），空串 = 自由专注 */
+    /** 关联对象（轻量版始终为空串；旧记录可能留有历史课表/日程值，不参与计算） */
     val contextRef: String = "",
 ) {
     val idle: Boolean get() = startedAt == 0L

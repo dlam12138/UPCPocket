@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -31,7 +30,6 @@ data class FocusUiState(
     val tagName: String = "",
     val summary: FocusSummary = FocusSummary(),
     val todayRecords: List<FocusRecord> = emptyList(),
-    val courseCandidates: List<String> = emptyList(),
 ) {
     /** 空闲时按设置里的时长显示，这样改完设置立刻能看到 */
     val displayTotalSeconds: Int
@@ -43,13 +41,9 @@ class FocusViewModel : ViewModel() {
     private val engine: PomodoroEngine = AppGraph.pomodoroEngine
     private val prefsStore: FocusPrefsStore = AppGraph.focusPrefsStore
     private val repo: FocusRepository = AppGraph.focusRepository
-    private val scheduleRepo = AppGraph.scheduleRepository
 
     private val tagName = MutableStateFlow("")
     private val selectedTag = tagName.asStateFlow()
-
-    /** 本学期的课名，排在候选列表最前面（其余学期的放在后面） */
-    private val semesterCourseNames = MutableStateFlow<List<String>>(emptyList())
 
     /** 统计要往前看多久：热力图最久 53 周，多留一点余量 */
     private val recordsSince = FocusStats.dayStart(
@@ -63,8 +57,7 @@ class FocusViewModel : ViewModel() {
         prefsStore.flow,
         repo.observeTags(),
         records,
-        scheduleRepo.observeCourseNames(),
-    ) { timer, prefs, tags, allRecords, names ->
+    ) { timer, prefs, tags, allRecords ->
         val now = System.currentTimeMillis()
         FocusUiState(
             timer = timer,
@@ -76,8 +69,6 @@ class FocusViewModel : ViewModel() {
                 FocusStats.dayStart(FocusStats.dayKey(now)),
                 FocusStats.dayEnd(FocusStats.dayKey(now)),
             ),
-            courseCandidates = semesterCourseNames.value +
-                names.filterNot { it in semesterCourseNames.value },
         )
     }.combine(selectedTag) { ui, selected -> ui.copy(tagName = selected) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FocusUiState())
@@ -89,14 +80,6 @@ class FocusViewModel : ViewModel() {
             // 默认沿用上次用的标签，省一次点击
             val p = prefsStore.current()
             if (p.lastTagName.isNotBlank()) tagName.value = p.lastTagName
-        }
-        viewModelScope.launch {
-            val names = runCatching {
-                scheduleRepo.currentSemester()?.let { sem ->
-                    scheduleRepo.courses(sem.id).map { it.nameZh }.distinct()
-                }
-            }.getOrNull()
-            semesterCourseNames.value = names.orEmpty()
         }
     }
 

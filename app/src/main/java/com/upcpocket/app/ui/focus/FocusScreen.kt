@@ -174,7 +174,7 @@ fun FocusScreen(
 
     if (showNewTag) {
         NewTagDialog(
-            existing = ui.tags.map { it.name } + ui.courseCandidates,
+            existing = ui.tags.map { it.name },
             onDismiss = { showNewTag = false },
             onConfirm = { name ->
                 vm.createTag(name)
@@ -352,8 +352,6 @@ private fun TagSection(
     onManage: () -> Unit,
 ) {
     val tags = ui.tags.map { it.name }
-    // 课名候选默认收起：一次性铺 30 个芯片只会让人找不到重点
-    var showCourseNames by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -392,27 +390,6 @@ private fun TagSection(
                     Icon(Icons.Filled.Add, contentDescription = null, Modifier.size(16.dp))
                 },
             )
-            if (ui.courseCandidates.isNotEmpty()) {
-                FilterChip(
-                    selected = showCourseNames,
-                    onClick = { showCourseNames = !showCourseNames },
-                    label = { Text(if (showCourseNames) "收起课名" else "从课表选") },
-                )
-            }
-        }
-        if (showCourseNames) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                ui.courseCandidates.forEach { name ->
-                    FilterChip(
-                        selected = ui.tagName == name,
-                        onClick = { onToggle(name) },
-                        label = { Text(name) },
-                    )
-                }
-            }
         }
         if (ui.tagName.isNotBlank()) {
             Text(

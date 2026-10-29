@@ -46,9 +46,6 @@ internal fun isNativeSchoolAuthUrl(url: String): Boolean {
     val https = uri.scheme.equals("https", true) && uri.port in setOf(-1, 443)
     val http = uri.scheme.equals("http", true) && uri.port in setOf(-1, 80)
     return when (uri.host?.lowercase()) {
-        // This entry returns a small HTML redirect to official CAS. Business pages are
-        // still loaded normally; never proxy the timetable or a CAS password POST.
-        "jwxt.upc.edu.cn" -> (https || http) && uri.path == "/jsxsd/"
         "libspace.upc.edu.cn" -> https &&
             (uri.path == "/remote/static/sso/login" ||
                 uri.path == "/remote/static/casAuth/getServiceByVerifyTicket/casLogin")

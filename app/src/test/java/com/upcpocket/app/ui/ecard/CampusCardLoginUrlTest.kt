@@ -43,7 +43,7 @@ class CampusCardLoginUrlTest {
             "https://cas.upc.edu.cn/cas/login?service=x",
             "https://mb-xyk.upc.edu.cn/plat/?name=loginTransit",
             "https://i.upc.edu.cn/dcp/index.jsp",
-            "https://app.upc.edu.cn/site/weekschedule/index",
+            "https://app.upc.edu.cn/freeclass/wap/default/all",
         ).forEach { assertTrue("应放行 $it", allowedCampusCardUrl(it)) }
     }
 
@@ -61,7 +61,7 @@ class CampusCardLoginUrlTest {
         listOf(
             "https://example.com/",
             "https://upc.edu.cn.evil.test/plat/",
-            "http://app.upc.edu.cn/site/weekschedule/index",
+            "http://app.upc.edu.cn/freeclass/wap/default/all",
             "http://cas.upc.edu.cn/cas/login",
             "javascript:alert(1)",
             "file:///data/data/com.upcpocket.app/files/x",

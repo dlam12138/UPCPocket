@@ -90,12 +90,11 @@ class SchoolLoginRedirectsTest {
 
     @Test fun `only exact business routes use native auth GET`() {
         assertTrue(isNativeSchoolAuthUrl(entry))
-        assertTrue(isNativeSchoolAuthUrl("https://jwxt.upc.edu.cn/jsxsd/"))
-        assertTrue(isNativeSchoolAuthUrl("http://jwxt.upc.edu.cn/jsxsd/?ticket=fixture"))
         assertTrue(isNativeSchoolAuthUrl("http://mb-xyk.upc.edu.cn/berserker-auth/cas/login/wislearn?ticket=fixture"))
         listOf(cas, "https://libspace.upc.edu.cn/rest/v2/user",
-            "https://jwxt.upc.edu.cn/jsxsd/xskb/xskb_list.do",
-            "https://jwxt.upc.edu.cn:8443/jsxsd/",
+            // 轻量版删掉课表后，教务主机不再属于本应用的登录链路。
+            "https://jwxt.upc.edu.cn/jsxsd/",
+            "http://jwxt.upc.edu.cn/jsxsd/?ticket=fixture",
             "https://libspace.upc.edu.cn.evil.invalid/remote/static/sso/login",
             "https://libspace.upc.edu.cn:8443/remote/static/sso/login",
             "https://someone@libspace.upc.edu.cn/remote/static/sso/login",

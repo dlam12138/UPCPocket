@@ -32,7 +32,8 @@ private const val UPSTREAM_REPO = "https://github.com/3beuml/ZZUPocket"
 /**
  * 「关于」页：**这个 App 是什么、数据从哪来、怎么用你的数据、开源与致谢**。
  *
- * 说明本地数据、用户导入文件和公开空闲教室查询各自的来源。
+ * 轻量版移除了课表与桌面组件，这里只描述仍在提供的能力，避免把已删除的功能
+ * 写成现状。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,41 +67,34 @@ fun AboutScreen(onBack: () -> Unit) {
                 ),
             ) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("UPC Pocket", style = MaterialTheme.typography.titleMedium)
+                    Text("UPC Pocket · 轻量版", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = "中国石油大学（华东）校园助手的本地原型：课表、自定义日程、" +
-                            "番茄钟、学习统计与桌面小组件。支持 CSV 导入和公开空闲教室查询，不需要在 App 内登录。",
+                        text = "中国石油大学（华东）校园查询与专注助手：空闲教室、图书馆座位、" +
+                            "校园卡余额与两校区电费原生查询，加番茄钟与学习统计。本版不含课表。",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
 
             AboutCard("当前能力") {
-                Bullet("本地课表：手动添加或 CSV 批量导入，支持单双周、撞课提醒、课程总览。")
-                Bullet("今天页：一条时间轴看课、日程与已完成的专注。")
-                Bullet("番茄钟：计时引擎 + 前台服务 + 通知，标签可自定义。")
-                Bullet("学习统计：今日/周/月/年汇总、热力图、标签分布。")
-                Bullet("桌面小组件：下一节课（2×2）与今明课表（4×2），只读本地数据。")
                 Bullet("空闲教室：按校区、日期、楼宇和节次查询学校公开数据，无预约功能。")
                 Bullet("图书馆座位：官方 CAS 登录后原生选馆区、日期、房间、座位与时间；提交和取消都由你确认。")
-                Bullet("校园卡余额：输入本人学号，直接读取校园卡余额与过渡余额，分别展示；无需先登录。")
+                Bullet("校园卡余额：输入本人学号，读取余额与过渡余额并分别展示；无需先登录。")
                 Bullet("唐岛湾宿舍电费：按楼号＋房间号查询学校公开页面，原生显示剩余电量（度）。")
-                Bullet("课表导入：系统文件选择或剪贴板 CSV，预览校验后整批写入。")
+                Bullet("番茄钟：计时引擎 + 前台服务 + 通知，标签可自定义。")
+                Bullet("学习统计：今日/周/月/年汇总、热力图、标签分布。")
                 Bullet("校园服务：其余入口打开学校页面；古镇口电费因学校证书过期，本版仍交浏览器。")
             }
 
             AboutCard("数据与隐私") {
-                Bullet("不保存账号密码。开启“记住学校登录”时，图书馆 token 与校园卡令牌用 Keystore 加密保存；" +
-                    "课表会话由系统 WebView Cookie 保持（不受本应用加密）。")
+                Bullet("不保存账号密码。开启“记住学校登录”时，图书馆 token 与校园卡令牌用 Keystore 加密保存。")
                 Bullet("空闲教室与唐岛湾电费只发送查询条件；唐岛湾的房间号不保存，只记楼号。")
-                Bullet("课表、日程、专注记录都只存在本机数据库，没有自建服务器，也不会上传。")
+                Bullet("专注记录与标签只存在本机数据库，没有自建服务器，也不会上传。")
                 Bullet("卸载 App 会一并清掉所有本地数据。")
-                Bullet("App 不提供充值、转账、绑定或流水查询，也不显示假余额。")
+                Bullet("App 不提供充值、转账或绑定，也不显示假余额。")
             }
 
             AboutCard("数据从哪来（重要）") {
-                Bullet("课表内容：来自 App 内官方登录后的同步、你手动添加，或主动导入的 CSV。")
-                Bullet("演示数据：虚构的示例课程，只在内存里生成、带「演示」标记，关掉即消失。")
                 Bullet("空闲教室：来自学校公开页面的查询结果，显示查询条件与更新时间。")
                 Bullet("图书馆：来自 libspace.upc.edu.cn 正常登录后的接口；结果和错误按学校返回显示。")
                 Bullet("校园卡：来自 mb-xyk.upc.edu.cn 平台自己的余额接口，金额按“分”返回、按元显示。")
@@ -112,30 +106,23 @@ fun AboutScreen(onBack: () -> Unit) {
                     "模拟器与合成测试不能替代这一步。")
                 Bullet("古镇口电费：学校域名证书已过期，页面也不是唐岛湾那套表单；本版仍交浏览器，不绕过 TLS。")
                 Bullet("微信 SDK 直达：需要正式移动应用 AppID、正确包名/签名和目标页/小程序；当前未配置 AppID。")
-                Bullet("UPC 实际 CSV 表头与登录后课表 DOM 仍需用脱敏样本真机核对；模板测试不等于学校格式已验证。")
                 Bullet("后台定时同步 —— 应用没有周期性网络任务。")
             }
 
             AboutCard("开源与致谢") {
                 Text(
-                    text = "本项目以 MIT 许可证开源。Android 端的课表网格、番茄钟、统计与 " +
-                        "RemoteViews 小组件参考了上游 ZZUPocket（MIT）的设计与实现；" +
-                        "上游的郑州大学认证、接口与宿舍房间规则没有被复用。",
+                    text = "本项目以 MIT 许可证开源。Android 端的番茄钟、统计与原生查询页面参考了" +
+                        "上游 ZZUPocket（MIT）的设计与实现；上游的郑州大学认证、接口、课表与宿舍" +
+                        "房间规则没有被复用。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 TextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
                     Text("上游项目 3beuml/ZZUPocket（MIT）")
                 }
-                Text(
-                    text = "桌面小组件的版式参考了拾光课程表（Apache-2.0）的实现思路，" +
-                        "只参考设计，没有拷贝代码。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
 
             Text(
-                text = "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）· 本地原型",
+                text = "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）· 轻量版",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 24.dp),

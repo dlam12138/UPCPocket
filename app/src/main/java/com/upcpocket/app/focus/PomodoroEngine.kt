@@ -225,7 +225,7 @@ class PomodoroEngine(
     ) {
         val startedAt = now()
         val planned = cachedPrefs.plannedSeconds(phase)
-        // 从课表/日程直接开计时的话只有名字、还没有标签 —— 在这里补建一次，
+        // 开始计时时如果只给了名称、还没有标签 —— 在这里补建一次，
         // 免得统计里出现一堆"有名字但没标签"的记录。
         val resolvedTagId = tagId ?: tagName.takeIf { it.isNotBlank() }
             ?.let { repo.ensureTag(it)?.id }

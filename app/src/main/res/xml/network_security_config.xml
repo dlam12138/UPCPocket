@@ -8,9 +8,7 @@
       · mb-xyk.upc.edu.cn —— 校园卡平台的数据接口本身支持 HTTPS（App 一律用 HTTPS 访问），
         但平台自己的登录回跳会落到 http://mb-xyk.upc.edu.cn/plat/…；WebView 里如果
         禁止明文，用户会在登录成功的那一刻看到白页。
-      · jwxt.upc.edu.cn —— 教务 CAS 的 service 参数是 http://jwxt.upc.edu.cn/jsxsd/…，
-        登录票据与会话在同一台主机上以明文回跳。这里只放开这一台主机，不放开其它站点，
-        也不允许忽略证书；票据与会话的明文风险在界面上如实说明。
+      （轻量版已移除课表：教务入口与 jwxt 主机的明文例外一并删除。）
 
     其余学校站点（app / cas / i / libspace / gzkdf）保持 HTTPS 强制；
     古镇口 gzkdf 的证书已过期，这里**不**为它放开任何限制，也不允许绕过证书校验。
@@ -23,6 +21,5 @@
         <domain includeSubdomains="false">jhzf.upc.edu.cn</domain>
         <domain includeSubdomains="false">dfcz.upc.edu.cn</domain>
         <domain includeSubdomains="false">mb-xyk.upc.edu.cn</domain>
-        <domain includeSubdomains="false">jwxt.upc.edu.cn</domain>
     </domain-config>
 </network-security-config>

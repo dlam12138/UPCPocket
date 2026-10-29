@@ -61,7 +61,7 @@ fun LibrarySeatLoginScreen(
     var loginClient by remember { mutableStateOf<SchoolLoginWebViewClient?>(null) }
 
     fun clearWebSession() {
-        // 只清本业务的 Cookie；不能 removeAllCookies，否则会把课表/统一认证会话一起清掉。
+        // 只清本业务的 Cookie；不能 removeAllCookies，否则会把统一认证及其它业务会话一起清掉。
         LibrarySeatCookies.clearSeatCookies()
     }
 
@@ -233,7 +233,7 @@ private fun tokenFromUrl(url: String): String? {
 /**
  * 只清理图书馆座位系统自己的 Cookie。
  *
- * Android 的 CookieManager 是应用级的：`removeAllCookies()` 会把课表 / 统一认证
+ * Android 的 CookieManager 是应用级的：`removeAllCookies()` 会把统一认证
  * 会话一并清掉。这里按 libspace 域名逐个过期，别的业务不受影响；
  * 不声称 WebView Cookie 已加密（它由系统 WebView 管理，见交付说明）。
  */

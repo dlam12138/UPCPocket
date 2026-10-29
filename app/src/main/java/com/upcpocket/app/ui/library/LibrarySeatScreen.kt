@@ -342,7 +342,7 @@ fun LibrarySeatScreen(
                 Text(
                     "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。" +
                         "当前版本登录 token 只在本次运行内存中，退出登录会清除；不保存密码、" +
-                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉课表登录。",
+                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉校园卡或统一认证的登录状态。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -943,7 +943,7 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
         else -> message ?: javaClass.simpleName
     }
 
-    /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动校园卡令牌与课表会话。 */
+    /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动校园卡令牌。 */
     fun logout() {
         repo.clearSession()
         AppGraph.schoolSessionStore.clearLibrary()

@@ -1,4 +1,4 @@
-package com.upcpocket.app.ui.campus
+package com.upcpocket.app.ui.home
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,14 +20,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -48,14 +45,19 @@ import com.upcpocket.app.data.local.CampusServices
 import com.upcpocket.app.data.wechat.WeChatDirect
 import com.upcpocket.app.data.wechat.WeChatSendResult
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
+import com.upcpocket.app.ui.campus.WeChatHandoff
 
 /**
- * 原生空闲教室、微信交接与其余学校网页入口。各服务使用真实可用的数据来源。
+ * 「首页」= 校园服务总入口。
+ *
+ * 轻量版把课表整体移除后，默认首页改成本页：空闲教室、图书馆座位、校园卡余额、
+ * 两个校区的宿舍电费都是 App 内原生查询；其余学校网页入口交给系统浏览器/微信打开。
+ * 各入口的数据来源与适用条件都写在卡片上，不把"打开了页面"说成"查到了数据"。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CampusServicesScreen(
-    onBack: () -> Unit,
+fun HomeScreen(
     onOpenClassrooms: () -> Unit,
     onOpenLibrary: () -> Unit,
     onOpenCampusCard: () -> Unit,
@@ -145,23 +147,15 @@ fun CampusServicesScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("校园服务") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
-        },
+        topBar = { TopAppBar(title = { Text("校园服务") }) },
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                .padding(bottom = DOCK_CLEARANCE),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Spacer(Modifier.height(2.dp))
@@ -182,8 +176,8 @@ fun CampusServicesScreen(
                     Text(
                         text = "空闲教室、图书馆座位、校园卡余额、唐岛湾剩余电量都在 App 内原生查询；" +
                             "校园卡余额输入本人学号，图书馆用学校官方登录，唐岛湾电费按楼号＋房间号查询。" +
-                            "开启“记住登录”时，图书馆 token 与校园卡令牌才用 Keystore 加密保存；" +
-                            "课表会话由 WebView Cookie 保持，可在“更多 → 退出学校登录”清理。不提供充值。",
+                            "开启“记住登录”时，图书馆 token 与校园卡令牌才用 Keystore 加密保存。" +
+                            "不提供充值。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )

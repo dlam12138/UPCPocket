@@ -21,7 +21,7 @@ import org.json.JSONObject
  *  - 明文只存在内存与这份密文里，密钥不可导出；应用卸载或清除数据即失效；
  *  - 密钥失效/密文损坏时**只清掉对应那一条**，让该业务重新登录，不崩溃、不牵连其他业务；
  *  - `allowBackup=false`，这些文件不会被系统云备份带走；
- *  - **WebView 自己的 Cookie 不由本类加密**，它由系统 WebView 管理；课表会话是否跨重启
+ *  - **WebView 自己的 Cookie 不由本类加密**，它由系统 WebView 管理；WebView 业务会话是否跨重启
  *    可用取决于 WebView Cookie 的实际行为，交付说明单独标注；
  *  - 不保存账号密码、CAS ticket、OAuth code、微信 code。
  *

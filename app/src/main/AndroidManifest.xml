@@ -2,9 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 用户主动查询：空闲教室（公开）、图书馆座位（官方 CAS 登录）、校园卡余额（官方登录）、
-         唐岛湾宿舍剩余电量（公开的楼号＋房间号查询）、课表（官方登录）。
+         唐岛湾宿舍剩余电量（公开的楼号＋房间号查询）。
          不接入自建认证代理，不保存账号密码，不做后台轮询；
-         明文网络只在 res/xml/network_security_config.xml 里对两个已核实主机放开。 -->
+         明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- 番茄钟：倒计时通知 + 走完时的提醒。
@@ -65,42 +65,8 @@
             </intent-filter>
         </activity>
 
-        <!-- ── 桌面小组件（课表） ────────────────────────────────────────────
-             两个组件都用 AppWidgetProvider + RemoteViews/XML 实现（不是 Glance）：
-             只有 RemoteViews 这条路拿得到 android:previewLayout（选择页里的实时预览）
-             和 RemoteViews.addView（行数可变的课程列表）。
-
-             exported="false" 是官方文档当前的口径：系统自己能往非导出的组件投
-             APPWIDGET_UPDATE，导出反而给别的 App 留了乱发广播的口子。 -->
-        <receiver
-            android:name=".ui.widget.NextClassWidget"
-            android:exported="false"
-            android:label="@string/widget_next_class">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/next_class_widget_info" />
-        </receiver>
-
-        <receiver
-            android:name=".ui.widget.TodayClassesWidget"
-            android:exported="false"
-            android:label="@string/widget_today_classes">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/today_classes_widget_info" />
-        </receiver>
-
-        <!-- 上下课时间点的刷新闹钟（显式 Intent，不需要 intent-filter）。
-             系统对组件的定时刷新下限是 30 分钟，靠它补偿"上课那一刻桌面还挂着下一节"的问题。 -->
-        <receiver
-            android:name=".ui.widget.WidgetRefreshReceiver"
-            android:exported="false" />
+        <!-- 轻量版已删除两个课表桌面组件（下一节课 / 今明课表）及其刷新闹钟。
+             本应用不再声明任何 AppWidgetProvider，也不会出现在"小组件"选择页。 -->
 
         <!-- 番茄钟前台服务。计时本身不依赖它（时间用墙钟算），
              它的作用是不让系统回收进程 + 显示常驻倒计时通知。
