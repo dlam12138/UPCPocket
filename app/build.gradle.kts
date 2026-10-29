@@ -42,9 +42,9 @@ android {
         targetSdk = 36
         // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）。
         // 轻量版在 0.1.10（code 11）之上递增，保证覆盖安装不会触发降级。
-        // 第二步在 0.2.0（code 12）之上继续递增；第三步在 0.2.1（code 13）之上递增。
-        versionCode = 14
-        versionName = "0.2.2-lightly-preview"
+        // 第二步在 0.2.0（code 12）之上继续递增；第三步 0.2.2 / code 14；本步继续递增。
+        versionCode = 15
+        versionName = "0.2.3-lightly-preview"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
     }
 
