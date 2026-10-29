@@ -16,3 +16,6 @@ app/schemas/
 *.aab
 *.jks
 *.keystore
+
+# Local source links may contain one-time authorization parameters
+/官方入口.txt

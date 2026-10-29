@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-27",
+  "documents": [
+    {
+      "from": "docs/gms-schedule-api.md",
+      "to": "docs/archive/zzu/gms-schedule-api.md",
+      "sha256": "3fc111ff070749efbb86d286fe5ad785196798beb8bd494641bb2f5bb8a6aba4"
+    },
+    {
+      "from": "docs/开发流程与阶段计划.md",
+      "to": "docs/archive/zzu/开发流程与阶段计划.md",
+      "sha256": "de75f9bb6e2ebc41e8daddada64942fb1e879033dbb68a87700d5c20aca564de"
+    },
+    {
+      "from": "docs/interfaces/eas-schedule-api.md",
+      "to": "docs/archive/zzu/interfaces/eas-schedule-api.md",
+      "sha256": "500e48aa303622b44a5f0b0757c51ec04453df16b53968d9fc5544ce3f52deac"
+    },
+    {
+      "from": "docs/interfaces/图书馆WebView灰屏.md",
+      "to": "docs/archive/zzu/interfaces/图书馆WebView灰屏.md",
+      "sha256": "4a6ac5560adc9a8c2b7f3cc94c94ba3c7438a1b7c22162189ea365f324bc3aa8"
+    },
+    {
+      "from": "docs/interfaces/接口实测坑.md",
+      "to": "docs/archive/zzu/interfaces/接口实测坑.md",
+      "sha256": "09bc4cdc64de51cdc26393bb043f11347ea0b67d7d9ffda7b33d8feb517f32f0"
+    },
+    {
+      "from": "docs/interfaces/接口现状核查.md",
+      "to": "docs/archive/zzu/interfaces/接口现状核查.md",
+      "sha256": "6d772f1ae548cf94e2b53da027f2ab8b3d624958281f6c365b590753c3eafd7f"
+    },
+    {
+      "from": "docs/interfaces/鉴权与登录契约.md",
+      "to": "docs/archive/zzu/interfaces/鉴权与登录契约.md",
+      "sha256": "a9219a1c1acb36c75bb62aa292dcb6b7db3958e5f0bc74b0482ebc7e10736c28"
+    },
+    {
+      "from": "docs/design/Android接入设计.md",
+      "to": "docs/archive/zzu/design/Android接入设计.md",
+      "sha256": "d318daedd9a80acde1e634b9d927f70c9d887515d030a851032559a22509584c"
+    },
+    {
+      "from": "docs/design/UI与登录设计.md",
+      "to": "docs/archive/zzu/design/UI与登录设计.md",
+      "sha256": "98a2f8bdbba328bb74132f19b67e24ab4b5abab4484b13a950d0676c08dccedd"
+    },
+    {
+      "from": "docs/design/功能与工具清单.md",
+      "to": "docs/archive/zzu/design/功能与工具清单.md",
+      "sha256": "33eba6ad57b420959f2bb6a0596d4f90af69d9b5d8fbb56716a6f6fd2c408a3f"
+    },
+    {
+      "from": "docs/design/可行性与开发方案.md",
+      "to": "docs/archive/zzu/design/可行性与开发方案.md",
+      "sha256": "ce283b73e47a68bfed48a9dc86721db3655e6b90c67cac74e0941ff732b901db"
+    }
+  ]
+}
