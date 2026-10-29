@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -205,7 +206,7 @@ fun FreeClassroomScreen(
         },
     ) { padding ->
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 96.dp),
+            columns = GridCells.Adaptive(minSize = 96.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)),
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -330,7 +331,7 @@ private fun ClassroomFilterPanel(
 ) {
     val enabled = !model.loading
     val dateLabel = remember(model.date) {
-        model.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEE", Locale.CHINA))
+        model.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA))
     }
     val buildingLabel = if (model.building == "全部") "全部教学楼" else model.building
     val selectedText = formatPeriods(model.periods)
@@ -352,22 +353,32 @@ private fun ClassroomFilterPanel(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 日期与快捷操作各自保持固有宽度；宽度不够时整组快捷操作换到下一行，
+            // 日期按钮始终显示完整的 yyyy-MM-dd，不做 ellipsis。
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 OutlinedButton(
                     onClick = onOpenDate,
                     enabled = enabled,
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
                 ) {
-                    Text(dateLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(dateLabel, maxLines = 1, softWrap = false)
                 }
-                IconButton(onClick = { model.moveDate(-1) }, enabled = enabled) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前一天")
-                }
-                TextButton(onClick = { model.chooseDate(LocalDate.now()) }, enabled = enabled) {
-                    Text("今天")
-                }
-                IconButton(onClick = { model.moveDate(1) }, enabled = enabled) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "后一天")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { model.moveDate(-1) }, enabled = enabled) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前一天")
+                    }
+                    TextButton(
+                        onClick = { model.chooseDate(LocalDate.now()) },
+                        enabled = enabled,
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                    ) { Text("今天") }
+                    IconButton(onClick = { model.moveDate(1) }, enabled = enabled) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "后一天")
+                    }
                 }
             }
 
@@ -471,6 +482,7 @@ private fun QueryErrorCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ResultSummaryCard(
     result: FreeClassroomResult,
@@ -509,15 +521,26 @@ private fun ResultSummaryCard(
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
+            // 统计与开关都保持固有宽度：窄屏/大字号时开关整体落到下一行，
+            // 统计文本不参与 weight 压缩，避免“全/部”被拆开。
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf(
+                    if (total == 0) "空闲 —" else "空闲 $freeCount",
+                    "全部 $total",
+                ).forEach { metric ->
                     Text(
-                        if (total == 0) "空闲 — / 全部 0" else "空闲 $freeCount / 全部 $total",
+                        metric,
+                        modifier = Modifier.padding(end = 8.dp),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
-                Spacer(Modifier.width(8.dp))
                 Row(
                     Modifier
                         .toggleable(
