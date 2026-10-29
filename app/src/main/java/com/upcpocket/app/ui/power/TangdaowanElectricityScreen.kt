@@ -42,13 +42,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.RefreshInvalidatedException
 import com.upcpocket.app.data.power.ElectricityProtocol
-import com.upcpocket.app.data.power.ElectricityReading
 import com.upcpocket.app.data.power.ElectricityResult
+import com.upcpocket.app.widget.WidgetUpdates
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -70,7 +72,10 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TangdaowanElectricityScreen(onBack: () -> Unit) {
+    val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
+    val repository = AppGraph.powerReadingRepository
+    val snapshot by repository.snapshot.collectAsStateWithLifecycle()
     val savedInput by AppGraph.powerInputRepository.input
         .collectAsStateWithLifecycle(initialValue = null)
 
@@ -83,8 +88,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
 
     var loading by remember { mutableStateOf(false) }
-    var reading by remember { mutableStateOf<ElectricityReading?>(null) }
-    var fetchedAt by remember { mutableStateOf<Instant?>(null) }
+    var systemNo by remember { mutableStateOf("") }
     var candidates by remember { mutableStateOf<List<ElectricityProtocol.Candidate>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var requestId by remember { mutableIntStateOf(0) }
@@ -96,8 +100,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
     /** 输入一变就作废旧结果，避免旧房间的电量被当成新输入的结果。 */
     fun invalidateResult() {
         requestId++
-        reading = null
-        fetchedAt = null
+        systemNo = ""
         candidates = emptyList()
         error = null
     }
@@ -124,7 +127,12 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         room = ""
         showPicker = false
         invalidateResult()
-        scope.launch { AppGraph.powerInputRepository.clear() }
+        scope.launch {
+            // 清除输入也清除“最后一次成功查询”，否则桌面组件会继续显示旧房间。
+            repository.clear()
+            AppGraph.powerInputRepository.clear()
+            WidgetUpdates.requestPower(context)
+        }
     }
 
     fun loadBuildings() {
@@ -144,17 +152,28 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         }
     }
 
-    // 第一次进入：先回填持久输入；楼号列表单独加载，失败也不影响已保存的输入。
-    LaunchedEffect(savedInput) {
-        val saved = savedInput ?: return@LaunchedEffect
-        if (!hydrated && building.isBlank() && room.isBlank()) {
+    // 第一次进入：优先回填持久输入；输入为空时用最后一次成功快照的房间，
+    // 保证从桌面组件点进来能看到上次结果。用户已经改过输入时不覆盖。
+    LaunchedEffect(savedInput, snapshot) {
+        if (hydrated || building.isNotBlank() || room.isNotBlank()) return@LaunchedEffect
+        val saved = savedInput
+        if (saved != null && !saved.isEmpty) {
             building = saved.building
             room = saved.room
+            hydrated = true
+            return@LaunchedEffect
         }
+        val last = snapshot ?: return@LaunchedEffect
+        building = last.building
+        room = last.room
         hydrated = true
     }
     LaunchedEffect(Unit) {
         if (buildings.isEmpty() && !buildingsLoading) loadBuildings()
+    }
+    LaunchedEffect(Unit) {
+        // 先把上次成功快照读进共享 Flow，页面进入即可显示最近一次结果。
+        repository.cached()
     }
 
     fun runQuery() {
@@ -173,21 +192,23 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         loading = true
         error = null
         candidates = emptyList()
-        reading = null
-        fetchedAt = null
+        systemNo = ""
         scope.launch {
             try {
-                val result = AppGraph.tangdaowanElectricityService.query(selected, target)
+                val result = repository.query(selected, target)
                 if (id != requestId || building != selected || room.trim() != target) return@launch
                 when (result) {
                     is ElectricityResult.Success -> {
-                        reading = result.reading
-                        fetchedAt = Instant.now()
+                        systemNo = result.reading.systemNo
+                        // 成功分支已写入共享快照；立即把同一份值推给桌面组件。
+                        WidgetUpdates.requestPower(context)
                     }
                     is ElectricityResult.Ambiguous -> {
                         candidates = result.candidates
                     }
                 }
+            } catch (_: RefreshInvalidatedException) {
+                // 查询途中记录被清除：静默丢弃，不能让旧结果复活。
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (e: Exception) {
@@ -338,7 +359,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
-                    Text("会记住这台设备的楼号与房间号；查询失败也不会清空，可随时清除。")
+                    Text("会记住这台设备的楼号与房间号；查询失败不会清空。清除会同时移除桌面组件的上次电量。")
                 },
             )
 
@@ -353,7 +374,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
 
             if (building.isNotBlank() || room.isNotBlank()) {
                 TextButton(onClick = ::clearInput, enabled = !loading) {
-                    Text("清除楼号与房间号")
+                    Text("清除楼号、房间号与查询记录")
                 }
             }
 
@@ -368,7 +389,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
                 }
             }
 
-            reading?.takeIf { it.matches(building, room) }?.let { value ->
+            snapshot?.takeIf { it.matches(building, room) }?.let { value ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -377,7 +398,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
-                            text = value.kwh.toPlainString() + " 度",
+                            text = value.kwh + " 度",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -389,22 +410,20 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
-                        if (value.systemNo.isNotBlank()) {
+                        if (systemNo.isNotBlank()) {
                             Text(
-                                text = "系统编号 ${value.systemNo}",
+                                text = "系统编号 $systemNo",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                             )
                         }
-                        fetchedAt?.let {
-                            Text(
-                                text = "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
-                                    .withZone(ZoneId.systemDefault())
-                                    .format(it),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
+                        Text(
+                            text = "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
+                                .withZone(ZoneId.systemDefault())
+                                .format(Instant.ofEpochMilli(value.fetchedAt)),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
                     }
                 }
             }

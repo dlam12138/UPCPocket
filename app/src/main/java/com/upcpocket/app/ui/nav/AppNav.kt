@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import com.upcpocket.app.ui.library.LibrarySeatScreen
 import com.upcpocket.app.ui.power.ElectricityScreen
 import com.upcpocket.app.ui.power.TangdaowanElectricityScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
+import com.upcpocket.app.widget.WidgetLaunchTarget
 
 enum class Destination(
     val route: String,
@@ -67,7 +69,10 @@ enum class Destination(
 }
 
 @Composable
-fun AppNav() {
+fun AppNav(
+    launchTarget: WidgetLaunchTarget? = null,
+    onLaunchConsumed: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -85,6 +90,26 @@ fun AppNav() {
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    // 桌面组件的固定入口：校园卡回首页（余额功能区所在），电费直接进唐岛湾原生查询页。
+    // 只在消费一次后清空，避免重组时反复导航；不接受任意路由或 Intent 转发。
+    LaunchedEffect(launchTarget) {
+        when (launchTarget) {
+            WidgetLaunchTarget.CARD_BALANCE -> {
+                // 不能用 switchTab 的 restoreState：若 HOME 栈顶还压着电费子页，
+                // 恢复状态会把电费页又带回来，看起来像“点校园卡没反应”。
+                navController.navigate(AppRoutes.HOME) {
+                    popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
+                    launchSingleTop = true
+                }
+            }
+            WidgetLaunchTarget.POWER_TANGDAOWAN -> navController.navigate(AppRoutes.POWER_TANGDAOWAN) {
+                launchSingleTop = true
+            }
+            null -> return@LaunchedEffect
+        }
+        onLaunchConsumed()
     }
 
     // dock 胶囊的透明度：半透明 + 细描边 + 无阴影，所有页面同一套配方。

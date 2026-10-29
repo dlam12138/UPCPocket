@@ -1,12 +1,20 @@
 package com.upcpocket.app.data.ecard
 
 import android.util.AtomicFile
+import com.upcpocket.app.data.RefreshInvalidatedException
 import java.io.File
 import java.math.BigDecimal
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -83,20 +91,115 @@ class DirectCardBalanceStore(file: File) {
     fun clear() = atomic.delete()
 }
 
+/**
+ * 校园卡余额的领域仓库。
+ *
+ * 生产环境只保留一个实例（[com.upcpocket.app.core.AppGraph]），页面和桌面组件共用，
+ * 避免两个 AtomicFile 同时写 `card-balance-v1.json`。成功结果通过 [snapshot] 通知页面，
+ * 组件侧由调用方读取同一份快照后刷新 RemoteViews。
+ *
+ * 目标语义：快照里的学号就是“最后一次成功查询的学号”。草稿输入变化不会改它；
+ * 只有成功响应才会替换。清除会递增 generation，使还在路上的旧请求无法复活已删除的数据。
+ */
 class DirectCardBalanceRepository(
     private val store: DirectCardBalanceStore,
-    private val request: (String) -> String = { requestDirectCardBalance(it) },
+    private val request: suspend (String) -> String = { requestDirectCardBalance(it) },
 ) {
-    suspend fun cached(): DirectCardSnapshot? = withContext(Dispatchers.IO) { store.load() }
-    suspend fun clear() = withContext(Dispatchers.IO) { store.clear() }
-    suspend fun refresh(studentId: String): DirectCardSnapshot = withContext(Dispatchers.IO) {
-        val form = DirectCardBalanceProtocol.form(studentId)
-        val result = DirectCardBalanceProtocol.parse(request(form), studentId, System.currentTimeMillis())
-        // Only a complete, verified response may replace the last successful snapshot.
-        try { store.save(result) } catch (_: Exception) {
-            throw CampusCardException("已读取余额，但本机保存失败，请重试")
+    private val mutableSnapshot = MutableStateFlow<DirectCardSnapshot?>(null)
+    val snapshot: StateFlow<DirectCardSnapshot?> = mutableSnapshot.asStateFlow()
+
+    private val fileLock = Mutex()
+    private val refreshLock = Mutex()
+    private val generation = AtomicLong(0)
+    private val initialized = AtomicBoolean(false)
+
+    suspend fun cached(): DirectCardSnapshot? = withContext(Dispatchers.IO) {
+        mutableSnapshot.value?.let { return@withContext it }
+        if (initialized.get()) return@withContext null
+        val startGeneration = generation.get()
+        val loaded = fileLock.withLock { store.load() }
+        if (generation.get() != startGeneration) return@withContext null
+        if (initialized.compareAndSet(false, true)) mutableSnapshot.value = loaded
+        mutableSnapshot.value
+    }
+
+    /**
+     * 同步读取，仅供 RemoteViews 在 onUpdate / 点击刷新时渲染缓存。
+     * 只读 4 KB 内的本地文件，不做网络请求，也不在主线程等待协程。
+     */
+    fun cachedBlocking(): DirectCardSnapshot? {
+        mutableSnapshot.value?.let { return it }
+        if (initialized.get()) return null
+        val startGeneration = generation.get()
+        val loaded = runCatching { store.load() }.getOrNull()
+        if (generation.get() != startGeneration) return null
+        if (initialized.compareAndSet(false, true)) mutableSnapshot.value = loaded
+        return mutableSnapshot.value
+    }
+
+    suspend fun clear() = withContext(Dispatchers.IO) {
+        // 先让在途刷新失效，再删文件；即使旧请求随后返回也不会写回。
+        generation.incrementAndGet()
+        fileLock.withLock { store.clear() }
+        mutableSnapshot.value = null
+    }
+
+    /** 页面查询：允许用户改成另一个学号，成功后替换目标。 */
+    suspend fun refresh(studentId: String): DirectCardSnapshot =
+        refreshInternal(requestedStudentId = studentId, requireSameTarget = false)
+            ?: throw RefreshInvalidatedException()
+
+    /**
+     * 组件刷新：只刷新当前成功快照的学号，绝不因为草稿输入变化而切换目标。
+     * 没有快照时返回 null，调用方只能引导用户打开应用，不能发空请求。
+     */
+    suspend fun refreshCurrent(): DirectCardSnapshot? =
+        refreshInternal(requestedStudentId = null, requireSameTarget = true)
+
+    private suspend fun refreshInternal(
+        requestedStudentId: String?,
+        requireSameTarget: Boolean,
+    ): DirectCardSnapshot? = withContext(Dispatchers.IO) {
+        refreshLock.withLock {
+            val current = currentSnapshotLocked()
+            val studentId = requestedStudentId ?: current?.studentId ?: return@withLock null
+            if (requireSameTarget && current?.studentId != studentId) return@withLock null
+
+            val startGeneration = generation.get()
+            val form = DirectCardBalanceProtocol.form(studentId)
+            val result = DirectCardBalanceProtocol.parse(
+                request(form),
+                studentId,
+                System.currentTimeMillis(),
+            )
+
+            val committed = fileLock.withLock {
+                when {
+                    generation.get() != startGeneration -> false
+                    requireSameTarget && mutableSnapshot.value?.studentId != studentId -> false
+                    else -> {
+                        try {
+                            store.save(result)
+                        } catch (_: Exception) {
+                            throw CampusCardException("已读取余额，但本机保存失败，请重试")
+                        }
+                        mutableSnapshot.value = result
+                        true
+                    }
+                }
+            }
+            if (committed) result else null
         }
-        result
+    }
+
+    private suspend fun currentSnapshotLocked(): DirectCardSnapshot? {
+        mutableSnapshot.value?.let { return it }
+        if (initialized.get()) return null
+        val startGeneration = generation.get()
+        val loaded = fileLock.withLock { store.load() }
+        if (generation.get() != startGeneration) return null
+        if (initialized.compareAndSet(false, true)) mutableSnapshot.value = loaded
+        return mutableSnapshot.value ?: loaded
     }
 }
 

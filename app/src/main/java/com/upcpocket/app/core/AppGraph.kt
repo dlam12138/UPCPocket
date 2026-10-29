@@ -2,7 +2,11 @@ package com.upcpocket.app.core
 
 import android.content.Context
 import com.upcpocket.app.data.db.AppDatabase
+import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
+import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.library.LibrarySeatRepository
+import com.upcpocket.app.data.power.PowerReadingRepository
+import com.upcpocket.app.data.power.PowerSnapshotStore
 import com.upcpocket.app.data.power.TangdaowanElectricityService
 import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.SchoolSessionStore
@@ -12,6 +16,7 @@ import com.upcpocket.app.data.repo.FocusRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.PomodoroEngine
 import com.upcpocket.app.focus.PomodoroNotifications
+import java.io.File
 import kotlinx.serialization.json.Json
 
 /**
@@ -60,6 +65,32 @@ object AppGraph {
     /** 唐岛湾宿舍剩余电量：无需登录的只读查询。 */
     val tangdaowanElectricityService: TangdaowanElectricityService by lazy {
         TangdaowanElectricityService()
+    }
+
+    /**
+     * 校园卡余额的唯一进程内实例。
+     *
+     * 页面、桌面组件与 WorkManager 刷新都必须用它：同一把锁、同一份快照 Flow，
+     * 避免两个 AtomicFile 同时写 `card-balance-v1.json`，也避免组件用旧目标覆盖页面刚查到的结果。
+     * 文件格式仍是既有的 `card-balance-v1.json`，升级不会丢旧缓存。
+     */
+    val directCardBalanceRepository: DirectCardBalanceRepository by lazy {
+        DirectCardBalanceRepository(
+            DirectCardBalanceStore(File(appContext.noBackupFilesDir, "card-balance-v1.json")),
+        )
+    }
+
+    /**
+     * 唐岛湾剩余电量的唯一进程内实例。
+     *
+     * 成功分支才写 `power-reading-v1.json`；页面和组件共享同一份成功快照与目标。
+     */
+    val powerReadingRepository: PowerReadingRepository by lazy {
+        PowerReadingRepository(
+            PowerSnapshotStore(File(appContext.noBackupFilesDir, "power-reading-v1.json")),
+        ) { building, room ->
+            tangdaowanElectricityService.query(building, room)
+        }
     }
 
     /**

@@ -2,4 +2,15 @@
 <resources>
     <color name="window_background">#FFFBFE</color>
     <color name="ic_launcher_background">#1B6B4A</color>
+
+    <!-- 桌面小组件：半透明玻璃底 + 高对比文字。亮色下用深墨色，不用灰字。 -->
+    <color name="widget_card_fill_top">#F2FFFFFF</color>
+    <color name="widget_card_fill_bottom">#D9F5F1F8</color>
+    <color name="widget_card_stroke">#33000000</color>
+    <color name="widget_primary">#141519</color>
+    <color name="widget_secondary">#454750</color>
+    <color name="widget_accent">#0B5C43</color>
+    <color name="widget_error">#B3261E</color>
+    <color name="widget_refresh_fill">#14000000</color>
+
 </resources>

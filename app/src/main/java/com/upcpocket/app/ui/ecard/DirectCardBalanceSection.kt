@@ -27,13 +27,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.RefreshInvalidatedException
 import com.upcpocket.app.data.ecard.DirectCardBalanceProtocol
-import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
-import com.upcpocket.app.data.ecard.DirectCardBalanceStore
-import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.ui.components.GlassCard
-import java.io.File
+import com.upcpocket.app.widget.WidgetUpdates
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -50,17 +48,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
     val context = LocalContext.current.applicationContext
-    val repository = remember {
-        DirectCardBalanceRepository(
-            DirectCardBalanceStore(File(context.noBackupFilesDir, "card-balance-v1.json")),
-        )
-    }
+    // 页面与桌面组件共用同一个仓库实例：同一份快照 Flow、同一把写锁。
+    val repository = AppGraph.directCardBalanceRepository
     val savedId by AppGraph.cardInputRepository.studentId
         .collectAsStateWithLifecycle(initialValue = null)
+    val snapshot by repository.snapshot.collectAsStateWithLifecycle()
 
     var input by rememberSaveable { mutableStateOf("") }
     var hydrated by rememberSaveable { mutableStateOf(false) }
-    var snapshot by remember { mutableStateOf<DirectCardSnapshot?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var fresh by remember { mutableStateOf(false) }
@@ -70,15 +65,18 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
         scope.launch { AppGraph.cardInputRepository.save(value) }
     }
 
-    // 只回填一次；用户已经输入（或旋转后由 rememberSaveable 恢复）时不覆盖。
-    LaunchedEffect(savedId) {
-        val saved = savedId ?: return@LaunchedEffect
-        if (!hydrated && input.isBlank()) input = saved
+    // 只回填一次；优先用已保存的输入，输入为空时用最后一次成功快照的学号，
+    // 这样从桌面组件点进来也能直接看到上次结果。用户自己改过输入后不再覆盖。
+    LaunchedEffect(savedId, snapshot) {
+        if (hydrated || input.isNotBlank()) return@LaunchedEffect
+        val saved = savedId?.takeIf { it.isNotBlank() }
+        val value = saved ?: snapshot?.studentId ?: return@LaunchedEffect
+        input = value
         hydrated = true
     }
     LaunchedEffect(Unit) {
         try {
-            snapshot = repository.cached()
+            repository.cached()
         } finally {
             loading = false
         }
@@ -92,8 +90,13 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
         fresh = false
         scope.launch {
             try {
-                snapshot = repository.refresh(requestedId)
+                repository.refresh(requestedId)
                 fresh = true
+                // 页面查询成功后立即把同一份成功快照推给桌面组件。
+                WidgetUpdates.requestCard(context)
+            } catch (_: RefreshInvalidatedException) {
+                // 查询途中记录被清除：静默丢弃，不能让旧结果复活。
+                fresh = false
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -111,10 +114,10 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
             try {
                 repository.clear()
                 AppGraph.cardInputRepository.clear()
-                snapshot = null
                 input = ""
                 error = null
                 fresh = false
+                WidgetUpdates.requestCard(context)
             } finally {
                 loading = false
             }

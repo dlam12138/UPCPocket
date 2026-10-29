@@ -58,6 +58,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.UpcPocket">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -65,8 +66,37 @@
             </intent-filter>
         </activity>
 
-        <!-- 轻量版已删除两个课表桌面组件（下一节课 / 今明课表）及其刷新闹钟。
-             本应用不再声明任何 AppWidgetProvider，也不会出现在"小组件"选择页。 -->
+        <!--
+            桌面小组件：校园卡余额、唐岛湾剩余电量，默认 2×3。
+
+            两个接收器都 exported=false：
+              · APPWIDGET_UPDATE 由系统以显式广播投递；
+              · 刷新广播只来自本应用创建的显式、immutable PendingIntent。
+            广播里只有 appWidgetId，不携带学号、楼号、房间号或 URL。
+            updatePeriodMillis=0：不做周期刷新，只有用户点按钮才入队一次性 WorkManager。
+        -->
+        <receiver
+            android:name=".widget.CardBalanceWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_card_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_card_balance_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.PowerWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_power_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_power_balance_info" />
+        </receiver>
 
         <!-- 番茄钟前台服务。计时本身不依赖它（时间用墙钟算），
              它的作用是不让系统回收进程 + 显示常驻倒计时通知。

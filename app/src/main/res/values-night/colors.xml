@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#1C1B1F</color>
+
+    <!-- 桌面小组件暗色：仍保留半透明，文字接近纯白，次要色也保持 >10:1 对比。 -->
+    <color name="widget_card_fill_top">#F21F1E23</color>
+    <color name="widget_card_fill_bottom">#D9141317</color>
+    <color name="widget_card_stroke">#33FFFFFF</color>
+    <color name="widget_primary">#F6F2F8</color>
+    <color name="widget_secondary">#CFCAD6</color>
+    <color name="widget_accent">#8FE0BC</color>
+    <color name="widget_error">#FFB4AB</color>
+    <color name="widget_refresh_fill">#1FFFFFFF</color>
 </resources>
