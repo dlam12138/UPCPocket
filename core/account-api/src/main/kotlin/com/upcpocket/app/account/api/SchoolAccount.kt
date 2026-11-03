@@ -154,6 +154,28 @@ interface SchoolAccountReferenceReader : SchoolAccountGate {
 }
 
 /**
+ * 受控的登录名一致性检查。
+ *
+ * 业务只提交“学校刚刚返回的本人登录名”，由账号模块在本机与当前保存账号比较；
+ * 不暴露账号原文、密码、`CredentialPayload` 或通用解密能力。比较必须绑定
+ * accountId 与凭据代次；账号变化、清理中或不可用时不得返回 [SchoolAccountIdentityCheck.MATCH]。
+ */
+enum class SchoolAccountIdentityCheck {
+    MATCH,
+    MISMATCH,
+    CHANGED,
+    UNAVAILABLE,
+}
+
+fun interface SchoolAccountIdentityVerifier {
+    suspend fun verifyLoginName(
+        expectedAccountId: SchoolAccountId,
+        expectedCredentialGeneration: AccountGeneration,
+        candidateLoginName: String,
+    ): SchoolAccountIdentityCheck
+}
+
+/**
  * 账号状态是否禁止建立/恢复个人业务会话。
  *
  * - LOADING：启动恢复尚未完成，不能假定旧清理已经结束；

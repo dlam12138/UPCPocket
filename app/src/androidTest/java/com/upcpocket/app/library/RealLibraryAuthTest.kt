@@ -99,6 +99,7 @@ class RealLibraryAuthTest {
             },
             accountGate = repository,
             accountReference = repository,
+            identityVerifier = repository,
             authenticator = LibraryAccountAuthenticator { expectedId, generation ->
                 when (val result = core.authenticate(expectedId, generation)) {
                     is UpcLibraryAuthResult.Success -> LibraryAccountAuthResult.Success(

@@ -35,6 +35,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibrarySeatProtocol
+import com.upcpocket.app.library.LibraryAccountAuthFailure
+import com.upcpocket.app.library.LibraryAccountLoginResult
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
 import kotlinx.coroutines.launch
@@ -89,31 +91,24 @@ fun LibrarySeatLoginScreen(
         error = null
         scope.launch {
             try {
-                val session = if (alreadySeatToken) {
-                    service.repository.adoptSeatToken(token) {
-                        service.isLoginContextCurrent(loginContext)
+                when (val result = service.completeWebLogin(loginContext, token, alreadySeatToken)) {
+                    LibraryAccountLoginResult.Success -> {
+                        finished = true
+                        clearWebSession()
+                        onLoggedIn()
                     }
-                } else {
-                    service.repository.exchangeAppToken(token) {
-                        service.isLoginContextCurrent(loginContext)
+                    is LibraryAccountLoginResult.Failure -> {
+                        busy = false
+                        error = libraryAuthMessage(result.reason)
+                        if (result.reason == LibraryAccountAuthFailure.IDENTITY_MISMATCH &&
+                            service.isLoginContextCurrent(loginContext)
+                        ) {
+                            // 只清这个旧 WebView 里的另一个账号 Cookie；若期间已有新登录，
+                            // 旧页面不能再动全局 WebView 会话。
+                            clearWebSession()
+                        }
                     }
                 }
-                // 上下文绑定打开登录页时的账号代次与图书馆登录代次；迟到的旧页面
-                // 即使拿到新 token 也不能写回。
-                if (!service.persistLoginIfCurrent(loginContext, session)) {
-                    service.repository.clearSession()
-                    clearWebSession()
-                    busy = false
-                    error = if (service.isLoginContextCurrent(loginContext)) {
-                        "登录成功，但本机加密保存失败，未保留会话"
-                    } else {
-                        "账号状态已变化，请重新登录"
-                    }
-                    return@launch
-                }
-                finished = true
-                clearWebSession()
-                onLoggedIn()
             } catch (e: Exception) {
                 busy = false
                 error = e.message ?: "登录信息交换失败，请重新登录"

@@ -53,8 +53,8 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | --- | --- |
 | 认证 | 当前统一账号通过受控认证适配读取一次登录名/密码，只在核对后的学校 CAS HTTPS 表单提交；密码不进入图书馆插件、Repository、普通页面或日志 |
 | 业务链 | 入口 → 官方 CAS → 一次性 service ticket → libspace app token → `/rest/ssoAuth` seat token → `/rest/v2/user` 本人校验 |
-| 本人校验 | 学校返回的 `username` 必须与当前保存账号的登录名一致；不一致立即失败，不发布、不持久化 |
-| 会话 | seat token 只在内存与 `SchoolSessionStore` 的 Keystore AES-GCM 密文中；密文绑定内部 accountId 与凭据代次，旧格式/旧归属在读取时删除 |
+| 本人校验 | 自动认证和手动 WebView 登录返回的 `username` 都必须由账号模块与当前保存账号登录名比较；不一致立即失败，不发布、不持久化 |
+| 会话 | seat token 只在内存与 `SchoolSessionStore` 的 Keystore AES-GCM 密文中；密文绑定内部 accountId 与凭据代次，旧格式/旧归属在读取时删除；旧操作不能按过期上下文清理新会话 |
 | 失败语义 | 错误密码只提交一次、不循环；网络、TLS、验证码/二次验证、协议/上游、账号变化分别显示；验证码走学校正常网页登录，不绕过 |
 | 回退 | 自动认证返回 `INTERACTION_REQUIRED` 时提示打开学校网页登录；未保存学校账号时手动登录只保留内存会话，不持久化无归属 token |
 | 换号/删号/改密 | 先递增图书馆登录代次，再清加密副本/内存会话并等待学校 Cookie 清理；清理中或失败时登录、恢复与发布均被阻断 |

@@ -23,8 +23,9 @@ data class LibrarySeatSession(
 /**
  * 学校图书馆座位系统的独立数据层。
  *
- * 只访问 `libspace.upc.edu.cn` 的公开前端使用的正常接口；登录由官方 CAS 网页完成，
- * 本类只接收登录后的 token。token 仅保存在内存里，不写数据库/文件/日志。
+ * 只访问 `libspace.upc.edu.cn` 的公开前端使用的正常接口；登录由官方 CAS 完成
+ * （统一账号原生认证或学校 WebView 回退），本类只接收并核验登录后的 token。
+ * token 仅由 Service 的受控提交门闩发布到内存；本类不写数据库/文件/日志。
  */
 class LibrarySeatRepository(
     private val sessionAllowed: () -> Boolean = { true },
@@ -35,30 +36,48 @@ class LibrarySeatRepository(
     private val sessionLock = Any()
     private var sessionGeneration = 0L
 
-    suspend fun exchangeAppToken(
-        appToken: String,
+    /**
+     * 只完成 token 兑换/本人读取，不发布会话。
+     *
+     * 页面或 Service 必须先做账号身份校验，再通过同一个受控提交门闩发布；否则
+     * WebView 中登录到另一个账号的 token 会短暂进入 UI/缓存。
+     */
+    suspend fun resolveSeatSession(
+        token: String,
+        alreadySeatToken: Boolean,
         guard: () -> Boolean = { true },
     ): LibrarySeatSession = withContext(Dispatchers.IO) {
-        require(appToken.isNotBlank()) { "登录 token 为空" }
+        require(token.isNotBlank()) { "登录 token 为空" }
         if (!allowed(guard)) throw LibrarySessionExpiredException()
-        val expectedGeneration = currentSessionGeneration()
+        val seatToken = if (alreadySeatToken) {
+            token
+        } else {
+            val body = request(
+                method = "POST",
+                path = "/rest/ssoAuth",
+                query = mapOf("token" to token),
+                form = mapOf("token" to token),
+                tokenOverride = token,
+            )
+            LibrarySeatProtocol.parseToken(body)
+        }
+        if (!allowed(guard)) throw LibrarySessionExpiredException()
         val body = request(
-            method = "POST",
-            path = "/rest/ssoAuth",
-            query = mapOf("token" to appToken),
-            form = mapOf("token" to appToken),
-            tokenOverride = appToken,
+            method = "GET",
+            path = "/rest/v2/user",
+            query = mapOf("token" to seatToken),
+            tokenOverride = seatToken,
         )
-        val seatToken = LibrarySeatProtocol.parseToken(body)
-        adoptSeatTokenInternal(seatToken, expectedGeneration, guard)
+        val user = LibrarySeatProtocol.parseUser(body)
+        if (!allowed(guard)) throw LibrarySessionExpiredException()
+        LibrarySeatSession(seatToken, user)
     }
 
     /**
      * 已由受控认证适配完成 token 兑换与本人校验时，只发布已经核验的会话。
      *
-     * 这里不再次请求 `/rest/v2/user`；调用方必须只传入 core 认证适配返回的
-     * [LibrarySeatSession]。发布仍绑定到当前 repository 代次和账号门闩，迟到的结果
-     * 不能写回。
+     * 调用方必须先在同一个提交门闩里确认账号身份；发布仍绑定到当前 repository
+     * 代次和账号门闩，迟到的结果不能写回。
      */
     suspend fun publishAuthenticatedSession(
         session: LibrarySeatSession,
@@ -71,40 +90,6 @@ class LibrarySeatRepository(
         if (!allowed(guard)) throw LibrarySessionExpiredException()
         val expectedGeneration = currentSessionGeneration()
         if (!publishSessionIfCurrent(session, expectedGeneration, guard)) {
-            throw LibrarySessionExpiredException()
-        }
-        session
-    }
-
-    /** 页面已经把 sessionStorage 换成了 seat token 时直接使用。 */
-    suspend fun adoptSeatToken(
-        seatToken: String,
-        guard: () -> Boolean = { true },
-    ): LibrarySeatSession = withContext(Dispatchers.IO) {
-        if (!allowed(guard)) throw LibrarySessionExpiredException()
-        val expectedGeneration = currentSessionGeneration()
-        adoptSeatTokenInternal(seatToken, expectedGeneration, guard)
-    }
-
-    private suspend fun adoptSeatTokenInternal(
-        seatToken: String,
-        expectedGeneration: Long,
-        guard: () -> Boolean,
-    ): LibrarySeatSession = withContext(Dispatchers.IO) {
-        require(seatToken.isNotBlank()) { "登录 token 为空" }
-        if (currentSessionGeneration() != expectedGeneration || !allowed(guard)) {
-            throw LibrarySessionExpiredException()
-        }
-        val body = request(
-            method = "GET",
-            path = "/rest/v2/user",
-            query = mapOf("token" to seatToken),
-            tokenOverride = seatToken,
-        )
-        val user = LibrarySeatProtocol.parseUser(body)
-        val session = LibrarySeatSession(seatToken, user)
-        if (!publishSessionIfCurrent(session, expectedGeneration, guard)) {
-            // 换号/删号或退出已让这次登录失效；不能把迟到 token 写进内存或持久层。
             throw LibrarySessionExpiredException()
         }
         session

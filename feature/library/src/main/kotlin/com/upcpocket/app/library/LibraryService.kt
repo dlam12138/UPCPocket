@@ -3,9 +3,12 @@ package com.upcpocket.app.library
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountGate
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
+import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.library.LibrarySeatException
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.library.LibrarySeatSession
 import com.upcpocket.app.data.library.LibrarySessionExpiredException
@@ -22,6 +25,7 @@ internal data class LibraryLoginContext(
     val loginEpoch: Long,
     val accountGeneration: AccountGeneration,
     val accountId: SchoolAccountId?,
+    val sessionRevision: Long,
 )
 
 /** 自动认证给 UI 的固定结果；不携带上游正文、账号或 token。 */
@@ -51,13 +55,22 @@ class LibraryService(
     private val settings: LibraryAccountSettings,
     private val accountGate: SchoolAccountGate,
     private val accountReference: SchoolAccountReferenceReader,
+    private val identityVerifier: SchoolAccountIdentityVerifier,
     private val authenticator: LibraryAccountAuthenticator,
     private val clearCookies: () -> Unit,
     private val clearSchoolCookiesAndAwait: suspend () -> Boolean = {
         SchoolWebCookies.clearAllSchoolCookiesAndAwait()
     },
+    private val resolveSeatSession: suspend (
+        String,
+        Boolean,
+        () -> Boolean,
+    ) -> LibrarySeatSession = { token, alreadySeatToken, guard ->
+        repository.resolveSeatSession(token, alreadySeatToken, guard)
+    },
 ) {
     private val loginEpoch = AtomicLong(0)
+    private val sessionRevision = AtomicLong(0)
     private val loginMutex = Mutex()
 
     val rememberLogin: Flow<Boolean> get() = settings.rememberLogin
@@ -84,12 +97,14 @@ class LibraryService(
             loginEpoch = loginEpoch.get(),
             accountGeneration = snapshot.generation,
             accountId = reference?.accountId,
+            sessionRevision = sessionRevision.get(),
         )
     }
 
     internal fun isLoginContextCurrent(context: LibraryLoginContext): Boolean {
         val snapshot = accountGate.state.value
         if (loginEpoch.get() != context.loginEpoch ||
+            sessionRevision.get() != context.sessionRevision ||
             snapshot.blocksPersonalSessions ||
             snapshot.generation != context.accountGeneration
         ) {
@@ -105,41 +120,150 @@ class LibraryService(
     }
 
     /**
-     * 写入登录结果与失效代次使用同一把锁，避免“检查代次后、写 token 前”被换号
-     * 清理插入，导致旧 token 重新落盘。上下文同时绑定打开页面/开始认证时的账号代次。
+     * 检查学校返回的本人登录名是否属于当前保存账号。
      *
-     * 没有 accountId 的旧式手动登录只保留内存会话；不把无法归属的 token 写入持久层。
+     * 这里只把候选登录名交给受控账号读取面比较；不读取密码、不依赖 core:account，
+     * 也不把账号原文带到 feature 内存。没有已保存账号时返回 null，由调用方按内存
+     * 会话处理。
      */
-    internal suspend fun persistLoginIfCurrent(
+    private suspend fun verifySessionIdentity(
         context: LibraryLoginContext,
         session: LibrarySeatSession,
+    ): LibraryAccountAuthFailure? {
+        val accountId = context.accountId ?: return null
+        val check = try {
+            identityVerifier.verifyLoginName(
+                expectedAccountId = accountId,
+                expectedCredentialGeneration = context.accountGeneration,
+                candidateLoginName = session.user.username,
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE
+        }
+        return when (check) {
+            SchoolAccountIdentityCheck.MATCH -> null
+            SchoolAccountIdentityCheck.MISMATCH -> LibraryAccountAuthFailure.IDENTITY_MISMATCH
+            SchoolAccountIdentityCheck.CHANGED -> LibraryAccountAuthFailure.ACCOUNT_CHANGED
+            SchoolAccountIdentityCheck.UNAVAILABLE ->
+                LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE
+        }
+    }
+
+    /**
+     * 唯一的会话提交门闩：身份已核验后，在同一把登录锁里完成持久化、Repository
+     * 发布和会话修订递增。旧上下文在拿到锁后会因 revision 变化被拒绝，不能清掉
+     * 新登录；网络/身份核验都在锁外。
+     */
+    private suspend fun commitAuthenticatedSession(
+        context: LibraryLoginContext,
+        session: LibrarySeatSession,
+        persist: Boolean,
     ): Boolean = loginMutex.withLock {
         if (!isLoginContextCurrent(context)) return@withLock false
-        val accountId = context.accountId
-        if (accountId == null) {
-            sessionStore.clearLibrary()
-            return@withLock true
-        }
-        if (rememberLoginEnabled()) {
-            val saved = sessionStore.saveLibrary(
-                token = session.token,
-                user = session.user,
-                accountId = accountId,
-                credentialGeneration = context.accountGeneration,
-            )
-            if (!saved) {
+        if (persist) {
+            val accountId = context.accountId
+            if (accountId == null) {
                 sessionStore.clearLibrary()
-                return@withLock false
+            } else if (rememberLoginEnabled()) {
+                val saved = sessionStore.saveLibrary(
+                    token = session.token,
+                    user = session.user,
+                    accountId = accountId,
+                    credentialGeneration = context.accountGeneration,
+                )
+                if (!saved) {
+                    sessionStore.clearLibrary()
+                    return@withLock false
+                }
+            } else {
+                sessionStore.clearLibrary()
             }
-        } else {
-            sessionStore.clearLibrary()
         }
+        val published = try {
+            repository.publishAuthenticatedSession(session) {
+                isLoginContextCurrent(context)
+            }
+            true
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
+        if (!published) {
+            // 只有上下文仍然有效时才清掉本次刚写入的副本；旧上下文绝不在这里
+            // 删除并发新登录的数据。
+            if (persist && isLoginContextCurrent(context)) sessionStore.clearLibrary()
+            return@withLock false
+        }
+        sessionRevision.incrementAndGet()
         true
     }
 
     /**
+     * 较早的恢复/自动/手动操作失败时，只允许在其上下文仍是当前会话时清理。
+     * 若期间已经有新登录成功，revision 已变化，本操作不得删除新数据。
+     */
+    private suspend fun discardSavedSessionIfCurrent(context: LibraryLoginContext) {
+        loginMutex.withLock {
+            if (!isLoginContextCurrent(context)) return@withLock
+            sessionStore.clearLibrary()
+            repository.clearSession()
+            sessionRevision.incrementAndGet()
+        }
+    }
+
+    /**
+     * 手动 WebView 登录的受控收尾：先在 Service 里兑换/读取本人，再核验账号身份，
+     * 最后通过同一提交门闩发布。页面不再直接调用 Repository 的发布方法，因此 A
+     * 账号下登录 B 时不会短暂出现在 UI 或持久层。
+     */
+    internal suspend fun completeWebLogin(
+        context: LibraryLoginContext,
+        token: String,
+        alreadySeatToken: Boolean,
+    ): LibraryAccountLoginResult {
+        if (!isLoginContextCurrent(context)) {
+            return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.ACCOUNT_CHANGED)
+        }
+        val session = try {
+            resolveSeatSession(token, alreadySeatToken) {
+                isLoginContextCurrent(context)
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: LibrarySessionExpiredException) {
+            return LibraryAccountLoginResult.Failure(
+                if (isLoginContextCurrent(context)) {
+                    LibraryAccountAuthFailure.SESSION_EXPIRED
+                } else {
+                    LibraryAccountAuthFailure.ACCOUNT_CHANGED
+                },
+            )
+        } catch (_: LibrarySeatException) {
+            return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.UPSTREAM_ERROR)
+        } catch (_: Exception) {
+            return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.PROTOCOL_ERROR)
+        }
+        verifySessionIdentity(context, session)?.let {
+            return LibraryAccountLoginResult.Failure(it)
+        }
+        if (!commitAuthenticatedSession(context, session, persist = true)) {
+            return LibraryAccountLoginResult.Failure(
+                if (isLoginContextCurrent(context)) {
+                    LibraryAccountAuthFailure.PERSISTENCE_FAILED
+                } else {
+                    LibraryAccountAuthFailure.ACCOUNT_CHANGED
+                },
+            )
+        }
+        return LibraryAccountLoginResult.Success
+    }
+
+    /**
      * 使用已保存统一账号自动完成 libseat 正常 CAS，不把密码/网络请求放在登录锁内。
-     * 结果返回后再次经过 repository 代次与账号门闩复核，迟到结果不能发布。
+     * provider 已在 core 内做本人校验；这里再用账号身份契约复核一次，随后统一提交。
      */
     suspend fun loginWithSavedAccount(): LibraryAccountLoginResult {
         val context = captureLoginContext()
@@ -163,19 +287,10 @@ class LibraryService(
         }
 
         val session = LibrarySeatSession(success.seatToken, success.user)
-        try {
-            repository.publishAuthenticatedSession(session) {
-                isLoginContextCurrent(context)
-            }
-        } catch (cancelled: kotlinx.coroutines.CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.ACCOUNT_CHANGED)
+        verifySessionIdentity(context, session)?.let {
+            return LibraryAccountLoginResult.Failure(it)
         }
-
-        if (!persistLoginIfCurrent(context, session)) {
-            repository.clearSession()
-            clearCookies()
+        if (!commitAuthenticatedSession(context, session, persist = true)) {
             return LibraryAccountLoginResult.Failure(
                 if (isLoginContextCurrent(context)) {
                     LibraryAccountAuthFailure.PERSISTENCE_FAILED
@@ -188,44 +303,54 @@ class LibraryService(
     }
 
     /**
-     * 重启后恢复图书馆持久 token 必须走同一门闩；只有绑定到当前 accountId/代次且服务端
-     * 返回同一本人标识时才恢复。
+     * 重启后恢复图书馆持久 token 必须走同一门闩；只有绑定到当前 accountId/代次、
+     * 受控账号身份校验通过且服务端返回同一本人时才恢复。旧恢复失败只做条件清理，
+     * 不能删除期间已经成功的新登录。
      */
     suspend fun restoreSavedLibrarySession(): LibrarySeatSession? {
         val context = captureLoginContext() ?: return null
         val accountId = context.accountId ?: run {
-            sessionStore.clearLibrary()
+            discardSavedSessionIfCurrent(context)
             return null
         }
         val saved = sessionStore.loadLibrary(accountId, context.accountGeneration) ?: return null
-        if (!isLoginContextCurrent(context)) {
-            sessionStore.clearLibrary()
-            return null
-        }
-        return try {
-            val session = repository.adoptSeatToken(saved.token) {
+        if (!isLoginContextCurrent(context)) return null
+        val session = try {
+            resolveSeatSession(saved.token, true) {
                 isLoginContextCurrent(context)
             }
-            if (session.user.id != saved.user.id ||
-                session.user.username != saved.user.username
-            ) {
-                // token 仍有效但返回了另一个本人：不能把旧持久副本恢复成新会话。
-                sessionStore.clearLibrary()
-                repository.clearSession()
-                null
-            } else {
-                session
-            }
-        } catch (e: LibrarySessionExpiredException) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: LibrarySessionExpiredException) {
             // 只有学校明确判定会话失效才删除持久副本；瞬时网络/TLS/协议失败保留，
             // 让用户下次进入时可以重试，而不是把“没连上”误当成“已登出”。
-            sessionStore.clearLibrary()
-            repository.clearSession()
-            null
-        } catch (e: Exception) {
-            if (e is kotlinx.coroutines.CancellationException) throw e
-            null
+            discardSavedSessionIfCurrent(context)
+            return null
+        } catch (_: Exception) {
+            return null
         }
+        when (verifySessionIdentity(context, session)) {
+            LibraryAccountAuthFailure.IDENTITY_MISMATCH,
+            LibraryAccountAuthFailure.ACCOUNT_CHANGED,
+            -> {
+                discardSavedSessionIfCurrent(context)
+                return null
+            }
+            null -> Unit
+            // 账号暂时不可用/加载中不是“会话失效”，保留副本等待下一次恢复。
+            else -> return null
+        }
+        if (session.user.id != saved.user.id ||
+            session.user.username != saved.user.username
+        ) {
+            // token 仍有效但返回了另一个本人：不能把旧持久副本恢复成新会话。
+            discardSavedSessionIfCurrent(context)
+            return null
+        }
+        if (!commitAuthenticatedSession(context, session, persist = false)) {
+            return null
+        }
+        return session
     }
 
     /**
@@ -241,10 +366,30 @@ class LibraryService(
     suspend fun signOut() {
         loginMutex.withLock {
             loginEpoch.incrementAndGet()
+            sessionRevision.incrementAndGet()
             sessionStore.clear()
             repository.clearSession()
         }
         clearCookies()
+    }
+
+    /**
+     * 旧查询迟到返回“会话失效”时，只允许清理它实际使用的那个 token。
+     * 与 [signOut] 使用同一把登录锁，避免检查后、清理前插入新登录。
+     */
+    suspend fun signOutIfCurrent(expectedToken: String): Boolean {
+        val cleared = loginMutex.withLock {
+            if (repository.session.value?.token != expectedToken) {
+                return@withLock false
+            }
+            loginEpoch.incrementAndGet()
+            sessionRevision.incrementAndGet()
+            sessionStore.clear()
+            repository.clearSession()
+            true
+        }
+        if (cleared) clearCookies()
+        return cleared
     }
 
     /**
@@ -255,6 +400,7 @@ class LibraryService(
     suspend fun signOutForAccountChange(): Boolean {
         val persistedCleared = loginMutex.withLock {
             loginEpoch.incrementAndGet()
+            sessionRevision.incrementAndGet()
             sessionStore.clear().also { repository.clearSession() }
         }
         if (!persistedCleared) return false

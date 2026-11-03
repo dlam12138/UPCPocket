@@ -3,6 +3,8 @@ package com.upcpocket.app.library
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
+import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
@@ -39,6 +41,9 @@ class LibraryPluginTest {
                     ),
                 )
                 override val accountReference = MutableStateFlow<SchoolAccountReference?>(null)
+            },
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.UNAVAILABLE
             },
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("插件装配测试不得自动认证")

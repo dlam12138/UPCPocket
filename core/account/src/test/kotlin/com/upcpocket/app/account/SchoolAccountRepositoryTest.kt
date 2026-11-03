@@ -6,6 +6,8 @@ import com.upcpocket.app.account.api.AccountInvalidationFailure
 import com.upcpocket.app.account.api.AccountInvalidationRequest
 import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
+import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
@@ -68,6 +70,48 @@ class SchoolAccountRepositoryTest {
         assertEquals(identity.accountId, reopened.accountReference.value?.accountId)
         assertEquals(AccountGeneration(1), reopened.accountReference.value?.credentialGeneration)
         assertFalse(reopened.state.value.cleanupRequired)
+    }
+
+    @Test
+    fun identityVerifierComparesOnlyTheCurrentAccountAndGeneration() = runTest {
+        val repository = repository(MemoryStore())
+        repository.restore()
+
+        assertEquals(
+            SchoolAccountIdentityCheck.UNAVAILABLE,
+            repository.verifyLoginName(
+                SchoolAccountId("acct_missing_identity"),
+                AccountGeneration(1),
+                account,
+            ),
+        )
+
+        repository.save(account, oldPassword.toCharArray())
+        val reference = repository.accountReference.value!!
+        assertEquals(
+            SchoolAccountIdentityCheck.MATCH,
+            repository.verifyLoginName(
+                reference.accountId,
+                reference.credentialGeneration,
+                account,
+            ),
+        )
+        assertEquals(
+            SchoolAccountIdentityCheck.MISMATCH,
+            repository.verifyLoginName(
+                reference.accountId,
+                reference.credentialGeneration,
+                otherAccount,
+            ),
+        )
+        assertEquals(
+            SchoolAccountIdentityCheck.CHANGED,
+            repository.verifyLoginName(
+                reference.accountId,
+                AccountGeneration(2),
+                account,
+            ),
+        )
     }
 
     @Test

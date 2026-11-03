@@ -1,6 +1,7 @@
 package com.upcpocket.app.library
 
 import android.content.Context
+import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibrarySeatRepository
@@ -30,6 +31,7 @@ class LibraryPlugin(
     context: Context,
     accountSettings: LibraryAccountSettings,
     account: SchoolAccountReferenceReader,
+    identityVerifier: SchoolAccountIdentityVerifier,
     authenticator: LibraryAccountAuthenticator,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
@@ -46,6 +48,7 @@ class LibraryPlugin(
         settings = accountSettings,
         accountGate = account,
         accountReference = account,
+        identityVerifier = identityVerifier,
         authenticator = authenticator,
         clearCookies = SchoolWebCookies::clearAllSchoolCookies,
     )

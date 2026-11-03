@@ -3,6 +3,8 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
+import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
@@ -65,6 +67,9 @@ class ReducedAssemblyTest {
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
             account = openAccount(),
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.UNAVAILABLE
+            },
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },
@@ -137,6 +142,9 @@ class ReducedAssemblyTest {
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
             account = openAccount(),
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.UNAVAILABLE
+            },
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },

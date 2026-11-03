@@ -121,10 +121,12 @@ fun LibrarySeatScreen(
     LaunchedEffect(session) {
         if (session != null) vm.ensureLoaded()
     }
-    LaunchedEffect(state.sessionExpired) {
+    LaunchedEffect(state.sessionExpired, state.expiredToken) {
         if (state.sessionExpired) {
-            vm.logout()
-            service.sessionStore.clearLibrary()
+            val expiredToken = state.expiredToken ?: return@LaunchedEffect
+            if (service.signOutIfCurrent(expiredToken)) {
+                vm.resetAfterLogout()
+            }
         }
     }
 
@@ -532,7 +534,7 @@ private fun LibraryLoginGate(
     }
 }
 
-private fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = when (reason) {
+internal fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = when (reason) {
     LibraryAccountAuthFailure.INVALID_CREDENTIALS -> "学校账号或密码未被接受，请更新学校账号后重试"
     LibraryAccountAuthFailure.INTERACTION_REQUIRED -> "学校要求验证码或二次验证，请使用网页登录完成"
     LibraryAccountAuthFailure.NETWORK_UNAVAILABLE -> "无法连接学校认证服务，请检查网络"
@@ -546,6 +548,8 @@ private fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = when
         "学校返回的本人账号与已保存账号不一致，未保存会话"
     LibraryAccountAuthFailure.PERSISTENCE_FAILED ->
         "登录成功，但本机加密保存失败，未保留会话"
+    LibraryAccountAuthFailure.SESSION_EXPIRED ->
+        "学校登录会话已失效，请重新通过学校统一认证登录"
 }
 
 @Composable
@@ -711,6 +715,8 @@ internal class LibrarySeatViewModel(
         val error: String? = null,
         val notice: String? = null,
         val sessionExpired: Boolean = false,
+        /** 触发失效的会话 token；只用于确认没有并发新登录，不写日志。 */
+        val expiredToken: String? = null,
         val showTimeDialog: Boolean = false,
         val showConfirm: Boolean = false,
     )
@@ -724,6 +730,7 @@ internal class LibrarySeatViewModel(
     }
 
     fun loadFilters() {
+        val requestToken = repo.session.value?.token
         run {
             state = state.copy(loading = true, error = null)
             viewModelScope.launch {
@@ -740,7 +747,7 @@ internal class LibrarySeatViewModel(
                     refreshReservations()
                     queryRooms()
                 } catch (e: Exception) {
-                    fail(e)
+                    fail(e, requestToken)
                 }
             }
         }
@@ -771,6 +778,7 @@ internal class LibrarySeatViewModel(
     fun queryRooms() {
         val building = state.building ?: return
         val date = state.date ?: return
+        val requestToken = repo.session.value?.token
         state = state.copy(loading = true, error = null, rooms = emptyList(), room = null, layout = null, seat = null)
         viewModelScope.launch {
             try {
@@ -782,19 +790,20 @@ internal class LibrarySeatViewModel(
                 state = state.copy(rooms = rooms, loading = false)
                 if (rooms.isEmpty()) state = state.copy(error = "学校未返回该馆区/日期的房间，不能解释为全部可约")
             } catch (e: Exception) {
-                fail(e)
+                fail(e, requestToken)
             }
         }
     }
 
     fun openRoom(room: LibraryRoom) {
         val date = state.date ?: return
+        val requestToken = repo.session.value?.token
         state = state.copy(loading = true, error = null, room = room, layout = null, seat = null)
         viewModelScope.launch {
             try {
                 state = state.copy(layout = repo.layout(room.roomId, date), loading = false)
             } catch (e: Exception) {
-                fail(e)
+                fail(e, requestToken)
             }
         }
     }
@@ -802,6 +811,7 @@ internal class LibrarySeatViewModel(
     fun chooseSeat(seat: LibrarySeat) {
         if (!seat.selectable) return
         val date = state.date ?: return
+        val requestToken = repo.session.value?.token
         state = state.copy(
             loading = true,
             error = null,
@@ -821,7 +831,7 @@ internal class LibrarySeatViewModel(
                     error = if (starts.isEmpty()) "该座位当天没有可预约时间" else null,
                 )
             } catch (e: Exception) {
-                fail(e)
+                fail(e, requestToken)
             }
         }
     }
@@ -829,6 +839,7 @@ internal class LibrarySeatViewModel(
     fun chooseStart(option: LibraryTimeOption) {
         val date = state.date ?: return
         val seat = state.seat ?: return
+        val requestToken = repo.session.value?.token
         state = state.copy(loading = true, start = option, end = null, endTimes = emptyList(), error = null)
         viewModelScope.launch {
             try {
@@ -840,7 +851,7 @@ internal class LibrarySeatViewModel(
                     error = if (ends.isEmpty()) "该开始时间没有可选的结束时间" else null,
                 )
             } catch (e: Exception) {
-                fail(e)
+                fail(e, requestToken)
             }
         }
     }
@@ -867,6 +878,7 @@ internal class LibrarySeatViewModel(
         val start = state.start ?: return
         val end = state.end ?: return
         val beforeIds = state.reservations.map { it.id }.toSet()
+        val requestToken = repo.session.value?.token
         state = state.copy(loading = true, error = null, notice = null, showConfirm = false)
         viewModelScope.launch {
             // 请求与最终状态分开：请求失败/超时也不等于“没预约上”，先查询核对再下结论。
@@ -878,7 +890,7 @@ internal class LibrarySeatViewModel(
                 e
             }
             if (requestError is LibrarySessionExpiredException) {
-                fail(requestError)
+                fail(requestError, requestToken)
                 return@launch
             }
             val checked = runCatching { repo.myReservations() }
@@ -925,15 +937,16 @@ internal class LibrarySeatViewModel(
 
     fun refreshReservations() {
         if (state.reservationsBusy) return
+        val requestToken = repo.session.value?.token
         state = state.copy(reservationsBusy = true)
         viewModelScope.launch {
-            loadReservations()
+            loadReservations(requestToken)
             state = state.copy(reservationsBusy = false)
         }
     }
 
     /** 读取“我的预约”。失败时保留上一次已确认的记录，只标记“刷新失败 + 旧数据时间”。 */
-    private suspend fun loadReservations() {
+    private suspend fun loadReservations(requestToken: String?) {
         try {
             val list = repo.myReservations()
             state = state.copy(
@@ -945,7 +958,10 @@ internal class LibrarySeatViewModel(
         } catch (e: Exception) {
             if (e is CancellationException) throw e
             if (e is LibrarySessionExpiredException) {
-                state = state.copy(sessionExpired = true)
+                state = state.copy(
+                    sessionExpired = true,
+                    expiredToken = requestToken,
+                )
                 return
             }
             state = state.copy(
@@ -958,6 +974,7 @@ internal class LibrarySeatViewModel(
     }
 
     fun cancel(reservation: LibraryReservation) {
+        val requestToken = repo.session.value?.token
         state = state.copy(
             loading = true,
             error = null,
@@ -973,7 +990,7 @@ internal class LibrarySeatViewModel(
                 e
             }
             if (requestError is LibrarySessionExpiredException) {
-                fail(requestError)
+                fail(requestError, requestToken)
                 return@launch
             }
             // 取消请求返回只说明“学校收到”，最终状态必须再查一次。
@@ -1033,6 +1050,11 @@ internal class LibrarySeatViewModel(
         repo.clearSession()
         sessionStore.clearLibrary()
         LibrarySeatCookies.clearSeatCookies()
+        resetAfterLogout()
+    }
+
+    /** Service 已按 token/锁确认并清理后，只重置本 ViewModel 的展示状态。 */
+    fun resetAfterLogout() {
         state = UiState()
     }
 
@@ -1044,11 +1066,14 @@ internal class LibrarySeatViewModel(
         state = state.copy(notice = null)
     }
 
-    private fun fail(e: Exception) {
+    private fun fail(e: Exception, requestToken: String?) {
         if (e is CancellationException) throw e
         val message = when (e) {
             is LibrarySessionExpiredException -> {
-                state = state.copy(sessionExpired = true)
+                state = state.copy(
+                    sessionExpired = true,
+                    expiredToken = requestToken,
+                )
                 e.message
             }
             is LibraryCaptchaRequiredException -> e.message

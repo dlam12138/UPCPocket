@@ -10,6 +10,8 @@ import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountController
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
+import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
@@ -19,6 +21,7 @@ import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
 import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.account.api.StudentIdFormat
+import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.crypto.ByteCrypto
 import com.upcpocket.app.platform.crypto.KeystoreAesGcmCrypto
@@ -66,6 +69,7 @@ class SchoolAccountRepository internal constructor(
 ) : SchoolAccountController,
     SchoolAccountStudentIdentityReader,
     SchoolAccountReferenceReader,
+    SchoolAccountIdentityVerifier,
     SchoolCredentialAccess {
 
     constructor(
@@ -115,6 +119,39 @@ class SchoolAccountRepository internal constructor(
         _studentIdentity.asStateFlow()
     override val accountReference: StateFlow<SchoolAccountReference?> =
         _accountReference.asStateFlow()
+
+    /**
+     * 只在内部与当前账号登录名比较；不读取凭据文件、不暴露账号原文或密码。
+     * 返回 MATCH 时仍可能随后换号/改密，调用方必须把结果与自己的会话修订一起提交。
+     */
+    override suspend fun verifyLoginName(
+        expectedAccountId: SchoolAccountId,
+        expectedCredentialGeneration: AccountGeneration,
+        candidateLoginName: String,
+    ): SchoolAccountIdentityCheck = withContext(ioDispatcher) {
+        mutex.withLock {
+            if (!initialized) restoreLocked()
+            val state = _state.value
+            if (state.blocksPersonalSessions ||
+                state.status != SchoolAccountStatus.SAVED_UNVERIFIED
+            ) {
+                return@withLock SchoolAccountIdentityCheck.UNAVAILABLE
+            }
+            if (state.generation != expectedCredentialGeneration ||
+                currentGeneration != expectedCredentialGeneration ||
+                _accountReference.value?.accountId != expectedAccountId
+            ) {
+                return@withLock SchoolAccountIdentityCheck.CHANGED
+            }
+            val account = currentAccount
+                ?: return@withLock SchoolAccountIdentityCheck.UNAVAILABLE
+            if (candidateLoginName.trim() == account) {
+                SchoolAccountIdentityCheck.MATCH
+            } else {
+                SchoolAccountIdentityCheck.MISMATCH
+            }
+        }
+    }
 
     override suspend fun restore() {
         withContext(ioDispatcher) {

@@ -29,6 +29,7 @@ enum class LibraryAccountAuthFailure {
     ACCESS_DENIED,
     IDENTITY_MISMATCH,
     PERSISTENCE_FAILED,
+    SESSION_EXPIRED,
 }
 
 /**

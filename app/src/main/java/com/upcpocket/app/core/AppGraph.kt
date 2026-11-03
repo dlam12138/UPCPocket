@@ -209,6 +209,7 @@ object AppGraph {
             context = appContext,
             accountSettings = HostLibraryAccountSettings(uiPrefsStore),
             account = account,
+            identityVerifier = account,
             authenticator = libraryAuthenticator,
         )
     }
