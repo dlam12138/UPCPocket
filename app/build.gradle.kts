@@ -25,8 +25,6 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.ksp)
 }
 
 android {
@@ -111,20 +109,19 @@ kotlin {
     }
 }
 
-// Room 导出 schema，便于日后写迁移。ksp{} 是项目级扩展，必须放在 android{} 之外。
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-}
+// Room schema 现由 :feature:focus 导出；app 只保留宿主偏好与系统组件。
 
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
     implementation(project(":core:plugin-runtime"))
+    implementation(project(":core:plugin-ui"))
     implementation(project(":feature:card"))
     implementation(project(":feature:power"))
     implementation(project(":feature:classroom"))
     implementation(project(":feature:library"))
+    implementation(project(":feature:focus"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -145,14 +142,7 @@ dependencies {
     // Material You 配色生成（由种子色算出整套 M3 浅/深配色，见 ui/theme/MaterialYouScheme.kt）
     implementation(libs.material.color.utilities)
 
-    // 本地序列化：番茄钟快照（FocusPrefsStore）用 kotlinx.serialization 落 DataStore。
-    // 公开空闲教室查询使用平台 HTTPS 客户端；不引入认证客户端或后台轮询依赖。
-    implementation(libs.kotlinx.serialization.json)
-
-    // 本地存储
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
+    // 本地偏好；专注的 DataStore 与 Room 数据库已随插件迁入 :feature:focus。
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.wechat.sdk)
 
@@ -171,5 +161,4 @@ dependencies {
     // "旧行有没有被清掉"用纯函数测不出来（见 ScheduleRepositoryPlanKindTest）。
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.room.testing)
 }

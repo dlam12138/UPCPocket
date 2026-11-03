@@ -94,7 +94,7 @@ class DirectCardBalanceStore(file: File) {
 /**
  * 校园卡余额的领域仓库。
  *
- * 生产环境只保留一个实例（[com.upcpocket.app.core.AppGraph]），页面和桌面组件共用，
+ * 生产环境只保留一个实例（由 `card.balance` 插件能力持有），页面和桌面组件共用，
  * 避免两个 AtomicFile 同时写 `card-balance-v1.json`。成功结果通过 [snapshot] 通知页面，
  * 组件侧由调用方读取同一份快照后刷新 RemoteViews。
  *

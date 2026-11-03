@@ -1,14 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#1C1B1F</color>
-
-    <!-- 半透明深色底让壁纸透出；对比度需结合实际壁纸检查。 -->
-    <color name="widget_card_fill_top">#B3242C3C</color>
-    <color name="widget_card_fill_bottom">#80131924</color>
-    <color name="widget_card_stroke">#66FFFFFF</color>
-    <color name="widget_primary">#F6F2F8</color>
-    <color name="widget_secondary">#E8EDF8</color>
-    <color name="widget_accent">#8FE0BC</color>
-    <color name="widget_error">#FFB4AB</color>
-    <color name="widget_refresh_fill">#28FFFFFF</color>
 </resources>

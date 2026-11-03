@@ -42,4 +42,5 @@ include(
     ":feature:power",
     ":feature:classroom",
     ":feature:library",
+    ":feature:focus",
 )

@@ -39,6 +39,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
+    implementation(project(":core:plugin-ui"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)

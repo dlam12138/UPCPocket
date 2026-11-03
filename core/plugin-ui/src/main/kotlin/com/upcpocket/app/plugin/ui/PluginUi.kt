@@ -77,6 +77,18 @@ data class PluginEntry(
     }
 }
 
+/**
+ * 插件向宿主提交 UI 贡献的显式入口。
+ *
+ * 只有已经激活的插件才会被宿主询问；贡献本身仍由 [PluginUiRegistry] 统一校验，
+ * 因此页面、入口和区块的重复 ID/路由不会覆盖。
+ */
+interface PluginUiContributor {
+    val pluginId: PluginId
+
+    fun contribute(registry: PluginUiRegistry)
+}
+
 /** 插件自己拥有的页面；内容只通过 [PluginPageHost] 与宿主交互。 */
 class PluginPage(
     val routeId: PluginRouteId,
@@ -135,8 +147,14 @@ class PluginUiRegistry {
         val diagnostics = mutableListOf<String>()
         entries.values.forEach { entry ->
             val route = entry.route
-            if (route != null && !pages.containsKey(route.value)) {
-                diagnostics += "入口 ${entry.entryId} 指向未注册页面 ${route.value}"
+            if (route != null) {
+                val page = pages[route.value]
+                if (page == null) {
+                    diagnostics += "入口 ${entry.entryId} 指向未注册页面 ${route.value}"
+                } else if (page.pluginId != entry.pluginId) {
+                    diagnostics +=
+                        "入口 ${entry.entryId} 属于 ${entry.pluginId}，但页面 ${route.value} 属于 ${page.pluginId}"
+                }
             }
         }
         val duplicateRoutes = pages.values.groupBy { it.routeId.value }.filterValues { it.size > 1 }

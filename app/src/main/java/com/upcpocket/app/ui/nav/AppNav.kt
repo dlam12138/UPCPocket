@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,16 +45,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.focus.FOCUS_STATS_ROUTE
+import com.upcpocket.app.plugin.ui.PluginPageHost
+import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.UiSurface
+import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
-import com.upcpocket.app.ui.classroom.FreeClassroomScreen
 import com.upcpocket.app.ui.focus.FocusScreen
-import com.upcpocket.app.ui.focus.FocusStatsScreen
 import com.upcpocket.app.ui.home.HomeScreen
-import com.upcpocket.app.ui.library.LibrarySeatLoginScreen
-import com.upcpocket.app.ui.library.LibrarySeatScreen
-import com.upcpocket.app.ui.power.ElectricityScreen
-import com.upcpocket.app.ui.power.TangdaowanElectricityScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.widget.WidgetLaunchTarget
 
@@ -78,6 +78,19 @@ fun AppNav(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val showBottomBar = Destination.entries.any { it.route == currentRoute }
+    val pluginUi = AppGraph.ui
+
+    val pageHost = remember(navController) {
+        object : PluginPageHost {
+            override fun open(route: PluginRouteId) {
+                navController.navigate(route.value)
+            }
+
+            override fun back() {
+                navController.popBackStack()
+            }
+        }
+    }
 
     /**
      * 切到某个 tab。
@@ -105,7 +118,7 @@ fun AppNav(
                     launchSingleTop = true
                 }
             }
-            WidgetLaunchTarget.POWER_TANGDAOWAN -> navController.navigate(AppRoutes.POWER_TANGDAOWAN) {
+            WidgetLaunchTarget.POWER_TANGDAOWAN -> navController.navigate(POWER_TANGDAOWAN_ROUTE.value) {
                 launchSingleTop = true
             }
             null -> return@LaunchedEffect
@@ -132,62 +145,36 @@ fun AppNav(
                 ) {
                     composable(Destination.HOME.route) {
                         HomeScreen(
-                            cardService = AppGraph.cardService,
-                            onOpenElectricity = { navController.navigate(AppRoutes.ELECTRICITY) },
-                            onOpenClassrooms = { navController.navigate(AppRoutes.FREE_CLASSROOMS) },
-                            onOpenLibrary = { navController.navigate(AppRoutes.LIBRARY_SEAT) },
+                            serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
+                            cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
+                            onOpenRoute = pageHost::open,
                         )
                     }
                     composable(Destination.FOCUS.route) {
-                        FocusScreen(onOpenStats = { navController.navigate(AppRoutes.FOCUS_STATS) })
+                        FocusScreen(
+                            service = AppGraph.focusService,
+                            onOpenStats = { pageHost.open(FOCUS_STATS_ROUTE) },
+                        )
                     }
                     composable(Destination.MORE.route) {
                         CampusScreen(
-                            onOpenFocusStats = { navController.navigate(AppRoutes.FOCUS_STATS) },
+                            learningEntries = pluginUi.entriesFor(UiSurface.MORE_LEARNING),
+                            schoolSections = pluginUi.sectionsFor(UiSurface.MORE_SCHOOL),
+                            onOpenRoute = pageHost::open,
                             onOpenAppearance = { navController.navigate(AppRoutes.APPEARANCE) },
                             onOpenAbout = { navController.navigate(AppRoutes.ABOUT) },
                         )
                     }
-                    composable(AppRoutes.FREE_CLASSROOMS) {
-                        FreeClassroomScreen(
-                            repository = AppGraph.classroomRepository,
-                            onBack = { navController.popBackStack() },
-                        )
-                    }
-                    composable(AppRoutes.LIBRARY_SEAT) {
-                        LibrarySeatScreen(
-                            service = AppGraph.libraryService,
-                            onBack = { navController.popBackStack() },
-                            onLogin = { navController.navigate(AppRoutes.LIBRARY_LOGIN) },
-                        )
-                    }
-                    composable(AppRoutes.LIBRARY_LOGIN) {
-                        LibrarySeatLoginScreen(
-                            service = AppGraph.libraryService,
-                            onBack = { navController.popBackStack() },
-                            onLoggedIn = { navController.popBackStack() },
-                        )
-                    }
-                    composable(AppRoutes.ELECTRICITY) {
-                        ElectricityScreen(
-                            onBack = { navController.popBackStack() },
-                            onOpenTangdaowan = { navController.navigate(AppRoutes.POWER_TANGDAOWAN) },
-                        )
-                    }
-                    composable(AppRoutes.POWER_TANGDAOWAN) {
-                        TangdaowanElectricityScreen(
-                            service = AppGraph.powerService,
-                            onBack = { navController.popBackStack() },
-                        )
+                    pluginUi.pages.forEach { page ->
+                        composable(page.routeId.value) {
+                            page.content(pageHost)
+                        }
                     }
                     composable(AppRoutes.APPEARANCE) {
                         AppearanceScreen(onBack = { navController.popBackStack() })
                     }
                     composable(AppRoutes.ABOUT) {
                         AboutScreen(onBack = { navController.popBackStack() })
-                    }
-                    composable(AppRoutes.FOCUS_STATS) {
-                        FocusStatsScreen(onBack = { navController.popBackStack() })
                     }
                 }
 

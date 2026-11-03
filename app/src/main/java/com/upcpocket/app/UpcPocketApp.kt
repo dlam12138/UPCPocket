@@ -25,7 +25,7 @@ class UpcPocketApp : Application() {
         super.onCreate()
         AppGraph.init(this)
         AppGraph.startPlugins()
-        AppGraph.pomodoroNotifications.ensureChannels()
+        AppGraph.focusService.ensureChannels()
 
         // 仅调试包开启 WebView 远程调试，便于核对图书馆的官方登录页；
         // release 包不会开启，也不暴露任何页面内容。
@@ -34,7 +34,7 @@ class UpcPocketApp : Application() {
         // 番茄钟可能在上一轮进程里就被杀了 —— 启动时把状态接回来。
         // 剩余时间是用墙钟算的，所以"接回来"之后不用做任何补偿。
         appScope.launch {
-            runCatching { AppGraph.pomodoroEngine.restore() }
+            runCatching { AppGraph.focusService.restore() }
         }
     }
 }

@@ -8,11 +8,15 @@ import com.upcpocket.app.plugin.api.PluginCapability
 import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.api.capabilityKey
+import com.upcpocket.app.plugin.ui.PluginUiContributor
+import com.upcpocket.app.plugin.ui.PluginUiRegistry
 
 /** 图书馆插件公开能力的稳定键。 */
 object LibraryCapabilities {
     val seat = capabilityKey<LibraryService>("library.seat")
 }
+
+val LIBRARY_PLUGIN_ID: PluginId = PluginId.parse("library")
 
 /**
  * 图书馆座位插件。
@@ -22,10 +26,10 @@ object LibraryCapabilities {
  */
 class LibraryPlugin(
     context: Context,
-    rememberLogin: suspend () -> Boolean,
-) : Plugin {
+    accountSettings: LibraryAccountSettings,
+) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
-        id = PluginId.parse("library"),
+        id = LIBRARY_PLUGIN_ID,
         version = "1.0.0",
         capabilities = setOf(LibraryCapabilities.seat.id),
     )
@@ -33,9 +37,14 @@ class LibraryPlugin(
     val service: LibraryService = LibraryService(
         repository = LibrarySeatRepository(),
         sessionStore = SchoolSessionStore(context.applicationContext),
-        rememberLogin = rememberLogin,
+        settings = accountSettings,
+        clearCookies = SchoolWebCookies::clearAllSchoolCookies,
     )
 
     override fun capabilities(): List<PluginCapability> =
         listOf(PluginCapability(LibraryCapabilities.seat, service))
+
+    override val pluginId get() = descriptor.id
+
+    override fun contribute(registry: PluginUiRegistry) = LibraryUi(service).contribute(registry)
 }

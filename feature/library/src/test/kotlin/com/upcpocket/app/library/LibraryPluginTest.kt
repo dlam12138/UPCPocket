@@ -23,7 +23,10 @@ class LibraryPluginTest {
     fun `plugin declares and provides the seat capability`() {
         val plugin = LibraryPlugin(
             context = ApplicationProvider.getApplicationContext(),
-            rememberLogin = { false },
+            accountSettings = object : LibraryAccountSettings {
+                override val rememberLogin = kotlinx.coroutines.flow.flowOf(false)
+                override suspend fun setRememberLogin(enabled: Boolean) = Unit
+            },
         )
 
         val result = PluginRuntime()

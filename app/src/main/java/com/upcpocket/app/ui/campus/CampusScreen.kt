@@ -12,43 +12,43 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.core.SchoolWebCookies
-import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DOCK_CLEARANCE
+import com.upcpocket.app.plugin.ui.PluginEntry
+import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.ui.components.GlassCard
-import kotlinx.coroutines.launch
 
 /**
  * 「更多」= 设置与信息入口页。
  *
- * 轻量版保留：学习统计、学校登录开关（只服务图书馆座位）、外观、关于。
- * 课表设置的入口（教学周、节次、演示数据、显示样式）已随课表功能一起删除。
+ * 学习和学校登录分组由插件贡献生成；外观、关于是宿主设置，继续留在 app。
+ * M0 只把入口来源改为插件，分组标题、顺序和文案保持现状。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CampusScreen(
-    onOpenFocusStats: () -> Unit,
+    learningEntries: List<PluginEntry>,
+    schoolSections: List<PluginSection>,
+    onOpenRoute: (PluginRouteId) -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -63,70 +63,25 @@ fun CampusScreen(
                 // 悬浮 dock 是覆盖层：垫出尾部余量，末尾条目能完整滚出胶囊
                 .padding(bottom = DOCK_CLEARANCE),
         ) {
-            GroupTitle("学习")
-            EntryCard {
-                Entry(
-                    Icons.Filled.Insights,
-                    "学习统计",
-                    "专注时长、热力图、标签分布",
-                    onOpenFocusStats,
-                )
+            if (learningEntries.isNotEmpty()) {
+                GroupTitle("学习")
+                EntryCard {
+                    learningEntries.forEach { entry ->
+                        Entry(
+                            icon = iconOf(entry.icon),
+                            title = entry.title,
+                            subtitle = entry.subtitle,
+                            onClick = { entry.route?.let(onOpenRoute) },
+                        )
+                    }
+                }
             }
 
-            GroupTitle("学校登录")
-            EntryCard {
-                val prefs by AppGraph.uiPrefsStore.flow
-                    .collectAsStateWithLifecycle(initialValue = UiPrefs())
-                val scope = rememberCoroutineScope()
-                val librarySession by AppGraph.libraryService.repository.session
-                    .collectAsStateWithLifecycle()
-                ListItem(
-                    headlineContent = { Text("记住学校登录") },
-                    supportingContent = {
-                        Text(
-                            "目前只有图书馆座位会话需要登录：开启后 token 用 Android Keystore 加密保存" +
-                                "（不随系统备份）；关闭或退出会清理持久副本与 UPC 业务 Cookie。" +
-                                "校园卡余额不需要登录。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    trailingContent = {
-                        Switch(
-                            checked = prefs.rememberSchoolLogin,
-                            onCheckedChange = { enabled ->
-                                scope.launch {
-                                    AppGraph.uiPrefsStore.setRememberSchoolLogin(enabled)
-                                    if (!enabled) {
-                                        AppGraph.libraryService.sessionStore.clear()
-                                        AppGraph.libraryService.repository.clearSession()
-                                        SchoolWebCookies.clearAllSchoolCookies()
-                                    }
-                                }
-                            },
-                        )
-                    },
-                )
-                Text(
-                    "图书馆会话：" + (
-                        librarySession?.let { "内存中（${it.user.name.ifBlank { "已登录" }}）" }
-                            ?: "未登录（未保存时进程结束即需重登）"
-                        ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                )
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            AppGraph.uiPrefsStore.setRememberSchoolLogin(false)
-                            AppGraph.libraryService.sessionStore.clear()
-                            AppGraph.libraryService.repository.clearSession()
-                            SchoolWebCookies.clearAllSchoolCookies()
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                ) { Text("退出学校登录（清理图书馆会话与学校 Cookie）") }
+            if (schoolSections.isNotEmpty()) {
+                GroupTitle("学校登录")
+                EntryCard {
+                    schoolSections.forEach { it.content() }
+                }
             }
 
             GroupTitle("外观")
@@ -152,6 +107,14 @@ fun CampusScreen(
             Spacer(Modifier.height(24.dp))
         }
     }
+}
+
+/** UI 契约只带稳定的图标枚举；Compose 图标由宿主决定，业务模块不泄漏 UI 类型。 */
+private fun iconOf(icon: UiIcon): ImageVector = when (icon) {
+    UiIcon.ELECTRICITY -> Icons.Filled.Bolt
+    UiIcon.CLASSROOM -> Icons.Filled.MeetingRoom
+    UiIcon.LIBRARY -> Icons.AutoMirrored.Filled.MenuBook
+    UiIcon.INSIGHTS -> Icons.Filled.Insights
 }
 
 @Composable

@@ -8,6 +8,8 @@ import com.upcpocket.app.plugin.api.PluginCapability
 import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.api.capabilityKey
+import com.upcpocket.app.plugin.ui.PluginUiContributor
+import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import java.io.File
 
 /** 余额插件公开能力的稳定键。 */
@@ -28,7 +30,7 @@ class CardPlugin(
     context: Context,
     inputStore: CardInputStore,
     onSnapshotChanged: () -> Unit,
-) : Plugin {
+) : Plugin, PluginUiContributor {
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = CARD_PLUGIN_ID,
@@ -45,6 +47,10 @@ class CardPlugin(
         input = inputStore,
         onSnapshotChanged = onSnapshotChanged,
     )
+
+    override val pluginId get() = descriptor.id
+
+    override fun contribute(registry: PluginUiRegistry) = CardUi(service).contribute(registry)
 
     override fun capabilities(): List<PluginCapability> =
         listOf(PluginCapability(CardCapabilities.balance, service))

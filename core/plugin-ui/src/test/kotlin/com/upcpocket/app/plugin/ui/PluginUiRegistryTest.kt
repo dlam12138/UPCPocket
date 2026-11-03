@@ -74,6 +74,17 @@ class PluginUiRegistryTest {
         }
     }
 
+    @Test
+    fun `entry cannot point at another plugin page`() {
+        val registry = PluginUiRegistry()
+        registry.addPage(page("card.page", card))
+        registry.addEntry(entry("card.balance", power, UiSurface.HOME_SERVICES, 10, "card.page"))
+
+        val error = assertThrows(PluginUiException::class.java) { registry.build() }
+
+        assertEquals(true, error.message.orEmpty().contains("属于"))
+    }
+
     private fun page(rawRoute: String, owner: PluginId) =
         PluginPage(PluginRouteId.parse(rawRoute), owner) { }
 

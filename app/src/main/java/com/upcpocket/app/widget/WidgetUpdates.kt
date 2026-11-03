@@ -4,17 +4,23 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.ecard.DirectCardSnapshot
+import com.upcpocket.app.data.power.PowerSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * 把共享快照渲染到桌面。
+ * 把插件快照渲染到桌面。
  *
- * - 页面查询成功 / 清除后调用 [requestCard] / [requestPower]，异步读取同一份仓库快照；
+ * 宿主只负责稳定组件标识、刷新状态和 PendingIntent；余额/电量的布局、字段与
+ * 文案分别由 `CardWidgetRenderer`、`PowerWidgetRenderer` 渲染。这里不再认识
+ * 两个业务模型。
+ *
+ * - 页面查询成功 / 清除后由插件回调 [requestCard] / [requestPower]；
  * - WorkManager 在后台调用 [updateKind]；
- * - AppWidgetProvider 的 onUpdate / resize 调用 [updateKindNow]，只读本地 4 KB 缓存，不联网。
+ * - AppWidgetProvider 的 onUpdate / resize 调用 [updateKindNow]，只读本地缓存，不联网。
  */
 object WidgetUpdates {
 
@@ -51,15 +57,7 @@ object WidgetUpdates {
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        WidgetRenderer.views(
-                            context = appContext,
-                            kind = kind,
-                            widgetId = id,
-                            card = snapshot,
-                            power = null,
-                            refreshing = refreshing,
-                            failed = failed,
-                        ),
+                        renderCard(appContext, id, snapshot, refreshing, failed),
                     )
                 }
             }
@@ -68,15 +66,7 @@ object WidgetUpdates {
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        WidgetRenderer.views(
-                            context = appContext,
-                            kind = kind,
-                            widgetId = id,
-                            card = null,
-                            power = snapshot,
-                            refreshing = refreshing,
-                            failed = failed,
-                        ),
+                        renderPower(appContext, id, snapshot, refreshing, failed),
                     )
                 }
             }
@@ -98,15 +88,7 @@ object WidgetUpdates {
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        WidgetRenderer.views(
-                            context = appContext,
-                            kind = kind,
-                            widgetId = id,
-                            card = snapshot,
-                            power = null,
-                            refreshing = refreshing,
-                            failed = failed,
-                        ),
+                        renderCard(appContext, id, snapshot, refreshing, failed),
                     )
                 }
             }
@@ -115,20 +97,42 @@ object WidgetUpdates {
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
-                        WidgetRenderer.views(
-                            context = appContext,
-                            kind = kind,
-                            widgetId = id,
-                            card = null,
-                            power = snapshot,
-                            refreshing = refreshing,
-                            failed = failed,
-                        ),
+                        renderPower(appContext, id, snapshot, refreshing, failed),
                     )
                 }
             }
         }
     }
+
+    private fun renderCard(
+        context: Context,
+        widgetId: Int,
+        snapshot: DirectCardSnapshot?,
+        refreshing: Boolean,
+        failed: Boolean,
+    ) = CardWidgetRenderer(context).views(
+        snapshot = snapshot,
+        refreshing = refreshing,
+        failed = failed,
+        openApp = { WidgetIntents.openApp(context, WidgetLaunchTarget.CARD_BALANCE, widgetId) },
+        refresh = { WidgetIntents.refresh(context, WidgetKind.CARD, widgetId) },
+    )
+
+    private fun renderPower(
+        context: Context,
+        widgetId: Int,
+        snapshot: PowerSnapshot?,
+        refreshing: Boolean,
+        failed: Boolean,
+    ) = PowerWidgetRenderer(context).views(
+        snapshot = snapshot,
+        refreshing = refreshing,
+        failed = failed,
+        openApp = {
+            WidgetIntents.openApp(context, WidgetLaunchTarget.POWER_TANGDAOWAN, widgetId)
+        },
+        refresh = { WidgetIntents.refresh(context, WidgetKind.POWER, widgetId) },
+    )
 
     private fun widgetIds(context: Context, kind: WidgetKind): IntArray =
         AppWidgetManager.getInstance(context)

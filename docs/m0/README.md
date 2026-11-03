@@ -13,14 +13,58 @@
 
 ## 当前状态
 
-- M0.1 基线：完成。
-- M0.2 插件契约与运行时：完成最小版本，包含 `core:plugin-api`、`core:plugin-runtime`、
-  `core:plugin-ui` 与 Gradle 依赖边界检查。
-- M0.3 平台/设计系统抽离：部分完成。`core:designsystem` 与 `core:platform` 已建立，
-  主题、通用组件和 Keystore 加解密已迁出。
-- M0.4 余额纵向迁移：完成。数据、页面与插件装配已迁入 `feature:card`，`AppGraph`
-  通过 `PluginRuntime` 解析 `card.balance`；组件 Provider 暂留宿主。
-- M0.5—M0.7：未开始。
+| 步骤 | 状态 |
+| --- | --- |
+| M0.1 基线 | 完成 |
+| M0.2 插件契约、运行时、UI 契约与依赖检查 | 完成最小可用版本 |
+| M0.3 设计系统/平台能力抽离 | 完成 |
+| M0.4 余额纵向迁移 | 完成（组件 Provider 仍留宿主） |
+| M0.5 电量、空教室、图书馆、专注迁移 | 完成 |
+| M0.6 宿主消费插件贡献、组件渲染拆分 | 完成 |
+| M0.7 回归、覆盖安装与精简装配 | 代码/自动化/模拟器验证通过；真实外部接口与凭据验证待补 |
 
-`app` 已注册 card 插件；电费、图书馆、专注仍在 app 与 `AppGraph` 中，首页和更多页
-仍由宿主硬编码入口。不能据此声称全部功能已经插件化。
+当前真实 Gradle 模块：
+
+```text
+:app
+:core:plugin-api       Kotlin/JVM，无内部依赖
+:core:plugin-runtime   -> plugin-api
+:core:plugin-ui        -> plugin-api
+:core:designsystem     Android/Compose 主题、通用组件、组件公共资源
+:core:platform         Android 平台能力（Keystore 加密等）
+:feature:card          余额协议/快照/页面/余额组件渲染
+:feature:power         电量协议/快照/页面/电量组件渲染
+:feature:classroom     空教室协议/Repository/页面
+:feature:library       图书馆协议/会话/登录与预约页面/学校登录设置区
+:feature:focus         Room v1/专注设置/计时引擎/通知/前台服务/统计页
+```
+
+宿主 `app` 只保留入口 Activity、插件装配、宿主导航与页面位置、宿主偏好适配器、
+两个稳定 Provider/Worker 和「外观/关于」等宿主设置。首页入口、余额区块、学校登录
+区、学习统计入口与插件页面来自已激活插件的 UI 贡献；移除未激活插件时对应贡献不会
+进入 `PluginUiSnapshot`。
+
+## 验证摘要
+
+- 9 个测试任务共 173 个测试，0 失败/错误/跳过（模块明细见[迁移记录](迁移记录.md)）。
+- `checkModuleBoundaries` 通过。
+- `:app:assembleDebug` 通过；`app` lint 0 error / 2 warning；5 个 feature 模块 lint
+  均 0 error，合计剩余 warning 与基线同类（`SmallSp` 3、`Overdraw` 2 等）。
+- 模拟器完成旧基线 `73ac700` APK 覆盖安装到本轮 APK：DataStore 学号输入、Room v1
+  专注记录和数据库打开均保留；Room identityHash 仍为
+  `62e4b0998501030df70b77a392a012f5`。
+- 模拟器实际放置了校园卡 2×2 组件，空状态、脱敏文案与“打开应用”点击通过；未在
+  设备上完成“有成功快照时的数据刷新/失败保留”与两个组件同时放置的长时间观察。
+
+## 明确未验证
+
+- 未使用真实学校账号/密码、真实 CAS ticket 或真实预约请求；图书馆/教室/电费页面在
+  无网络模拟器上只验证了明确的错误态，没有验证真实接口成功态。
+- 未创建或解密真实的旧 Keystore 密文；代码、alias、GCM/IV/Base64 格式按静态迁移
+  保留，但没有可用的旧会话样本做设备级往返验证。
+- 未做 release/R8 包、真实校园网、不同厂商 Launcher 和系统组件的长期回归。
+- 未在真实设备上验证导入旧课表数据库文件（只用旧 APK 生成的 v1 数据库做了覆盖
+  安装验证）；旧五表仍按原结构保留。
+
+因此本轮可以确认“M0 代码迁移与现有界面回归完成”，但不能把上述外部条件未覆盖的
+项目当成已验收；M1 的账号密码保存与统一账号尚未开始。

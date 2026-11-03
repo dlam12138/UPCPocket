@@ -9,6 +9,8 @@ import com.upcpocket.app.plugin.api.PluginCapability
 import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.api.capabilityKey
+import com.upcpocket.app.plugin.ui.PluginUiContributor
+import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import java.io.File
 
 /** 电量插件公开能力的稳定键。 */
@@ -28,7 +30,7 @@ class PowerPlugin(
     context: Context,
     inputStore: PowerInputStore,
     onSnapshotChanged: () -> Unit,
-) : Plugin {
+) : Plugin, PluginUiContributor {
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = POWER_PLUGIN_ID,
@@ -51,6 +53,10 @@ class PowerPlugin(
 
     override fun capabilities(): List<PluginCapability> =
         listOf(PluginCapability(PowerCapabilities.tangdaowan, service))
+
+    override val pluginId get() = descriptor.id
+
+    override fun contribute(registry: PluginUiRegistry) = PowerUi(service).contribute(registry)
 
     private companion object {
         const val SNAPSHOT_FILE = "power-reading-v1.json"

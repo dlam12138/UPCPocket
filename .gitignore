@@ -13,6 +13,7 @@
 local.properties
 app/build/
 app/schemas/
+feature/focus/schemas/
 *.apk
 *.aab
 *.jks

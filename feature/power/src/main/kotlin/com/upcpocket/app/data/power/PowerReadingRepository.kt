@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
  * 只有 [ElectricityResult.Success] 且结果确实属于请求的楼号/房间号时才写入；
  * 歧义候选、网络错误、页面结构变化都不会覆盖上一次成功值。
  *
- * 生产环境只保留一个实例（[com.upcpocket.app.core.AppGraph]），页面与组件共用，
+ * 生产环境只保留一个实例（由 `power.tangdaowan` 插件能力持有），页面与组件共用，
  * 避免两个 AtomicFile 同时写 `power-reading-v1.json`。
  */
 class PowerReadingRepository(

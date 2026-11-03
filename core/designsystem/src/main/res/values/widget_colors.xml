@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 桌面小组件共用的玻璃底与高对比文字。亮色下用深墨色，不用灰字。 -->
+    <color name="widget_card_fill_top">#B3FFFFFF</color>
+    <color name="widget_card_fill_bottom">#80E7EEFF</color>
+    <color name="widget_card_stroke">#CCFFFFFF</color>
+    <color name="widget_primary">#141519</color>
+    <color name="widget_secondary">#252C3A</color>
+    <color name="widget_accent">#0B5C43</color>
+    <color name="widget_error">#B3261E</color>
+    <color name="widget_refresh_fill">#40FFFFFF</color>
+</resources>

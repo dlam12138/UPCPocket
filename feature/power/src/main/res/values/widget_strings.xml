@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_power_title">唐岛湾</string>
+    <string name="widget_power_description">显示唐岛湾上次成功查询的房间、剩余电量和查询时间，可手动刷新</string>
+    <string name="widget_power_building_none">未设置楼号</string>
+    <string name="widget_power_room_none">未设置房间</string>
+    <string name="widget_kwh_value">%1$s 度</string>
+    <string name="widget_refresh_power">刷新剩余电量</string>
+    <string name="widget_open_power">打开应用查询剩余电量</string>
+</resources>

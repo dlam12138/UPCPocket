@@ -1,38 +1,35 @@
 package com.upcpocket.app.core
 
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import com.upcpocket.app.MainActivity
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
-import com.upcpocket.app.classroom.ClassroomCapabilities
 import com.upcpocket.app.classroom.ClassroomPlugin
-import com.upcpocket.app.data.classroom.FreeClassroomRepository
-import com.upcpocket.app.data.db.AppDatabase
-import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.CardInputRepository
-import com.upcpocket.app.data.repo.FocusRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
-import com.upcpocket.app.focus.PomodoroEngine
-import com.upcpocket.app.focus.PomodoroNotifications
-import com.upcpocket.app.library.LibraryCapabilities
+import com.upcpocket.app.focus.FocusCapabilities
+import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.focus.FocusService
 import com.upcpocket.app.library.LibraryPlugin
-import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.plugin.runtime.ActivePlugins
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import com.upcpocket.app.plugin.runtime.PluginStartResult
+import com.upcpocket.app.plugin.ui.PluginUiSnapshot
 import com.upcpocket.app.power.PowerCapabilities
 import com.upcpocket.app.power.PowerPlugin
 import com.upcpocket.app.power.PowerService
 import com.upcpocket.app.widget.WidgetUpdates
-import kotlinx.coroutines.flow.first
-import kotlinx.serialization.json.Json
 
 /**
- * 极简手动依赖容器。
+ * 宿主手动装配容器。
  *
- * 轻量版只保留本机番茄钟与四个校园查询能力：
- *  - 番茄钟：数据库、偏好、前台计时；
+ * 只保留插件注册、宿主偏好/输入适配器、组件回调与稳定能力解析；业务协议、页面、
+ * Room/DataStore 与计时引擎分别归各自 feature 插件。校园能力仍是：
+ *  - 专注：数据库、偏好、前台计时；
  *  - 空闲教室：公开查询；
  *  - 图书馆座位：学校官方 CAS 登录后的内存会话；
  *  - 校园卡余额：输入本人学号直接读取学校余额接口，不需要平台登录；
@@ -50,20 +47,7 @@ object AppGraph {
         appContext = context.applicationContext
     }
 
-    val json: Json by lazy {
-        Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-            coerceInputValues = true
-            encodeDefaults = true
-        }
-    }
-
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }
-
-    val db: AppDatabase by lazy { AppDatabase.get(appContext) }
-
-    val focusRepository: FocusRepository by lazy { FocusRepository(db) }
 
     /**
      * 校园卡余额插件。
@@ -102,7 +86,18 @@ object AppGraph {
     private val libraryPlugin: LibraryPlugin by lazy {
         LibraryPlugin(
             context = appContext,
-            rememberLogin = { uiPrefsStore.flow.first().rememberSchoolLogin },
+            accountSettings = HostLibraryAccountSettings(uiPrefsStore),
+        )
+    }
+
+    /**
+     * 专注插件：数据库、偏好快照、计时引擎与前台服务都在 `feature:focus`。
+     * 宿主只提供“打开应用”的 PendingIntent，避免业务模块反向引用 MainActivity。
+     */
+    private val focusPlugin: FocusPlugin by lazy {
+        FocusPlugin(
+            context = appContext,
+            openAppIntent = { openAppPendingIntent() },
         )
     }
 
@@ -112,6 +107,7 @@ object AppGraph {
             runtime.register(powerPlugin.descriptor) { powerPlugin }
             runtime.register(classroomPlugin.descriptor) { classroomPlugin }
             runtime.register(libraryPlugin.descriptor) { libraryPlugin }
+            runtime.register(focusPlugin.descriptor) { focusPlugin }
         }
     }
 
@@ -128,6 +124,14 @@ object AppGraph {
         }
     }
 
+    /**
+     * 已激活插件贡献的页面、首页入口和设置区。
+     *
+     * 只询问真正启动成功的插件；任何重复 ID/路由或“入口指向别的插件页面”都会在
+     * 构建快照时失败，不会静默覆盖。宿主只读取这份不可变快照。
+     */
+    val ui: PluginUiSnapshot by lazy { HostUiAssembly.build(activePlugins) }
+
     /** 页面只通过插件能力取业务入口，不再直接持有余额 Repository。 */
     val cardService: CardBalanceService
         get() = activePlugins.capability(CardCapabilities.balance)
@@ -138,15 +142,10 @@ object AppGraph {
         get() = activePlugins.capability(PowerCapabilities.tangdaowan)
             ?: error("电量插件未激活")
 
-    /** 空教室页面使用插件提供的公开查询实现。 */
-    val classroomRepository: FreeClassroomRepository
-        get() = activePlugins.capability(ClassroomCapabilities.free)
-            ?: error("空教室插件未激活")
-
-    /** 图书馆登录、查询、预约与会话清理共用的插件服务。 */
-    val libraryService: LibraryService
-        get() = activePlugins.capability(LibraryCapabilities.seat)
-            ?: error("图书馆插件未激活")
+    /** 专注 tab、统计页、通知恢复与前台服务共用同一个插件服务。 */
+    val focusService: FocusService
+        get() = activePlugins.capability(FocusCapabilities.timer)
+            ?: error("专注插件未激活")
 
     /** 启动装配；由 Application 在设置 Context 后调用。 */
     fun startPlugins() {
@@ -165,18 +164,18 @@ object AppGraph {
         CardInputRepository(uiPrefsStore)
     }
 
-    /** “记住登录”的加密持久副本由图书馆插件持有，宿主不再直接访问该类。 */
-
-    val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }
-
-    val pomodoroNotifications: PomodoroNotifications by lazy { PomodoroNotifications(appContext) }
-
-    val pomodoroEngine: PomodoroEngine by lazy {
-        PomodoroEngine(
-            context = appContext,
-            prefs = focusPrefsStore,
-            repo = focusRepository,
-            notifier = pomodoroNotifications,
+    /**
+     * 通知点击打开应用。请求码仍为 0，flags 与迁移前一致；MainActivity 的解析逻辑不变。
+     */
+    private fun openAppPendingIntent(): PendingIntent {
+        val intent = Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            appContext,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 }

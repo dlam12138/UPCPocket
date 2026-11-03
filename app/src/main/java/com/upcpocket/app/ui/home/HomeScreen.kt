@@ -25,25 +25,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.designsystem.DOCK_CLEARANCE
+import com.upcpocket.app.plugin.ui.PluginEntry
+import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.ui.components.GlassCard
-import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
 
 /**
  * 「首页」= 校园服务 + 校园卡余额功能区。
  *
- * 轻量版第三步把电费收拢成一个入口（进去再选唐岛湾/古镇口），并把校园卡余额从
- * “目录卡片 → 第二页”改成直接嵌在首页的功能区：不再有中间跳转，也没有平台登录、
- * 流水或充值。
+ * 入口、顺序和卡片内容来自已激活插件的 UI 贡献；宿主只决定它们放在首页的
+ * 哪个位置。现有文案与顺序不变，插件被移除时对应入口/功能区自然消失。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    cardService: CardBalanceService,
-    onOpenElectricity: () -> Unit,
-    onOpenClassrooms: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    serviceEntries: List<PluginEntry>,
+    cardSections: List<PluginSection>,
+    onOpenRoute: (PluginRouteId) -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("校园服务") }) },
@@ -65,25 +64,21 @@ fun HomeScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            SectionTitle("校园服务")
-            ServiceEntry(
-                title = "电费",
-                subtitle = "唐岛湾 · 古镇口",
-                onClick = onOpenElectricity,
-            )
-            ServiceEntry(
-                title = "空闲教室",
-                subtitle = "按校区、日期、楼宇和节次查询",
-                onClick = onOpenClassrooms,
-            )
-            ServiceEntry(
-                title = "图书馆座位预约",
-                subtitle = "学校统一认证登录后选馆区、座位与时间",
-                onClick = onOpenLibrary,
-            )
+            if (serviceEntries.isNotEmpty()) {
+                SectionTitle("校园服务")
+                serviceEntries.forEach { entry ->
+                    ServiceEntry(
+                        title = entry.title,
+                        subtitle = entry.subtitle,
+                        onClick = { entry.route?.let(onOpenRoute) },
+                    )
+                }
+            }
 
-            SectionTitle("校园卡余额")
-            DirectCardBalanceSection(service = cardService)
+            if (cardSections.isNotEmpty()) {
+                SectionTitle("校园卡余额")
+                cardSections.forEach { it.content() }
+            }
 
             Text(
                 text = "入口地址与开放条件会随学校调整；以学校官网通知为准。",
