@@ -3,12 +3,15 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.card.CardCapabilities
+import com.upcpocket.app.card.CardInputStore
+import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
+import com.upcpocket.app.focus.FocusCapabilities
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.library.LibraryAccountSettings
 import com.upcpocket.app.library.LibraryPlugin
+import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.runtime.PluginRuntime
-import com.upcpocket.app.plugin.runtime.PluginStartResult
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.PowerInput
 import com.upcpocket.app.power.PowerInputStore
@@ -61,11 +64,12 @@ class ReducedAssemblyTest {
             .register(library.descriptor) { library }
         val result = runtime.start()
 
-        assertTrue(result is PluginStartResult.Active)
-        val active = (result as PluginStartResult.Active).plugins
+        val active = result.plugins
         assertNull(active.capability(CardCapabilities.balance))
 
-        val ui = HostUiAssembly.build(active)
+        val assembly = HostUiAssembly.build(active)
+        val ui = assembly.snapshot
+        assertTrue(assembly.diagnostics.isEmpty())
         assertTrue(ui.sectionsFor(UiSurface.HOME_CARD).isEmpty())
         assertEquals(
             listOf("power.electricity", "classroom.free", "library.seat"),
@@ -78,10 +82,59 @@ class ReducedAssemblyTest {
                 "classroom.free",
                 "library.seat",
                 "library.login",
+                "focus.main",
                 "focus.stats",
             ),
             ui.pages.map { it.routeId.value }.toSet(),
         )
+        assertEquals(listOf("focus.tab"), ui.bottomNav.map { it.entryId.value })
         assertFalse(ui.entries.any { it.pluginId.value == "card" })
+    }
+
+    @Test
+    fun `without focus plugin there is no tab page restore entry or capability`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val card = CardPlugin(
+            context = context,
+            inputStore = object : CardInputStore {
+                override val studentId: Flow<String> = flowOf("")
+                override suspend fun save(studentId: String) = Unit
+                override suspend fun clear() = Unit
+            },
+            onSnapshotChanged = {},
+        )
+        val power = PowerPlugin(
+            context = context,
+            inputStore = object : PowerInputStore {
+                override val input: Flow<PowerInput> = flowOf(PowerInput())
+                override suspend fun save(building: String, room: String) = Unit
+                override suspend fun clear() = Unit
+            },
+            onSnapshotChanged = {},
+        )
+        val classroom = ClassroomPlugin()
+        val library = LibraryPlugin(
+            context = context,
+            accountSettings = object : LibraryAccountSettings {
+                override val rememberLogin = flowOf(false)
+                override suspend fun setRememberLogin(enabled: Boolean) = Unit
+            },
+        )
+
+        val result = PluginRuntime()
+            .register(card.descriptor) { card }
+            .register(power.descriptor) { power }
+            .register(classroom.descriptor) { classroom }
+            .register(library.descriptor) { library }
+            .start()
+        val active = result.plugins
+
+        assertNull(active.capability(FocusCapabilities.timer))
+        assertNull(active.plugin(PluginId.parse("focus")))
+        val ui = HostUiAssembly.build(active).snapshot
+        assertTrue(ui.bottomNav.isEmpty())
+        assertTrue(ui.pages.none { it.pluginId.value == "focus" })
+        assertTrue(ui.entries.none { it.pluginId.value == "focus" })
+        assertTrue(ui.sectionsFor(UiSurface.MORE_LEARNING).isEmpty())
     }
 }

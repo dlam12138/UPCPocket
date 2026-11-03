@@ -3,6 +3,8 @@ package com.upcpocket.app.core
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.MainActivity
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.card.CardCapabilities
@@ -11,11 +13,11 @@ import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
-import com.upcpocket.app.focus.FocusCapabilities
 import com.upcpocket.app.focus.FocusPlugin
-import com.upcpocket.app.focus.FocusService
 import com.upcpocket.app.library.LibraryPlugin
+import com.upcpocket.app.plugin.api.PluginAppLifecycle
 import com.upcpocket.app.plugin.runtime.ActivePlugins
+import com.upcpocket.app.plugin.runtime.PluginDiagnostic
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import com.upcpocket.app.plugin.runtime.PluginStartResult
 import com.upcpocket.app.plugin.ui.PluginUiSnapshot
@@ -112,44 +114,75 @@ object AppGraph {
     }
 
     /**
-     * 显式装配结果。启动时校验插件描述符、能力声明与依赖；失败则在开发/发行环境
-     * 都明确抛错，不静默留下半注册状态。
+     * 插件启动结果。失败插件及其传递依赖不会进入 [ActivePlugins]；独立插件仍会启动。
+     * 开发构建的 fail-fast 与发行构建的降级由 [PluginStartupPolicy] 决定。
      */
-    val activePlugins: ActivePlugins by lazy {
-        when (val result = pluginRuntime.start()) {
-            is PluginStartResult.Active -> result.plugins
-            is PluginStartResult.Invalid -> error(
-                "插件装配失败：" + result.diagnostics.joinToString { "${it.code}:${it.pluginId}" },
-            )
+    private val started: PluginStartResult.Started by lazy {
+        pluginRuntime.start()
+    }
+
+    val activePlugins: ActivePlugins get() = started.plugins
+
+    val pluginDiagnostics: List<PluginDiagnostic> get() = started.diagnostics
+
+    /**
+     * 已激活插件贡献的页面、首页入口、底部 tab 和设置区。
+     *
+     * 每个插件的贡献在独立 fork 中校验后原子合并；失败插件的整份 UI 被丢弃，
+     * 不残留半套入口，也不会阻塞其他插件。
+     */
+    private val uiAssembly: HostUiAssemblyResult by lazy { HostUiAssembly.build(activePlugins) }
+
+    val ui: PluginUiSnapshot get() = uiAssembly.snapshot
+
+    internal val uiDiagnostics: List<HostUiDiagnostic> get() = uiAssembly.diagnostics
+
+    /**
+     * 组件的可选能力。插件未激活时返回 null，Provider/Worker 必须走“不可用”
+     * 或空状态路径，不能直接调用能力 getter 抛错。
+     */
+    val cardServiceOrNull: CardBalanceService?
+        get() = activePlugins.capability(CardCapabilities.balance)
+
+    val powerServiceOrNull: PowerService?
+        get() = activePlugins.capability(PowerCapabilities.tangdaowan)
+
+    /**
+     * 启动装配；由 Application 在设置 Context 后调用。
+     *
+     * 开发/测试构建遇到任何插件或 UI 失败直接抛错；发行构建记录脱敏诊断后，
+     * 继续使用健康插件。这样可选 feature 的缺依赖/API 不兼容/工厂失败不会让
+     * 整个 App 无法启动。
+     */
+    fun startPlugins() {
+        val hasFailures = pluginDiagnostics.isNotEmpty() || uiDiagnostics.isNotEmpty()
+        val summary = PluginStartupPolicy.summary(pluginDiagnostics, uiDiagnostics)
+        if (hasFailures) {
+            Log.w(TAG, "插件降级：$summary")
+            if (PluginStartupPolicy.shouldFailFast(BuildConfig.DEBUG, hasFailures = true)) {
+                error(PluginStartupPolicy.failFastMessage(summary))
+            }
         }
     }
 
-    /**
-     * 已激活插件贡献的页面、首页入口和设置区。
-     *
-     * 只询问真正启动成功的插件；任何重复 ID/路由或“入口指向别的插件页面”都会在
-     * 构建快照时失败，不会静默覆盖。宿主只读取这份不可变快照。
-     */
-    val ui: PluginUiSnapshot by lazy { HostUiAssembly.build(activePlugins) }
+    /** 通知已激活插件做轻量 Application 初始化；失败只影响该插件。 */
+    fun notifyPluginsCreated() {
+        activePlugins.ordered.forEach { plugin ->
+            val lifecycle = plugin as? PluginAppLifecycle ?: return@forEach
+            runCatching { lifecycle.onAppCreated() }.onFailure {
+                Log.w(TAG, "插件初始化降级：plugin:${plugin.descriptor.id}:LIFECYCLE_CREATED_FAILED")
+            }
+        }
+    }
 
-    /** 页面只通过插件能力取业务入口，不再直接持有余额 Repository。 */
-    val cardService: CardBalanceService
-        get() = activePlugins.capability(CardCapabilities.balance)
-            ?: error("余额插件未激活")
-
-    /** 电量页面与组件共用同一个插件服务。 */
-    val powerService: PowerService
-        get() = activePlugins.capability(PowerCapabilities.tangdaowan)
-            ?: error("电量插件未激活")
-
-    /** 专注 tab、统计页、通知恢复与前台服务共用同一个插件服务。 */
-    val focusService: FocusService
-        get() = activePlugins.capability(FocusCapabilities.timer)
-            ?: error("专注插件未激活")
-
-    /** 启动装配；由 Application 在设置 Context 后调用。 */
-    fun startPlugins() {
-        activePlugins
+    /** 恢复已激活插件的进程状态；未激活的插件不会收到回调。 */
+    suspend fun restorePlugins() {
+        activePlugins.ordered.forEach { plugin ->
+            val lifecycle = plugin as? PluginAppLifecycle ?: return@forEach
+            runCatching { lifecycle.onAppStart() }.onFailure {
+                Log.w(TAG, "插件恢复降级：plugin:${plugin.descriptor.id}:LIFECYCLE_START_FAILED")
+            }
+        }
     }
 
     /**
@@ -178,4 +211,6 @@ object AppGraph {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
+
+    private const val TAG = "PluginRuntime"
 }

@@ -3,7 +3,8 @@ package com.upcpocket.app.focus
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.plugin.runtime.PluginRuntime
-import com.upcpocket.app.plugin.runtime.PluginStartResult
+import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -36,12 +37,18 @@ class FocusPluginTest {
             .register(plugin.descriptor) { plugin }
             .start()
 
-        assertTrue(result is PluginStartResult.Active)
-        val active = (result as PluginStartResult.Active).plugins
+        val active = result.plugins
         assertEquals("focus", plugin.descriptor.id.value)
         assertEquals(setOf("focus.timer"), plugin.descriptor.capabilities)
         assertSame(plugin.service, active.capability(FocusCapabilities.timer))
         assertSame(plugin.service, FocusRuntime.serviceOrNull())
         assertFalse(dbFile.exists())
+
+        val ui = PluginUiRegistry().also(plugin::contribute).build()
+        assertEquals(listOf("focus.tab"), ui.bottomNav.map { it.entryId.value })
+        assertEquals("focus.main", ui.bottomNav.single().route.value)
+        assertEquals(listOf("focus.stats"), ui.entriesFor(UiSurface.MORE_LEARNING).map { it.entryId.value })
+        assertTrue(ui.pages.any { it.routeId == FOCUS_MAIN_ROUTE })
+        assertTrue(ui.pages.any { it.routeId == FOCUS_STATS_ROUTE })
     }
 }

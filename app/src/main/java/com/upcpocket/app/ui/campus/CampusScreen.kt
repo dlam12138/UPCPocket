@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -115,6 +116,7 @@ private fun iconOf(icon: UiIcon): ImageVector = when (icon) {
     UiIcon.CLASSROOM -> Icons.Filled.MeetingRoom
     UiIcon.LIBRARY -> Icons.AutoMirrored.Filled.MenuBook
     UiIcon.INSIGHTS -> Icons.Filled.Insights
+    UiIcon.TIMER -> Icons.Filled.Timer
 }
 
 @Composable

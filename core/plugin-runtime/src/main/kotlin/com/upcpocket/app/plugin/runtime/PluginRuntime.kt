@@ -12,6 +12,9 @@ enum class PluginDiagnosticCode {
     DUPLICATE_PLUGIN,
     HOST_API_MISMATCH,
     MISSING_DEPENDENCY,
+
+    /** 必需依赖存在但已停用；与“从未注册”区分，便于宿主定位装配原因。 */
+    DEPENDENCY_DISABLED,
     DEPENDENCY_CYCLE,
     DUPLICATE_CAPABILITY,
     CAPABILITY_MISMATCH,
@@ -29,10 +32,13 @@ data class PluginDiagnostic(
     val detail: String,
 )
 
-/** 注册阶段立即失败，避免把错误拖到启动后才暴露。 */
+/** 注册阶段立即失败，避免把宿主装配代码中的重复 ID 拖到启动后才暴露。 */
 class PluginRegistrationException(message: String) : IllegalArgumentException(message)
 
-/** 启动计划：按依赖顺序排列的插件与全部诊断。 */
+/**
+ * 静态启动计划。它只描述注册表能看出的问题；工厂创建、能力冲突等要等实例化
+ * 后才会知道，因此真正是否可用以 [PluginStartResult.Started] 为准。
+ */
 data class PluginPlan(
     val ordered: List<PluginId>,
     val diagnostics: List<PluginDiagnostic>,
@@ -41,16 +47,23 @@ data class PluginPlan(
 }
 
 sealed interface PluginStartResult {
-    data class Active(val plugins: ActivePlugins) : PluginStartResult
-
-    data class Invalid(val diagnostics: List<PluginDiagnostic>) : PluginStartResult
+    /**
+     * 已启动结果。`plugins` 只含健康插件；`diagnostics` 是被隔离的失败及其
+     * 传递依赖。即使全部插件都失败，也返回空集合而不是让宿主无法启动。
+     */
+    data class Started(
+        val plugins: ActivePlugins,
+        val diagnostics: List<PluginDiagnostic> = emptyList(),
+    ) : PluginStartResult {
+        val hasFailures: Boolean get() = diagnostics.isNotEmpty()
+    }
 }
 
 /**
  * 已激活的插件集合。
  *
- * 只有全部插件创建并校验通过后才会产生该对象；失败时调用方拿不到任何
- * 半注册的能力，因此旧入口只能看到明确的“不可用”，不会误用部分状态。
+ * 每个插件只有在校验与创建全部成功后才提交自己的能力和实例；失败插件不会
+ * 留下半注册能力。调用方拿到的集合中不会出现失败插件或其传递依赖。
  */
 class ActivePlugins internal constructor(
     val ordered: List<Plugin>,
@@ -79,9 +92,11 @@ class ActivePlugins internal constructor(
  *
  * 约束：
  *  - 注册只做静态校验，不创建实例、不联网、不读写业务数据；
- *  - 启动时先校验宿主 API、必需依赖、重复能力与依赖环，再按依赖顺序创建；
- *  - 任一插件创建失败则整体失败，不发布半注册结果；
- *  - 同一实例不可重复启动；失败后保持失败态，便于开发构建明确暴露配置问题。
+ *  - 启动时先做静态分析，再按确定顺序逐个原子激活；
+ *  - 一个插件失败只停用它自己，以及所有（传递）必需依赖它的插件；独立插件继续；
+ *  - 每个插件的能力与实例只在自身成功后才提交，不留下半注册状态；
+ *  - 诊断只含插件/能力 ID 与固定说明，不把工厂异常原文写进日志；
+ *  - 开发构建的 fail-fast 由宿主策略决定；运行时本身始终返回可解释的结果。
  */
 class PluginRuntime(
     private val hostApiVersion: Int = HOST_PLUGIN_API_VERSION,
@@ -91,13 +106,18 @@ class PluginRuntime(
         val factory: PluginFactory,
     )
 
+    private data class StaticAnalysis(
+        val order: List<String>,
+        val failed: Set<String>,
+        val diagnostics: List<PluginDiagnostic>,
+    )
+
     private val registrations = sortedMapOf<String, Registration>()
-    private var active: ActivePlugins? = null
-    private var failure: List<PluginDiagnostic>? = null
+    private var result: PluginStartResult.Started? = null
 
     @Synchronized
     fun register(descriptor: PluginDescriptor, factory: PluginFactory): PluginRuntime {
-        check(active == null && failure == null) { "插件运行时已启动或已失败，不能再注册" }
+        check(result == null) { "插件运行时已启动，不能再注册" }
         val key = descriptor.id.value
         if (registrations.containsKey(key)) {
             throw PluginRegistrationException("重复的插件 ID：$key")
@@ -108,139 +128,185 @@ class PluginRuntime(
 
     @Synchronized
     fun plan(): PluginPlan {
-        val diagnostics = mutableListOf<PluginDiagnostic>()
-        registrations.values.forEach { registration ->
-            val descriptor = registration.descriptor
-            if (hostApiVersion !in descriptor.hostApi) {
-                diagnostics += PluginDiagnostic(
-                    code = PluginDiagnosticCode.HOST_API_MISMATCH,
-                    pluginId = descriptor.id.value,
-                    detail = "插件支持 ${descriptor.hostApi}，宿主为 $hostApiVersion",
-                )
-            }
-            descriptor.dependencies.forEach { dependency ->
-                val present = registrations.containsKey(dependency.id.value)
-                if (!present && dependency.required) {
-                    diagnostics += PluginDiagnostic(
-                        code = PluginDiagnosticCode.MISSING_DEPENDENCY,
-                        pluginId = descriptor.id.value,
-                        detail = "缺少必需插件 ${dependency.id.value}",
-                    )
-                }
-            }
-        }
-
-        val ordered = topologicalOrder(diagnostics)
-        diagnostics += duplicateCapabilityDiagnostics()
+        val analysis = analyze()
         return PluginPlan(
-            ordered = ordered.map { PluginId.parse(it) },
-            diagnostics = diagnostics.distinct().sortedWith(
-                compareBy({ it.pluginId.orEmpty() }, { it.code.name }, { it.detail }),
-            ),
+            ordered = analysis.order.map(PluginId::parse),
+            diagnostics = analysis.diagnostics,
         )
     }
 
     @Synchronized
-    fun start(): PluginStartResult {
-        active?.let { return PluginStartResult.Active(it) }
-        failure?.let { return PluginStartResult.Invalid(it) }
+    fun start(): PluginStartResult.Started {
+        result?.let { return it }
+        return startInternal().also { result = it }
+    }
 
-        val plan = plan()
-        if (!plan.isValid) {
-            failure = plan.diagnostics
-            return PluginStartResult.Invalid(plan.diagnostics)
-        }
+    private fun startInternal(): PluginStartResult.Started {
+        val analysis = analyze()
+        val diagnostics = analysis.diagnostics.toMutableList()
+        val failed = analysis.failed.toMutableSet()
 
+        val activeIds = linkedSetOf<String>()
         val created = mutableListOf<Plugin>()
-        val capabilities = mutableMapOf<String, Any>()
-        val byPlugin = mutableMapOf<String, Set<String>>()
-        val creationDiagnostics = mutableListOf<PluginDiagnostic>()
+        val capabilitiesById = mutableMapOf<String, Any>()
+        val capabilitiesByPlugin = mutableMapOf<String, Set<String>>()
 
-        for (id in plan.ordered) {
-            val registration = registrations.getValue(id.value)
+        for (rawId in analysis.order) {
+            if (rawId in failed) continue
+            val registration = registrations.getValue(rawId)
+            val descriptor = registration.descriptor
+
+            // 静态检查已覆盖“缺失必需依赖”；这里再次核对运行时已被隔离的依赖。
+            val unavailableDependency = descriptor.dependencies
+                .filter { it.required }
+                .map { it.id.value }
+                .firstOrNull { it !in activeIds }
+            if (unavailableDependency != null) {
+                val code = if (unavailableDependency in failed) {
+                    PluginDiagnosticCode.DEPENDENCY_DISABLED
+                } else {
+                    PluginDiagnosticCode.MISSING_DEPENDENCY
+                }
+                diagnostics += PluginDiagnostic(
+                    code = code,
+                    pluginId = rawId,
+                    detail = "必需依赖 $unavailableDependency 未启用",
+                )
+                failed += rawId
+                continue
+            }
+
             val plugin = try {
                 registration.factory.create()
             } catch (_: Throwable) {
                 // 不把异常原文写进诊断：构造异常可能含路径或业务数据。
-                creationDiagnostics += PluginDiagnostic(
+                diagnostics += PluginDiagnostic(
                     code = PluginDiagnosticCode.CREATION_FAILED,
-                    pluginId = id.value,
+                    pluginId = rawId,
                     detail = "插件创建失败",
                 )
-                break
+                failed += rawId
+                continue
             }
-            if (plugin.descriptor.id != registration.descriptor.id) {
-                creationDiagnostics += PluginDiagnostic(
+
+            if (plugin.descriptor.id != descriptor.id) {
+                diagnostics += PluginDiagnostic(
                     code = PluginDiagnosticCode.INVALID_PLUGIN,
-                    pluginId = id.value,
-                    detail = "实例声明的插件 ID 与注册描述符不一致",
+                    pluginId = rawId,
+                    detail = "实例 ID ${plugin.descriptor.id} 与注册 ID ${descriptor.id} 不一致",
                 )
-                break
+                failed += rawId
+                continue
             }
-            val declared = registration.descriptor.capabilities
-            val provided = plugin.capabilities().map { it.id }.toSet()
-            if (declared != provided) {
-                creationDiagnostics += PluginDiagnostic(
+
+            val provided = try {
+                plugin.capabilities()
+            } catch (_: Throwable) {
+                diagnostics += PluginDiagnostic(
+                    code = PluginDiagnosticCode.CREATION_FAILED,
+                    pluginId = rawId,
+                    detail = "插件能力枚举失败",
+                )
+                failed += rawId
+                continue
+            }
+            val providedIds = provided.map { it.id }
+            if (providedIds.size != providedIds.toSet().size) {
+                diagnostics += PluginDiagnostic(
+                    code = PluginDiagnosticCode.DUPLICATE_CAPABILITY,
+                    pluginId = rawId,
+                    detail = "插件重复提供同一能力",
+                )
+                failed += rawId
+                continue
+            }
+            if (providedIds.toSet() != descriptor.capabilities) {
+                diagnostics += PluginDiagnostic(
                     code = PluginDiagnosticCode.CAPABILITY_MISMATCH,
-                    pluginId = id.value,
-                    detail = "声明能力 ${declared.sorted()}，实际提供 ${provided.sorted()}",
+                    pluginId = rawId,
+                    detail = "声明 ${descriptor.capabilities.sorted()}，实际 ${providedIds.sorted()}",
                 )
-                break
+                failed += rawId
+                continue
             }
-            plugin.capabilities().forEach { capability ->
-                if (capabilities.putIfAbsent(capability.id, capability.value) != null) {
-                    creationDiagnostics += PluginDiagnostic(
-                        code = PluginDiagnosticCode.DUPLICATE_CAPABILITY,
-                        pluginId = id.value,
-                        detail = "能力 ${capability.id} 已被其他插件提供",
-                    )
-                }
+            val conflict = provided.firstOrNull { it.id in capabilitiesById }
+            if (conflict != null) {
+                diagnostics += PluginDiagnostic(
+                    code = PluginDiagnosticCode.DUPLICATE_CAPABILITY,
+                    pluginId = rawId,
+                    detail = "能力 ${conflict.id} 已由其他插件提供",
+                )
+                failed += rawId
+                continue
             }
-            if (creationDiagnostics.isNotEmpty()) break
-            byPlugin[id.value] = provided
+
+            // 原子提交：只有到这里，插件实例、能力与能力归属才加入活动集合。
+            provided.forEach { capabilitiesById[it.id] = it.value }
+            capabilitiesByPlugin[rawId] = providedIds.toSet()
+            activeIds += rawId
             created += plugin
         }
 
-        if (creationDiagnostics.isNotEmpty()) {
-            // created 中已构造的实例不再对外暴露；contract 要求构造无副作用。
-            failure = creationDiagnostics.distinct().sortedWith(
-                compareBy({ it.pluginId.orEmpty() }, { it.code.name }, { it.detail }),
-            )
-            return PluginStartResult.Invalid(failure!!)
-        }
-
-        val snapshot = ActivePlugins(
-            ordered = created,
-            capabilitiesById = capabilities.toMap(),
-            capabilitiesByPlugin = byPlugin.toMap(),
+        return PluginStartResult.Started(
+            plugins = ActivePlugins(
+                ordered = created.toList(),
+                capabilitiesById = capabilitiesById.toMap(),
+                capabilitiesByPlugin = capabilitiesByPlugin.toMap(),
+            ),
+            diagnostics = diagnostics.distinct().sortedWith(diagnosticOrder),
         )
-        active = snapshot
-        return PluginStartResult.Active(snapshot)
     }
 
-    private fun duplicateCapabilityDiagnostics(): List<PluginDiagnostic> {
-        val owners = mutableMapOf<String, String>()
+    private fun analyze(): StaticAnalysis {
+        val ids = registrations.keys.toSortedSet()
         val diagnostics = mutableListOf<PluginDiagnostic>()
-        registrations.values.sortedBy { it.descriptor.id.value }.forEach { registration ->
-            registration.descriptor.capabilities.sorted().forEach { capability ->
-                val owner = owners.putIfAbsent(capability, registration.descriptor.id.value)
-                if (owner != null) {
+        val failed = mutableSetOf<String>()
+
+        registrations.forEach { (rawId, registration) ->
+            val descriptor = registration.descriptor
+            if (hostApiVersion !in descriptor.hostApi) {
+                diagnostics += PluginDiagnostic(
+                    code = PluginDiagnosticCode.HOST_API_MISMATCH,
+                    pluginId = rawId,
+                    detail = "插件支持 ${descriptor.hostApi}，宿主为 $hostApiVersion",
+                )
+                failed += rawId
+            }
+            descriptor.dependencies.filter { it.required }.forEach { dependency ->
+                if (!registrations.containsKey(dependency.id.value)) {
                     diagnostics += PluginDiagnostic(
-                        code = PluginDiagnosticCode.DUPLICATE_CAPABILITY,
-                        pluginId = registration.descriptor.id.value,
-                        detail = "能力 $capability 已由 $owner 声明",
+                        code = PluginDiagnosticCode.MISSING_DEPENDENCY,
+                        pluginId = rawId,
+                        detail = "缺少必需插件 ${dependency.id.value}",
                     )
+                    failed += rawId
                 }
             }
         }
-        return diagnostics
+
+        val ordered = topologicalOrder()
+        val blocked = ids.filterNot(ordered::contains)
+        blocked.forEach { rawId ->
+            diagnostics += PluginDiagnostic(
+                code = PluginDiagnosticCode.DEPENDENCY_CYCLE,
+                pluginId = rawId,
+                detail = "依赖环或环的下游：${blocked.joinToString()}",
+            )
+            failed += rawId
+        }
+
+        return StaticAnalysis(
+            order = ordered + blocked,
+            failed = failed,
+            diagnostics = diagnostics.distinct().sortedWith(diagnosticOrder),
+        )
     }
 
     /**
      * Kahn 拓扑排序；队列按插件 ID 排序，保证同一装配每次顺序一致。
-     * 剩余节点即存在环或依赖环内节点，统一报告一次依赖环诊断。
+     * 存在环时返回可排序部分，剩余节点由调用方统一标记为不可启动。
      */
-    private fun topologicalOrder(diagnostics: MutableList<PluginDiagnostic>): List<String> {
+    private fun topologicalOrder(): List<String> {
         val ids = registrations.keys.toSortedSet()
         val dependencies = ids.associateWith { id ->
             registrations.getValue(id).descriptor.dependencies
@@ -269,15 +335,14 @@ class PluginRuntime(
                 if (remaining == 0) ready += dependent
             }
         }
-
-        if (ordered.size != ids.size) {
-            val blocked = ids.filterNot(ordered::contains)
-            diagnostics += PluginDiagnostic(
-                code = PluginDiagnosticCode.DEPENDENCY_CYCLE,
-                pluginId = blocked.firstOrNull(),
-                detail = "依赖环涉及：${blocked.joinToString()}",
-            )
-        }
         return ordered
+    }
+
+    private companion object {
+        val diagnosticOrder = compareBy<PluginDiagnostic>(
+            { it.pluginId.orEmpty() },
+            { it.code.name },
+            { it.detail },
+        )
     }
 }

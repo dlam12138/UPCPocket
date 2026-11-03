@@ -30,12 +30,12 @@ class PluginRuntimeTest {
 
         val result = runtime.start()
 
-        assertTrue(result is PluginStartResult.Active)
-        val active = (result as PluginStartResult.Active).plugins
+        val active = result.plugins
         assertEquals(listOf("card", "focus"), active.ordered.map { it.descriptor.id.value })
         assertEquals("42.00", active.capability(cardBalance))
         assertNull(active.capability(powerReading))
         assertEquals(setOf("card.balance"), active.capabilitiesOf(id("card")))
+        assertTrue(result.diagnostics.isEmpty())
     }
 
     @Test
@@ -48,60 +48,160 @@ class PluginRuntimeTest {
     }
 
     @Test
-    fun `missing required dependency invalidates whole start`() {
+    fun `one creation failure keeps independent plugin active`() {
+        var healthyCreated = 0
+        var brokenCreated = 0
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor("power", capabilities = setOf("power.reading")),
+            PluginFactory {
+                brokenCreated++
+                error("fixture secret must not leak")
+            },
+        )
+        runtime.register(
+            descriptor("card", capabilities = setOf("card.balance")),
+            PluginFactory {
+                healthyCreated++
+                FakePlugin(
+                    descriptor("card"),
+                    listOf(PluginCapability(cardBalance, "42.00")),
+                )
+            },
+        )
+
+        val first = runtime.start()
+
+        assertEquals(listOf("card"), first.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals("42.00", first.plugins.capability(cardBalance))
+        assertEquals(1, healthyCreated)
+        assertEquals(1, brokenCreated)
+        val failure = first.diagnostics.single()
+        assertEquals(PluginDiagnosticCode.CREATION_FAILED, failure.code)
+        assertEquals("power", failure.pluginId)
+        assertFalse(failure.detail.contains("fixture secret"))
+        // 重复 start 不重复创建，也不把失败插件补回来。
+        assertSameResult(first, runtime.start())
+        assertEquals(1, brokenCreated)
+    }
+
+    @Test
+    fun `failure propagates through transitive required dependencies only`() {
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor("base", capabilities = setOf("base.data")),
+            PluginFactory { error("base failed") },
+        )
+        runtime.register(
+            descriptor("middle", dependencies = listOf(PluginDependency(id("base")))),
+            factory("middle"),
+        )
+        runtime.register(
+            descriptor("leaf", dependencies = listOf(PluginDependency(id("middle")))),
+            factory("leaf"),
+        )
+        runtime.register(descriptor("independent"), factory("independent"))
+
+        val result = runtime.start()
+
+        assertEquals(listOf("independent"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(
+            PluginDiagnosticCode.CREATION_FAILED,
+            result.diagnostics.single { it.pluginId == "base" }.code,
+        )
+        assertEquals(
+            PluginDiagnosticCode.DEPENDENCY_DISABLED,
+            result.diagnostics.single { it.pluginId == "middle" }.code,
+        )
+        assertEquals(
+            PluginDiagnosticCode.DEPENDENCY_DISABLED,
+            result.diagnostics.single { it.pluginId == "leaf" }.code,
+        )
+    }
+
+    @Test
+    fun `missing required dependency isolates plugin and keeps independent`() {
         val runtime = PluginRuntime()
         runtime.register(
             descriptor("library", dependencies = listOf(PluginDependency(id("account"), required = true))),
             factory("library"),
         )
+        runtime.register(descriptor("healthy"), factory("healthy"))
 
         val result = runtime.start()
 
-        val diagnostics = (result as PluginStartResult.Invalid).diagnostics
-        assertEquals(PluginDiagnosticCode.MISSING_DEPENDENCY, diagnostics.single().code)
-        assertEquals("library", diagnostics.single().pluginId)
-        assertTrue(runtime.start() is PluginStartResult.Invalid)
+        assertEquals(listOf("healthy"), result.plugins.ordered.map { it.descriptor.id.value })
+        val failure = result.diagnostics.single()
+        assertEquals(PluginDiagnosticCode.MISSING_DEPENDENCY, failure.code)
+        assertEquals("library", failure.pluginId)
     }
 
     @Test
-    fun `optional missing dependency does not block start`() {
+    fun `optional missing dependency does not block plugin`() {
         val runtime = PluginRuntime()
         runtime.register(
             descriptor("library", dependencies = listOf(PluginDependency(id("account"), required = false))),
             factory("library"),
         )
 
-        assertTrue(runtime.start() is PluginStartResult.Active)
+        val result = runtime.start()
+
+        assertEquals(listOf("library"), result.plugins.ordered.map { it.descriptor.id.value })
     }
 
     @Test
-    fun `dependency cycle is rejected without creating plugins`() {
-        var created = 0
+    fun `optional failed dependency does not block plugin`() {
         val runtime = PluginRuntime()
         runtime.register(
-            descriptor("card", dependencies = listOf(PluginDependency(id("power")))),
-            PluginFactory { created++; FakePlugin(descriptor("card")) },
+            descriptor("account"),
+            PluginFactory { error("optional unavailable") },
         )
         runtime.register(
-            descriptor("power", dependencies = listOf(PluginDependency(id("card")))),
-            PluginFactory { created++; FakePlugin(descriptor("power")) },
+            descriptor("library", dependencies = listOf(PluginDependency(id("account"), required = false))),
+            factory("library"),
         )
 
         val result = runtime.start()
 
-        assertEquals(0, created)
-        val diagnostics = (result as PluginStartResult.Invalid).diagnostics
-        assertTrue(diagnostics.any { it.code == PluginDiagnosticCode.DEPENDENCY_CYCLE })
+        assertEquals(listOf("library"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(PluginDiagnosticCode.CREATION_FAILED, result.diagnostics.single().code)
     }
 
     @Test
-    fun `host api mismatch is rejected`() {
+    fun `dependency cycle only disables cycle and dependents`() {
+        var cycleCreated = 0
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor("card", dependencies = listOf(PluginDependency(id("power")))),
+            PluginFactory { cycleCreated++; FakePlugin(descriptor("card")) },
+        )
+        runtime.register(
+            descriptor("power", dependencies = listOf(PluginDependency(id("card")))),
+            PluginFactory { cycleCreated++; FakePlugin(descriptor("power")) },
+        )
+        runtime.register(
+            descriptor("downstream", dependencies = listOf(PluginDependency(id("card")))),
+            factory("downstream"),
+        )
+        runtime.register(descriptor("healthy"), factory("healthy"))
+
+        val result = runtime.start()
+
+        assertEquals(0, cycleCreated)
+        assertEquals(listOf("healthy"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(3, result.diagnostics.count { it.code == PluginDiagnosticCode.DEPENDENCY_CYCLE })
+    }
+
+    @Test
+    fun `host api mismatch disables only that plugin`() {
         val runtime = PluginRuntime(hostApiVersion = 2)
         runtime.register(descriptor("card", hostApi = 1..1), factory("card"))
+        runtime.register(descriptor("healthy", hostApi = 2..2), factory("healthy"))
 
-        val diagnostics = (runtime.start() as PluginStartResult.Invalid).diagnostics
+        val result = runtime.start()
 
-        assertEquals(PluginDiagnosticCode.HOST_API_MISMATCH, diagnostics.single().code)
+        assertEquals(listOf("healthy"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(PluginDiagnosticCode.HOST_API_MISMATCH, result.diagnostics.single().code)
     }
 
     @Test
@@ -116,36 +216,64 @@ class PluginRuntimeTest {
             PluginFactory { throw IllegalStateException("fixture secret must not leak") },
         )
 
-        val first = runtime.start()
+        val result = runtime.start()
 
-        val diagnostics = (first as PluginStartResult.Invalid).diagnostics
-        assertEquals(PluginDiagnosticCode.CREATION_FAILED, diagnostics.single().code)
-        assertFalse(diagnostics.single().detail.contains("fixture secret"))
-        // 失败后保持失败态，不会出现部分激活。
-        assertTrue(runtime.start() is PluginStartResult.Invalid)
+        assertEquals(listOf("card"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(setOf("card.balance"), result.plugins.capabilityIds())
+        assertEquals(PluginDiagnosticCode.CREATION_FAILED, result.diagnostics.single().code)
+        assertFalse(result.diagnostics.single().detail.contains("fixture secret"))
     }
 
     @Test
-    fun `duplicate capability declarations fail plan`() {
+    fun `duplicate capability later plugin is isolated`() {
         val runtime = PluginRuntime()
-        runtime.register(descriptor("card", capabilities = setOf("card.balance")), factory("card"))
-        runtime.register(descriptor("power", capabilities = setOf("card.balance")), factory("power"))
+        runtime.register(
+            descriptor("card", capabilities = setOf("card.balance")),
+            factory("card", cardBalance, "1.00"),
+        )
+        runtime.register(
+            descriptor("power", capabilities = setOf("card.balance")),
+            factory("power", cardBalance, "2.00"),
+        )
+        runtime.register(descriptor("healthy"), factory("healthy"))
 
-        val plan = runtime.plan()
+        val result = runtime.start()
 
-        assertFalse(plan.isValid)
-        assertTrue(plan.diagnostics.any { it.code == PluginDiagnosticCode.DUPLICATE_CAPABILITY })
+        assertEquals(listOf("card", "healthy"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(PluginDiagnosticCode.DUPLICATE_CAPABILITY, result.diagnostics.single().code)
+        assertEquals("power", result.diagnostics.single().pluginId)
     }
 
     @Test
     fun `declared and provided capabilities must match exactly`() {
         val runtime = PluginRuntime()
         runtime.register(descriptor("card", capabilities = setOf("card.balance")), factory("card"))
+        runtime.register(descriptor("healthy"), factory("healthy"))
 
         val result = runtime.start()
 
-        val diagnostics = (result as PluginStartResult.Invalid).diagnostics
-        assertEquals(PluginDiagnosticCode.CAPABILITY_MISMATCH, diagnostics.single().code)
+        assertEquals(listOf("healthy"), result.plugins.ordered.map { it.descriptor.id.value })
+        assertEquals(PluginDiagnosticCode.CAPABILITY_MISMATCH, result.diagnostics.single().code)
+    }
+
+    @Test
+    fun `static plan reports missing dependency without failing unrelated plugin`() {
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor("library", dependencies = listOf(PluginDependency(id("account")))),
+            factory("library"),
+        )
+        runtime.register(descriptor("healthy"), factory("healthy"))
+
+        val plan = runtime.plan()
+
+        assertFalse(plan.isValid)
+        assertEquals(PluginDiagnosticCode.MISSING_DEPENDENCY, plan.diagnostics.single().code)
+    }
+
+    private fun assertSameResult(first: PluginStartResult.Started, second: PluginStartResult.Started) {
+        assertEquals(first.plugins.ordered.map { it.descriptor.id }, second.plugins.ordered.map { it.descriptor.id })
+        assertEquals(first.diagnostics, second.diagnostics)
     }
 
     private fun id(raw: String) = PluginId.parse(raw)

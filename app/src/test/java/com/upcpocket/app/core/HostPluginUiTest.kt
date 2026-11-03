@@ -71,6 +71,15 @@ class HostPluginUiTest {
     }
 
     @Test
+    fun `focus tab is a plugin contribution between host tabs`() {
+        val tabs = AppGraph.ui.bottomNav
+        assertEquals(listOf("focus.tab"), tabs.map { it.entryId.value })
+        assertEquals("专注", tabs.single().label)
+        assertEquals("focus.main", tabs.single().route.value)
+        assertEquals(10, tabs.single().order)
+    }
+
+    @Test
     fun `all plugin pages are registered for host navigation`() {
         assertEquals(
             setOf(
@@ -79,6 +88,7 @@ class HostPluginUiTest {
                 "classroom.free",
                 "library.seat",
                 "library.login",
+                "focus.main",
                 "focus.stats",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),

@@ -33,7 +33,7 @@ class PluginUiRegistryTest {
         registry.addEntry(entry("card.balance", card, UiSurface.HOME_SERVICES, 10, "card.page"))
 
         assertThrows(PluginUiException::class.java) {
-            registry.addEntry(entry("card.balance", power, UiSurface.HOME_SERVICES, 20, "card.page"))
+            registry.addEntry(entry("card.balance", card, UiSurface.HOME_SERVICES, 20, "card.page"))
         }
     }
 
@@ -53,7 +53,7 @@ class PluginUiRegistryTest {
         registry.addPage(page("card.page", card))
 
         assertThrows(PluginUiException::class.java) {
-            registry.addPage(page("card.page", power))
+            registry.addPage(page("card.page", card))
         }
     }
 
@@ -61,7 +61,7 @@ class PluginUiRegistryTest {
     fun `sections share the entry namespace and preserve order`() {
         val registry = PluginUiRegistry()
         registry.addSection(section("card.balance.section", card, 20))
-        registry.addSection(section("library.login.section", power, 10))
+        registry.addSection(section("library.login.section", PluginId.parse("library"), 10))
 
         val snapshot = registry.build()
 
@@ -75,18 +75,65 @@ class PluginUiRegistryTest {
     }
 
     @Test
-    fun `entry cannot point at another plugin page`() {
+    fun `bottom nav keeps plugin order and must point at own page`() {
+        val registry = PluginUiRegistry()
+        registry.addPage(page("card.main", card))
+        registry.addPage(page("power.main", power))
+        registry.addBottomNav(nav("power.tab", power, 20, "power.main"))
+        registry.addBottomNav(nav("card.tab", card, 10, "card.main"))
+
+        val snapshot = registry.build()
+
+        assertEquals(
+            listOf("card.tab", "power.tab"),
+            snapshot.bottomNav.map { it.entryId.value },
+        )
+        assertThrows(PluginUiException::class.java) {
+            registry.addBottomNav(nav("card.tab", card, 30, "card.main"))
+        }
+    }
+
+    @Test
+    fun `bottom nav cannot point at missing page`() {
+        val missing = PluginUiRegistry()
+        missing.addBottomNav(nav("card.tab", card, 10, "card.missing"))
+        assertThrows(PluginUiException::class.java) { missing.build() }
+    }
+
+    @Test
+    fun `id outside plugin namespace is rejected`() {
         val registry = PluginUiRegistry()
         registry.addPage(page("card.page", card))
-        registry.addEntry(entry("card.balance", power, UiSurface.HOME_SERVICES, 10, "card.page"))
 
-        val error = assertThrows(PluginUiException::class.java) { registry.build() }
+        assertThrows(PluginUiException::class.java) {
+            registry.addEntry(entry("other.entry", card, UiSurface.HOME_SERVICES, 10, "card.page"))
+        }
+    }
 
-        assertEquals(true, error.message.orEmpty().contains("属于"))
+    @Test
+    fun `fork does not mutate accepted snapshot until replaced`() {
+        val accepted = PluginUiRegistry()
+        accepted.addPage(page("card.page", card))
+        val fork = accepted.fork()
+        fork.addEntry(entry("card.entry2", card, UiSurface.HOME_SERVICES, 10, "card.page"))
+
+        assertEquals(emptyList<PluginEntry>(), accepted.build().entries)
+        accepted.replaceWith(fork)
+        assertEquals(listOf("card.entry2"), accepted.build().entries.map { it.entryId.value })
     }
 
     private fun page(rawRoute: String, owner: PluginId) =
         PluginPage(PluginRouteId.parse(rawRoute), owner) { }
+
+    private fun nav(rawId: String, owner: PluginId, order: Int, route: String) =
+        PluginBottomNav(
+            entryId = UiEntryId.parse(rawId),
+            pluginId = owner,
+            order = order,
+            label = "专注",
+            icon = UiIcon.TIMER,
+            route = PluginRouteId.parse(route),
+        )
 
     private fun entry(
         rawId: String,

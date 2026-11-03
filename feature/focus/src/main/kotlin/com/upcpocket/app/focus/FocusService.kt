@@ -67,4 +67,9 @@ object FocusRuntime {
     }
 
     fun serviceOrNull(): FocusService? = active
+
+    /** 仅用于单元测试隔离进程内桥，不参与生产装配。 */
+    internal fun clearForTest() {
+        active = null
+    }
 }

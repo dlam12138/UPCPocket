@@ -39,11 +39,30 @@ class WidgetRefreshWorker(
 
     private suspend fun refresh(kind: WidgetKind, state: WidgetStateStore) {
         try {
+            var pluginAvailable = true
             withTimeout(NETWORK_BUDGET_MS) {
                 when (kind) {
-                    WidgetKind.CARD -> AppGraph.cardService.refreshCurrent()
-                    WidgetKind.POWER -> AppGraph.powerService.refreshCurrent()
+                    WidgetKind.CARD -> {
+                        val service = AppGraph.cardServiceOrNull
+                        if (service == null) {
+                            pluginAvailable = false
+                        } else {
+                            service.refreshCurrent()
+                        }
+                    }
+                    WidgetKind.POWER -> {
+                        val service = AppGraph.powerServiceOrNull
+                        if (service == null) {
+                            pluginAvailable = false
+                        } else {
+                            service.refreshCurrent()
+                        }
+                    }
                 }
+            }
+            if (!pluginAvailable) {
+                state.setError(kind, "功能未启用")
+                return
             }
             // 没有目标或目标已被清除：保持“待设置”，不编造失败。
             state.setError(kind, null)

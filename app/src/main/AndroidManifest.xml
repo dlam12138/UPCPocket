@@ -7,13 +7,6 @@
          明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- 番茄钟：倒计时通知 + 走完时的提醒。
-         没有 POST_NOTIFICATIONS（Android 13+）时前台服务仍然能跑，但通知不可见。 -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-
     <!--
         校园服务入口要在系统浏览器里打开，Android 11+ 必须显式声明可查询的 Intent。
         这里只声明 http/https 的浏览意图，查询范围最小。
@@ -97,18 +90,6 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_power_balance_info" />
         </receiver>
-
-        <!-- 番茄钟前台服务。计时本身不依赖它（时间用墙钟算），
-             它的作用是不让系统回收进程 + 显示常驻倒计时通知。
-             API 34+ 必须声明类型，番茄钟没有更贴切的类型，用 specialUse 并在下面说明用途。 -->
-        <service
-            android:name=".focus.PomodoroService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="pomodoro_timer" />
-        </service>
     </application>
 
 </manifest>

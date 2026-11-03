@@ -47,6 +47,7 @@ enum class UiIcon {
     CLASSROOM,
     LIBRARY,
     INSIGHTS,
+    TIMER,
 }
 
 /** 页面只能通过宿主导航，不能拿 NavController 或对外 Intent。 */
@@ -89,6 +90,25 @@ interface PluginUiContributor {
     fun contribute(registry: PluginUiRegistry)
 }
 
+/**
+ * 插件贡献的底部导航 tab。
+ *
+ * 宿主只接受“已注册页面 + 稳定图标枚举”的 tab；tab 的显示顺序由 [order]
+ * 决定，但宿主保底保留首页/更多，因此插件只能插入中间位置，不能替换宿主壳。
+ */
+class PluginBottomNav(
+    val entryId: UiEntryId,
+    val pluginId: PluginId,
+    val order: Int,
+    val label: String,
+    val icon: UiIcon,
+    val route: PluginRouteId,
+) {
+    init {
+        require(label.isNotBlank()) { "底部导航标签不能为空" }
+    }
+}
+
 /** 插件自己拥有的页面；内容只通过 [PluginPageHost] 与宿主交互。 */
 class PluginPage(
     val routeId: PluginRouteId,
@@ -117,10 +137,12 @@ class PluginUiRegistry {
     private val entries = LinkedHashMap<String, PluginEntry>()
     private val pages = LinkedHashMap<String, PluginPage>()
     private val sections = LinkedHashMap<String, PluginSection>()
+    private val bottomNav = LinkedHashMap<String, PluginBottomNav>()
 
     fun addEntry(entry: PluginEntry): PluginUiRegistry {
         val key = entry.entryId.value
-        if (entries.containsKey(key) || sections.containsKey(key)) {
+        requireOwned(entry.pluginId, key)
+        if (entries.containsKey(key) || sections.containsKey(key) || bottomNav.containsKey(key)) {
             throw PluginUiException("重复的入口 ID：$key")
         }
         entries[key] = entry
@@ -129,6 +151,7 @@ class PluginUiRegistry {
 
     fun addPage(page: PluginPage): PluginUiRegistry {
         val key = page.routeId.value
+        requireOwned(page.pluginId, key)
         if (pages.containsKey(key)) throw PluginUiException("重复的页面路由：$key")
         pages[key] = page
         return this
@@ -136,11 +159,51 @@ class PluginUiRegistry {
 
     fun addSection(section: PluginSection): PluginUiRegistry {
         val key = section.entryId.value
-        if (sections.containsKey(key) || entries.containsKey(key)) {
+        requireOwned(section.pluginId, key)
+        if (sections.containsKey(key) || entries.containsKey(key) || bottomNav.containsKey(key)) {
             throw PluginUiException("重复的入口 ID：$key")
         }
         sections[key] = section
         return this
+    }
+
+    fun addBottomNav(item: PluginBottomNav): PluginUiRegistry {
+        val key = item.entryId.value
+        requireOwned(item.pluginId, key)
+        if (bottomNav.containsKey(key) || entries.containsKey(key) || sections.containsKey(key)) {
+            throw PluginUiException("重复的入口 ID：$key")
+        }
+        bottomNav[key] = item
+        return this
+    }
+
+    private fun requireOwned(pluginId: PluginId, id: String) {
+        if (id != pluginId.value && !id.startsWith("${pluginId.value}.")) {
+            throw PluginUiException("ID $id 不属于插件 ${pluginId.value}")
+        }
+    }
+
+    /**
+     * 复制当前注册表，供宿主按插件暂存 UI 贡献。插件贡献先写入 fork，
+     * 校验成功后再 [replaceWith] 原子替换，避免失败插件留下半套入口。
+     */
+    fun fork(): PluginUiRegistry = PluginUiRegistry().also { copy ->
+        copy.entries.putAll(entries)
+        copy.pages.putAll(pages)
+        copy.sections.putAll(sections)
+        copy.bottomNav.putAll(bottomNav)
+    }
+
+    /** 用已验证的 fork 原子替换当前内容。 */
+    fun replaceWith(other: PluginUiRegistry) {
+        entries.clear()
+        pages.clear()
+        sections.clear()
+        bottomNav.clear()
+        entries.putAll(other.entries)
+        pages.putAll(other.pages)
+        sections.putAll(other.sections)
+        bottomNav.putAll(other.bottomNav)
     }
 
     fun build(): PluginUiSnapshot {
@@ -157,6 +220,15 @@ class PluginUiRegistry {
                 }
             }
         }
+        bottomNav.values.forEach { item ->
+            val page = pages[item.route.value]
+            if (page == null) {
+                diagnostics += "底部导航 ${item.entryId} 指向未注册页面 ${item.route.value}"
+            } else if (page.pluginId != item.pluginId) {
+                diagnostics +=
+                    "底部导航 ${item.entryId} 属于 ${item.pluginId}，但页面 ${item.route.value} 属于 ${page.pluginId}"
+            }
+        }
         val duplicateRoutes = pages.values.groupBy { it.routeId.value }.filterValues { it.size > 1 }
         duplicateRoutes.keys.forEach { diagnostics += "重复的页面路由：$it" }
         if (diagnostics.isNotEmpty()) {
@@ -170,6 +242,7 @@ class PluginUiRegistry {
             entries = sortByOrder(entries.values, { it.order }, { it.entryId.value }),
             pages = pages.values.toList(),
             sections = sortByOrder(sections.values, { it.order }, { it.entryId.value }),
+            bottomNav = sortByOrder(bottomNav.values, { it.order }, { it.entryId.value }),
         )
     }
 }
@@ -179,6 +252,7 @@ class PluginUiSnapshot internal constructor(
     val entries: List<PluginEntry>,
     val pages: List<PluginPage>,
     val sections: List<PluginSection>,
+    val bottomNav: List<PluginBottomNav>,
 ) {
     fun entriesFor(surface: UiSurface): List<PluginEntry> = entries.filter { it.surface == surface }
 

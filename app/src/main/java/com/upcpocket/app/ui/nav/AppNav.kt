@@ -17,11 +17,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Apps
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -45,29 +53,46 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.focus.FOCUS_STATS_ROUTE
 import com.upcpocket.app.plugin.ui.PluginPageHost
 import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
-import com.upcpocket.app.ui.focus.FocusScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.widget.WidgetLaunchTarget
 
-enum class Destination(
+private data class Destination(
     val route: String,
     val label: String,
     val icon: ImageVector,
     /** 未选中态用线性版本（M3 惯例：outlined ↔ filled 区分选中），悬浮胶囊 dock 用 */
     val outlinedIcon: ImageVector,
-) {
-    HOME(AppRoutes.HOME, "首页", Icons.Filled.Home, Icons.Outlined.Home),
-    FOCUS(AppRoutes.FOCUS, "专注", Icons.Filled.Timer, Icons.Outlined.Timer),
-    MORE(AppRoutes.MORE, "更多", Icons.Filled.Apps, Icons.Outlined.Apps),
+    val order: Int,
+)
+
+private fun filledIcon(icon: UiIcon): ImageVector = when (icon) {
+    UiIcon.ELECTRICITY -> Icons.Filled.Bolt
+    UiIcon.CLASSROOM -> Icons.Filled.MeetingRoom
+    UiIcon.LIBRARY -> Icons.AutoMirrored.Filled.MenuBook
+    UiIcon.INSIGHTS -> Icons.Filled.Insights
+    UiIcon.TIMER -> Icons.Filled.Timer
 }
+
+private fun outlinedIcon(icon: UiIcon): ImageVector = when (icon) {
+    UiIcon.ELECTRICITY -> Icons.Outlined.Bolt
+    UiIcon.CLASSROOM -> Icons.Outlined.MeetingRoom
+    UiIcon.LIBRARY -> Icons.AutoMirrored.Outlined.MenuBook
+    UiIcon.INSIGHTS -> Icons.Outlined.Insights
+    UiIcon.TIMER -> Icons.Outlined.Timer
+}
+
+private val hostDestinations = listOf(
+    Destination(AppRoutes.HOME, "首页", Icons.Filled.Home, Icons.Outlined.Home, order = 0),
+    Destination(AppRoutes.MORE, "更多", Icons.Filled.Apps, Icons.Outlined.Apps, order = 100),
+)
 
 @Composable
 fun AppNav(
@@ -77,8 +102,17 @@ fun AppNav(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val showBottomBar = Destination.entries.any { it.route == currentRoute }
     val pluginUi = AppGraph.ui
+    val destinations = (hostDestinations + pluginUi.bottomNav.map { tab ->
+        Destination(
+            route = tab.route.value,
+            label = tab.label,
+            icon = filledIcon(tab.icon),
+            outlinedIcon = outlinedIcon(tab.icon),
+            order = tab.order,
+        )
+    }).sortedWith(compareBy({ it.order }, { it.route }))
+    val showBottomBar = destinations.any { it.route == currentRoute }
 
     val pageHost = remember(navController) {
         object : PluginPageHost {
@@ -118,8 +152,15 @@ fun AppNav(
                     launchSingleTop = true
                 }
             }
-            WidgetLaunchTarget.POWER_TANGDAOWAN -> navController.navigate(POWER_TANGDAOWAN_ROUTE.value) {
-                launchSingleTop = true
+            WidgetLaunchTarget.POWER_TANGDAOWAN -> {
+                val powerPage = pluginUi.page(POWER_TANGDAOWAN_ROUTE)
+                if (powerPage != null) {
+                    navController.navigate(powerPage.routeId.value) { launchSingleTop = true }
+                } else {
+                    // 电量插件未激活时，旧组件仍可能带着这个入口；安全回到首页，
+                    // 不导航到未注册路由，也不强行启动插件。
+                    navController.navigate(AppRoutes.HOME) { launchSingleTop = true }
+                }
             }
             null -> return@LaunchedEffect
         }
@@ -141,22 +182,16 @@ fun AppNav(
             Box(Modifier.fillMaxSize().padding(innerPadding)) {
                 NavHost(
                     navController = navController,
-                    startDestination = Destination.HOME.route,
+                    startDestination = AppRoutes.HOME,
                 ) {
-                    composable(Destination.HOME.route) {
+                    composable(AppRoutes.HOME) {
                         HomeScreen(
                             serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
                             cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
                             onOpenRoute = pageHost::open,
                         )
                     }
-                    composable(Destination.FOCUS.route) {
-                        FocusScreen(
-                            service = AppGraph.focusService,
-                            onOpenStats = { pageHost.open(FOCUS_STATS_ROUTE) },
-                        )
-                    }
-                    composable(Destination.MORE.route) {
+                    composable(AppRoutes.MORE) {
                         CampusScreen(
                             learningEntries = pluginUi.entriesFor(UiSurface.MORE_LEARNING),
                             schoolSections = pluginUi.sectionsFor(UiSurface.MORE_SCHOOL),
@@ -212,7 +247,7 @@ fun AppNav(
                                 Modifier.fillMaxSize(),
                                 horizontalArrangement = Arrangement.SpaceEvenly,
                             ) {
-                                Destination.entries.forEach { destination ->
+                                destinations.forEach { destination ->
                                     val selected = currentRoute == destination.route
                                     Box(
                                         modifier = Modifier

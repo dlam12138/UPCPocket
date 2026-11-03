@@ -11,7 +11,8 @@ import kotlinx.coroutines.launch
 /**
  * 应用入口。
  *
- * M1 只做三件事：初始化本地依赖容器、建好番茄钟通知通道、把上一次进程遗留的计时状态接回来。
+ * 启动只做宿主级工作：装配插件、让已激活插件做轻量初始化、恢复各自可恢复状态。
+ * 具体 feature 是否初始化由激活插件决定；未注册/未激活的 feature 不会收到回调。
  *
  * ⚠️ 上游项目在这里排了「每 4 小时采样宿舍电量」的 WorkManager 周期任务。
  * 那个任务已经**随电费功能整体删除**，不再有 EnergySamplingWorker.schedule() 这一类调用 ——
@@ -25,16 +26,15 @@ class UpcPocketApp : Application() {
         super.onCreate()
         AppGraph.init(this)
         AppGraph.startPlugins()
-        AppGraph.focusService.ensureChannels()
+        AppGraph.notifyPluginsCreated()
 
         // 仅调试包开启 WebView 远程调试，便于核对图书馆的官方登录页；
         // release 包不会开启，也不暴露任何页面内容。
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 
-        // 番茄钟可能在上一轮进程里就被杀了 —— 启动时把状态接回来。
-        // 剩余时间是用墙钟算的，所以"接回来"之后不用做任何补偿。
+        // 每个已激活插件自行恢复状态；专注计时剩余时间用墙钟算，不需要额外补偿。
         appScope.launch {
-            runCatching { AppGraph.focusService.restore() }
+            AppGraph.restorePlugins()
         }
     }
 }

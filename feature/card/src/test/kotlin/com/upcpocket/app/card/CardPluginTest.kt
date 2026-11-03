@@ -3,12 +3,10 @@ package com.upcpocket.app.card
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.plugin.runtime.PluginRuntime
-import com.upcpocket.app.plugin.runtime.PluginStartResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,8 +33,7 @@ class CardPluginTest {
             .register(plugin.descriptor) { plugin }
             .start()
 
-        assertTrue(result is PluginStartResult.Active)
-        val active = (result as PluginStartResult.Active).plugins
+        val active = result.plugins
         assertEquals("card", plugin.descriptor.id.value)
         assertEquals(setOf("card.balance"), plugin.descriptor.capabilities)
         assertSame(plugin.service, active.capability(CardCapabilities.balance))
