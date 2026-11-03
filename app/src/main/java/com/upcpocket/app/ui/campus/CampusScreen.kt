@@ -38,6 +38,7 @@ import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.ui.components.GlassCard
 
@@ -52,6 +53,7 @@ import com.upcpocket.app.ui.components.GlassCard
 fun CampusScreen(
     learningEntries: List<PluginEntry>,
     schoolSections: List<PluginSection>,
+    sectionHost: PluginSectionHost,
     accountState: SchoolAccountState,
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenAccount: () -> Unit,
@@ -96,7 +98,7 @@ fun CampusScreen(
             if (schoolSections.isNotEmpty()) {
                 GroupTitle("学校登录")
                 EntryCard {
-                    schoolSections.forEach { it.content() }
+                    schoolSections.forEach { it.content(sectionHost) }
                 }
             }
 

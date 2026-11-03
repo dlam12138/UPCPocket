@@ -64,7 +64,7 @@ internal class LibraryUi(
                 pluginId = LIBRARY_PLUGIN_ID,
                 surface = UiSurface.MORE_SCHOOL,
                 order = 0,
-            ) {
+            ) { _ ->
                 LibraryAccountSection(service = service)
             },
         )

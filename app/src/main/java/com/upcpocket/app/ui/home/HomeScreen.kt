@@ -29,6 +29,7 @@ import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.GlassCard
 
 /**
@@ -42,6 +43,7 @@ import com.upcpocket.app.ui.components.GlassCard
 fun HomeScreen(
     serviceEntries: List<PluginEntry>,
     cardSections: List<PluginSection>,
+    sectionHost: PluginSectionHost,
     onOpenRoute: (PluginRouteId) -> Unit,
 ) {
     Scaffold(
@@ -59,7 +61,7 @@ fun HomeScreen(
             Spacer(Modifier.height(2.dp))
             Text(
                 text = "空闲教室、图书馆座位、唐岛湾电费与校园卡余额都在 App 内查询；" +
-                    "校园卡余额输入本人学号，不需要登录。",
+                    "校园卡余额按当前统一账号中的本人学号查询，不需要登录。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -77,7 +79,7 @@ fun HomeScreen(
 
             if (cardSections.isNotEmpty()) {
                 SectionTitle("校园卡余额")
-                cardSections.forEach { it.content() }
+                cardSections.forEach { it.content(sectionHost) }
             }
 
             Text(

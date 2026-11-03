@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_card_title">校园卡</string>
-    <string name="widget_card_description">显示脱敏学号、校园卡余额和查询时间，可手动刷新</string>
+    <string name="widget_card_description">显示当前账号脱敏学号、校园卡余额和查询时间，可手动刷新</string>
     <string name="widget_card_account">学号 %1$s</string>
-    <string name="widget_card_account_none">未设置学号</string>
+    <string name="widget_card_account_none">未绑定学校账号</string>
+    <string name="widget_card_account_bound">已绑定学校账号</string>
+    <string name="widget_card_account_loading">正在读取账号…</string>
+    <string name="widget_card_account_cleaning">正在清理账号…</string>
+    <string name="widget_card_account_reconfigure">需要重新保存账号</string>
+    <string name="widget_card_account_no_student">账号登录名不是有效学号</string>
+    <string name="widget_card_bound_empty">已绑定，点击刷新查询</string>
+    <string name="widget_card_loading">账号恢复中，暂不查询</string>
+    <string name="widget_card_cleaning">清理中，已隐藏旧身份数值</string>
+    <string name="widget_card_reconfigure">打开应用重新保存账号</string>
+    <string name="widget_card_no_student_id">无法按当前账号查询余额</string>
+    <string name="widget_card_no_account">打开应用设置学校账号</string>
+    <string name="widget_card_history">历史值 · %1$s</string>
     <string name="widget_balance_value">%1$s 元</string>
     <string name="widget_transition">过渡 %1$s 元 · 不计入</string>
     <string name="widget_refresh_card">刷新校园卡余额</string>
-    <string name="widget_open_card">打开应用查询校园卡余额</string>
+    <string name="widget_open_card">打开应用处理校园卡账号</string>
 </resources>

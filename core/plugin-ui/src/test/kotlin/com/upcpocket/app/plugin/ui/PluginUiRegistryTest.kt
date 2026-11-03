@@ -153,5 +153,5 @@ class PluginUiRegistryTest {
     )
 
     private fun section(rawId: String, owner: PluginId, order: Int) =
-        PluginSection(UiEntryId.parse(rawId), owner, UiSurface.HOME_CARD, order) { }
+        PluginSection(UiEntryId.parse(rawId), owner, UiSurface.HOME_CARD, order) { _ -> }
 }

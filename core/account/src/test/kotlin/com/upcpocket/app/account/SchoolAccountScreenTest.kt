@@ -102,6 +102,8 @@ class SchoolAccountScreenTest {
                 status = SchoolAccountStatus.SAVED_UNVERIFIED,
                 generation = AccountGeneration(3),
                 maskedAccount = "2026***01",
+                maskedStudentId = "20••••01",
+                studentIdAvailable = true,
                 savedAtEpochMillis = 1_700_000_000_000,
             )
         }
@@ -113,7 +115,37 @@ class SchoolAccountScreenTest {
 
         rule.onNodeWithTag("account_status").assertTextContains("已保存，尚未验证", substring = true)
         rule.onNodeWithTag("account_status").assertTextContains("2026***01", substring = true)
+        rule.onNodeWithTag("account_student_binding")
+            .assertTextContains("20••••01", substring = true)
         rule.onNodeWithTag("account_status").assertIsDisplayed()
+    }
+
+    @Test
+    fun legacyCardStudentIdIsOnlyAMaskedHintAndNeverBindsAnAccount() {
+        val controller = FakeController()
+        rule.setContent {
+            UpcPocketTheme {
+                SchoolAccountScreen(
+                    accounts = controller,
+                    onBack = {},
+                    legacyStudentIdHint = "2099000123",
+                )
+            }
+        }
+
+        rule.onNodeWithTag("legacy_student_hint")
+            .assertTextContains("20••••23", substring = true)
+        rule.onNodeWithTag("legacy_student_hint")
+            .assertTextContains("不会自动创建账号或绑定余额", substring = true)
+        // 页面没有把旧草稿填进账号输入框，也没有触发保存。
+        assertEquals(null, controller.lastAccount)
+        assertTrue(
+            rule.onNodeWithTag("account_input")
+                .fetchSemanticsNode()
+                .config.getOrNull(SemanticsProperties.EditableText)
+                ?.text
+                .isNullOrEmpty(),
+        )
     }
 
     @Test

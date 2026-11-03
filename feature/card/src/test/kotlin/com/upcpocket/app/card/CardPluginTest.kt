@@ -2,6 +2,7 @@ package com.upcpocket.app.card
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.upcpocket.app.data.ecard.FakeAccountIdentity
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,7 @@ class CardPluginTest {
         var widgetRefreshes = 0
         val plugin = CardPlugin(
             context = ApplicationProvider.getApplicationContext(),
+            account = FakeAccountIdentity(),
             inputStore = FakeInputStore(),
             onSnapshotChanged = { widgetRefreshes++ },
         )

@@ -57,6 +57,7 @@ import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.plugin.ui.PluginPageHost
 import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
@@ -106,6 +107,8 @@ fun AppNav(
     val currentRoute = backStackEntry?.destination?.route
     val pluginUi = AppGraph.ui
     val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
+    val legacyCardStudentId by AppGraph.cardInputRepository.studentId
+        .collectAsStateWithLifecycle(initialValue = "")
     val destinations = (hostDestinations + pluginUi.bottomNav.map { tab ->
         Destination(
             route = tab.route.value,
@@ -125,6 +128,14 @@ fun AppNav(
 
             override fun back() {
                 navController.popBackStack()
+            }
+        }
+    }
+
+    val sectionHost = remember(navController) {
+        object : PluginSectionHost {
+            override fun openSchoolAccountSettings() {
+                navController.navigate(AppRoutes.ACCOUNT) { launchSingleTop = true }
             }
         }
     }
@@ -191,6 +202,7 @@ fun AppNav(
                         HomeScreen(
                             serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
                             cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
+                            sectionHost = sectionHost,
                             onOpenRoute = pageHost::open,
                         )
                     }
@@ -198,6 +210,7 @@ fun AppNav(
                         CampusScreen(
                             learningEntries = pluginUi.entriesFor(UiSurface.MORE_LEARNING),
                             schoolSections = pluginUi.sectionsFor(UiSurface.MORE_SCHOOL),
+                            sectionHost = sectionHost,
                             accountState = accountState,
                             onOpenRoute = pageHost::open,
                             onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
@@ -214,6 +227,7 @@ fun AppNav(
                         SchoolAccountScreen(
                             accounts = AppGraph.account,
                             onBack = { navController.popBackStack() },
+                            legacyStudentIdHint = legacyCardStudentId.takeIf { it.isNotBlank() },
                         )
                     }
                     composable(AppRoutes.APPEARANCE) {

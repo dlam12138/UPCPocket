@@ -17,6 +17,7 @@ import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.data.prefs.UiPrefsStore
+import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.FocusPlugin
@@ -32,7 +33,10 @@ import com.upcpocket.app.plugin.ui.PluginUiSnapshot
 import com.upcpocket.app.power.PowerCapabilities
 import com.upcpocket.app.power.PowerPlugin
 import com.upcpocket.app.power.PowerService
+import com.upcpocket.app.widget.WidgetKind
+import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
+import com.upcpocket.app.widget.WidgetWork
 
 /**
  * 宿主手动装配容器。
@@ -42,7 +46,7 @@ import com.upcpocket.app.widget.WidgetUpdates
  *  - 专注：数据库、偏好、前台计时；
  *  - 空闲教室：公开查询；
  *  - 图书馆座位：学校官方 CAS 登录后的内存会话；
- *  - 校园卡余额：输入本人学号直接读取学校余额接口，不需要平台登录；
+ *  - 校园卡余额：按当前统一账号受控学号直接读取学校余额接口，不需要平台登录；
  *  - 唐岛湾宿舍剩余电量：无需登录的只读页面查询。
  *
  * 课表（教务导入、旧学校同步、CSV 导入、展示编辑、桌面组件）已整体删除，
@@ -90,10 +94,27 @@ object AppGraph {
             failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
         }
         if (request.scope == AccountDataScope.PERSONAL_DATA) {
+            // 先取消旧组件的排队任务并清掉旧刷新状态，再删除个人缓存。
+            WidgetWork.cancel(appContext, WidgetKind.CARD)
+            WidgetStateStore(appContext).clear(WidgetKind.CARD)
             val card = cardServiceOrNull
-            if (card != null && runCatching { card.clear() }.isFailure) {
+            if (card != null) {
+                if (runCatching { card.clearForAccountChange() }.isFailure) {
+                    failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
+                }
+            } else {
+                // 插件未激活时仍要清掉已安装组件的旧缓存；否则重新启用后会看到旧号数据。
+                if (runCatching {
+                        DirectCardBalanceStore(appContext.noBackupFilesDir).clearAll()
+                    }.isFailure
+                ) {
+                    failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
+                }
+            }
+            if (runCatching { cardInputRepository.clear() }.isFailure) {
                 failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
             }
+            WidgetUpdates.requestCard(appContext)
         }
         return failure?.let(AccountInvalidationResult::failure)
             ?: AccountInvalidationResult.Success
@@ -102,12 +123,13 @@ object AppGraph {
     /**
      * 校园卡余额插件。
      *
-     * 插件自己持有协议、快照与 Repository；宿主只提供学号持久化和组件刷新回调。
-     * 快照文件仍是既有的 `card-balance-v1.json`。
+     * 插件自己持有协议、快照与 Repository；宿主只提供受控账号身份、旧学号草稿清理
+     * 和组件刷新回调。余额快照使用带账号归属的 v2，并保留对旧 v1 的同号迁移。
      */
     private val cardPlugin: CardPlugin by lazy {
         CardPlugin(
             context = appContext,
+            account = account,
             inputStore = cardInputRepository,
             onSnapshotChanged = { WidgetUpdates.requestCard(appContext) },
         )
@@ -201,6 +223,18 @@ object AppGraph {
     val cardServiceOrNull: CardBalanceService?
         get() = activePlugins.capability(CardCapabilities.balance)
 
+    /**
+     * 账号状态变化后只做余额缓存归属迁移与组件重绘，不联网。
+     * 无绑定/清理中时服务自身会拒绝读取旧目标。
+     */
+    suspend fun prepareCardForAccount() {
+        cardServiceOrNull?.prepare()
+    }
+
+    fun requestCardWidgetUpdate() {
+        WidgetUpdates.requestCard(appContext)
+    }
+
     val powerServiceOrNull: PowerService?
         get() = activePlugins.capability(PowerCapabilities.tangdaowan)
 
@@ -243,8 +277,10 @@ object AppGraph {
     }
 
     /**
-     * 电费输入（楼号＋房间号）与校园卡学号的持久层。
-     * 供当前页面和将来的桌面组件复用；只读写本机配置，不查网络。
+     * 电费输入（楼号＋房间号）与旧版校园卡学号草稿的持久层。
+     *
+     * 旧学号草稿只用于账号设置提示/迁移清理，不再是余额查询来源；余额查询只读
+     * 当前统一账号的受控学号。
      */
     val powerInputRepository: PowerInputRepository by lazy {
         PowerInputRepository(uiPrefsStore)

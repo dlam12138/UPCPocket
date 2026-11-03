@@ -3,10 +3,10 @@ package com.upcpocket.app.card
 import kotlinx.coroutines.flow.Flow
 
 /**
- * 校园卡学号输入的持久化边界。
+ * 旧版校园卡学号草稿的持久化边界。
  *
- * 由宿主提供实现（当前是 app 的 DataStore 适配器）；插件不直接认识 `UiPrefsStore`，
- * 也不把学号写进自己的快照文件。
+ * 由宿主提供实现（当前是 app 的 DataStore 适配器）。M2 起它不再是查询来源：
+ * 只能用于账号设置提示，并在账号绑定/迁移或删除/换号时清理。
  */
 interface CardInputStore {
     val studentId: Flow<String>

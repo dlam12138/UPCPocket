@@ -9,14 +9,19 @@ import com.upcpocket.app.account.api.AccountInvalidationRequest
 import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountController
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
+import com.upcpocket.app.account.api.SchoolAccountId
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
+import com.upcpocket.app.account.api.SchoolStudentIdentity
+import com.upcpocket.app.account.api.StudentIdFormat
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.crypto.ByteCrypto
 import com.upcpocket.app.platform.crypto.KeystoreAesGcmCrypto
 import java.io.File
+import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +61,7 @@ class SchoolAccountRepository internal constructor(
     private val ioDispatcher: CoroutineDispatcher,
     private val invalidators: List<SchoolAccountInvalidator>,
     private val maskAccount: (String) -> String,
-) : SchoolAccountController {
+) : SchoolAccountController, SchoolAccountStudentIdentityReader {
 
     constructor(
         context: Context,
@@ -94,11 +99,14 @@ class SchoolAccountRepository internal constructor(
     private val cipher = CredentialCipher(crypto, json)
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SchoolAccountState())
+    private val _studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
     private var initialized = false
     private var currentAccount: String? = null
     private var currentGeneration = AccountGeneration.None
 
     override val state: StateFlow<SchoolAccountState> = _state.asStateFlow()
+    override val studentIdentity: StateFlow<SchoolStudentIdentity?> =
+        _studentIdentity.asStateFlow()
 
     override suspend fun restore() {
         withContext(ioDispatcher) {
@@ -268,10 +276,21 @@ class SchoolAccountRepository internal constructor(
     }
 
     private fun publishSaved(payload: CredentialPayload) {
+        val generation = AccountGeneration(payload.generation)
+        val studentId = payload.account.takeIf(StudentIdFormat::isValid)
+        _studentIdentity.value = studentId?.let {
+            SchoolStudentIdentity(
+                accountId = stableAccountId(payload.account),
+                studentId = it,
+                credentialGeneration = generation,
+            )
+        }
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.SAVED_UNVERIFIED,
-            generation = AccountGeneration(payload.generation),
+            generation = generation,
             maskedAccount = maskAccount(payload.account),
+            maskedStudentId = studentId?.let(maskAccount),
+            studentIdAvailable = studentId != null,
             savedAtEpochMillis = payload.savedAt,
             cleanupRequired = false,
             errorCode = null,
@@ -279,6 +298,7 @@ class SchoolAccountRepository internal constructor(
     }
 
     private fun publishNotConfigured(generation: AccountGeneration) {
+        _studentIdentity.value = null
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.NOT_CONFIGURED,
             generation = generation,
@@ -293,6 +313,7 @@ class SchoolAccountRepository internal constructor(
         code: SchoolAccountErrorCode,
         cleanupRequired: Boolean,
     ) {
+        _studentIdentity.value = null
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.NEEDS_RECONFIGURATION,
             generation = currentGeneration,
@@ -416,6 +437,7 @@ class SchoolAccountRepository internal constructor(
                 return SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED)
             }
             currentGeneration = targetGeneration
+            _studentIdentity.value = null
             _state.value = transition
 
             if (scope != null) {
@@ -444,6 +466,7 @@ class SchoolAccountRepository internal constructor(
                 return SchoolAccountWriteResult.Success
             }
             currentGeneration = targetGeneration
+            _studentIdentity.value = null
             _state.value = transition.copy(
                 cleanupRequired = true,
                 errorCode = SchoolAccountErrorCode.STORAGE_FAILED,
@@ -573,6 +596,7 @@ class SchoolAccountRepository internal constructor(
             return SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED)
         }
         currentGeneration = targetGeneration
+        _studentIdentity.value = null
         _state.value = transition
         if (!invalidateLocked(
                 journal = journal,
@@ -640,6 +664,7 @@ class SchoolAccountRepository internal constructor(
         )
         currentAccount = null
         currentGeneration = targetGeneration
+        _studentIdentity.value = null
         try {
             writeJournal(journal)
             writePersistedState(
@@ -749,6 +774,7 @@ class SchoolAccountRepository internal constructor(
                     ?: SchoolAccountErrorCode.CREDENTIAL_UNAVAILABLE,
             )
         }
+        _studentIdentity.value = null
         _state.value = transition
 
         var committedJournal = journal
@@ -924,6 +950,17 @@ class SchoolAccountRepository internal constructor(
         if (value.length !in 1..MAX_ACCOUNT_CHARS) return null
         if (value.any { it.isISOControl() || it.isWhitespace() }) return null
         return value
+    }
+
+    /**
+     * 只生成不可逆的内部归属标识；不把登录名、学号或密码写入缓存键。
+     * 同一规范化登录名跨进程稳定，换号后不同。
+     */
+    private fun stableAccountId(account: String): SchoolAccountId {
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest("upcpocket.school-account:$account".toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString(separator = "") { "%02x".format(it.toInt() and 0xff) }
+        return SchoolAccountId("acct_$hex")
     }
 
     private companion object {

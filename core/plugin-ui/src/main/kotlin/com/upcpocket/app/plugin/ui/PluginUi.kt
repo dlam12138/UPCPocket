@@ -59,6 +59,15 @@ interface PluginPageHost {
 }
 
 /**
+ * 嵌在宿主页面中的区块可用的宿主动作。
+ *
+ * 只开放宿主自有设置页，不接受任意路由、Intent 或 URL；插件仍不持有 NavController。
+ */
+interface PluginSectionHost {
+    fun openSchoolAccountSettings()
+}
+
+/**
  * 一个功能入口。
  *
  * `order` 只用于同一栏目内的稳定排序；M0 迁移时沿用现有顺序，M5 再统一调整。
@@ -123,7 +132,7 @@ class PluginSection(
     val pluginId: PluginId,
     val surface: UiSurface,
     val order: Int,
-    val content: @Composable () -> Unit,
+    val content: @Composable (PluginSectionHost) -> Unit,
 )
 
 class PluginUiException(message: String) : IllegalArgumentException(message)

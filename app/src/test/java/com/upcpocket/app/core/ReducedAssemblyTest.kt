@@ -6,6 +6,8 @@ import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountGate
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
+import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardInputStore
 import com.upcpocket.app.card.CardPlugin
@@ -102,6 +104,10 @@ class ReducedAssemblyTest {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val card = CardPlugin(
             context = context,
+            account = object : SchoolAccountStudentIdentityReader {
+                override val state = MutableStateFlow(SchoolAccountState())
+                override val studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
+            },
             inputStore = object : CardInputStore {
                 override val studentId: Flow<String> = flowOf("")
                 override suspend fun save(studentId: String) = Unit

@@ -15,6 +15,45 @@ value class AccountGeneration(val value: Long) {
 }
 
 /**
+ * 应用内部稳定账号标识。
+ *
+ * 由账号模块对规范化登录名做不可逆摘要生成，不包含登录名、学号或密码；
+ * 用于给个人缓存标注归属。它不是学校账号或官方身份。
+ */
+@JvmInline
+value class SchoolAccountId(val value: String) {
+    init {
+        require(value.matches(Regex("[A-Za-z0-9_-]{8,128}"))) { "非法内部账号标识" }
+    }
+}
+
+/** 余额等业务可接受的学号格式；与现有余额协议保持 8–16 位 ASCII 数字。 */
+object StudentIdFormat {
+    const val MIN_LENGTH = 8
+    const val MAX_LENGTH = 16
+
+    fun isValid(value: String): Boolean =
+        value.length in MIN_LENGTH..MAX_LENGTH && value.all { it in '0'..'9' }
+}
+
+/**
+ * 受控的本人学号读取结果。
+ *
+ * 只有账号登录名整串符合学号格式时才生成；不从任意字符串截取、不把脱敏文本当学号。
+ * 该对象不含密码、凭据载荷或解密能力。
+ */
+data class SchoolStudentIdentity(
+    val accountId: SchoolAccountId,
+    val studentId: String,
+    val credentialGeneration: AccountGeneration,
+) {
+    init {
+        require(StudentIdFormat.isValid(studentId)) { "学号格式无效" }
+        require(credentialGeneration.value > 0) { "学号必须绑定到已保存的凭据代次" }
+    }
+}
+
+/**
  * 统一账号的公开状态。
  *
  * 只描述“本机是否保存了凭据”和本机清理进度，不代表任何校园业务已经登录。
@@ -50,6 +89,9 @@ data class SchoolAccountState(
     val status: SchoolAccountStatus = SchoolAccountStatus.LOADING,
     val generation: AccountGeneration = AccountGeneration.None,
     val maskedAccount: String? = null,
+    /** 可从账号登录名整串识别的学号；仅在符合受控学号格式时存在。 */
+    val maskedStudentId: String? = null,
+    val studentIdAvailable: Boolean = false,
     val savedAtEpochMillis: Long? = null,
     /** true 表示换号/删号/恢复清理尚未完成，所有个人业务必须停止。 */
     val cleanupRequired: Boolean = false,
@@ -73,6 +115,17 @@ data class AccountRequestToken(val generation: AccountGeneration)
 /** 业务插件只依赖这个读取面；恢复由宿主调用。 */
 interface SchoolAccountGate {
     val state: StateFlow<SchoolAccountState>
+}
+
+/**
+ * 只读受控身份面。
+ *
+ * 业务只能获得当前绑定账号的内部标识、本人学号和凭据代次；不能读取账号原文、
+ * 密码、`CredentialPayload`，也没有任意解密入口。LOADING、清理中、未保存或
+ * 登录名不是有效学号时，[studentIdentity] 必须为 null。
+ */
+interface SchoolAccountStudentIdentityReader : SchoolAccountGate {
+    val studentIdentity: StateFlow<SchoolStudentIdentity?>
 }
 
 /**

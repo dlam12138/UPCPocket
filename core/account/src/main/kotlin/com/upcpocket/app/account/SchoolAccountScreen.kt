@@ -55,6 +55,7 @@ import com.upcpocket.app.account.api.SchoolAccountController
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
 import com.upcpocket.app.designsystem.DOCK_CLEARANCE
+import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.launch
 
@@ -70,6 +71,7 @@ import kotlinx.coroutines.launch
 fun SchoolAccountScreen(
     accounts: SchoolAccountController,
     onBack: () -> Unit,
+    legacyStudentIdHint: String? = null,
 ) {
     val state by accounts.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -250,12 +252,40 @@ fun SchoolAccountScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Text(
+                            text = if (state.studentIdAvailable) {
+                                "余额查询学号：${state.maskedStudentId.orEmpty()}。仅由登录名整串识别，" +
+                                    "尚未经过学校身份验证。"
+                            } else {
+                                "当前账号登录名不是 8–16 位数字学号，余额查询不可用；" +
+                                    "不会猜测或截取其他数字。"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("account_student_binding"),
+                        )
                     }
                     state.errorCode?.let {
                         Text(
                             text = it.userMessage(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            }
+
+            if (!legacyStudentIdHint.isNullOrBlank()) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("旧版余额学号提示", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            text = "检测到旧版余额学号 ${AccountMask.mask(legacyStudentIdHint.trim())}。" +
+                                "它只用于提示，不会自动创建账号或绑定余额；保存账号后，余额只按" +
+                                "账号登录名中完整有效的本人学号查询。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("legacy_student_hint"),
                         )
                     }
                 }
@@ -391,9 +421,9 @@ fun SchoolAccountScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("尚未接入统一认证", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "校园卡余额仍按页面输入的学号查询；图书馆仍使用学校网页登录。" +
-                            "保存本页凭据不会自动登录、刷新或遍历任何业务。统一认证接入将在 " +
-                            "M2/M3/M4 按业务逐步完成。",
+                        "校园卡余额只按当前账号登录名中完整有效的本人学号查询，不再使用独立输入框；" +
+                            "登录名不是 8–16 位数字时明确不可用。余额接口不接收密码，查询成功也不代表 " +
+                            "CAS 或学校认证成功。图书馆仍使用学校网页登录。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

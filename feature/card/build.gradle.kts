@@ -36,6 +36,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":core:account-api"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
@@ -53,4 +54,8 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.activity.compose)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

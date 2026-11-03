@@ -10,8 +10,8 @@ import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
 /**
  * 余额插件在宿主首页贡献的内容。
  *
- * 宿主只决定区域位置和标题；输入、查询、清除与状态都留在这里，移除插件后
- * 首页不再出现余额功能区，也不会留下空的业务占位。
+ * 宿主只决定区域位置、标题与“前往学校账号”的导航动作；查询目标、状态和清除
+ * 余额缓存都留在插件内。
  */
 internal class CardUi(
     private val service: CardBalanceService,
@@ -26,8 +26,11 @@ internal class CardUi(
                 pluginId = CARD_PLUGIN_ID,
                 surface = UiSurface.HOME_CARD,
                 order = 0,
-            ) {
-                DirectCardBalanceSection(service = service)
+            ) { host ->
+                DirectCardBalanceSection(
+                    service = service,
+                    onOpenAccountSettings = host::openSchoolAccountSettings,
+                )
             },
         )
     }

@@ -17,6 +17,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -46,6 +47,12 @@ class SchoolAccountRepositoryTest {
         assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)
         assertEquals(AccountGeneration(1), repository.state.value.generation)
         assertEquals("MASK-01", repository.state.value.maskedAccount)
+        assertTrue(repository.state.value.studentIdAvailable)
+        assertEquals("MASK-01", repository.state.value.maskedStudentId)
+        val identity = repository.studentIdentity.value!!
+        assertEquals(account, identity.studentId)
+        assertEquals(AccountGeneration(1), identity.credentialGeneration)
+        assertFalse(identity.accountId.value.contains(account))
 
         val raw = store.read(AccountFormat.ACCOUNT_FILE, 64 * 1024)!!
         assertFalse(raw.toString(Charsets.UTF_8).contains(account))
@@ -57,6 +64,7 @@ class SchoolAccountRepositoryTest {
         assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
         assertEquals(AccountGeneration(1), reopened.state.value.generation)
         assertEquals("MASK-01", reopened.state.value.maskedAccount)
+        assertEquals(identity.accountId, reopened.studentIdentity.value?.accountId)
         assertFalse(reopened.state.value.cleanupRequired)
     }
 
@@ -88,6 +96,7 @@ class SchoolAccountRepositoryTest {
         repository.restore()
         repository.save(account, oldPassword.toCharArray())
         val oldToken = repository.state.value.captureRequestToken()!!
+        val oldAccountId = repository.studentIdentity.value!!.accountId
 
         assertEquals(
             SchoolAccountWriteResult.Success,
@@ -97,6 +106,37 @@ class SchoolAccountRepositoryTest {
         assertFalse(repository.state.value.isCurrent(oldToken))
         assertEquals(AccountGeneration(2), repository.state.value.generation)
         assertEquals("MASK-02", repository.state.value.maskedAccount)
+        assertNotEquals(oldAccountId, repository.studentIdentity.value!!.accountId)
+    }
+
+    @Test
+    fun nonNumericAliasHasNoControlledStudentIdentity() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        val alias = "student-alias@example.invalid"
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(alias, oldPassword.toCharArray()),
+        )
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)
+        assertFalse(repository.state.value.studentIdAvailable)
+        assertNull(repository.state.value.maskedStudentId)
+        assertNull(repository.studentIdentity.value)
+    }
+
+    @Test
+    fun shortenedOrPaddedLoginNameIsNotTreatedAsStudentId() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        // 不截取、不 trim 出数字；只有规范化后的整串符合 8–16 位才可用。
+        val tooShort = "1234567"
+        repository.save(tooShort, oldPassword.toCharArray())
+        assertNull(repository.studentIdentity.value)
+        val padded = " 20260001 "
+        repository.save(padded, oldPassword.toCharArray())
+        assertEquals("20260001", repository.studentIdentity.value?.studentId)
     }
 
     @Test
@@ -223,6 +263,7 @@ class SchoolAccountRepositoryTest {
         )
         assertEquals(SchoolAccountStatus.REMOVING, repository.state.value.status)
         assertTrue(repository.state.value.cleanupRequired)
+        assertNull(repository.studentIdentity.value)
         assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
         assertTrue(store.exists(AccountFormat.ACCOUNT_FILE))
 
@@ -231,6 +272,7 @@ class SchoolAccountRepositoryTest {
         reopened.restore()
         assertEquals(SchoolAccountStatus.NOT_CONFIGURED, reopened.state.value.status)
         assertFalse(reopened.state.value.cleanupRequired)
+        assertNull(reopened.studentIdentity.value)
         assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
         assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
     }
@@ -445,6 +487,25 @@ class SchoolAccountRepositoryTest {
             repository.save(account, CharArray(0)),
         )
         assertTrue(store.files.isEmpty())
+    }
+
+    @Test
+    fun controlledReaderAndStateExposeNoPasswordOrCredentialPayload() = runTest {
+        val repository = repository(MemoryStore())
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        // 受控面只允许 accountId/学号/代次；toString 与状态字段都不得带回密码。
+        assertFalse(repository.state.value.toString().contains(oldPassword))
+        assertFalse(repository.studentIdentity.value.toString().contains(oldPassword))
+        val readerMethods = com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader::class.java
+            .methods
+            .map { it.name.lowercase() }
+        assertFalse(readerMethods.any { "password" in it || "credentialpayload" in it })
+        val stateFields = com.upcpocket.app.account.api.SchoolAccountState::class.java
+            .declaredFields
+            .map { it.name.lowercase() }
+        assertFalse(stateFields.any { "password" in it || "credential" in it })
     }
 
     private fun repository(

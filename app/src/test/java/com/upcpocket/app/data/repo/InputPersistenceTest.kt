@@ -4,10 +4,6 @@ import android.app.Application
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
-import com.upcpocket.app.data.ecard.CampusCardException
-import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
-import com.upcpocket.app.data.ecard.DirectCardBalanceStore
-import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.data.power.ElectricityReading
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.power.PowerInput
@@ -23,7 +19,6 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -82,32 +77,10 @@ class InputPersistenceTest {
     }
 
     @Test
-    fun `校园卡学号独立于余额快照_查询失败也不丢`() = runBlocking {
+    fun `旧校园卡学号草稿可持久化但只是迁移提示来源`() = runBlocking {
         val card = CardInputRepository(prefs())
         card.save("12345678")
-
-        // 另存并清除一份余额快照，模拟“从未查询成功/失败后重进”。
-        val snapshotStore = DirectCardBalanceStore(File(temp.newFolder(), "card-balance-v1.json"))
-        snapshotStore.save(DirectCardSnapshot("12345678", 1234, 0, 1))
-        snapshotStore.clear()
-
-        val failing = DirectCardBalanceRepository(
-            DirectCardBalanceStore(File(temp.newFolder(), "card-balance-v1.json")),
-        ) { throw CampusCardException("网络失败") }
-        try {
-            failing.refresh("12345678")
-            fail("预期查询失败")
-        } catch (_: CampusCardException) {
-            // 预期
-        }
-
         assertEquals("12345678", CardInputRepository(prefs()).studentId.first())
-    }
-
-    @Test
-    fun `清除学号后_重启不再回填`() = runBlocking {
-        val card = CardInputRepository(prefs())
-        card.save("12345678")
         card.clear()
         assertEquals("", CardInputRepository(prefs()).studentId.first())
     }

@@ -8,6 +8,11 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
+import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.data.ecard.CardBalanceBinding
+import com.upcpocket.app.data.ecard.CardBindingAvailability
+import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.designsystem.R as DesignSystemR
@@ -26,6 +31,12 @@ class CardWidgetRenderingTest {
 
     private val context = ApplicationProvider.getApplicationContext<Application>()
     private val now = 1_700_000_000_000L
+    private val id = "2099000123"
+    private val binding = CardBalanceBinding(
+        accountId = SchoolAccountId("acct_test_account_a"),
+        studentId = id,
+        credentialGeneration = AccountGeneration(2),
+    )
 
     private fun pending(requestCode: Int): PendingIntent = PendingIntent.getActivity(
         context,
@@ -35,15 +46,25 @@ class CardWidgetRenderingTest {
     )
 
     private fun render(
+        status: CardBindingStatus = CardBindingStatus(CardBindingAvailability.READY, binding),
         snapshot: DirectCardSnapshot? = null,
         refreshing: Boolean = false,
         failed: Boolean = false,
+        onRefreshFactory: () -> Unit = {},
+        onOpenFactory: () -> Unit = {},
     ): View = CardWidgetRenderer(context).views(
+        status = status,
         snapshot = snapshot,
         refreshing = refreshing,
         failed = failed,
-        openApp = { pending(1) },
-        refresh = { pending(2) },
+        openApp = {
+            onOpenFactory()
+            pending(1)
+        },
+        refresh = {
+            onRefreshFactory()
+            pending(2)
+        },
     ).apply(context, FrameLayout(context))
 
     private fun text(root: View, id: Int): String =
@@ -51,13 +72,20 @@ class CardWidgetRenderingTest {
 
     @Test
     fun `compact card shows masked id main balance and hides secondary transition`() {
-        val id = "2099000123"
-        val root = render(snapshot = DirectCardSnapshot(id, 12345, 678, now))
+        val root = render(
+            snapshot = DirectCardSnapshot(
+                accountId = binding.accountId.value,
+                studentId = id,
+                credentialGeneration = 2,
+                balanceCents = 12345,
+                transitionCents = 678,
+                fetchedAt = now,
+            ),
+        )
         val account = text(root, R.id.widget_card_account)
         assertTrue(account.contains("20"))
         assertTrue(account.contains("••••"))
         assertFalse(account.contains(id))
-        assertFalse(account.contains("2099000123"))
 
         assertTrue(text(root, R.id.widget_card_balance).contains("123.45 元"))
         val transition = text(root, R.id.widget_card_transition)
@@ -68,7 +96,6 @@ class CardWidgetRenderingTest {
         val meta = text(root, R.id.widget_card_updated)
         assertEquals(WidgetRenderSupport.queryTime(now), meta)
         assertFalse(meta.contains("刚刚"))
-        assertFalse(meta.contains("分钟前"))
 
         val refresh = root.findViewById<View>(R.id.widget_card_refresh)
         assertTrue(refresh.contentDescription.toString().contains("刷新校园卡余额"))
@@ -77,23 +104,71 @@ class CardWidgetRenderingTest {
     }
 
     @Test
-    fun `card without snapshot guides the user and never fabricates zero`() {
-        val root = render()
-        assertTrue(text(root, R.id.widget_card_account).contains("未设置"))
+    fun `bound account without snapshot enables refresh instead of requiring old cache`() {
+        var refreshFactory = 0
+        val root = render(onRefreshFactory = { refreshFactory++ })
+        val account = text(root, R.id.widget_card_account)
+        assertTrue(account.contains("20••••23"))
+        assertFalse(account.contains(id))
         assertTrue(text(root, R.id.widget_card_balance).contains("尚未查询"))
         assertFalse(text(root, R.id.widget_card_balance).contains("0.00"))
-        val meta = text(root, R.id.widget_card_updated)
-        assertTrue(meta.contains("先在应用查询一次"))
-        assertTrue(meta.contains("尚无本地记录"))
+        assertTrue(text(root, R.id.widget_card_updated).contains("点击刷新"))
+        assertTrue(
+            root.findViewById<View>(R.id.widget_card_refresh)
+                .contentDescription.toString().contains("刷新校园卡余额"),
+        )
+        assertEquals(1, refreshFactory)
+    }
+
+    @Test
+    fun `no account guides setup and never creates a network refresh target`() {
+        var refreshFactory = 0
+        var openFactory = 0
+        val root = render(
+            status = CardBindingStatus(CardBindingAvailability.NO_ACCOUNT),
+            onRefreshFactory = { refreshFactory++ },
+            onOpenFactory = { openFactory++ },
+        )
+        assertTrue(text(root, R.id.widget_card_account).contains("未绑定"))
+        assertTrue(text(root, R.id.widget_card_balance).contains("尚未查询"))
+        assertTrue(text(root, R.id.widget_card_updated).contains("打开应用设置"))
         assertTrue(
             root.findViewById<View>(R.id.widget_card_refresh)
                 .contentDescription.toString().contains("打开应用"),
         )
+        assertEquals(0, refreshFactory)
+        assertTrue(openFactory >= 1)
+    }
+
+    @Test
+    fun `cleaning hides old identity values even when an old snapshot is supplied`() {
+        val old = DirectCardSnapshot(
+            accountId = binding.accountId.value,
+            studentId = id,
+            credentialGeneration = 1,
+            balanceCents = 12345,
+            transitionCents = 0,
+            fetchedAt = now,
+        )
+        val root = render(
+            status = CardBindingStatus(CardBindingAvailability.CLEANING),
+            snapshot = old,
+        )
+        assertFalse(text(root, R.id.widget_card_account).contains("20••••"))
+        assertFalse(text(root, R.id.widget_card_balance).contains("123.45"))
+        assertTrue(text(root, R.id.widget_card_updated).contains("隐藏旧身份"))
     }
 
     @Test
     fun `refreshing and failure keep old values and the last success time`() {
-        val card = DirectCardSnapshot("2099000123", 12345, 0, now)
+        val card = DirectCardSnapshot(
+            accountId = binding.accountId.value,
+            studentId = id,
+            credentialGeneration = 2,
+            balanceCents = 12345,
+            transitionCents = 0,
+            fetchedAt = now,
+        )
         val refreshing = render(snapshot = card, refreshing = true)
         assertTrue(text(refreshing, R.id.widget_card_balance).contains("123.45 元"))
         assertTrue(text(refreshing, R.id.widget_card_updated).contains("正在刷新"))
@@ -103,7 +178,22 @@ class CardWidgetRenderingTest {
         val failedMeta = text(failed, R.id.widget_card_updated)
         assertTrue(failedMeta.contains("刷新失败"))
         assertTrue(failedMeta.contains(WidgetRenderSupport.queryTime(now)))
-        assertFalse(failedMeta.contains("刚刚"))
+    }
+
+    @Test
+    fun `same-owner cache from older credential generation is marked historical`() {
+        val card = DirectCardSnapshot(
+            accountId = binding.accountId.value,
+            studentId = id,
+            credentialGeneration = 1,
+            balanceCents = 12345,
+            transitionCents = 0,
+            fetchedAt = now,
+        )
+        val root = render(snapshot = card)
+        val meta = text(root, R.id.widget_card_updated)
+        assertTrue(meta.contains("历史值"))
+        assertTrue(meta.contains(WidgetRenderSupport.queryTime(now)))
     }
 
     @Test
@@ -116,7 +206,15 @@ class CardWidgetRenderingTest {
         val light = themed(Configuration.UI_MODE_NIGHT_NO)
         val dark = themed(Configuration.UI_MODE_NIGHT_YES)
         val views = CardWidgetRenderer(light).views(
-            snapshot = DirectCardSnapshot("12345678", 12345, 0, now),
+            status = CardBindingStatus(CardBindingAvailability.READY, binding),
+            snapshot = DirectCardSnapshot(
+                accountId = binding.accountId.value,
+                studentId = id,
+                credentialGeneration = 2,
+                balanceCents = 12345,
+                transitionCents = 0,
+                fetchedAt = now,
+            ),
             refreshing = false,
             failed = false,
             openApp = { pending(1) },

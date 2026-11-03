@@ -6,6 +6,7 @@ import com.upcpocket.app.core.AppGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 /**
@@ -37,6 +38,20 @@ class UpcPocketApp : Application() {
         appScope.launch {
             AppGraph.account.restore()
             AppGraph.restorePlugins()
+        }
+
+        // 账号状态变化时只迁移本机余额缓存并重绘组件；清理中/LOADING 会让
+        // 组件立即撤下旧身份数值，不等待新账号查询成功。
+        appScope.launch {
+            AppGraph.account.state.collect { state ->
+                // 有完整有效学号的统一账号成立后，旧版明文草稿不再是任何数据源；
+                // 即使余额插件未激活也在这里删除，避免遗留明文。
+                if (state.isCredentialSaved && state.studentIdAvailable) {
+                    runCatching { AppGraph.cardInputRepository.clear() }
+                }
+                runCatching { AppGraph.prepareCardForAccount() }
+                AppGraph.requestCardWidgetUpdate()
+            }
         }
     }
 }

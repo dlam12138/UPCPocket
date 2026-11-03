@@ -39,10 +39,9 @@ data class UiPrefs(
     val powerBuilding: String = "",
     val powerRoom: String = "",
     /**
-     * 校园卡余额功能区上次输入的本人学号。
+     * 旧版校园卡余额功能区学号草稿。
      *
-     * 与余额快照分开保存：即使从未查询成功，重启后也能恢复输入；
-     * 不查询时只保存这个字段。清除动作会同时删除它。
+     * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
      */
     val cardStudentId: String = "",
 )
@@ -86,7 +85,7 @@ class UiPrefsStore internal constructor(
         p.remove(KEY_POWER_ROOM)
     }
 
-    /** 校园卡学号与余额快照分离，只保存输入本身。 */
+    /** 旧版学号草稿；只服务迁移提示，不再作为余额查询来源。 */
     suspend fun setCardStudentId(v: String) = store.edit { p ->
         if (v.isBlank()) p.remove(KEY_CARD_STUDENT_ID) else p[KEY_CARD_STUDENT_ID] = v
     }
