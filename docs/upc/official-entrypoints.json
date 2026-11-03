@@ -49,7 +49,7 @@
       "url": "https://libspace.upc.edu.cn/libseat/",
       "authentication": "UPC CAS normal form then libspace one-time service callback; app token exchanged for libseat token",
       "integration": "official_login_native_business",
-      "verification": "Existing app flow and UPC-MCP prior read-only checks cover this business; current M4 unified-account integration remains unimplemented."
+      "verification": "Existing app flow and UPC-MCP prior read-only checks cover this business; a user-authorized 26-entry HAR on 2026-11-03 confirmed live filters/floors/stats2/settings/announce and an empty current reservation for libseat. Current M4 unified-account integration remains unimplemented; layout/seat times/history/writes were not captured."
     },
     {
       "id": "library_space",
