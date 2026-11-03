@@ -56,12 +56,13 @@ class FocusPlugin(
     )
 
     override fun capabilities(): List<PluginCapability> {
-        // 插件启动成功后再发布给前台服务；构造/注册阶段不做安装或 IO。
-        FocusRuntime.install(service)
+        // 能力枚举只返回纯内存对象；真正安装到进程内桥要等插件激活后的生命周期回调。
         return listOf(PluginCapability(FocusCapabilities.timer, service))
     }
 
     override fun onAppCreated() {
+        // 只有已激活插件才会走到这里；失败/被隔离的插件不会留下可用的前台服务实例。
+        FocusRuntime.install(service)
         service.ensureChannels()
     }
 

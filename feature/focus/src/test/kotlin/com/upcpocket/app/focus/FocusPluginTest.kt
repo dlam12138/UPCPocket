@@ -7,6 +7,7 @@ import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import com.upcpocket.app.plugin.ui.UiSurface
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,7 +23,8 @@ import org.robolectric.annotation.Config
 class FocusPluginTest {
 
     @Test
-    fun `plugin installs the same focus service without opening the database`() {
+    fun `plugin publishes the focus service only after activation lifecycle`() {
+        FocusRuntime.clearForTest()
         val context = ApplicationProvider.getApplicationContext<Application>()
         val dbFile = context.getDatabasePath("upcpocket.db")
         assertFalse(dbFile.exists())
@@ -41,6 +43,11 @@ class FocusPluginTest {
         assertEquals("focus", plugin.descriptor.id.value)
         assertEquals(setOf("focus.timer"), plugin.descriptor.capabilities)
         assertSame(plugin.service, active.capability(FocusCapabilities.timer))
+        // 能力校验通过但生命周期尚未回调时，legacy Service 仍拿不到实例。
+        assertNull(FocusRuntime.serviceOrNull())
+        assertFalse(dbFile.exists())
+
+        plugin.onAppCreated()
         assertSame(plugin.service, FocusRuntime.serviceOrNull())
         assertFalse(dbFile.exists())
 
@@ -50,5 +57,6 @@ class FocusPluginTest {
         assertEquals(listOf("focus.stats"), ui.entriesFor(UiSurface.MORE_LEARNING).map { it.entryId.value })
         assertTrue(ui.pages.any { it.routeId == FOCUS_MAIN_ROUTE })
         assertTrue(ui.pages.any { it.routeId == FOCUS_STATS_ROUTE })
+        FocusRuntime.clearForTest()
     }
 }
