@@ -317,39 +317,129 @@ class PluginRuntime(
             }
         }
 
-        val ordered = topologicalOrder()
-        val blocked = ids.filterNot(ordered::contains)
-        blocked.forEach { rawId ->
-            diagnostics += PluginDiagnostic(
-                code = PluginDiagnosticCode.DEPENDENCY_CYCLE,
-                pluginId = rawId,
-                detail = "依赖环或环的下游：${blocked.joinToString()}",
-            )
-            failed += rawId
+        val cycleComponents = requiredCycleComponents()
+        cycleComponents.forEach { component ->
+            component.sorted().forEach { rawId ->
+                diagnostics += PluginDiagnostic(
+                    code = PluginDiagnosticCode.DEPENDENCY_CYCLE,
+                    pluginId = rawId,
+                    detail = "必需依赖环涉及：${component.sorted().joinToString()}",
+                )
+                failed += rawId
+            }
         }
 
+        val cycleNodes = cycleComponents.flatten().toSet()
         return StaticAnalysis(
-            order = ordered + blocked,
+            order = activationOrder(cycleNodes, failed),
             failed = failed,
             diagnostics = diagnostics.distinct().sortedWith(diagnosticOrder),
         )
     }
 
     /**
-     * Kahn 拓扑排序；队列按插件 ID 排序，保证同一装配每次顺序一致。
-     * 存在环时返回可排序部分，剩余节点由调用方统一标记为不可启动。
+     * 真正构成环的是“必需依赖”强连通分量；可选边不能把下游误判成环。
+     * 可选边只在两端都健康、且不会制造新环时用于排序；否则按必需图顺序执行。
      */
-    private fun topologicalOrder(): List<String> {
-        val ids = registrations.keys.toSortedSet()
-        val dependencies = ids.associateWith { id ->
-            registrations.getValue(id).descriptor.dependencies
+    private fun activationOrder(cycleNodes: Set<String>, failed: Set<String>): List<String> {
+        val nodes = registrations.keys.filterNot(cycleNodes::contains).toSortedSet()
+        val edges = nodes.associateWith { mutableSetOf<String>() }.toMutableMap()
+
+        nodes.forEach { rawId ->
+            registrations.getValue(rawId).descriptor.dependencies
+                .filter { it.required }
                 .map { it.id.value }
-                .filter { registrations.containsKey(it) }
-                .toSet()
+                .filter(nodes::contains)
+                .forEach { dependency -> edges.getValue(rawId).add(dependency) }
         }
-        val indegree = ids.associateWith { id -> dependencies.getValue(id).size }.toMutableMap()
+
+        val optionalEdges = mutableListOf<Pair<String, String>>()
+        nodes.forEach { rawId ->
+            registrations.getValue(rawId).descriptor.dependencies
+                .filterNot { it.required }
+                .map { it.id.value }
+                .filter(nodes::contains)
+                .forEach { dependency -> optionalEdges += rawId to dependency }
+        }
+        optionalEdges.sortWith(compareBy({ it.first }, { it.second }))
+
+        optionalEdges.forEach { (dependent, dependency) ->
+            if (dependent in failed || dependency in failed) return@forEach
+            val outgoing = edges.getValue(dependent)
+            outgoing += dependency
+            if (topologicalSort(nodes, edges) == null) {
+                outgoing -= dependency
+            }
+        }
+
+        return topologicalSort(nodes, edges) ?: nodes.toList()
+    }
+
+    /**
+     * 只沿必需边寻找强连通分量（Tarjan）。依赖环诊断只落在真正成环的插件上；
+     * 必需下游会在启动阶段通过依赖不可用被传递停用。
+     */
+    private fun requiredCycleComponents(): List<Set<String>> {
+        val ids = registrations.keys.toSortedSet()
+        val required = ids.associateWith { rawId ->
+            registrations.getValue(rawId).descriptor.dependencies
+                .filter { it.required }
+                .map { it.id.value }
+                .filter(registrations::containsKey)
+                .distinct()
+                .sorted()
+        }
+        val index = mutableMapOf<String, Int>()
+        val low = mutableMapOf<String, Int>()
+        val stack = java.util.ArrayDeque<String>()
+        val onStack = mutableSetOf<String>()
+        val components = mutableListOf<Set<String>>()
+        var nextIndex = 0
+
+        fun strongConnect(node: String) {
+            index[node] = nextIndex
+            low[node] = nextIndex
+            nextIndex += 1
+            stack.addLast(node)
+            onStack += node
+
+            required.getValue(node).forEach { dependency ->
+                if (dependency !in index) {
+                    strongConnect(dependency)
+                    low[node] = minOf(low.getValue(node), low.getValue(dependency))
+                } else if (dependency in onStack) {
+                    low[node] = minOf(low.getValue(node), index.getValue(dependency))
+                }
+            }
+
+            if (low.getValue(node) == index.getValue(node)) {
+                val component = mutableSetOf<String>()
+                do {
+                    val popped = stack.removeLast()
+                    onStack -= popped
+                    component += popped
+                } while (popped != node)
+                if (component.size > 1) components += component
+            }
+        }
+
+        ids.forEach { rawId ->
+            if (rawId !in index) strongConnect(rawId)
+        }
+        return components
+    }
+
+    /**
+     * Kahn 拓扑排序；队列按插件 ID 排序，保证同一装配每次顺序一致。
+     * 返回 null 表示当前边集有环。
+     */
+    private fun topologicalSort(
+        nodes: Set<String>,
+        edges: Map<String, Set<String>>,
+    ): List<String>? {
+        val indegree = nodes.associateWith { edges.getValue(it).size }.toMutableMap()
         val dependents = mutableMapOf<String, MutableList<String>>()
-        dependencies.forEach { (id, deps) ->
+        edges.forEach { (id, deps) ->
             deps.forEach { dependency ->
                 dependents.getOrPut(dependency) { mutableListOf() } += id
             }
@@ -368,7 +458,7 @@ class PluginRuntime(
                 if (remaining == 0) ready += dependent
             }
         }
-        return ordered
+        return ordered.takeIf { it.size == nodes.size }
     }
 
     private companion object {

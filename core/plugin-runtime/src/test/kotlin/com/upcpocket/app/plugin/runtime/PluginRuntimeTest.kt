@@ -168,6 +168,91 @@ class PluginRuntimeTest {
     }
 
     @Test
+    fun `required cycle keeps optional downstream and its required dependent active`() {
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor("a", dependencies = listOf(PluginDependency(id("b")))),
+            factory("a"),
+        )
+        runtime.register(
+            descriptor("b", dependencies = listOf(PluginDependency(id("a")))),
+            factory("b"),
+        )
+        runtime.register(
+            descriptor(
+                "c",
+                dependencies = listOf(PluginDependency(id("a"), required = false)),
+            ),
+            factory("c"),
+        )
+        runtime.register(
+            descriptor("d", dependencies = listOf(PluginDependency(id("c")))),
+            factory("d"),
+        )
+        runtime.register(descriptor("e"), factory("e"))
+
+        val result = runtime.start()
+
+        assertEquals(
+            listOf("c", "d", "e"),
+            result.plugins.ordered.map { it.descriptor.id.value },
+        )
+        assertEquals(
+            setOf(PluginDiagnosticCode.DEPENDENCY_CYCLE),
+            result.diagnostics.filter { it.pluginId in setOf("a", "b") }.map { it.code }.toSet(),
+        )
+        assertTrue(result.diagnostics.none { it.pluginId in setOf("c", "d", "e") })
+    }
+
+    @Test
+    fun `optional-only cycle keeps every plugin active without diagnostics`() {
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor(
+                "a",
+                dependencies = listOf(PluginDependency(id("b"), required = false)),
+            ),
+            factory("a"),
+        )
+        runtime.register(
+            descriptor(
+                "b",
+                dependencies = listOf(PluginDependency(id("a"), required = false)),
+            ),
+            factory("b"),
+        )
+        runtime.register(descriptor("e"), factory("e"))
+
+        val result = runtime.start()
+
+        assertEquals(
+            setOf("a", "b", "e"),
+            result.plugins.ordered.map { it.descriptor.id.value }.toSet(),
+        )
+        assertTrue(result.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `acyclic optional dependency is ordered before dependent`() {
+        val runtime = PluginRuntime()
+        runtime.register(
+            descriptor(
+                "a",
+                dependencies = listOf(PluginDependency(id("b"), required = false)),
+            ),
+            factory("a"),
+        )
+        runtime.register(descriptor("b"), factory("b"))
+
+        val result = runtime.start()
+
+        assertEquals(
+            listOf("b", "a"),
+            result.plugins.ordered.map { it.descriptor.id.value },
+        )
+    }
+
+    @Test
     fun `dependency cycle only disables cycle and dependents`() {
         var cycleCreated = 0
         val runtime = PluginRuntime()
@@ -189,7 +274,17 @@ class PluginRuntimeTest {
 
         assertEquals(0, cycleCreated)
         assertEquals(listOf("healthy"), result.plugins.ordered.map { it.descriptor.id.value })
-        assertEquals(3, result.diagnostics.count { it.code == PluginDiagnosticCode.DEPENDENCY_CYCLE })
+        assertEquals(
+            setOf("card", "power"),
+            result.diagnostics
+                .filter { it.code == PluginDiagnosticCode.DEPENDENCY_CYCLE }
+                .map { it.pluginId }
+                .toSet(),
+        )
+        assertEquals(
+            PluginDiagnosticCode.DEPENDENCY_DISABLED,
+            result.diagnostics.single { it.pluginId == "downstream" }.code,
+        )
     }
 
     @Test
