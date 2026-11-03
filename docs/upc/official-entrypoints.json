@@ -17,7 +17,7 @@
   ],
   "verification": {
     "reference_source_facts": "Timetable protocol and CAS service shape reviewed in the pinned UPC-MCP source and synthetic fixtures.",
-    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. No course text, credentials or session values are recorded here. Separately, public library/space entry pages, frontend bundles and public configuration/notices were reviewed for the six-entry study; the existing Edge had no CDP endpoint, so no authenticated business read, live network capture or write request was made in that study.",
+    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. No course text, credentials or session values are recorded here. Separately, the six-entry library/space study used six user-authorized local HAR captures: libseat read-only APIs; nspace venue/roomType/date/roomList; seat/seatengine entrance config/index/identity and empty current/near reservations; reservepc two tenants with 8 and 23 reserve items respectively and empty user lists. All captures start from already-authorized pages; no CAS/passport login exchange, token acquisition or write request was captured or executed.",
     "formal_authorization": "Not an official client and no official authorization is claimed. The user reports contact with the school; only the user's own account was used for read-only validation."
   },
   "entries": [
@@ -66,7 +66,7 @@
         "room_detail": "POST /spa/static/api/book/getRoomDtoByRoomIdAndDate"
       },
       "integration": "protocol_research_not_implemented",
-      "verification": "Public frontend/config reviewed; authenticated response shapes and write paths remain unverified. Do not reuse libseat tokens or parsers."
+      "verification": "A 25-entry HAR on 2026-11-03 captured six read-only browsing APIs (1 venue, 4 room types, 3 open dates, 6/11 rooms on page 1) but no remoteCasLogin, user records, booking form or write. Authentication acquisition and write paths remain unverified; do not reuse libseat tokens or parsers."
     },
     {
       "id": "chaoxing_seat",
@@ -76,18 +76,18 @@
         "https://office.chaoxing.com/front/third/apps/seat/index",
         "https://office.chaoxing.com/front/third/apps/seatengine/index"
       ],
-      "authentication": "Current entries redirect to passport2.chaoxing.com; no UPC CAS exchange was verified for these entries",
+      "authentication": "Unauthenticated entries redirect to passport2.chaoxing.com; the 2026-11-03 captures start from already-authorized pages and contain no passport/CAS login exchange",
       "integration": "external_official_page_protocol_unverified",
-      "verification": "Only unauthenticated redirects and historical third-party API notes were observed. Current seat/seatengine APIs, tenant parameters and writes are unverified; one-time casreceive material must not be reused."
+      "verification": "97-entry seat and 98-entry seatengine HARs captured entrance config, index, identity/verify and empty current/near reservations only. No room/seat/time list, login acquisition, error state or write was captured; one-time page/context values must not be reused."
     },
     {
       "id": "chaoxing_reserve",
       "name": "超星研讨间预约（古镇口东区/求是图书馆入口）",
       "campus": null,
       "url": "https://reserve.chaoxing.com/front/web/apps/reservepc/index",
-      "authentication": "Tenant/session-dependent reservepc app; without matching context the entry returns a local 303 error page",
+      "authentication": "Tenant/session-dependent reservepc app; without matching context the entry returns a local 303 error page; the 2026-11-03 captures contain no passport/CAS login exchange and no Cookie/Authorization header",
       "integration": "external_official_page_protocol_unverified",
-      "verification": "Existing user Edge has loaded the reservepc room list (A301, A402-A404, A501-A505); the bare URL returns a local 303 without tenant/session context, so that probe does not invalidate the live session. Current XHR/response shapes and cancel/check-in paths remain unverified; no write request was made."
+      "verification": "Two 93-entry HARs (one per tenant) captured the same read-only API set: reserve/info, user/view/flag, open/team, item/list/time, seat/person/role and dialog; they returned 8 (tenant A) and 23 (tenant B) reserve items, empty reserveUserList and loginStatus=true. No booking detail, cancel/check-in, error state, login acquisition or write was captured. The bare URL 303 does not invalidate the live session."
     },
     {
       "id": "campus_card_balance",

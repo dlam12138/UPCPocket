@@ -15,11 +15,11 @@ M1 的本机加密账密、脱敏账号状态、代次与失效/清理基础已�
 M4 前置的六个图书馆/空间预约入口研究已完成，见
 [图书馆与空间预约六入口接口研究](research/图书馆与空间预约六入口接口研究-20261103.md)。
 研究覆盖公开前端/入口与既有来源核对，并用只读 UI 观察确认求是 `reservepc` 已在现有 Edge
-加载研讨室列表；无 Cookie 的 303 探测不能代表现有会话不可用。另有用户授权的 26 条
-`libseat` 只读 HAR，已确认 filters/floors/stats2/settings/announce/当前预约为空；该 HAR
-不覆盖求是、nspace 或 Chaoxing。本机 Edge 没有 CDP 调试端点，未重启 Edge 或改调试配置，
-因此求是 `reservepc` 的真实 XHR/HAR 仍待补。`libseat` 仍建议作为 M4 唯一现有范围，
-`nspace` 与 Chaoxing 四入口分别需要独立业务验证或继续保留官方网页入口。
+加载研讨室列表；无 Cookie 的 303 探测不能代表现有会话不可用。用户另外提供了五份只读
+HAR：nspace 已到 venue/roomType/dates/roomList 浏览（6/11，2 页），seat/seatengine 仅到
+入口配置与空 current/near，reservepc 两租户分别到 8/23 个预约项且 user list 为空。六份 HAR
+都没有 CAS/passport 登录跳转或写请求，不能证明端到端统一认证或 token 获取。`libseat`
+仍建议作为 M4 唯一现有范围，`nspace` 与 Chaoxing 四入口继续作为独立后续范围。
 M4 功能实现仍暂停，等待用户确认范围。
 M1 保存成功只表示“已保存，尚未验证”，不改变当前发布版对学校接口的接入方式。
 
