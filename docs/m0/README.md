@@ -49,7 +49,7 @@
 - 9 个测试任务共 173 个测试，0 失败/错误/跳过（模块明细见[迁移记录](迁移记录.md)）。
 - `checkModuleBoundaries` 通过。
 - `:app:assembleDebug` 通过；`app` lint 0 error / 2 warning；5 个 feature 模块 lint
-  均 0 error，合计剩余 warning 与基线同类（`SmallSp` 3、`Overdraw` 2 等）。
+  均 0 error（card 3、power 2 个布局类 warning，classroom/library/focus 0）。
 - 模拟器完成旧基线 `73ac700` APK 覆盖安装到本轮 APK：DataStore 学号输入、Room v1
   专注记录和数据库打开均保留；Room identityHash 仍为
   `62e4b0998501030df70b77a392a012f5`。
