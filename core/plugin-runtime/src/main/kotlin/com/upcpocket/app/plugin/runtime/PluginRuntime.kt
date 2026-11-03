@@ -85,6 +85,39 @@ class ActivePlugins internal constructor(
         capabilitiesByPlugin[pluginId.value].orEmpty()
 
     fun capabilityIds(): Set<String> = capabilitiesById.keys
+
+    /**
+     * 在插件已激活后发生 UI 装配故障时，按“插件及其传递必需依赖”裁剪活动集合。
+     * 被裁剪插件的能力不会残留；独立插件保持原顺序与能力。
+     */
+    fun withoutPlugins(removed: Set<PluginId>): ActivePlugins {
+        if (removed.isEmpty()) return this
+        val failed = removed.mapTo(mutableSetOf()) { it.value }
+        var changed = true
+        while (changed) {
+            changed = false
+            ordered.forEach { plugin ->
+                val id = plugin.descriptor.id.value
+                if (id in failed) return@forEach
+                val requiredFailed = plugin.descriptor.dependencies.any {
+                    it.required && it.id.value in failed
+                }
+                if (requiredFailed) {
+                    failed += id
+                    changed = true
+                }
+            }
+        }
+        val kept = ordered.filter { it.descriptor.id.value !in failed }
+        val keptCapabilityIds = kept
+            .flatMap { capabilitiesByPlugin[it.descriptor.id.value].orEmpty() }
+            .toSet()
+        return ActivePlugins(
+            ordered = kept,
+            capabilitiesById = capabilitiesById.filterKeys { it in keptCapabilityIds },
+            capabilitiesByPlugin = capabilitiesByPlugin.filterKeys { it !in failed },
+        )
+    }
 }
 
 /**

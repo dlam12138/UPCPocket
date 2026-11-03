@@ -1,6 +1,9 @@
 package com.upcpocket.app.core
 
+import com.upcpocket.app.plugin.api.CapabilityKey
 import com.upcpocket.app.plugin.api.Plugin
+import com.upcpocket.app.plugin.api.PluginCapability
+import com.upcpocket.app.plugin.api.PluginDependency
 import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.runtime.PluginRuntime
@@ -75,6 +78,44 @@ class HostUiAssemblyTest {
         )
     }
 
+    @Test
+    fun `ui failure removes plugin and transitive dependents from active set`() {
+        val capability = CapabilityKey("fault.value", String::class.java)
+        val runtime = PluginRuntime()
+        runtime.register(
+            PluginDescriptor(
+                id = PluginId.parse("fault"),
+                version = "1.0.0",
+                capabilities = setOf("fault.value"),
+            ),
+        ) { FaultCapabilityPlugin(capability) }
+        runtime.register(
+            PluginDescriptor(
+                id = PluginId.parse("dependent"),
+                version = "1.0.0",
+                dependencies = listOf(PluginDependency(PluginId.parse("fault"))),
+            ),
+        ) { DependentPlugin() }
+        runtime.register(fakeDescriptor("healthy")) { HealthyPlugin() }
+        val started = runtime.start()
+
+        val resolution = HostUiAssembly.resolve(started.plugins)
+
+        assertEquals(
+            listOf("healthy"),
+            resolution.activePlugins.ordered.map { it.descriptor.id.value },
+        )
+        assertNull(resolution.activePlugins.capability(capability))
+        assertEquals(
+            listOf("healthy.entry"),
+            resolution.assembly.snapshot.entries.map { it.entryId.value },
+        )
+        assertEquals(
+            HostUiDiagnosticCode.UI_CONTRIBUTION_FAILED,
+            resolution.assembly.diagnostics.single().code,
+        )
+    }
+
     private fun fakeDescriptor(rawId: String) = PluginDescriptor(
         id = PluginId.parse(rawId),
         version = "1.0.0",
@@ -146,5 +187,32 @@ class HostUiAssemblyTest {
         override fun contribute(registry: PluginUiRegistry) {
             registry.addPage(PluginPage(PluginRouteId.parse("healthy.page"), pluginId) { })
         }
+    }
+
+    private class FaultCapabilityPlugin(
+        private val key: CapabilityKey<String>,
+    ) : Plugin, PluginUiContributor {
+        override val descriptor = PluginDescriptor(
+            id = PluginId.parse("fault"),
+            version = "1.0.0",
+            capabilities = setOf(key.id),
+        )
+        override val pluginId = descriptor.id
+
+        override fun capabilities(): List<PluginCapability> =
+            listOf(PluginCapability(key, "value"))
+
+        override fun contribute(registry: PluginUiRegistry) {
+            registry.addPage(PluginPage(PluginRouteId.parse("fault.page"), pluginId) { })
+            error("fault ui")
+        }
+    }
+
+    private class DependentPlugin : Plugin {
+        override val descriptor = PluginDescriptor(
+            id = PluginId.parse("dependent"),
+            version = "1.0.0",
+            dependencies = listOf(PluginDependency(PluginId.parse("fault"))),
+        )
     }
 }

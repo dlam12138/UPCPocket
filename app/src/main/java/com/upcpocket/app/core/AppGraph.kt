@@ -121,17 +121,25 @@ object AppGraph {
         pluginRuntime.start()
     }
 
-    val activePlugins: ActivePlugins get() = started.plugins
+    /**
+     * UI 解析可能把贡献失败的插件（及其传递必需依赖）从活动集合中裁剪；
+     * 宿主、生命周期和系统组件能力都以这里的最终集合为准。
+     */
+    private val uiResolution: HostUiResolution by lazy {
+        HostUiAssembly.resolve(started.plugins)
+    }
+
+    val activePlugins: ActivePlugins get() = uiResolution.activePlugins
 
     val pluginDiagnostics: List<PluginDiagnostic> get() = started.diagnostics
 
     /**
      * 已激活插件贡献的页面、首页入口、底部 tab 和设置区。
      *
-     * 每个插件的贡献在独立 fork 中校验后原子合并；失败插件的整份 UI 被丢弃，
+     * 每个插件的贡献在独立 fork 中校验后原子合并；失败插件整份 UI 被丢弃，
      * 不残留半套入口，也不会阻塞其他插件。
      */
-    private val uiAssembly: HostUiAssemblyResult by lazy { HostUiAssembly.build(activePlugins) }
+    private val uiAssembly: HostUiAssemblyResult get() = uiResolution.assembly
 
     val ui: PluginUiSnapshot get() = uiAssembly.snapshot
 
