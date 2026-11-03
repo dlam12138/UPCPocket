@@ -2,6 +2,7 @@ package com.upcpocket.app.data.prefs
 
 import android.content.Context
 import com.upcpocket.app.data.library.LibraryUser
+import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.crypto.KeystoreSessionCrypto
 import com.upcpocket.app.platform.crypto.SessionCrypto
 import org.json.JSONObject
@@ -169,13 +170,7 @@ class SchoolSessionStore(
          *
          * 目的是让用户能核对“现在登录的是不是我”，而不是把学工号完整写进界面或日志。
          */
-        fun maskAccount(raw: String): String {
-            val value = raw.trim()
-            if (value.isEmpty()) return ""
-            if (value.length <= 2) return value.first() + "•"
-            if (value.length <= 6) return value.first() + "••" + value.last()
-            return value.take(2) + "••••" + value.takeLast(2)
-        }
+        fun maskAccount(raw: String): String = AccountMask.mask(raw)
 
         private const val PREFS_NAME = "school_session"
         private const val KEY_LIBRARY = "library"

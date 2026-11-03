@@ -1,7 +1,7 @@
 package com.upcpocket.app.data.ecard
 
 import android.util.AtomicFile
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import java.io.File
 import java.math.BigDecimal
 import java.net.HttpURLConnection

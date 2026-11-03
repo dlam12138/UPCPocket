@@ -47,9 +47,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.RefreshInvalidatedException
 import com.upcpocket.app.data.power.ElectricityProtocol
 import com.upcpocket.app.data.power.ElectricityResult
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import com.upcpocket.app.widget.WidgetUpdates
 import java.time.Instant
 import java.time.ZoneId

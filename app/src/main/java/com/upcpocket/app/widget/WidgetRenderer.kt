@@ -6,7 +6,7 @@ import android.widget.RemoteViews
 import com.upcpocket.app.R
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.data.power.PowerSnapshot
-import com.upcpocket.app.data.prefs.SchoolSessionStore
+import com.upcpocket.app.platform.AccountMask
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -81,7 +81,7 @@ object WidgetRenderer {
             R.id.widget_card_account,
             context.getString(
                 R.string.widget_card_account,
-                SchoolSessionStore.maskAccount(snapshot.studentId),
+                AccountMask.mask(snapshot.studentId),
             ),
         )
         views.setTextViewText(

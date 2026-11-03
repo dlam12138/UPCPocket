@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
 import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
@@ -39,6 +40,7 @@ import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    cardService: CardBalanceService,
     onOpenElectricity: () -> Unit,
     onOpenClassrooms: () -> Unit,
     onOpenLibrary: () -> Unit,
@@ -81,7 +83,7 @@ fun HomeScreen(
             )
 
             SectionTitle("校园卡余额")
-            DirectCardBalanceSection()
+            DirectCardBalanceSection(service = cardService)
 
             Text(
                 text = "入口地址与开放条件会随学校调整；以学校官网通知为准。",

@@ -1,6 +1,6 @@
 package com.upcpocket.app.data.power
 
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import java.io.File
 import java.math.BigDecimal
 import kotlinx.coroutines.CompletableDeferred

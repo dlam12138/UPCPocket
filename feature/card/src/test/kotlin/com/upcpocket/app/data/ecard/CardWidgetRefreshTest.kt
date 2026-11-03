@@ -1,6 +1,6 @@
 package com.upcpocket.app.data.ecard
 
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers

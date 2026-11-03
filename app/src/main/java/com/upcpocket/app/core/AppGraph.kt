@@ -1,9 +1,10 @@
 package com.upcpocket.app.core
 
 import android.content.Context
+import com.upcpocket.app.card.CardBalanceService
+import com.upcpocket.app.card.CardCapabilities
+import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.data.db.AppDatabase
-import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
-import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.power.PowerReadingRepository
 import com.upcpocket.app.data.power.PowerSnapshotStore
@@ -16,6 +17,10 @@ import com.upcpocket.app.data.repo.FocusRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.PomodoroEngine
 import com.upcpocket.app.focus.PomodoroNotifications
+import com.upcpocket.app.plugin.runtime.ActivePlugins
+import com.upcpocket.app.plugin.runtime.PluginRuntime
+import com.upcpocket.app.plugin.runtime.PluginStartResult
+import com.upcpocket.app.widget.WidgetUpdates
 import java.io.File
 import kotlinx.serialization.json.Json
 
@@ -68,16 +73,46 @@ object AppGraph {
     }
 
     /**
-     * 校园卡余额的唯一进程内实例。
+     * 校园卡余额插件。
      *
-     * 页面、桌面组件与 WorkManager 刷新都必须用它：同一把锁、同一份快照 Flow，
-     * 避免两个 AtomicFile 同时写 `card-balance-v1.json`，也避免组件用旧目标覆盖页面刚查到的结果。
-     * 文件格式仍是既有的 `card-balance-v1.json`，升级不会丢旧缓存。
+     * 插件自己持有协议、快照与 Repository；宿主只提供学号持久化和组件刷新回调。
+     * 快照文件仍是既有的 `card-balance-v1.json`。
      */
-    val directCardBalanceRepository: DirectCardBalanceRepository by lazy {
-        DirectCardBalanceRepository(
-            DirectCardBalanceStore(File(appContext.noBackupFilesDir, "card-balance-v1.json")),
+    private val cardPlugin: CardPlugin by lazy {
+        CardPlugin(
+            context = appContext,
+            inputStore = cardInputRepository,
+            onSnapshotChanged = { WidgetUpdates.requestCard(appContext) },
         )
+    }
+
+    private val pluginRuntime: PluginRuntime by lazy {
+        PluginRuntime().also { runtime ->
+            runtime.register(cardPlugin.descriptor) { cardPlugin }
+        }
+    }
+
+    /**
+     * 显式装配结果。启动时校验插件描述符、能力声明与依赖；失败则在开发/发行环境
+     * 都明确抛错，不静默留下半注册状态。
+     */
+    val activePlugins: ActivePlugins by lazy {
+        when (val result = pluginRuntime.start()) {
+            is PluginStartResult.Active -> result.plugins
+            is PluginStartResult.Invalid -> error(
+                "插件装配失败：" + result.diagnostics.joinToString { "${it.code}:${it.pluginId}" },
+            )
+        }
+    }
+
+    /** 页面只通过插件能力取业务入口，不再直接持有余额 Repository。 */
+    val cardService: CardBalanceService
+        get() = activePlugins.capability(CardCapabilities.balance)
+            ?: error("余额插件未激活")
+
+    /** 启动装配；由 Application 在设置 Context 后调用。 */
+    fun startPlugins() {
+        activePlugins
     }
 
     /**

@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -41,7 +41,7 @@ class WidgetRefreshWorker(
         try {
             withTimeout(NETWORK_BUDGET_MS) {
                 when (kind) {
-                    WidgetKind.CARD -> AppGraph.directCardBalanceRepository.refreshCurrent()
+                    WidgetKind.CARD -> AppGraph.cardService.refreshCurrent()
                     WidgetKind.POWER -> AppGraph.powerReadingRepository.refreshCurrent()
                 }
             }

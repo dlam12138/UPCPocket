@@ -1,5 +1,6 @@
 package com.upcpocket.app.data.repo
 
+import com.upcpocket.app.card.CardInputStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -14,16 +15,16 @@ import kotlinx.coroutines.flow.map
  */
 class CardInputRepository(
     private val prefs: UiPrefsStore,
-) {
-    val studentId: Flow<String> = prefs.flow
+) : CardInputStore {
+    override val studentId: Flow<String> = prefs.flow
         .map { it.cardStudentId }
         .distinctUntilChanged()
 
-    suspend fun save(studentId: String) {
+    override suspend fun save(studentId: String) {
         prefs.setCardStudentId(studentId.trim())
     }
 
-    suspend fun clear() {
+    override suspend fun clear() {
         prefs.clearCardStudentId()
     }
 }

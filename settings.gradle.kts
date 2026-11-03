@@ -38,4 +38,5 @@ include(
     ":core:plugin-api",
     ":core:plugin-runtime",
     ":core:plugin-ui",
+    ":feature:card",
 )

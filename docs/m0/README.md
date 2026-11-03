@@ -17,8 +17,10 @@
 - M0.2 插件契约与运行时：完成最小版本，包含 `core:plugin-api`、`core:plugin-runtime`、
   `core:plugin-ui` 与 Gradle 依赖边界检查。
 - M0.3 平台/设计系统抽离：部分完成。`core:designsystem` 与 `core:platform` 已建立，
-  主题、通用组件和 Keystore 加解密已迁出；`AppGraph` 尚未收缩。
-- M0.4—M0.7：未开始。
+  主题、通用组件和 Keystore 加解密已迁出。
+- M0.4 余额纵向迁移：完成。数据、页面与插件装配已迁入 `feature:card`，`AppGraph`
+  通过 `PluginRuntime` 解析 `card.balance`；组件 Provider 暂留宿主。
+- M0.5—M0.7：未开始。
 
-`app` 目前依赖新的 core 模块，但尚未注册任何插件；首页、更多页与导航仍是现有
-硬编码实现，业务 Repository 仍集中在 `AppGraph`。不能据此声称现有功能已经插件化。
+`app` 已注册 card 插件；电费、图书馆、专注仍在 app 与 `AppGraph` 中，首页和更多页
+仍由宿主硬编码入口。不能据此声称全部功能已经插件化。

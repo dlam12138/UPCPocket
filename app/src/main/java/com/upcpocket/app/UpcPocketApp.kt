@@ -24,6 +24,7 @@ class UpcPocketApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        AppGraph.startPlugins()
         AppGraph.pomodoroNotifications.ensureChannels()
 
         // 仅调试包开启 WebView 远程调试，便于核对图书馆的官方登录页；

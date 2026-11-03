@@ -31,7 +31,7 @@ object WidgetUpdates {
     }
 
     fun hasTargetNow(kind: WidgetKind): Boolean = when (kind) {
-        WidgetKind.CARD -> AppGraph.directCardBalanceRepository.cachedBlocking() != null
+        WidgetKind.CARD -> AppGraph.cardService.cachedBlocking() != null
         WidgetKind.POWER -> AppGraph.powerReadingRepository.cachedBlocking() != null
     }
 
@@ -47,7 +47,7 @@ object WidgetUpdates {
 
         when (kind) {
             WidgetKind.CARD -> {
-                val snapshot = AppGraph.directCardBalanceRepository.cachedBlocking()
+                val snapshot = AppGraph.cardService.cachedBlocking()
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
@@ -94,7 +94,7 @@ object WidgetUpdates {
 
         when (kind) {
             WidgetKind.CARD -> {
-                val snapshot = AppGraph.directCardBalanceRepository.cached()
+                val snapshot = AppGraph.cardService.cached()
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,

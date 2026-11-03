@@ -43,6 +43,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.campus.CampusScreen
 import com.upcpocket.app.ui.classroom.FreeClassroomScreen
@@ -131,6 +132,7 @@ fun AppNav(
                 ) {
                     composable(Destination.HOME.route) {
                         HomeScreen(
+                            cardService = AppGraph.cardService,
                             onOpenElectricity = { navController.navigate(AppRoutes.ELECTRICITY) },
                             onOpenClassrooms = { navController.navigate(AppRoutes.FREE_CLASSROOMS) },
                             onOpenLibrary = { navController.navigate(AppRoutes.LIBRARY_SEAT) },

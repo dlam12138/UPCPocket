@@ -1,6 +1,6 @@
 package com.upcpocket.app.data.power
 
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers

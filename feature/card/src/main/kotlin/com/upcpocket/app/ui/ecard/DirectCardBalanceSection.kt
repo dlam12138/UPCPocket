@@ -22,16 +22,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.RefreshInvalidatedException
+import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.data.ecard.DirectCardBalanceProtocol
-import com.upcpocket.app.data.prefs.SchoolSessionStore
+import com.upcpocket.app.platform.AccountMask
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import com.upcpocket.app.ui.components.GlassCard
-import com.upcpocket.app.widget.WidgetUpdates
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -42,17 +40,17 @@ import kotlinx.coroutines.launch
  * 校园卡余额功能区（直接嵌在首页，不是二级页面）。
  *
  * 只做一件事：输入本人学号 → 查询/刷新 → 余额与过渡余额。
- * 学号通过 [AppGraph.cardInputRepository] 独立持久保存：没有查询成功也能在重启后回填；
+ * 学号由宿主提供的 [CardBalanceService] 独立持久保存：没有查询成功也能在重启后回填；
  * 余额快照另存于 `card-balance-v1.json`，两者互不覆盖。输入变化时旧快照仍带原学号与时间。
  */
 @Composable
-fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
-    val context = LocalContext.current.applicationContext
-    // 页面与桌面组件共用同一个仓库实例：同一份快照 Flow、同一把写锁。
-    val repository = AppGraph.directCardBalanceRepository
-    val savedId by AppGraph.cardInputRepository.studentId
-        .collectAsStateWithLifecycle(initialValue = null)
-    val snapshot by repository.snapshot.collectAsStateWithLifecycle()
+fun DirectCardBalanceSection(
+    service: CardBalanceService,
+    modifier: Modifier = Modifier,
+) {
+    val savedId by service.savedStudentId
+        .collectAsStateWithLifecycle(initialValue = "")
+    val snapshot by service.snapshot.collectAsStateWithLifecycle(initialValue = null)
 
     var input by rememberSaveable { mutableStateOf("") }
     var hydrated by rememberSaveable { mutableStateOf(false) }
@@ -62,21 +60,21 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
 
     fun persist(value: String) {
-        scope.launch { AppGraph.cardInputRepository.save(value) }
+        scope.launch { service.saveInput(value) }
     }
 
     // 只回填一次；优先用已保存的输入，输入为空时用最后一次成功快照的学号，
     // 这样从桌面组件点进来也能直接看到上次结果。用户自己改过输入后不再覆盖。
     LaunchedEffect(savedId, snapshot) {
         if (hydrated || input.isNotBlank()) return@LaunchedEffect
-        val saved = savedId?.takeIf { it.isNotBlank() }
+        val saved = savedId.takeIf { it.isNotBlank() }
         val value = saved ?: snapshot?.studentId ?: return@LaunchedEffect
         input = value
         hydrated = true
     }
     LaunchedEffect(Unit) {
         try {
-            repository.cached()
+            service.cached()
         } finally {
             loading = false
         }
@@ -90,10 +88,8 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
         fresh = false
         scope.launch {
             try {
-                repository.refresh(requestedId)
+                service.refresh(requestedId)
                 fresh = true
-                // 页面查询成功后立即把同一份成功快照推给桌面组件。
-                WidgetUpdates.requestCard(context)
             } catch (_: RefreshInvalidatedException) {
                 // 查询途中记录被清除：静默丢弃，不能让旧结果复活。
                 fresh = false
@@ -112,12 +108,10 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
         loading = true
         scope.launch {
             try {
-                repository.clear()
-                AppGraph.cardInputRepository.clear()
+                service.clear()
                 input = ""
                 error = null
                 fresh = false
-                WidgetUpdates.requestCard(context)
             } finally {
                 loading = false
             }
@@ -174,7 +168,7 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
                             if (fresh) "本次成功读取" else "上次成功读取（未更新）",
                             style = MaterialTheme.typography.labelLarge,
                         )
-                        Text("学号：${SchoolSessionStore.maskAccount(data.studentId)}")
+                        Text("学号：${AccountMask.mask(data.studentId)}")
                         Text("校园卡余额", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "${data.balanceText} 元",
@@ -194,7 +188,7 @@ fun DirectCardBalanceSection(modifier: Modifier = Modifier) {
                 }
                 if (data.studentId != input.trim()) {
                     Text(
-                        "上方是学号 ${SchoolSessionStore.maskAccount(data.studentId)} 的旧记录；" +
+                        "上方是学号 ${AccountMask.mask(data.studentId)} 的旧记录；" +
                             "当前输入的学号尚未查询成功。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,

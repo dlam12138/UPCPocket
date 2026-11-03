@@ -119,6 +119,9 @@ ksp {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
+    implementation(project(":core:plugin-api"))
+    implementation(project(":core:plugin-runtime"))
+    implementation(project(":feature:card"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
