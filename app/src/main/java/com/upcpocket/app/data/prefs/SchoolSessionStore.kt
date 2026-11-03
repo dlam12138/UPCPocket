@@ -1,15 +1,9 @@
 package com.upcpocket.app.data.prefs
 
 import android.content.Context
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
-import android.util.Base64
 import com.upcpocket.app.data.library.LibraryUser
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
+import com.upcpocket.app.platform.crypto.KeystoreSessionCrypto
+import com.upcpocket.app.platform.crypto.SessionCrypto
 import org.json.JSONObject
 
 /**
@@ -186,59 +180,5 @@ class SchoolSessionStore(
         private const val PREFS_NAME = "school_session"
         private const val KEY_LIBRARY = "library"
         private const val KEY_POWER_FORM = "power_form"
-    }
-}
-
-/** 会话密文的加解密接口；生产实现固定是 [KeystoreSessionCrypto]。 */
-interface SessionCrypto {
-    fun encrypt(plain: String): String
-    fun decrypt(stored: String): String
-}
-
-/**
- * Android Keystore 里的 AES-GCM 实现。
- *
- * 密钥不可导出、不随备份迁移；密钥被系统清掉后 [decrypt] 会抛异常，
- * 调用方据此只删掉**对应那一条**密文并让用户重登。
- */
-object KeystoreSessionCrypto : SessionCrypto {
-    private const val KEY_ALIAS = "upcpocket.session.v2"
-    private const val KEYSTORE = "AndroidKeyStore"
-    private const val TRANSFORMATION = "AES/GCM/NoPadding"
-    private const val IV_BYTES = 12
-
-    override fun encrypt(plain: String): String {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-        val iv = cipher.iv
-        val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
-    }
-
-    override fun decrypt(stored: String): String {
-        val bytes = Base64.decode(stored, Base64.NO_WRAP)
-        require(bytes.size > IV_BYTES) { "密文长度异常" }
-        val iv = bytes.copyOfRange(0, IV_BYTES)
-        val body = bytes.copyOfRange(IV_BYTES, bytes.size)
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(body), Charsets.UTF_8)
-    }
-
-    private fun secretKey(): SecretKey {
-        val store = KeyStore.getInstance(KEYSTORE).apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, KEYSTORE)
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .build(),
-        )
-        return generator.generateKey()
     }
 }

@@ -8,8 +8,8 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
-import com.upcpocket.app.data.prefs.DarkMode
-import com.upcpocket.app.data.prefs.ThemePreset
+import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.ThemePreset
 
 /**
  * 全应用主题。

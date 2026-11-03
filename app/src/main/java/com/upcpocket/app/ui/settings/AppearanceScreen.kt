@@ -44,9 +44,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.prefs.DarkMode
-import com.upcpocket.app.data.prefs.ThemePreset
 import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.ui.theme.MaterialYouScheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

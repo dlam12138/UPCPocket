@@ -33,6 +33,8 @@ dependencyResolutionManagement {
 rootProject.name = "UPCPocket"
 include(
     ":app",
+    ":core:designsystem",
+    ":core:platform",
     ":core:plugin-api",
     ":core:plugin-runtime",
     ":core:plugin-ui",
