@@ -75,7 +75,7 @@ class HostPluginUiTest {
         val tabs = AppGraph.ui.bottomNav
         assertEquals(listOf("focus.tab"), tabs.map { it.entryId.value })
         assertEquals("专注", tabs.single().label)
-        assertEquals("focus.main", tabs.single().route.value)
+        assertEquals("focus", tabs.single().route.value)
         assertEquals(10, tabs.single().order)
     }
 
@@ -88,7 +88,7 @@ class HostPluginUiTest {
                 "classroom.free",
                 "library.seat",
                 "library.login",
-                "focus.main",
+                "focus",
                 "focus.stats",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),

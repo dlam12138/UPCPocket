@@ -82,7 +82,7 @@ class ReducedAssemblyTest {
                 "classroom.free",
                 "library.seat",
                 "library.login",
-                "focus.main",
+                "focus",
                 "focus.stats",
             ),
             ui.pages.map { it.routeId.value }.toSet(),

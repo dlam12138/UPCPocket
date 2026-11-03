@@ -27,7 +27,8 @@ object FocusCapabilities {
 
 val FOCUS_PLUGIN_ID: PluginId = PluginId.parse("focus")
 
-val FOCUS_MAIN_ROUTE: PluginRouteId = PluginRouteId.parse("focus.main")
+/** 保留迁移前的 `focus` 路由，避免升级后恢复的返回栈找不到 tab 页面。 */
+val FOCUS_MAIN_ROUTE: PluginRouteId = PluginRouteId.parse("focus")
 
 val FOCUS_STATS_ROUTE: PluginRouteId = PluginRouteId.parse("focus.stats")
 

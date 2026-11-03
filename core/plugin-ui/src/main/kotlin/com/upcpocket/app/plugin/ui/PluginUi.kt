@@ -24,7 +24,8 @@ value class PluginRouteId private constructor(val value: String) {
     override fun toString(): String = value
 
     companion object {
-        private val PATTERN = Regex("[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)+")
+        // 保持迁移前的单段路由（如 "focus"）仍可恢复；新路由仍建议用点分名。
+        private val PATTERN = Regex("[a-z][a-z0-9]*(\\.[a-z][a-z0-9-]*)*")
 
         fun parse(raw: String): PluginRouteId {
             require(raw.matches(PATTERN)) { "非法路由 ID：需要小写点分名" }

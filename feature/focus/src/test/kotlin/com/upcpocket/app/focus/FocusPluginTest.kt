@@ -46,7 +46,7 @@ class FocusPluginTest {
 
         val ui = PluginUiRegistry().also(plugin::contribute).build()
         assertEquals(listOf("focus.tab"), ui.bottomNav.map { it.entryId.value })
-        assertEquals("focus.main", ui.bottomNav.single().route.value)
+        assertEquals("focus", ui.bottomNav.single().route.value)
         assertEquals(listOf("focus.stats"), ui.entriesFor(UiSurface.MORE_LEARNING).map { it.entryId.value })
         assertTrue(ui.pages.any { it.routeId == FOCUS_MAIN_ROUTE })
         assertTrue(ui.pages.any { it.routeId == FOCUS_STATS_ROUTE })
