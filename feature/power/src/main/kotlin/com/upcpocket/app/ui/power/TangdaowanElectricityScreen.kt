@@ -42,15 +42,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.power.ElectricityProtocol
 import com.upcpocket.app.data.power.ElectricityResult
 import com.upcpocket.app.platform.RefreshInvalidatedException
-import com.upcpocket.app.widget.WidgetUpdates
+import com.upcpocket.app.power.PowerService
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -62,7 +60,7 @@ import kotlinx.coroutines.launch
  *
  * 流程只有一件事：选楼号 → 填房间号 → 查询结果。
  *
- * 输入（楼号＋房间号）通过 [AppGraph.powerInputRepository] 持久保存，进入页面和进程重启
+ * 输入（楼号＋房间号）通过 [PowerService] 持久保存，进入页面和进程重启
  * 都会回填；保存与查询成功无关，查询失败或断网不会清空。用户改动输入时旧结果立即隐藏，
  * 结果卡片也自带楼号/房间号，不会把旧房间的电量挂到新输入下面。
  *
@@ -71,12 +69,10 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TangdaowanElectricityScreen(onBack: () -> Unit) {
-    val context = LocalContext.current.applicationContext
+fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val repository = AppGraph.powerReadingRepository
-    val snapshot by repository.snapshot.collectAsStateWithLifecycle()
-    val savedInput by AppGraph.powerInputRepository.input
+    val snapshot by service.snapshot.collectAsStateWithLifecycle(initialValue = null)
+    val savedInput by service.savedInput
         .collectAsStateWithLifecycle(initialValue = null)
 
     var hydrated by rememberSaveable { mutableStateOf(false) }
@@ -94,7 +90,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
     var requestId by remember { mutableIntStateOf(0) }
 
     fun persist(buildingValue: String = building, roomValue: String = room) {
-        scope.launch { AppGraph.powerInputRepository.save(buildingValue, roomValue) }
+        scope.launch { service.saveInput(buildingValue, roomValue) }
     }
 
     /** 输入一变就作废旧结果，避免旧房间的电量被当成新输入的结果。 */
@@ -129,9 +125,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         invalidateResult()
         scope.launch {
             // 清除输入也清除“最后一次成功查询”，否则桌面组件会继续显示旧房间。
-            repository.clear()
-            AppGraph.powerInputRepository.clear()
-            WidgetUpdates.requestPower(context)
+            service.clear()
         }
     }
 
@@ -141,7 +135,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         buildingsError = null
         scope.launch {
             try {
-                buildings = AppGraph.tangdaowanElectricityService.buildings()
+                buildings = service.buildings()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -173,7 +167,7 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
     }
     LaunchedEffect(Unit) {
         // 先把上次成功快照读进共享 Flow，页面进入即可显示最近一次结果。
-        repository.cached()
+        service.cached()
     }
 
     fun runQuery() {
@@ -195,13 +189,11 @@ fun TangdaowanElectricityScreen(onBack: () -> Unit) {
         systemNo = ""
         scope.launch {
             try {
-                val result = repository.query(selected, target)
+                val result = service.query(selected, target)
                 if (id != requestId || building != selected || room.trim() != target) return@launch
                 when (result) {
                     is ElectricityResult.Success -> {
                         systemNo = result.reading.systemNo
-                        // 成功分支已写入共享快照；立即把同一份值推给桌面组件。
-                        WidgetUpdates.requestPower(context)
                     }
                     is ElectricityResult.Ambiguous -> {
                         candidates = result.candidates

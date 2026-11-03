@@ -170,7 +170,10 @@ fun AppNav(
                         )
                     }
                     composable(AppRoutes.POWER_TANGDAOWAN) {
-                        TangdaowanElectricityScreen(onBack = { navController.popBackStack() })
+                        TangdaowanElectricityScreen(
+                            service = AppGraph.powerService,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                     composable(AppRoutes.APPEARANCE) {
                         AppearanceScreen(onBack = { navController.popBackStack() })

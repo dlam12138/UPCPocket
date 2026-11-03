@@ -122,6 +122,7 @@ dependencies {
     implementation(project(":core:plugin-api"))
     implementation(project(":core:plugin-runtime"))
     implementation(project(":feature:card"))
+    implementation(project(":feature:power"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

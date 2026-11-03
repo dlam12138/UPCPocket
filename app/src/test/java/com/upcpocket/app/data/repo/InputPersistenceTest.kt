@@ -10,6 +10,7 @@ import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.data.power.ElectricityReading
 import com.upcpocket.app.data.prefs.UiPrefsStore
+import com.upcpocket.app.power.PowerInput
 import java.io.File
 import java.math.BigDecimal
 import kotlinx.coroutines.CoroutineScope

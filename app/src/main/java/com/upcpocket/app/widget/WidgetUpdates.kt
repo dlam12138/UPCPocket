@@ -32,7 +32,7 @@ object WidgetUpdates {
 
     fun hasTargetNow(kind: WidgetKind): Boolean = when (kind) {
         WidgetKind.CARD -> AppGraph.cardService.cachedBlocking() != null
-        WidgetKind.POWER -> AppGraph.powerReadingRepository.cachedBlocking() != null
+        WidgetKind.POWER -> AppGraph.powerService.cachedBlocking() != null
     }
 
     /** 只读缓存，供 BroadcastReceiver 主线程快速渲染；不做网络请求。 */
@@ -64,7 +64,7 @@ object WidgetUpdates {
                 }
             }
             WidgetKind.POWER -> {
-                val snapshot = AppGraph.powerReadingRepository.cachedBlocking()
+                val snapshot = AppGraph.powerService.cachedBlocking()
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
@@ -111,7 +111,7 @@ object WidgetUpdates {
                 }
             }
             WidgetKind.POWER -> {
-                val snapshot = AppGraph.powerReadingRepository.cached()
+                val snapshot = AppGraph.powerService.cached()
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,

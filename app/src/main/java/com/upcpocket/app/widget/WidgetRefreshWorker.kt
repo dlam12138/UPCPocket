@@ -42,7 +42,7 @@ class WidgetRefreshWorker(
             withTimeout(NETWORK_BUDGET_MS) {
                 when (kind) {
                     WidgetKind.CARD -> AppGraph.cardService.refreshCurrent()
-                    WidgetKind.POWER -> AppGraph.powerReadingRepository.refreshCurrent()
+                    WidgetKind.POWER -> AppGraph.powerService.refreshCurrent()
                 }
             }
             // 没有目标或目标已被清除：保持“待设置”，不编造失败。

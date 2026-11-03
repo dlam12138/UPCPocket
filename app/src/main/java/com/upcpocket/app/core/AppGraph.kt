@@ -6,9 +6,6 @@ import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.data.db.AppDatabase
 import com.upcpocket.app.data.library.LibrarySeatRepository
-import com.upcpocket.app.data.power.PowerReadingRepository
-import com.upcpocket.app.data.power.PowerSnapshotStore
-import com.upcpocket.app.data.power.TangdaowanElectricityService
 import com.upcpocket.app.data.prefs.FocusPrefsStore
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
@@ -20,8 +17,10 @@ import com.upcpocket.app.focus.PomodoroNotifications
 import com.upcpocket.app.plugin.runtime.ActivePlugins
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import com.upcpocket.app.plugin.runtime.PluginStartResult
+import com.upcpocket.app.power.PowerCapabilities
+import com.upcpocket.app.power.PowerPlugin
+import com.upcpocket.app.power.PowerService
 import com.upcpocket.app.widget.WidgetUpdates
-import java.io.File
 import kotlinx.serialization.json.Json
 
 /**
@@ -67,11 +66,6 @@ object AppGraph {
      */
     val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
 
-    /** 唐岛湾宿舍剩余电量：无需登录的只读查询。 */
-    val tangdaowanElectricityService: TangdaowanElectricityService by lazy {
-        TangdaowanElectricityService()
-    }
-
     /**
      * 校园卡余额插件。
      *
@@ -86,9 +80,24 @@ object AppGraph {
         )
     }
 
+    /**
+     * 唐岛湾电量插件。
+     *
+     * 插件自己持有协议、快照与 Repository；宿主只提供输入持久化和组件刷新回调。
+     * 快照文件仍是既有的 `power-reading-v1.json`。
+     */
+    private val powerPlugin: PowerPlugin by lazy {
+        PowerPlugin(
+            context = appContext,
+            inputStore = powerInputRepository,
+            onSnapshotChanged = { WidgetUpdates.requestPower(appContext) },
+        )
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
+            runtime.register(powerPlugin.descriptor) { powerPlugin }
         }
     }
 
@@ -110,22 +119,14 @@ object AppGraph {
         get() = activePlugins.capability(CardCapabilities.balance)
             ?: error("余额插件未激活")
 
+    /** 电量页面与组件共用同一个插件服务。 */
+    val powerService: PowerService
+        get() = activePlugins.capability(PowerCapabilities.tangdaowan)
+            ?: error("电量插件未激活")
+
     /** 启动装配；由 Application 在设置 Context 后调用。 */
     fun startPlugins() {
         activePlugins
-    }
-
-    /**
-     * 唐岛湾剩余电量的唯一进程内实例。
-     *
-     * 成功分支才写 `power-reading-v1.json`；页面和组件共享同一份成功快照与目标。
-     */
-    val powerReadingRepository: PowerReadingRepository by lazy {
-        PowerReadingRepository(
-            PowerSnapshotStore(File(appContext.noBackupFilesDir, "power-reading-v1.json")),
-        ) { building, room ->
-            tangdaowanElectricityService.query(building, room)
-        }
     }
 
     /**
