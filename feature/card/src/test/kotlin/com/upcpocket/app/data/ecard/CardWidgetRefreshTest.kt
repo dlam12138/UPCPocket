@@ -434,6 +434,87 @@ class CardWidgetRefreshTest {
     }
 
     @Test
+    fun `suspended cached read finishing after switch does not refill old memory`() = runBlocking {
+        val dir = directory()
+        val account = FakeAccountIdentity().also { it.bind(accountA, id) }
+        DirectCardBalanceRepository(
+            store = store(dir),
+            account = account,
+            request = { bodyForForm(it) },
+        ).refreshCurrent()
+
+        var switched = false
+        val repo = DirectCardBalanceRepository(
+            store = store(dir),
+            account = account,
+            afterCacheRead = {
+                if (!switched) {
+                    switched = true
+                    account.bind(accountB, otherId, generation = 2)
+                }
+            },
+            prepareForCacheRead = {},
+            request = { error("late cache read must not query") },
+        )
+
+        assertNull(repo.cached())
+        // 删除 A 的磁盘快照后回到 A；若迟到读取把 A 回填进内存，这里会错误返回金额。
+        assertTrue(File(dir, "card-balance-v2.json").delete())
+        account.bind(accountA, id, generation = 3)
+        assertNull(repo.cached())
+        assertNull(repo.snapshot.first())
+    }
+
+    @Test
+    fun `blocking cached read finishing after switch does not refill old memory`() {
+        val dir = directory()
+        val account = FakeAccountIdentity().also { it.bind(accountA, id) }
+        runBlocking {
+            DirectCardBalanceRepository(
+                store = store(dir),
+                account = account,
+                request = { bodyForForm(it) },
+            ).refreshCurrent()
+        }
+
+        var switched = false
+        val repo = DirectCardBalanceRepository(
+            store = store(dir),
+            account = account,
+            afterBlockingCacheRead = {
+                if (!switched) {
+                    switched = true
+                    account.bind(accountB, otherId, generation = 2)
+                }
+            },
+            request = { error("late cache read must not query") },
+        )
+
+        assertNull(repo.cachedBlocking())
+        assertTrue(File(dir, "card-balance-v2.json").delete())
+        account.bind(accountA, id, generation = 3)
+        assertNull(repo.cachedBlocking())
+    }
+
+    @Test
+    fun `widget read returns no A snapshot after switch even if cache file remains`() = runBlocking {
+        val dir = directory()
+        val account = FakeAccountIdentity().also { it.bind(accountA, id) }
+        val repo = DirectCardBalanceRepository(
+            store = store(dir),
+            account = account,
+            request = { bodyForForm(it) },
+        )
+        repo.refreshCurrent()
+        account.bind(accountB, otherId, generation = 2)
+        // 同步读取不迁移、不展示 A；随后带迁移的读取会隔离孤儿 v2。
+        assertNull(repo.cachedBlocking())
+        assertTrue(File(dir, "card-balance-v2.json").exists())
+        assertNull(repo.cached())
+        assertFalse(File(dir, "card-balance-v2.json").exists())
+    }
+
+    @Test
     fun `restart with another account never exposes owned A cache`() = runBlocking {
         val dir = directory()
         val account = FakeAccountIdentity().also { it.bind(accountA, id) }

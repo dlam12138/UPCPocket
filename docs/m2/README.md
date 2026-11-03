@@ -16,6 +16,7 @@ M2 只收束余额绑定交互与数据归属，页面整体布局和视觉仍�
 | 已保存未验证按学号查询，余额成功不等于 CAS/密码正确 | 完成；页面与文档明确标注 |
 | 余额与过渡余额分别展示；失败保留同账号历史值 + 绝对时间 | 完成；页面失败时明确标注历史缓存 |
 | 组件无历史快照也可点击刷新 | 完成；绑定可用即允许，刷新按钮不再等旧快照 |
+| 组件最终发布使用版本校验与串行门闩 | 完成；绑定/账号代次/业务代次/快照版本，读后复核，旧读取不能越过新空态 |
 | 换号/删号立即撤下旧余额；同号改密保留历史但拒绝旧请求 | 完成；JVM 并发测试 |
 | 查询捕获绑定 + 账号代次 + 业务代次，返回/落盘/刷新前校验 | 完成；取消协程不作为唯一保护 |
 | 启动 LOADING 时 Receiver/Worker 不用旧快照回填目标 | 完成；缓存读取也要求当前绑定 |
@@ -114,6 +115,30 @@ FIRST_SAVE 没有“上一账号”可清理，但仍会按上述规则核对旧
   不变；任务策略使用 `REPLACE`，避免换号后旧任务仍在取消/收尾时新绑定刷新被 `KEEP` 丢弃。
   广播层的 `tryBegin` 仍合并连续点击。
 
+### 组件发布时序
+
+仅“读缓存后检查一次”不足以阻止旧读取覆盖新空态：旧 `updateKind` 可以在换号/删除/清缓存
+之后才完成 `cached()`，再用旧 `CardBindingStatus(A)` 渲染并写回桌面。M2 收尾增加
+`CardWidgetPublisher` 作为唯一发布门闩：
+
+- 每次发布先取得递增 ticket，**在锁外**读取状态并允许挂起/读文件；旧读取可以慢慢完成。
+- 真正 `updateAppWidget` 前在短 `synchronized` 临界区内同时比对 ticket 与完整
+  `CardWidgetRevision`：可用状态 + 绑定 token（内部 accountId:凭据代次）+ 业务代次 +
+  内存快照版本。任一项变化即丢弃，不渲染。
+- 新状态变化会取得更大的 ticket；若旧发布已经先写入，新发布在锁之后覆盖，最终桌面只保留
+  最新一次。旧 ticket 在锁外返回时不会越过已经发布的新空态。
+- `CardBalanceService.readWidgetState` / `readWidgetStateBlocking` 读取前后复核
+  status/businessEpoch/snapshotRevision；不稳定时重读，仍不稳定则退回“当前绑定 + 空快照”，
+  不显示旧值。`widgetStateNow()` 也复用该稳定读取。
+- `DirectCardBalanceRepository.cached()` / `cachedBlocking()` 在读取结束后复核绑定、业务代次
+  和快照版本；迟到读取返回 null，不把旧快照回填进内存。`refreshCurrent()` 落盘后也再次复核，
+  旧请求不能把结果作为新值发布。
+- Provider 的 `onUpdate`/resize（`updateKindNow`）、`requestCard` 的 suspend 刷新
+  （`updateKind`）、Worker 的 finally 重绘（`updateKind`）全部走同一发布器；校园卡分支不存在
+  直接 `updateAppWidget` 的旁路。电量组件保持原路径。
+- 读缓存与渲染不在锁内；Provider 同步路径只做有界的 8 KB 缓存读取，不等待协程 Mutex 或
+  网络。锁定区只做版本比较与一次 sink 写入。
+
 ## 隐私与网络边界
 
 - 余额接口是现有 HTTP 接口，学号与金额在传输中不受 HTTPS 保护；迁移/绑定不改变这一事实。
@@ -129,6 +154,9 @@ FIRST_SAVE 没有“上一账号”可清理，但仍会按上述规则核对旧
 - 未向真实校园余额接口发起验证；本轮使用虚构学号、`FakeAccountIdentity` 和内存 HTTP
   fixture。真实接口的可用性、HTTP 行为与学校策略仍需在授权范围内单独确认。
 - 未在设备上注入“WorkManager 旧任务在换号后执行”或“清理中杀进程”的故障；对应语义由
-  JVM 并发/失败测试覆盖。
+  JVM 并发/失败测试覆盖。组件发布竞态由可注入 publisher/read 的确定性测试覆盖，没有在设备
+  上强行制造线程交错。
+- Provider 的同步 onUpdate/resize 路径只读取有界的 8 KB 缓存文件；未迁移旧文件、未联网、
+  未等待协程 Mutex，但仍是主线程上的小文件读取，沿用原有实现边界。
 - 未执行 release/R8、真机或其他桌面。M2 不改变 2×2 布局与视觉，M5 再统一处理。
 - M3 课表、M4 图书馆统一认证和石光 e 站通不在本阶段。

@@ -278,10 +278,15 @@ class DirectCardBalanceStore(directory: File) {
  * 一次查询捕获 `(accountId, studentId, credentialGeneration, businessEpoch)`，
  * 请求返回、落盘和通知前都要再次核对。取消协程不能替代该核对。
  */
-class DirectCardBalanceRepository(
+class DirectCardBalanceRepository internal constructor(
     private val store: DirectCardBalanceStore,
     private val account: SchoolAccountStudentIdentityReader,
     private val clock: () -> Long = System::currentTimeMillis,
+    // 测试注入点：生产默认 no-op；用于确定性地在“缓存已读、尚未发布”时切换账号/清理。
+    private val afterCacheRead: suspend () -> Unit = {},
+    private val afterBlockingCacheRead: () -> Unit = {},
+    // 测试可跳过 prepareMigration，单独验证“迟到磁盘读取不得回填内存”。
+    private val prepareForCacheRead: (suspend (CardBalanceBinding) -> Unit)? = null,
     private val request: suspend (String) -> String = { requestDirectCardBalance(it) },
 ) {
     private val mutableSnapshot = MutableStateFlow<DirectCardSnapshot?>(null)
@@ -301,6 +306,12 @@ class DirectCardBalanceRepository(
     private val businessEpoch = AtomicLong(0)
 
     /**
+     * 内存快照与发布版本必须一起读写，否则“新值 + 旧版本”会被组件发布误判为最新。
+     */
+    private val snapshotLock = Any()
+    private var snapshotRevision = 0L
+
+    /**
      * 内存中的清理门闩：开始清除后立即隐藏旧值；若落盘删除失败则保持为 true，
      * 直到恢复清理成功。重启后由持久门闩 [DirectCardBalanceStore.isClearPending] 接替。
      */
@@ -309,28 +320,120 @@ class DirectCardBalanceRepository(
 
     fun currentBinding(): CardBalanceBinding? = currentCardBinding(account)
 
-    suspend fun cached(): DirectCardSnapshot? = withContext(Dispatchers.IO) {
-        val binding = currentBinding() ?: return@withContext null
-        // 迁移/清理只读/写本机缓存，不联网；失败不自动查询。
-        runCatching { prepareMigration(binding) }
-        if (clearing || store.isClearPending()) return@withContext null
-        mutableSnapshot.value?.takeIf { it.sameOwnerAs(binding) }
-            ?: runCatching { store.loadCurrent(binding) }.getOrNull()?.also {
-                mutableSnapshot.value = it
-            }
+    fun businessEpochNow(): Long = businessEpoch.get()
+
+    fun snapshotRevisionNow(): Long = synchronized(snapshotLock) { snapshotRevision }
+
+    private fun snapshotState(): Pair<DirectCardSnapshot?, Long> = synchronized(snapshotLock) {
+        mutableSnapshot.value to snapshotRevision
     }
 
     /**
+     * 页面读取。返回值只在该绑定、业务代次和快照版本在读取结束后仍一致时有效；
+     * 账号切换/清理把读到的旧值标记为 invalid，绝不回填内存。
+     */
+    suspend fun cached(): DirectCardSnapshot? = withContext(Dispatchers.IO) {
+        val binding = currentBinding() ?: return@withContext null
+        cacheRead(binding).takeIf { it.valid }?.snapshot
+    }
+
+    /**
+     * RemoteViews 专用读取。调用方必须把 [CachedRead.valid] 与读后 revision
+     * 带入最终发布校验；invalid 时不能渲染旧值。
+     */
+    internal suspend fun cachedForWidget(binding: CardBalanceBinding): CachedRead =
+        withContext(Dispatchers.IO) { cacheRead(binding) }
+
+    /**
      * 同步读取，仅供 RemoteViews 在 onUpdate / 点击时渲染缓存。
-     * 不迁移、不联网、不解密凭据；文件上限 8 KB。
+     * 不迁移、不联网、不解密凭据；文件上限 8 KB。读后同样复核绑定/业务代次/
+     * 快照版本，迟到读取不回填内存。
      */
     fun cachedBlocking(): DirectCardSnapshot? {
         val binding = currentBinding() ?: return null
-        if (clearing || store.isClearPending()) return null
-        mutableSnapshot.value?.takeIf { it.sameOwnerAs(binding) }?.let { return it }
-        return runCatching { store.loadCurrent(binding) }.getOrNull()?.also {
-            mutableSnapshot.value = it
+        return cacheReadBlocking(binding).takeIf { it.valid }?.snapshot
+    }
+
+    internal fun cachedBlockingForWidget(binding: CardBalanceBinding): CachedRead =
+        cacheReadBlocking(binding)
+
+    private suspend fun cacheRead(binding: CardBalanceBinding): CachedRead {
+        val startEpoch = businessEpoch.get()
+        // 迁移/清理只读/写本机缓存，不联网；失败不自动查询。
+        runCatching {
+            if (prepareForCacheRead != null) {
+                prepareForCacheRead.invoke(binding)
+            } else {
+                prepareMigration(binding)
+            }
         }
+        if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
+            return CachedRead(null, valid = false)
+        }
+        if (clearing || store.isClearPending()) return CachedRead(null, valid = false)
+
+        // prepareMigration 可能已发布迁移后的快照；版本从迁移之后开始计算。
+        val start = snapshotState()
+        val startRevision = start.second
+        val value = start.first?.takeIf { it.sameOwnerAs(binding) }
+            ?: runCatching { store.loadCurrent(binding) }.getOrNull()
+        afterCacheRead()
+        if (currentBinding() != binding ||
+            businessEpoch.get() != startEpoch ||
+            snapshotState().second != startRevision ||
+            clearing ||
+            store.isClearPending()
+        ) {
+            return CachedRead(null, valid = false)
+        }
+        // 检查与内存发布必须在同一把锁内：否则另一个发布者可在检查和赋值之间
+        // 写入新值/新版本，旧读取随后又把旧值盖回去。
+        val finalRevision = publishReadIfUnchanged(startRevision, value)
+            ?: return CachedRead(null, valid = false)
+        return CachedRead(value, valid = true, snapshotRevision = finalRevision)
+    }
+
+    private fun cacheReadBlocking(binding: CardBalanceBinding): CachedRead {
+        val startEpoch = businessEpoch.get()
+        if (clearing || store.isClearPending()) return CachedRead(null, valid = false)
+        val start = snapshotState()
+        val startRevision = start.second
+        val value = start.first?.takeIf { it.sameOwnerAs(binding) }
+            ?: runCatching { store.loadCurrent(binding) }.getOrNull()
+        afterBlockingCacheRead()
+        if (currentBinding() != binding ||
+            businessEpoch.get() != startEpoch ||
+            snapshotState().second != startRevision ||
+            clearing ||
+            store.isClearPending()
+        ) {
+            return CachedRead(null, valid = false)
+        }
+        val finalRevision = publishReadIfUnchanged(startRevision, value)
+            ?: return CachedRead(null, valid = false)
+        return CachedRead(value, valid = true, snapshotRevision = finalRevision)
+    }
+
+    /**
+     * 只有快照版本仍是读取时的版本才允许回填；返回最终版本，版本已变则 null。
+     * 读磁盘/渲染在锁外，锁内只做一次版本比较和内存赋值。
+     */
+    private fun publishReadIfUnchanged(
+        expectedRevision: Long,
+        value: DirectCardSnapshot?,
+    ): Long? = synchronized(snapshotLock) {
+        if (snapshotRevision != expectedRevision) return@synchronized null
+        if (value != null && mutableSnapshot.value != value) {
+            mutableSnapshot.value = value
+            snapshotRevision++
+        }
+        snapshotRevision
+    }
+
+    private fun publishSnapshot(value: DirectCardSnapshot?) = synchronized(snapshotLock) {
+        if (mutableSnapshot.value == value) return@synchronized
+        mutableSnapshot.value = value
+        snapshotRevision++
     }
 
     /**
@@ -378,7 +481,11 @@ class DirectCardBalanceRepository(
                 } catch (_: Exception) {
                     throw CampusCardException("已读取余额，但本机保存失败，请重试")
                 }
-                mutableSnapshot.value = result
+                // 保存期间账号/清理仍可能变化；落盘后再次复核，旧结果不作为新值发布。
+                if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
+                    throw RefreshInvalidatedException()
+                }
+                publishSnapshot(result)
             }
             result
         }
@@ -407,7 +514,7 @@ class DirectCardBalanceRepository(
                 // 账号状态已在失效器外层置为清理中；这里仍先撤下内存旧值，避免
                 // 任何并发读取在文件删除前看到旧余额。
                 businessEpoch.incrementAndGet()
-                mutableSnapshot.value = null
+                publishSnapshot(null)
                 clearing = true
                 onStarted()
                 store.clearAll()
@@ -415,7 +522,7 @@ class DirectCardBalanceRepository(
             } else {
                 store.beginClear()
                 businessEpoch.incrementAndGet()
-                mutableSnapshot.value = null
+                publishSnapshot(null)
                 clearing = true
                 onStarted()
                 // 删除失败时保留门闩和 clearing=true，重启后继续隐藏并重试。
@@ -456,6 +563,7 @@ class DirectCardBalanceRepository(
         fileLock.withLock {
             if (currentBinding() != binding) return
             if (!recoverPendingClearLocked()) return
+            val startEpoch = businessEpoch.get()
 
             val existingMarker = store.loadMarker()
             val markerMatches = existingMarker?.matches(binding) == true
@@ -467,7 +575,9 @@ class DirectCardBalanceRepository(
 
             val current = store.loadCurrent(binding)
             if (current != null) {
-                mutableSnapshot.value = current
+                if (currentBinding() == binding && businessEpoch.get() == startEpoch) {
+                    publishSnapshot(current)
+                }
                 if (store.hasLegacy()) store.clearLegacy()
                 if (!markerMatches) {
                     store.writeMarker(binding, CardMigrationOutcome.ALREADY_OWNED)
@@ -502,12 +612,22 @@ class DirectCardBalanceRepository(
                 fetchedAt = legacy.fetchedAt,
             )
             store.saveCurrent(migrated)
-            mutableSnapshot.value = migrated
+            if (currentBinding() == binding && businessEpoch.get() == startEpoch) {
+                publishSnapshot(migrated)
+            }
             store.clearLegacy()
             store.writeMarker(binding, CardMigrationOutcome.MIGRATED)
         }
     }
 }
+
+/** 缓存读取结果；invalid 表示读期间绑定/业务代次/快照版本已变化，调用方必须丢弃。 */
+internal data class CachedRead(
+    val snapshot: DirectCardSnapshot?,
+    val valid: Boolean,
+    /** 本次读取完成后的内存快照版本；valid 时供组件发布复核。 */
+    val snapshotRevision: Long = 0,
+)
 
 @Serializable
 private data class StoredCardSnapshot(

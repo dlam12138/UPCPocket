@@ -3,6 +3,8 @@ package com.upcpocket.app.widget
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import com.upcpocket.app.card.CardWidgetRead
+import com.upcpocket.app.card.CardWidgetRevision
 import com.upcpocket.app.card.CardWidgetViewState
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CardBindingAvailability
@@ -29,6 +31,18 @@ object WidgetUpdates {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val cardPublisherLock = Any()
+
+    @Volatile
+    private var cardPublisherInstance: CardWidgetPublisher? = null
+
+    private val unavailableCardRevision = CardWidgetRevision(
+        availability = CardBindingAvailability.NO_ACCOUNT,
+        bindingToken = null,
+        businessEpoch = 0,
+        snapshotRevision = 0,
+    )
+
     fun requestCard(context: Context) {
         val appContext = context.applicationContext
         scope.launch { runCatching { updateKind(appContext, WidgetKind.CARD) } }
@@ -52,23 +66,14 @@ object WidgetUpdates {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
         if (ids.isEmpty()) return
-        val state = WidgetStateStore(appContext)
-        val refreshing = state.isRefreshing(kind)
-        val failed = !refreshing && state.error(kind) != null
-        val manager = AppWidgetManager.getInstance(appContext)
-
         when (kind) {
-            WidgetKind.CARD -> {
-                val cardState = AppGraph.cardServiceOrNull?.widgetStateNow() ?: unavailableCardState()
-                ids.forEach { id ->
-                    manager.updateAppWidget(
-                        id,
-                        renderCard(appContext, id, cardState, refreshing, failed),
-                    )
-                }
-            }
+            WidgetKind.CARD -> cardPublisher(appContext).publishLatestNow()
             WidgetKind.POWER -> {
+                val state = WidgetStateStore(appContext)
+                val refreshing = state.isRefreshing(kind)
+                val failed = !refreshing && state.error(kind) != null
                 val snapshot = AppGraph.powerServiceOrNull?.cachedBlocking()
+                val manager = AppWidgetManager.getInstance(appContext)
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
@@ -83,28 +88,14 @@ object WidgetUpdates {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
         if (ids.isEmpty()) return
-        val state = WidgetStateStore(appContext)
-        val refreshing = state.isRefreshing(kind)
-        val failed = !refreshing && state.error(kind) != null
-        val manager = AppWidgetManager.getInstance(appContext)
-
         when (kind) {
-            WidgetKind.CARD -> {
-                val service = AppGraph.cardServiceOrNull
-                val cardState = if (service == null) {
-                    unavailableCardState()
-                } else {
-                    CardWidgetViewState(service.bindingStatus(), service.cached())
-                }
-                ids.forEach { id ->
-                    manager.updateAppWidget(
-                        id,
-                        renderCard(appContext, id, cardState, refreshing, failed),
-                    )
-                }
-            }
+            WidgetKind.CARD -> cardPublisher(appContext).publishLatest()
             WidgetKind.POWER -> {
+                val state = WidgetStateStore(appContext)
+                val refreshing = state.isRefreshing(kind)
+                val failed = !refreshing && state.error(kind) != null
                 val snapshot = AppGraph.powerServiceOrNull?.cached()
+                val manager = AppWidgetManager.getInstance(appContext)
                 ids.forEach { id ->
                     manager.updateAppWidget(
                         id,
@@ -115,10 +106,50 @@ object WidgetUpdates {
         }
     }
 
-    private fun unavailableCardState() = CardWidgetViewState(
-        status = CardBindingStatus(CardBindingAvailability.NO_ACCOUNT),
-        snapshot = null,
+    /**
+     * 所有校园卡发布共用的入口。Provider 的同步 onUpdate/resize、requestCard 的
+     * suspend 刷新、Worker 的 finally 重绘都走这里；不存在直接 updateAppWidget 的旁路。
+     */
+    private fun cardPublisher(context: Context): CardWidgetPublisher {
+        cardPublisherInstance?.let { return it }
+        return synchronized(cardPublisherLock) {
+            cardPublisherInstance ?: CardWidgetPublisher(
+                readSuspending = {
+                    AppGraph.cardServiceOrNull?.readWidgetState() ?: unavailableCardRead()
+                },
+                readBlocking = {
+                    AppGraph.cardServiceOrNull?.readWidgetStateBlocking() ?: unavailableCardRead()
+                },
+                currentRevision = {
+                    AppGraph.cardServiceOrNull?.revisionNow() ?: unavailableCardRevision
+                },
+                sink = { state -> publishCardWidgets(context, state) },
+            ).also { cardPublisherInstance = it }
+        }
+    }
+
+    private fun unavailableCardRead() = CardWidgetRead(
+        state = CardWidgetViewState(
+            status = CardBindingStatus(CardBindingAvailability.NO_ACCOUNT),
+            snapshot = null,
+        ),
+        revision = unavailableCardRevision,
     )
+
+    private fun publishCardWidgets(context: Context, cardState: CardWidgetViewState) {
+        val ids = widgetIds(context, WidgetKind.CARD)
+        if (ids.isEmpty()) return
+        val state = WidgetStateStore(context)
+        val refreshing = state.isRefreshing(WidgetKind.CARD)
+        val failed = !refreshing && state.error(WidgetKind.CARD) != null
+        val manager = AppWidgetManager.getInstance(context)
+        ids.forEach { id ->
+            manager.updateAppWidget(
+                id,
+                renderCard(context, id, cardState, refreshing, failed),
+            )
+        }
+    }
 
     private fun renderCard(
         context: Context,

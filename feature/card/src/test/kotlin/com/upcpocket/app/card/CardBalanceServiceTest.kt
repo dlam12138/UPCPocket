@@ -1,6 +1,7 @@
 package com.upcpocket.app.card
 
 import com.upcpocket.app.account.api.SchoolAccountState
+import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.data.ecard.CardBindingAvailability
@@ -60,12 +61,15 @@ class CardBalanceServiceTest {
             }
     }
 
-    private fun service(account: FakeAccountIdentity, input: MemoryInput): CardBalanceService {
-        val dir: File = temp.newFolder()
+    private fun service(
+        account: FakeAccountIdentity,
+        input: MemoryInput,
+        directory: File = temp.newFolder(),
+    ): CardBalanceService {
         return CardBalanceService(
             repositoryProvider = {
                 DirectCardBalanceRepository(
-                    DirectCardBalanceStore(dir),
+                    DirectCardBalanceStore(directory),
                     account,
                 ) { form ->
                     val studentId = java.net.URLDecoder
@@ -141,6 +145,101 @@ class CardBalanceServiceTest {
         assertEquals(2, input.clears)
         // 失效器只清业务数据，不修改账号状态/密码。
         assertEquals(CardBindingAvailability.READY, service.bindingStatus().availability)
+    }
+
+    @Test
+    fun `widget read covers loading ready and first no-snapshot`() = runBlocking {
+        val loading = service(
+            FakeAccountIdentity(initialStatus = SchoolAccountStatus.LOADING),
+            MemoryInput(),
+        )
+        val loadingRead = loading.readWidgetState()
+        assertEquals(CardBindingAvailability.LOADING, loadingRead.state.status.availability)
+        assertNull(loadingRead.state.snapshot)
+        assertNull(loadingRead.revision.bindingToken)
+
+        val account = FakeAccountIdentity().also { it.bind(studentId = id) }
+        val ready = service(account, MemoryInput())
+        val readyRead = ready.readWidgetState()
+        assertEquals(CardBindingAvailability.READY, readyRead.state.status.availability)
+        assertNull(readyRead.state.snapshot)
+        assertTrue(readyRead.revision.bindingToken!!.endsWith(":1"))
+        assertEquals(readyRead.revision, ready.revisionNow())
+    }
+
+    @Test
+    fun `first blocking read after process start returns cached snapshot`() = runBlocking {
+        val directory: File = temp.newFolder()
+        val account = FakeAccountIdentity().also { it.bind(studentId = id) }
+        service(account, MemoryInput(), directory).refreshCurrent()
+
+        // 新 service/repository：内存为空，必须从磁盘读取，且 publish 自身版本要一致。
+        val reopened = service(account, MemoryInput(), directory)
+        val read = reopened.readWidgetStateBlocking()
+        assertEquals(CardBindingAvailability.READY, read.state.status.availability)
+        assertEquals(100L, read.state.snapshot?.balanceCents)
+        assertEquals(read.revision, reopened.revisionNow())
+    }
+
+    @Test
+    fun `same account password update keeps history with a new revision`() = runBlocking {
+        val account = FakeAccountIdentity().also { it.bind(studentId = id) }
+        val service = service(account, MemoryInput())
+        service.refreshCurrent()
+        account.bind(accountId = "acct_test_account_a", studentId = id, generation = 2)
+
+        val read = service.readWidgetState()
+        assertEquals(CardBindingAvailability.READY, read.state.status.availability)
+        assertEquals(2L, read.state.status.binding?.credentialGeneration?.value)
+        assertEquals(1L, read.state.snapshot?.credentialGeneration)
+        assertTrue(read.revision.bindingToken!!.endsWith(":2"))
+    }
+
+    @Test
+    fun `failed cache clear leaves widget read ready empty and versioned`() = runBlocking {
+        val directory: File = temp.newFolder()
+        val account = FakeAccountIdentity().also { it.bind(studentId = id) }
+        val service = service(account, MemoryInput(), directory)
+        service.refreshCurrent()
+
+        val v2 = File(directory, "card-balance-v2.json")
+        assertTrue(v2.delete())
+        assertTrue(v2.mkdirs())
+        val blocker = File(v2, "blocker")
+        blocker.writeText("x")
+        try {
+            try {
+                service.clearCache()
+                org.junit.Assert.fail("clear must fail")
+            } catch (_: Exception) {
+            }
+            val read = service.readWidgetState()
+            assertEquals(CardBindingAvailability.READY, read.state.status.availability)
+            assertNull(read.state.snapshot)
+            assertTrue(File(directory, "card-balance-clear-v2.json").exists())
+            assertTrue(read.revision.businessEpoch > 0)
+        } finally {
+            blocker.delete()
+            v2.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `new account with no snapshot reads empty binding`() = runBlocking {
+        val account = FakeAccountIdentity().also { it.bind(studentId = id) }
+        val service = service(account, MemoryInput())
+        service.refreshCurrent()
+        account.bind(
+            accountId = "acct_test_account_b",
+            studentId = "2099000124",
+            generation = 2,
+        )
+
+        val read = service.readWidgetState()
+        assertEquals(CardBindingAvailability.READY, read.state.status.availability)
+        assertEquals("2099000124", read.state.status.binding?.studentId)
+        assertNull(read.state.snapshot)
+        assertTrue(read.revision.bindingToken!!.startsWith("acct_test_account_b:"))
     }
 
     @Test

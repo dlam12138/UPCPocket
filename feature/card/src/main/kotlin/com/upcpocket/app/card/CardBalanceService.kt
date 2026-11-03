@@ -2,6 +2,9 @@ package com.upcpocket.app.card
 
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
+import com.upcpocket.app.data.ecard.CachedRead
+import com.upcpocket.app.data.ecard.CardBalanceBinding
+import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
@@ -16,6 +19,25 @@ import kotlinx.coroutines.withContext
 data class CardWidgetViewState(
     val status: CardBindingStatus,
     val snapshot: DirectCardSnapshot?,
+)
+
+/**
+ * 组件发布的完整版本。
+ *
+ * [bindingToken] 只含内部 accountId + 凭据代次，不含学号；[businessEpoch] 覆盖清缓存，
+ * [snapshotRevision] 覆盖查询/迁移/清除造成的快照替换。三者与可用状态一起变化。
+ */
+data class CardWidgetRevision(
+    val availability: CardBindingAvailability,
+    val bindingToken: String?,
+    val businessEpoch: Long,
+    val snapshotRevision: Long,
+)
+
+/** 一次可校验的组件读取；[state] 与 [revision] 必须来自同一次稳定读取。 */
+data class CardWidgetRead(
+    val state: CardWidgetViewState,
+    val revision: CardWidgetRevision,
 )
 
 /**
@@ -50,16 +72,105 @@ class CardBalanceService(
      * 组件排队任务的绑定指纹：只有内部 accountId + 凭据代次，不含学号/密码。
      * 旧任务可据此在换号/改密后退出，而不是把新账号当作旧点击目标。
      */
-    fun bindingToken(): String? = bindingStatus().binding?.let { binding ->
-        "${binding.accountId.value}:${binding.credentialGeneration.value}"
-    }
+    fun bindingToken(): String? = token(bindingStatus().binding)
 
     /** 旧版本已排队任务没有 token 时保持兼容，执行时仍会读取当前绑定并再次核对。 */
     fun isBindingTokenCurrent(token: String?): Boolean =
         token == null || token == bindingToken()
 
-    fun widgetStateNow(): CardWidgetViewState =
-        CardWidgetViewState(bindingStatus(), repository.cachedBlocking())
+    /** 当前发布版本；组件在真正 updateAppWidget 前必须与读取时的版本比较。 */
+    fun revisionNow(): CardWidgetRevision = revisionFor(bindingStatus())
+
+    /**
+     * 稳定读取组件状态：读取前后 status/业务代次/快照版本必须一致；任何变化重读，
+     * 重试仍不稳定时退回“当前绑定 + 空快照”，绝不发布读到的旧值。
+     */
+    suspend fun readWidgetState(): CardWidgetRead {
+        repeat(WIDGET_READ_ATTEMPTS) {
+            val status = bindingStatus()
+            val epoch = repository.businessEpochNow()
+            val read = status.binding?.let { repository.cachedForWidget(it) }
+                ?: CachedRead(
+                    snapshot = null,
+                    valid = true,
+                    snapshotRevision = repository.snapshotRevisionNow(),
+                )
+            if (!read.valid) return@repeat
+            val statusAfter = bindingStatus()
+            val epochAfter = repository.businessEpochNow()
+            val revisionAfter = repository.snapshotRevisionNow()
+            if (statusAfter == status &&
+                epochAfter == epoch &&
+                revisionAfter == read.snapshotRevision
+            ) {
+                return CardWidgetRead(
+                    state = CardWidgetViewState(status, read.snapshot),
+                    revision = CardWidgetRevision(
+                        availability = status.availability,
+                        bindingToken = token(status.binding),
+                        businessEpoch = epoch,
+                        snapshotRevision = read.snapshotRevision,
+                    ),
+                )
+            }
+        }
+        return fallbackWidgetRead()
+    }
+
+    /**
+     * 同步读取（RemoteViews onUpdate/点击）。不迁移、不联网；只做 8 KB 内存/文件
+     * 读取，读取后同样复核，失败退回空快照。
+     */
+    fun readWidgetStateBlocking(): CardWidgetRead {
+        val status = bindingStatus()
+        val epoch = repository.businessEpochNow()
+        val read = status.binding?.let { repository.cachedBlockingForWidget(it) }
+            ?: CachedRead(
+                snapshot = null,
+                valid = true,
+                snapshotRevision = repository.snapshotRevisionNow(),
+            )
+        val statusAfter = bindingStatus()
+        val epochAfter = repository.businessEpochNow()
+        val revisionAfter = repository.snapshotRevisionNow()
+        if (read.valid &&
+            statusAfter == status &&
+            epochAfter == epoch &&
+            revisionAfter == read.snapshotRevision
+        ) {
+            return CardWidgetRead(
+                state = CardWidgetViewState(status, read.snapshot),
+                revision = CardWidgetRevision(
+                    availability = status.availability,
+                    bindingToken = token(status.binding),
+                    businessEpoch = epoch,
+                    snapshotRevision = read.snapshotRevision,
+                ),
+            )
+        }
+        return fallbackWidgetRead()
+    }
+
+    fun widgetStateNow(): CardWidgetViewState = readWidgetStateBlocking().state
+
+    private fun fallbackWidgetRead(): CardWidgetRead {
+        val status = bindingStatus()
+        return CardWidgetRead(
+            state = CardWidgetViewState(status, snapshot = null),
+            revision = revisionFor(status),
+        )
+    }
+
+    private fun revisionFor(status: CardBindingStatus): CardWidgetRevision = CardWidgetRevision(
+        availability = status.availability,
+        bindingToken = token(status.binding),
+        businessEpoch = repository.businessEpochNow(),
+        snapshotRevision = repository.snapshotRevisionNow(),
+    )
+
+    private fun token(binding: CardBalanceBinding?): String? = binding?.let {
+        "${it.accountId.value}:${it.credentialGeneration.value}"
+    }
 
     /**
      * 账号变化或页面打开时调用：迁移同号旧快照并清除旧明文草稿。
@@ -107,5 +218,9 @@ class CardBalanceService(
             withContext(Dispatchers.IO) { legacyInput.clear() }
             onSnapshotChanged()
         }
+    }
+
+    private companion object {
+        const val WIDGET_READ_ATTEMPTS = 3
     }
 }
