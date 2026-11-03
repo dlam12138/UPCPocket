@@ -26,9 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.card.CardBalanceService
+import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
-import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
 
 /**
  * 「首页」= 校园服务 + 校园卡余额功能区。

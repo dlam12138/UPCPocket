@@ -40,4 +40,6 @@ include(
     ":core:plugin-ui",
     ":feature:card",
     ":feature:power",
+    ":feature:classroom",
+    ":feature:library",
 )

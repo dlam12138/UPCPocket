@@ -4,16 +4,20 @@ import android.content.Context
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
+import com.upcpocket.app.classroom.ClassroomCapabilities
+import com.upcpocket.app.classroom.ClassroomPlugin
+import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.db.AppDatabase
-import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.prefs.FocusPrefsStore
-import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.FocusRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.PomodoroEngine
 import com.upcpocket.app.focus.PomodoroNotifications
+import com.upcpocket.app.library.LibraryCapabilities
+import com.upcpocket.app.library.LibraryPlugin
+import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.plugin.runtime.ActivePlugins
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import com.upcpocket.app.plugin.runtime.PluginStartResult
@@ -21,6 +25,7 @@ import com.upcpocket.app.power.PowerCapabilities
 import com.upcpocket.app.power.PowerPlugin
 import com.upcpocket.app.power.PowerService
 import com.upcpocket.app.widget.WidgetUpdates
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 
 /**
@@ -61,12 +66,6 @@ object AppGraph {
     val focusRepository: FocusRepository by lazy { FocusRepository(db) }
 
     /**
-     * 图书馆座位：token 默认只在这个单例的内存里；开启“记住登录”时另有
-     * [SchoolSessionStore] 的 Keystore 加密副本，退出/关闭开关时清理。
-     */
-    val librarySeatRepository: LibrarySeatRepository by lazy { LibrarySeatRepository() }
-
-    /**
      * 校园卡余额插件。
      *
      * 插件自己持有协议、快照与 Repository；宿主只提供学号持久化和组件刷新回调。
@@ -94,10 +93,25 @@ object AppGraph {
         )
     }
 
+    private val classroomPlugin: ClassroomPlugin by lazy { ClassroomPlugin() }
+
+    /**
+     * 图书馆座位插件：内存会话归插件，持久副本用原有 Keystore 加密存储；
+     * 宿主只提供“记住登录”偏好的读取。
+     */
+    private val libraryPlugin: LibraryPlugin by lazy {
+        LibraryPlugin(
+            context = appContext,
+            rememberLogin = { uiPrefsStore.flow.first().rememberSchoolLogin },
+        )
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
             runtime.register(powerPlugin.descriptor) { powerPlugin }
+            runtime.register(classroomPlugin.descriptor) { classroomPlugin }
+            runtime.register(libraryPlugin.descriptor) { libraryPlugin }
         }
     }
 
@@ -124,6 +138,16 @@ object AppGraph {
         get() = activePlugins.capability(PowerCapabilities.tangdaowan)
             ?: error("电量插件未激活")
 
+    /** 空教室页面使用插件提供的公开查询实现。 */
+    val classroomRepository: FreeClassroomRepository
+        get() = activePlugins.capability(ClassroomCapabilities.free)
+            ?: error("空教室插件未激活")
+
+    /** 图书馆登录、查询、预约与会话清理共用的插件服务。 */
+    val libraryService: LibraryService
+        get() = activePlugins.capability(LibraryCapabilities.seat)
+            ?: error("图书馆插件未激活")
+
     /** 启动装配；由 Application 在设置 Context 后调用。 */
     fun startPlugins() {
         activePlugins
@@ -141,8 +165,7 @@ object AppGraph {
         CardInputRepository(uiPrefsStore)
     }
 
-    /** “记住登录”的加密持久副本（目前只有图书馆座位 token）。 */
-    val schoolSessionStore: SchoolSessionStore by lazy { SchoolSessionStore(appContext) }
+    /** “记住登录”的加密持久副本由图书馆插件持有，宿主不再直接访问该类。 */
 
     val focusPrefsStore: FocusPrefsStore by lazy { FocusPrefsStore(appContext, json) }
 

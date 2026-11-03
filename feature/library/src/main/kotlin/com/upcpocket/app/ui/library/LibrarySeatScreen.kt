@@ -58,7 +58,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryCaptchaRequiredException
 import com.upcpocket.app.data.library.LibraryFilters
@@ -71,6 +70,8 @@ import com.upcpocket.app.data.library.LibrarySeatLayout
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.library.LibrarySessionExpiredException
 import com.upcpocket.app.data.library.LibraryTimeOption
+import com.upcpocket.app.data.prefs.SchoolSessionStore
+import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -80,16 +81,17 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibrarySeatScreen(
+    service: LibraryService,
     onBack: () -> Unit,
     onLogin: () -> Unit,
 ) {
-    val repo = AppGraph.librarySeatRepository
+    val repo = service.repository
     val session by repo.session.collectAsStateWithLifecycle()
     val factory = remember(repo) {
         object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                LibrarySeatViewModel(repo) as T
+                LibrarySeatViewModel(repo, service.sessionStore) as T
         }
     }
     val vm: LibrarySeatViewModel = viewModel(factory = factory)
@@ -97,14 +99,14 @@ fun LibrarySeatScreen(
     var restoringSession by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         // 开启“记住登录”时，重启后先用加密保存的 token 验证会话；失效就清掉重登。
-        if (repo.session.value == null && AppGraph.uiPrefsStore.flow.first().rememberSchoolLogin) {
+        if (repo.session.value == null && service.rememberLoginEnabled()) {
             restoringSession = true
-            val saved = AppGraph.schoolSessionStore.loadLibrary()
+            val saved = service.sessionStore.loadLibrary()
             if (saved != null) {
                 runCatching { repo.adoptSeatToken(saved.token) }
                     .onFailure {
                         // 只清图书馆这一份；其它业务的密文不动。
-                        AppGraph.schoolSessionStore.clearLibrary()
+                        service.sessionStore.clearLibrary()
                         repo.clearSession()
                     }
             }
@@ -117,7 +119,7 @@ fun LibrarySeatScreen(
     LaunchedEffect(state.sessionExpired) {
         if (state.sessionExpired) {
             vm.logout()
-            AppGraph.schoolSessionStore.clearLibrary()
+            service.sessionStore.clearLibrary()
         }
     }
 
@@ -602,7 +604,10 @@ private fun SeatCell(
     }
 }
 
-internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : ViewModel() {
+internal class LibrarySeatViewModel(
+    private val repo: LibrarySeatRepository,
+    private val sessionStore: SchoolSessionStore,
+) : ViewModel() {
     data class UiState(
         val filters: LibraryFilters? = null,
         val building: LibraryBuilding? = null,
@@ -946,7 +951,7 @@ internal class LibrarySeatViewModel(private val repo: LibrarySeatRepository) : V
     /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动其它业务。 */
     fun logout() {
         repo.clearSession()
-        AppGraph.schoolSessionStore.clearLibrary()
+        sessionStore.clearLibrary()
         LibrarySeatCookies.clearSeatCookies()
         state = UiState()
     }

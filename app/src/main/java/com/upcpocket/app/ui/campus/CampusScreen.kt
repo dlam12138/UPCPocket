@@ -35,8 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.core.SchoolWebCookies
 import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.ui.components.GlassCard
-import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
 import kotlinx.coroutines.launch
 
 /**
@@ -78,7 +78,7 @@ fun CampusScreen(
                 val prefs by AppGraph.uiPrefsStore.flow
                     .collectAsStateWithLifecycle(initialValue = UiPrefs())
                 val scope = rememberCoroutineScope()
-                val librarySession by AppGraph.librarySeatRepository.session
+                val librarySession by AppGraph.libraryService.repository.session
                     .collectAsStateWithLifecycle()
                 ListItem(
                     headlineContent = { Text("记住学校登录") },
@@ -98,8 +98,8 @@ fun CampusScreen(
                                 scope.launch {
                                     AppGraph.uiPrefsStore.setRememberSchoolLogin(enabled)
                                     if (!enabled) {
-                                        AppGraph.schoolSessionStore.clear()
-                                        AppGraph.librarySeatRepository.clearSession()
+                                        AppGraph.libraryService.sessionStore.clear()
+                                        AppGraph.libraryService.repository.clearSession()
                                         SchoolWebCookies.clearAllSchoolCookies()
                                     }
                                 }
@@ -120,8 +120,8 @@ fun CampusScreen(
                     onClick = {
                         scope.launch {
                             AppGraph.uiPrefsStore.setRememberSchoolLogin(false)
-                            AppGraph.schoolSessionStore.clear()
-                            AppGraph.librarySeatRepository.clearSession()
+                            AppGraph.libraryService.sessionStore.clear()
+                            AppGraph.libraryService.repository.clearSession()
                             SchoolWebCookies.clearAllSchoolCookies()
                         }
                     },

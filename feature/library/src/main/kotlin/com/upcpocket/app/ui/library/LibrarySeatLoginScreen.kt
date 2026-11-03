@@ -32,10 +32,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.library.LibrarySeatProtocol
+import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.json.JSONTokener
@@ -44,11 +43,12 @@ import org.json.JSONTokener
  * 图书馆登录只做一件事：走学校官方 CAS 网页，拿到登录后的座位系统 token。
  *
  * 这里不解析课程/座位页面，不注入账号密码，也不把 WebView 当作功能界面。
- * token 交给 [AppGraph.librarySeatRepository] 后立即关闭 WebView 并清理 Cookie。
+ * token 交给 [LibraryService] 后立即关闭 WebView 并清理 Cookie。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibrarySeatLoginScreen(
+    service: LibraryService,
     onBack: () -> Unit,
     onLoggedIn: () -> Unit,
 ) {
@@ -72,13 +72,13 @@ fun LibrarySeatLoginScreen(
         scope.launch {
             try {
                 val session = if (alreadySeatToken) {
-                    AppGraph.librarySeatRepository.adoptSeatToken(token)
+                    service.repository.adoptSeatToken(token)
                 } else {
-                    AppGraph.librarySeatRepository.exchangeAppToken(token)
+                    service.repository.exchangeAppToken(token)
                 }
                 // 只有用户打开“记住登录”才落盘；密文由 Keystore 保护（见 SchoolSessionStore）。
-                if (AppGraph.uiPrefsStore.flow.first().rememberSchoolLogin) {
-                    AppGraph.schoolSessionStore.saveLibrary(session.token, session.user)
+                if (service.rememberLoginEnabled()) {
+                    service.sessionStore.saveLibrary(session.token, session.user)
                 }
                 finished = true
                 clearWebSession()

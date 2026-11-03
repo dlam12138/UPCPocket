@@ -149,16 +149,21 @@ fun AppNav(
                         )
                     }
                     composable(AppRoutes.FREE_CLASSROOMS) {
-                        FreeClassroomScreen(onBack = { navController.popBackStack() })
+                        FreeClassroomScreen(
+                            repository = AppGraph.classroomRepository,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                     composable(AppRoutes.LIBRARY_SEAT) {
                         LibrarySeatScreen(
+                            service = AppGraph.libraryService,
                             onBack = { navController.popBackStack() },
                             onLogin = { navController.navigate(AppRoutes.LIBRARY_LOGIN) },
                         )
                     }
                     composable(AppRoutes.LIBRARY_LOGIN) {
                         LibrarySeatLoginScreen(
+                            service = AppGraph.libraryService,
                             onBack = { navController.popBackStack() },
                             onLoggedIn = { navController.popBackStack() },
                         )
@@ -270,8 +275,6 @@ fun AppNav(
 }
 
 /**
- * 悬浮 dock 为「滚动内容」预留下的底部余量：胶囊 56 + 上下边距 16 = 72，再加 16 呼吸。
- * dock 是覆盖层后内容全高滚动（从胶囊底下穿过），各滚动容器把这个值挂到
- * contentPadding 上，**最后一条内容才能完整滚出胶囊、不再永远压在 dock 底下**。
+ * 悬浮 dock 的页面底部余量已移到 `core:designsystem` 的 [DOCK_CLEARANCE]；
+ * 宿主只负责决定 dock 自身的呈现位置。
  */
-val DOCK_CLEARANCE = 88.dp

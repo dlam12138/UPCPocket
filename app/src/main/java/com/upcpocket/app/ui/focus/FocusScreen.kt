@@ -77,7 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.data.db.FocusTagEntity
 import com.upcpocket.app.data.prefs.TimerPreset
 import com.upcpocket.app.domain.FocusRecord
-import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
+import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.domain.FocusStats
 import com.upcpocket.app.domain.Phase
 import com.upcpocket.app.domain.PomodoroClock
