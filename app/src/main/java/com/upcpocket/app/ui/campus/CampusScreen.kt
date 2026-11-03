@@ -134,6 +134,7 @@ private fun iconOf(icon: UiIcon): ImageVector = when (icon) {
     UiIcon.LIBRARY -> Icons.AutoMirrored.Filled.MenuBook
     UiIcon.INSIGHTS -> Icons.Filled.Insights
     UiIcon.TIMER -> Icons.Filled.Timer
+    UiIcon.TIMETABLE -> Icons.AutoMirrored.Filled.MenuBook
 }
 
 @Composable

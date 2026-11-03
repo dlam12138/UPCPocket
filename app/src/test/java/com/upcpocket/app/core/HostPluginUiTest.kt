@@ -55,10 +55,19 @@ class HostPluginUiTest {
     @Test
     fun `more groups and card section are plugin owned`() {
         val learning = AppGraph.ui.entriesFor(UiSurface.MORE_LEARNING)
-        assertEquals(listOf("focus.stats"), learning.map { it.entryId.value })
-        assertEquals("学习统计", learning.single().title)
-        assertEquals("专注时长、热力图、标签分布", learning.single().subtitle)
-        assertEquals("focus.stats", learning.single().route?.value)
+        assertEquals(
+            listOf("focus.stats", "timetable.week"),
+            learning.map { it.entryId.value },
+        )
+        assertEquals(listOf("学习统计", "课表"), learning.map { it.title })
+        assertEquals(
+            listOf("专注时长、热力图、标签分布", "学期、教学周、周网格与今日课程（只读）"),
+            learning.map { it.subtitle },
+        )
+        assertEquals(
+            listOf("focus.stats", "timetable.week"),
+            learning.map { it.route?.value },
+        )
 
         assertEquals(
             listOf("card.balance.section"),
@@ -68,6 +77,14 @@ class HostPluginUiTest {
             listOf("library.account.section"),
             AppGraph.ui.sectionsFor(UiSurface.MORE_SCHOOL).map { it.entryId.value },
         )
+    }
+
+    @Test
+    fun `timetable plugin is active with a service capability`() {
+        val service = AppGraph.activePlugins.capability(
+            com.upcpocket.app.timetable.TimetableCapabilities.week,
+        )
+        assertNotNull(service)
     }
 
     @Test
@@ -90,9 +107,14 @@ class HostPluginUiTest {
                 "library.login",
                 "focus",
                 "focus.stats",
+                "timetable.week",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),
         )
-        assertTrue(AppGraph.ui.pages.all { it.pluginId.value in setOf("power", "classroom", "library", "focus") })
+        assertTrue(
+            AppGraph.ui.pages.all {
+                it.pluginId.value in setOf("power", "classroom", "library", "focus", "timetable")
+            },
+        )
     }
 }

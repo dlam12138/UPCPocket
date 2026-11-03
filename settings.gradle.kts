@@ -40,9 +40,11 @@ include(
     ":core:plugin-api",
     ":core:plugin-runtime",
     ":core:plugin-ui",
+    ":core:upc-auth",
     ":feature:card",
     ":feature:power",
     ":feature:classroom",
     ":feature:library",
     ":feature:focus",
+    ":feature:timetable",
 )

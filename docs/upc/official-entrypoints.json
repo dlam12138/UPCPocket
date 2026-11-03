@@ -5,7 +5,21 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "v0.2.7",
+  "release": "v0.2.7 (published) / M3 development branch (unreleased)",
+  "source_references": [
+    {
+      "id": "upc-mcp",
+      "url": "https://github.com/dlam12138/UPC-MCP",
+      "commit": "948f5f21ad7a12fd94b53403a07ac867209f7700",
+      "license": "MIT",
+      "usage": "read-only protocol, parsing, authentication and test-semantics reference; no Python/MCP/DPAPI runtime embedded"
+    }
+  ],
+  "verification": {
+    "reference_source_facts": "Timetable protocol and CAS service shape reviewed in the pinned UPC-MCP source and synthetic fixtures.",
+    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. No course text, credentials or session values are recorded here.",
+    "formal_authorization": "Not an official client and no official authorization is claimed. The user reports contact with the school; only the user's own account was used for read-only validation."
+  },
   "entries": [
     {
       "id": "free_classroom",
@@ -41,6 +55,19 @@
       "campus": null,
       "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
       "integration": "native_read_only_balance"
+    },
+    {
+      "id": "timetable",
+      "name": "课表",
+      "campus": null,
+      "url": "https://app.upc.edu.cn/site/weekschedule/index",
+      "authentication": "UPC CAS normal form (https://cas.upc.edu.cn/cas/login) then app.upc.edu.cn callback",
+      "data_protocol": {
+        "index": "GET https://app.upc.edu.cn/timetable/wap/default/get-index",
+        "week": "POST https://app.upc.edu.cn/timetable/wap/default/get-datatmp (type=2, year, term, week)"
+      },
+      "integration": "native_read_only_timetable",
+      "source_reference": "upc-mcp@948f5f21ad7a12fd94b53403a07ac867209f7700"
     }
   ]
 }

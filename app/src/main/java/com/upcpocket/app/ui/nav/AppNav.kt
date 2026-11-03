@@ -82,6 +82,7 @@ private fun filledIcon(icon: UiIcon): ImageVector = when (icon) {
     UiIcon.LIBRARY -> Icons.AutoMirrored.Filled.MenuBook
     UiIcon.INSIGHTS -> Icons.Filled.Insights
     UiIcon.TIMER -> Icons.Filled.Timer
+    UiIcon.TIMETABLE -> Icons.AutoMirrored.Filled.MenuBook
 }
 
 private fun outlinedIcon(icon: UiIcon): ImageVector = when (icon) {
@@ -90,6 +91,7 @@ private fun outlinedIcon(icon: UiIcon): ImageVector = when (icon) {
     UiIcon.LIBRARY -> Icons.AutoMirrored.Outlined.MenuBook
     UiIcon.INSIGHTS -> Icons.Outlined.Insights
     UiIcon.TIMER -> Icons.Outlined.Timer
+    UiIcon.TIMETABLE -> Icons.AutoMirrored.Outlined.MenuBook
 }
 
 private val hostDestinations = listOf(
@@ -128,6 +130,10 @@ fun AppNav(
 
             override fun back() {
                 navController.popBackStack()
+            }
+
+            override fun openSchoolAccountSettings() {
+                navController.navigate(AppRoutes.ACCOUNT) { launchSingleTop = true }
             }
         }
     }

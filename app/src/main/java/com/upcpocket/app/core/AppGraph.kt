@@ -33,6 +33,11 @@ import com.upcpocket.app.plugin.ui.PluginUiSnapshot
 import com.upcpocket.app.power.PowerCapabilities
 import com.upcpocket.app.power.PowerPlugin
 import com.upcpocket.app.power.PowerService
+import com.upcpocket.app.timetable.TimetableCapabilities
+import com.upcpocket.app.timetable.TimetableFiles
+import com.upcpocket.app.timetable.TimetablePlugin
+import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.upcauth.UpcTimetableAuthenticator
 import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
@@ -47,11 +52,12 @@ import com.upcpocket.app.widget.WidgetWork
  *  - 空闲教室：公开查询；
  *  - 图书馆座位：学校官方 CAS 登录后的内存会话；
  *  - 校园卡余额：按当前统一账号受控学号直接读取学校余额接口，不需要平台登录；
+ *  - 课表：正常 CAS 建立的独立只读业务会话与账号归属周缓存；
  *  - 唐岛湾宿舍剩余电量：无需登录的只读页面查询。
  *
- * 课表（教务导入、旧学校同步、CSV 导入、展示编辑、桌面组件）已整体删除，
- * 因此这里没有 ScheduleRepository，也没有首启种子数据 —— 应用启动时
- * 不会写数据库，也不会发起任何网络请求。
+ * 旧课表编辑/导入/旧学校同步与桌面组件已整体删除；M3 新增的是只读课表插件，
+ * 不读写 Room 五张旧表。应用启动只恢复账号并让插件做轻量状态恢复，不遍历整学期、
+ * 不写种子数据、不发起周期性网络请求。
  */
 object AppGraph {
 
@@ -92,6 +98,18 @@ object AppGraph {
             // 图书馆插件被移除时，旧 WebView Cookie 仍可能留在系统中；这里仍按
             // 学校域名清理并等待，避免换号后自动带回旧身份。
             failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
+        }
+        val timetable = activePlugins.capability(TimetableCapabilities.week)
+        val timetableCleared = if (timetable != null) {
+            timetable.invalidateForAccount(request.scope)
+        } else if (request.scope == AccountDataScope.PERSONAL_DATA) {
+            // 插件被隔离时也必须清掉可恢复的旧个人数据；不能因 UI 不可见而遗留。
+            TimetableFiles.clearAll(appContext)
+        } else {
+            TimetableFiles.clearSession(appContext)
+        }
+        if (!timetableCleared) {
+            failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
         }
         if (request.scope == AccountDataScope.PERSONAL_DATA) {
             // 先取消旧组件的排队任务并清掉旧刷新状态，再删除个人缓存。
@@ -174,6 +192,22 @@ object AppGraph {
         )
     }
 
+    /**
+     * 课表认证适配：只有这里读取统一账号凭据；课表插件只拿到业务 Cookie。
+     * 构造不联网，真正认证由用户进入课表或主动刷新触发。
+     */
+    private val timetableAuthenticator: UpcTimetableAuthenticator by lazy {
+        UpcTimetableAuthenticator(account)
+    }
+
+    private val timetablePlugin: TimetablePlugin by lazy {
+        TimetablePlugin(
+            context = appContext,
+            account = account,
+            authenticator = timetableAuthenticator,
+        )
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
@@ -181,6 +215,7 @@ object AppGraph {
             runtime.register(classroomPlugin.descriptor) { classroomPlugin }
             runtime.register(libraryPlugin.descriptor) { libraryPlugin }
             runtime.register(focusPlugin.descriptor) { focusPlugin }
+            runtime.register(timetablePlugin.descriptor) { timetablePlugin }
         }
     }
 

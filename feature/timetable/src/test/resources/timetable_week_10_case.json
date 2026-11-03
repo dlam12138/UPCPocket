@@ -1,0 +1,161 @@
+{
+ "e": 0,
+ "m": "ok",
+ "d": {
+  "classes": [
+   {},
+   {
+    "c_6": [
+     {
+      "course_id": "SYN-A",
+      "course_name": "合成课程甲",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "1",
+      "course_time": "14:00~15:35",
+      "week": "10,11,12,13",
+      "week_type": "0",
+      "lessons": "67",
+      "lessArr": [
+       6,
+       7
+      ],
+      "order": 6,
+      "totalLength": 2
+     }
+    ]
+   },
+   {
+    "c_3": [
+     {
+      "course_id": "SYN-B",
+      "course_name": "合成课程乙",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "2",
+      "course_time": "09:55~11:30",
+      "week": "7,8,9,10,11,12,13",
+      "week_type": "0",
+      "lessons": "34",
+      "lessArr": [
+       3,
+       4
+      ],
+      "order": 3,
+      "totalLength": 2
+     }
+    ],
+    "c_8": [
+     {
+      "course_id": "SYN-C",
+      "course_name": "合成课程丙",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "2",
+      "course_time": "15:55~17:30",
+      "week": "7,8,9,10,11,12,13",
+      "week_type": "0",
+      "lessons": "89",
+      "lessArr": [
+       8,
+       9
+      ],
+      "order": 8,
+      "totalLength": 2
+     }
+    ]
+   },
+   {},
+   {
+    "c_3": [
+     {
+      "course_id": "SYN-B",
+      "course_name": "合成课程乙",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "4",
+      "course_time": "09:55~11:30",
+      "week": "7,8,9,10,11,12,13",
+      "week_type": "0",
+      "lessons": "34",
+      "lessArr": [
+       3,
+       4
+      ],
+      "order": 3,
+      "totalLength": 2
+     }
+    ],
+    "c_6": [
+     {
+      "course_id": "SYN-D",
+      "course_name": "合成课程丁",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "4",
+      "course_time": "14:00~15:35",
+      "week": "10,11,12,13",
+      "week_type": "0",
+      "lessons": "67",
+      "lessArr": [
+       6,
+       7
+      ],
+      "order": 6,
+      "totalLength": 2
+     }
+    ]
+   },
+   {
+    "c_1": [
+     {
+      "course_id": "SYN-L1",
+      "course_name": "合成实验课一",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "5",
+      "course_time": "08:00~09:35",
+      "week": "10",
+      "week_type": "0",
+      "lessons": "12",
+      "lessArr": [
+       1,
+       2
+      ],
+      "order": 1,
+      "totalLength": 2
+     }
+    ],
+    "c_3": [
+     {
+      "course_id": "SYN-L2",
+      "course_name": "合成实验课二",
+      "teacher": "合成教师",
+      "location": "合成楼A101",
+      "weekday": "5",
+      "course_time": "09:55~11:30",
+      "week": "10",
+      "week_type": "0",
+      "lessons": "34",
+      "lessArr": [
+       3,
+       4
+      ],
+      "order": 3,
+      "totalLength": 2
+     }
+    ]
+   },
+   {}
+  ],
+  "weekdays": [
+   "2026-11-08",
+   "2026-11-09",
+   "2026-11-10",
+   "2026-11-11",
+   "2026-11-12",
+   "2026-11-13",
+   "2026-11-14"
+  ]
+ }
+}

@@ -116,6 +116,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:account"))
     implementation(project(":core:account-api"))
+    implementation(project(":core:upc-auth"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
     implementation(project(":core:plugin-runtime"))
@@ -125,6 +126,7 @@ dependencies {
     implementation(project(":feature:classroom"))
     implementation(project(":feature:library"))
     implementation(project(":feature:focus"))
+    implementation(project(":feature:timetable"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

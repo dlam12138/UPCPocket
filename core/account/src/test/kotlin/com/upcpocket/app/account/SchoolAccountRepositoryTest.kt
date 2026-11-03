@@ -65,6 +65,8 @@ class SchoolAccountRepositoryTest {
         assertEquals(AccountGeneration(1), reopened.state.value.generation)
         assertEquals("MASK-01", reopened.state.value.maskedAccount)
         assertEquals(identity.accountId, reopened.studentIdentity.value?.accountId)
+        assertEquals(identity.accountId, reopened.accountReference.value?.accountId)
+        assertEquals(AccountGeneration(1), reopened.accountReference.value?.credentialGeneration)
         assertFalse(reopened.state.value.cleanupRequired)
     }
 
@@ -123,6 +125,77 @@ class SchoolAccountRepositoryTest {
         assertFalse(repository.state.value.studentIdAvailable)
         assertNull(repository.state.value.maskedStudentId)
         assertNull(repository.studentIdentity.value)
+    }
+
+    @Test
+    fun accountReferenceExistsForAliasWithoutStudentIdentity() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        assertNull(repository.accountReference.value)
+        val alias = "student-alias@example.invalid"
+        repository.save(alias, oldPassword.toCharArray())
+        val reference = repository.accountReference.value!!
+        assertEquals(AccountGeneration(1), reference.credentialGeneration)
+        assertEquals(repository.studentIdentity.value?.accountId, null)
+        assertFalse(reference.accountId.value.contains(alias))
+        assertFalse(reference.toString().contains(alias))
+    }
+
+    @Test
+    @OptIn(RestrictedSchoolCredentialUse::class)
+    fun controlledCredentialUseIsBoundToCurrentGenerationAndClearsPassword() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        var seenPassword: CharArray? = null
+        val result = repository.withLoginCredential { credential ->
+            assertEquals(account, credential.loginName)
+            assertEquals(repository.accountReference.value, com.upcpocket.app.account.api.SchoolAccountReference(
+                accountId = credential.accountId,
+                credentialGeneration = credential.credentialGeneration,
+            ))
+            credential.usePassword { chars ->
+                seenPassword = chars
+                assertEquals(oldPassword, chars.concatToString())
+            }
+            "ok"
+        }
+        assertEquals(SchoolCredentialUseResult.Success("ok"), result)
+        assertTrue(seenPassword!!.all { it == '\u0000' })
+    }
+
+    @Test
+    @OptIn(RestrictedSchoolCredentialUse::class)
+    fun credentialUseRejectsChangeDuringAuthentication() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        val result = repository.withLoginCredential { credential ->
+            credential.usePassword { assertEquals(oldPassword, it.concatToString()) }
+            repository.save(account, newPassword.toCharArray())
+            "late"
+        }
+        assertEquals(
+            SchoolCredentialUseResult.Failure(SchoolCredentialFailure.CHANGED_DURING_USE),
+            result,
+        )
+    }
+
+    @Test
+    @OptIn(RestrictedSchoolCredentialUse::class)
+    fun credentialUseIsUnavailableWithoutAccount() = runTest {
+        val repository = repository(MemoryStore())
+        repository.restore()
+        val result = repository.withLoginCredential { "unexpected" }
+        assertEquals(
+            SchoolCredentialUseResult.Failure(SchoolCredentialFailure.NOT_CONFIGURED),
+            result,
+        )
     }
 
     @Test

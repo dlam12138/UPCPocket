@@ -1,0 +1,109 @@
+{
+  "e": 0,
+  "m": "ok",
+  "d": {
+    "classes": [
+      {
+        "c_10": [
+          {
+            "course_id": "SYN-SUN",
+            "course_name": "示例课程日",
+            "teacher": "教师甲",
+            "location": "教学楼A-101",
+            "weekday": "0",
+            "course_time": "09:00~10:35",
+            "week": "8",
+            "week_type": "0",
+            "lessons": "1011",
+            "lessArr": [10, 11],
+            "order": 10,
+            "totalLength": 2
+          }
+        ]
+      },
+      {
+        "c_6": [
+          {
+            "course_id": "SYN-A",
+            "course_name": "示例课程A",
+            "teacher": "教师甲",
+            "location": "教学楼A-101",
+            "weekday": "1",
+            "course_time": "14:00~15:35",
+            "week": "6,7,8,9",
+            "week_type": "0",
+            "lessons": "0607",
+            "lessArr": [6, 7],
+            "order": 6,
+            "totalLength": 2
+          }
+        ]
+      },
+      {
+        "c_3": [
+          {
+            "course_id": "SYN-B",
+            "course_name": "示例课程B",
+            "teacher": "教师乙",
+            "location": "教学楼B-202",
+            "weekday": "2",
+            "course_time": "09:55~11:30",
+            "week": "8",
+            "week_type": "0",
+            "lessons": "0304",
+            "lessArr": [3, 4],
+            "order": 3,
+            "totalLength": 2
+          }
+        ]
+      },
+      {
+        "c_1": [
+          {
+            "course_id": "SYN-C",
+            "course_name": "示例课程C",
+            "teacher": "教师丙",
+            "location": "教学楼C-303",
+            "weekday": "3",
+            "course_time": "08:00~09:35",
+            "week": "8",
+            "week_type": "0",
+            "lessons": "0103",
+            "lessArr": [1, 3],
+            "order": 1,
+            "totalLength": 2
+          }
+        ]
+      },
+      {
+        "c_8": [
+          {
+            "course_id": "SYN-A2",
+            "course_name": "示例课程A",
+            "teacher": "教师丁",
+            "location": "教学楼D-404",
+            "weekday": "4",
+            "course_time": "15:55~17:30",
+            "week": "8",
+            "week_type": "0",
+            "lessons": "0809",
+            "lessArr": [8, 9],
+            "order": 8,
+            "totalLength": 2
+          }
+        ]
+      },
+      {},
+      {}
+    ],
+    "weekdays": [
+      "2026-10-25",
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31"
+    ]
+  }
+}

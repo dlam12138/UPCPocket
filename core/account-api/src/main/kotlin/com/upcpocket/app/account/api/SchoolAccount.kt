@@ -118,6 +118,22 @@ interface SchoolAccountGate {
 }
 
 /**
+ * 任意合法已保存账号的受控引用。
+ *
+ * 与 [SchoolStudentIdentity] 不同，它不要求登录名整串是学号，供课表这类
+ * 使用学校统一登录名（可能含字母）的业务确定缓存与会话归属。它只含不可逆
+ * 内部 accountId 与凭据代次，不含登录名、密码、Cookie 或解密能力。
+ */
+data class SchoolAccountReference(
+    val accountId: SchoolAccountId,
+    val credentialGeneration: AccountGeneration,
+) {
+    init {
+        require(credentialGeneration.value > 0) { "账号引用必须绑定已保存的凭据代次" }
+    }
+}
+
+/**
  * 只读受控身份面。
  *
  * 业务只能获得当前绑定账号的内部标识、本人学号和凭据代次；不能读取账号原文、
@@ -126,6 +142,15 @@ interface SchoolAccountGate {
  */
 interface SchoolAccountStudentIdentityReader : SchoolAccountGate {
     val studentIdentity: StateFlow<SchoolStudentIdentity?>
+}
+
+/**
+ * 只读账号引用面，供不需要学号但需要账号隔离的业务使用。
+ *
+ * 只有状态为 `SAVED_UNVERIFIED`、代次大于 0 且未处于清理门闩时才发布引用。
+ */
+interface SchoolAccountReferenceReader : SchoolAccountGate {
+    val accountReference: StateFlow<SchoolAccountReference?>
 }
 
 /**

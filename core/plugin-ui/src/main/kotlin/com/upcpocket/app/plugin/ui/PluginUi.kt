@@ -49,6 +49,7 @@ enum class UiIcon {
     LIBRARY,
     INSIGHTS,
     TIMER,
+    TIMETABLE,
 }
 
 /** 页面只能通过宿主导航，不能拿 NavController 或对外 Intent。 */
@@ -56,6 +57,9 @@ interface PluginPageHost {
     fun open(route: PluginRouteId)
 
     fun back()
+
+    /** 业务页可引导用户去宿主的学校账号设置；不暴露任意路由或 Intent。 */
+    fun openSchoolAccountSettings() = Unit
 }
 
 /**

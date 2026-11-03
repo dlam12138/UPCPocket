@@ -11,6 +11,8 @@ import com.upcpocket.app.account.api.SchoolAccountController
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountId
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
@@ -61,7 +63,10 @@ class SchoolAccountRepository internal constructor(
     private val ioDispatcher: CoroutineDispatcher,
     private val invalidators: List<SchoolAccountInvalidator>,
     private val maskAccount: (String) -> String,
-) : SchoolAccountController, SchoolAccountStudentIdentityReader {
+) : SchoolAccountController,
+    SchoolAccountStudentIdentityReader,
+    SchoolAccountReferenceReader,
+    SchoolCredentialAccess {
 
     constructor(
         context: Context,
@@ -100,6 +105,7 @@ class SchoolAccountRepository internal constructor(
     private val mutex = Mutex()
     private val _state = MutableStateFlow(SchoolAccountState())
     private val _studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
+    private val _accountReference = MutableStateFlow<SchoolAccountReference?>(null)
     private var initialized = false
     private var currentAccount: String? = null
     private var currentGeneration = AccountGeneration.None
@@ -107,6 +113,8 @@ class SchoolAccountRepository internal constructor(
     override val state: StateFlow<SchoolAccountState> = _state.asStateFlow()
     override val studentIdentity: StateFlow<SchoolStudentIdentity?> =
         _studentIdentity.asStateFlow()
+    override val accountReference: StateFlow<SchoolAccountReference?> =
+        _accountReference.asStateFlow()
 
     override suspend fun restore() {
         withContext(ioDispatcher) {
@@ -144,6 +152,97 @@ class SchoolAccountRepository internal constructor(
                 }
             }
         }
+
+    /**
+     * 认证适配的受控凭据读取。
+     *
+     * 只在账号锁内完成“复核状态 + 解密 + 拷贝到可清零数组”，随后释放锁执行
+     * [block]；认证网络请求不会阻塞保存/删除。回调结束后再次核对当前代次，
+     * 换号、改密或清理期间得到的结果一律丢弃。
+     */
+    @RestrictedSchoolCredentialUse
+    override suspend fun <T> withLoginCredential(
+        block: suspend (SchoolLoginCredential) -> T,
+    ): SchoolCredentialUseResult<T> = withContext(ioDispatcher) {
+        val prepared: SchoolCredentialUseResult<SchoolLoginCredential> = mutex.withLock {
+            if (!initialized) restoreLocked()
+            val state = _state.value
+            if (state.status != SchoolAccountStatus.SAVED_UNVERIFIED) {
+                return@withLock when {
+                    state.cleanupRequired -> SchoolCredentialUseResult.Failure(
+                        SchoolCredentialFailure.BLOCKED_BY_CLEANUP,
+                    )
+                    else -> SchoolCredentialUseResult.Failure(
+                        SchoolCredentialFailure.NOT_CONFIGURED,
+                    )
+                }
+            }
+            if (state.cleanupRequired) {
+                return@withLock SchoolCredentialUseResult.Failure(
+                    SchoolCredentialFailure.BLOCKED_BY_CLEANUP,
+                )
+            }
+            val account = currentAccount
+            if (account == null || state.generation != currentGeneration ||
+                state.generation.value <= 0
+            ) {
+                return@withLock SchoolCredentialUseResult.Failure(
+                    SchoolCredentialFailure.UNAVAILABLE,
+                )
+            }
+            val payload = try {
+                val bytes = fileStore.read(
+                    AccountFormat.ACCOUNT_FILE,
+                    AccountFormat.MAX_CREDENTIAL_BYTES,
+                ) ?: return@withLock SchoolCredentialUseResult.Failure(
+                    SchoolCredentialFailure.UNAVAILABLE,
+                )
+                cipher.open(bytes)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                return@withLock SchoolCredentialUseResult.Failure(
+                    SchoolCredentialFailure.UNAVAILABLE,
+                )
+            }
+            if (payload.account != account ||
+                payload.generation != state.generation.value ||
+                payload.password.isEmpty()
+            ) {
+                return@withLock SchoolCredentialUseResult.Failure(
+                    SchoolCredentialFailure.UNAVAILABLE,
+                )
+            }
+            SchoolCredentialUseResult.Success(
+                SchoolLoginCredential(
+                    accountId = stableAccountId(payload.account),
+                    credentialGeneration = state.generation,
+                    loginName = payload.account,
+                    password = payload.password.toCharArray(),
+                ),
+            )
+        }
+        val credential = when (prepared) {
+            is SchoolCredentialUseResult.Failure -> return@withContext prepared
+            is SchoolCredentialUseResult.Success -> prepared.value
+        }
+        try {
+            val value = block(credential)
+            val stillCurrent = _state.value.let { state ->
+                state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
+                    !state.cleanupRequired &&
+                    state.generation == credential.credentialGeneration &&
+                    _accountReference.value?.accountId == credential.accountId
+            }
+            if (!stillCurrent) {
+                SchoolCredentialUseResult.Failure(SchoolCredentialFailure.CHANGED_DURING_USE)
+            } else {
+                SchoolCredentialUseResult.Success(value)
+            }
+        } finally {
+            credential.close()
+        }
+    }
 
     // ── restore ───────────────────────────────────────────────────────────
 
@@ -278,13 +377,18 @@ class SchoolAccountRepository internal constructor(
     private fun publishSaved(payload: CredentialPayload) {
         val generation = AccountGeneration(payload.generation)
         val studentId = payload.account.takeIf(StudentIdFormat::isValid)
+        val accountId = stableAccountId(payload.account)
         _studentIdentity.value = studentId?.let {
             SchoolStudentIdentity(
-                accountId = stableAccountId(payload.account),
+                accountId = accountId,
                 studentId = it,
                 credentialGeneration = generation,
             )
         }
+        _accountReference.value = SchoolAccountReference(
+            accountId = accountId,
+            credentialGeneration = generation,
+        )
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.SAVED_UNVERIFIED,
             generation = generation,
@@ -299,6 +403,7 @@ class SchoolAccountRepository internal constructor(
 
     private fun publishNotConfigured(generation: AccountGeneration) {
         _studentIdentity.value = null
+        _accountReference.value = null
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.NOT_CONFIGURED,
             generation = generation,
@@ -314,6 +419,7 @@ class SchoolAccountRepository internal constructor(
         cleanupRequired: Boolean,
     ) {
         _studentIdentity.value = null
+        _accountReference.value = null
         _state.value = SchoolAccountState(
             status = SchoolAccountStatus.NEEDS_RECONFIGURATION,
             generation = currentGeneration,
@@ -438,6 +544,7 @@ class SchoolAccountRepository internal constructor(
             }
             currentGeneration = targetGeneration
             _studentIdentity.value = null
+            _accountReference.value = null
             _state.value = transition
 
             if (scope != null) {
@@ -467,6 +574,7 @@ class SchoolAccountRepository internal constructor(
             }
             currentGeneration = targetGeneration
             _studentIdentity.value = null
+            _accountReference.value = null
             _state.value = transition.copy(
                 cleanupRequired = true,
                 errorCode = SchoolAccountErrorCode.STORAGE_FAILED,
@@ -597,6 +705,7 @@ class SchoolAccountRepository internal constructor(
         }
         currentGeneration = targetGeneration
         _studentIdentity.value = null
+        _accountReference.value = null
         _state.value = transition
         if (!invalidateLocked(
                 journal = journal,
@@ -665,6 +774,7 @@ class SchoolAccountRepository internal constructor(
         currentAccount = null
         currentGeneration = targetGeneration
         _studentIdentity.value = null
+        _accountReference.value = null
         try {
             writeJournal(journal)
             writePersistedState(
@@ -775,6 +885,7 @@ class SchoolAccountRepository internal constructor(
             )
         }
         _studentIdentity.value = null
+        _accountReference.value = null
         _state.value = transition
 
         var committedJournal = journal

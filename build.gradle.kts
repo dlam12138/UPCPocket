@@ -42,6 +42,9 @@ tasks.register("checkModuleBoundaries") {
                 path.startsWith(":feature:") -> internal.forEach { dependency ->
                     if (dependency == ":app") {
                         violations += "$path 不能依赖 :app"
+                    } else if (dependency == ":core:account") {
+                        // 明文凭据读取只允许认证适配；业务 feature 只能依赖 account-api。
+                        violations += "$path 不能依赖账号实现 :core:account"
                     } else if (
                         dependency.startsWith(":feature:") &&
                         dependency != path &&
