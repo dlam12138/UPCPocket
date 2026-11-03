@@ -22,9 +22,15 @@ class TimetableViewModel(
 
     fun selectWeek(week: Int) = run { service.selectWeek(week) }
 
-    fun beginInteractiveLogin(): String? = service.beginInteractiveLogin()
+    fun beginInteractiveLogin(onReady: (String?) -> Unit) {
+        viewModelScope.launch {
+            onReady(service.beginInteractiveLogin())
+        }
+    }
 
-    fun cancelInteractiveLogin() = service.cancelInteractiveLogin()
+    fun cancelInteractiveLogin() {
+        viewModelScope.launch { service.cancelInteractiveLogin() }
+    }
 
     fun adoptInteractiveCookies(cookieHeader: String, onAccepted: (Boolean) -> Unit) {
         operation?.cancel()

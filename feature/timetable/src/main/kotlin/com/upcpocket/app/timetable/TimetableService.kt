@@ -12,9 +12,11 @@ import com.upcpocket.app.upcauth.UpcAuthResult
 import com.upcpocket.app.upcauth.UpcTimetableAuthEndpoints
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,12 +42,16 @@ class TimetableService(
     private val cacheStore: TimetableCacheStore,
     private val clock: () -> Long = System::currentTimeMillis,
     private val todayProvider: () -> LocalDate = { LocalDate.now(TIMETABLE_ZONE) },
+    /** 测试用提交屏障：仅在短提交锁内、最后复核之后调用。 */
+    private val commitBarrier: suspend (String) -> Unit = {},
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val _state = MutableStateFlow(TimetableUiState())
     val state: StateFlow<TimetableUiState> = _state.asStateFlow()
 
     private val operationMutex = Mutex()
     private val authMutex = Mutex()
+    private val commitMutex = Mutex()
     private val businessEpoch = AtomicLong(0)
     private val selectionEpoch = AtomicLong(0)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -53,6 +59,8 @@ class TimetableService(
     private var currentBinding: SchoolAccountReference? = null
     private var lastIndex: TimetableIndex? = null
     private var interactiveContext: InteractiveContext? = null
+    private var explicitSelection = false
+    private var accountEpochValue = 0L
 
     init {
         // 先取一次同步快照，避免页面在首次收集 Flow 之前打开时被迟到的
@@ -64,10 +72,16 @@ class TimetableService(
                 state.generation == reference.credentialGeneration
         }
         scope.launch {
-            account.state.collect { state -> applyAccountState(state) }
+            account.state.collect { state ->
+                commitMutex.withLock { applyAccountStateLocked(state) }
+            }
         }
         scope.launch {
-            account.accountReference.collect { applyAccountState(account.state.value) }
+            account.accountReference.collect {
+                commitMutex.withLock {
+                    applyAccountStateLocked(account.state.value)
+                }
+            }
         }
     }
 
@@ -84,44 +98,46 @@ class TimetableService(
 
     // ── public operations ─────────────────────────────────────────────────
 
-    /** 页面首次打开：先显示已缓存周，再查询当前周。 */
+    /**
+     * 页面首次打开：先用缓存呈现已成功查询范围，再在线刷新索引确定学校当前学期/周。
+     *
+     * 旧缓存里的 currentWeek/currentTerm 只用于离线呈现，不能当作学校现状；
+     * 在线 index 失败时保留缓存并明确标为历史。
+     */
     suspend fun open() {
         val binding = bindingOrNull() ?: return publishAccountState()
         operationMutex.withLock {
-            if (!isBindingCurrent(binding)) return publishAccountState()
-            val cached = cacheStore.load(binding.accountId.value)
-            lastIndex = cached.index
-            if (selectedTermLocked() == null) {
-                applySelectionLocked(cached)
-            } else {
-                publishCachedSelectionLocked(cached)
-            }
-            val term = selectedTermLocked() ?: run {
-                refreshLocked(binding, forceIndex = true)
+            val business = businessEpoch.get()
+            if (!isBindingCurrent(binding)) {
+                publishAccountState()
                 return
             }
-            val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
-            _state.update {
-                it.copy(
-                    selectedWeek = week,
-                    terms = termsOf(cached.index),
-                    isBusy = true,
-                    connection = TimetableConnection.CONNECTING,
-                    weekState = TimetableWeekState.LOADING,
-                    message = null,
-                    accountBlocked = false,
-                )
+            val cached = loadCache(binding.accountId.value)
+            commitBarrier("open-cache")
+            val applied = commitMutex.withLock {
+                if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
+                    return@withLock false
+                }
+                lastIndex = cached.index
+                explicitSelection = false
+                applySelectionLocked(cached)
+                true
             }
-            val token = selectionEpoch.get()
-            loadWeekLocked(binding, term, week, token, businessEpoch.get())
+            if (applied) {
+                loadIndexLocked(binding, selectionEpoch.get())
+            }
         }
     }
 
-    /** 主动刷新当前周；没有索引时先取索引。 */
+    /** 主动刷新：索引也必须重取，才能更新 currentTerm/currentWeek。 */
     suspend fun refresh() {
         val binding = bindingOrNull() ?: return publishAccountState()
         operationMutex.withLock {
-            refreshLocked(binding, forceIndex = lastIndex == null)
+            if (!isBindingCurrent(binding)) {
+                publishAccountState()
+                return
+            }
+            loadIndexLocked(binding, selectionEpoch.get())
         }
     }
 
@@ -129,29 +145,41 @@ class TimetableService(
         val binding = bindingOrNull() ?: return publishAccountState()
         selectionEpoch.incrementAndGet()
         operationMutex.withLock {
-            if (!isBindingCurrent(binding)) return publishAccountState()
-            val week = defaultWeekLocked(term)
-            _state.update {
-                it.copy(
-                    selectedYear = term.year,
-                    selectedTerm = term.term,
-                    selectedWeek = week,
-                    weekDates = emptyList(),
-                    meetings = emptyList(),
-                    weekState = TimetableWeekState.NOT_QUERIED,
-                    weekFetchedAtEpochMillis = null,
-                    todayMeetings = emptyList(),
-                    todayLoaded = false,
-                    message = null,
-                )
+            if (!isBindingCurrent(binding)) {
+                publishAccountState()
+                return
             }
-            val cached = cacheStore.load(binding.accountId.value)
-            lastIndex = cached.index ?: lastIndex
-            val cachedWeek = cached.week(term, week)
-            if (cachedWeek != null) {
-                publishCachedWeekLocked(cachedWeek)
-            } else {
-                val token = selectionEpoch.get()
+            val week = defaultWeekLocked(term)
+            val cached = loadCache(binding.accountId.value)
+            val token = selectionEpoch.get()
+            var committed = false
+            commitMutex.withLock {
+                if (!isBindingCurrent(binding) || selectionEpoch.get() != token) {
+                    return@withLock
+                }
+                committed = true
+                explicitSelection = true
+                lastIndex = cached.index ?: lastIndex
+                _state.update {
+                    it.copy(
+                        selectedYear = term.year,
+                        selectedTerm = term.term,
+                        selectedWeek = week,
+                        weekDates = emptyList(),
+                        meetings = emptyList(),
+                        weekState = TimetableWeekState.NOT_QUERIED,
+                        weekFetchedAtEpochMillis = null,
+                        todayMeetings = emptyList(),
+                        todayLoaded = false,
+                        message = null,
+                    )
+                }
+                val cachedWeek = cached.week(term, week)
+                if (cachedWeek != null) {
+                    publishCachedWeekLocked(cachedWeek)
+                }
+            }
+            if (committed && cached.week(term, week) == null) {
                 loadWeekLocked(binding, term, week, token, businessEpoch.get())
             }
         }
@@ -163,24 +191,36 @@ class TimetableService(
         if (week !in 1..term.totalWeeks) return
         selectionEpoch.incrementAndGet()
         operationMutex.withLock {
-            if (!isBindingCurrent(binding)) return publishAccountState()
-            _state.update {
-                it.copy(
-                    selectedWeek = week,
-                    weekDates = emptyList(),
-                    meetings = emptyList(),
-                    weekState = TimetableWeekState.NOT_QUERIED,
-                    weekFetchedAtEpochMillis = null,
-                    todayMeetings = emptyList(),
-                    todayLoaded = false,
-                    message = null,
-                )
+            if (!isBindingCurrent(binding)) {
+                publishAccountState()
+                return
             }
-            val cachedWeek = cacheStore.load(binding.accountId.value).week(term, week)
-            if (cachedWeek != null) {
-                publishCachedWeekLocked(cachedWeek)
-            } else {
-                val token = selectionEpoch.get()
+            val cachedWeek = loadCache(binding.accountId.value).week(term, week)
+            val token = selectionEpoch.get()
+            var committed = false
+            commitMutex.withLock {
+                if (!isBindingCurrent(binding) || selectionEpoch.get() != token) {
+                    return@withLock
+                }
+                committed = true
+                explicitSelection = true
+                _state.update {
+                    it.copy(
+                        selectedWeek = week,
+                        weekDates = emptyList(),
+                        meetings = emptyList(),
+                        weekState = TimetableWeekState.NOT_QUERIED,
+                        weekFetchedAtEpochMillis = null,
+                        todayMeetings = emptyList(),
+                        todayLoaded = false,
+                        message = null,
+                    )
+                }
+                if (cachedWeek != null) {
+                    publishCachedWeekLocked(cachedWeek)
+                }
+            }
+            if (committed && cachedWeek == null) {
                 loadWeekLocked(binding, term, week, token, businessEpoch.get())
             }
         }
@@ -188,31 +228,35 @@ class TimetableService(
 
     // ── interactive login ─────────────────────────────────────────────────
 
-    fun beginInteractiveLogin(): String? {
+    suspend fun beginInteractiveLogin(): String? {
         val binding = bindingOrNull() ?: run {
             publishAccountState()
             return null
         }
-        if (!isBindingCurrent(binding)) {
-            publishAccountState()
-            return null
+        return commitMutex.withLock {
+            if (!isBindingCurrent(binding)) {
+                applyAccountStateLocked(account.state.value)
+                return@withLock null
+            }
+            interactiveContext = InteractiveContext(binding, businessEpoch.get())
+            _state.update {
+                it.copy(
+                    connection = TimetableConnection.INTERACTION_REQUIRED,
+                    interactionUrl = UpcTimetableAuthEndpoints.LOGIN_URL,
+                    message = "请在学校登录页完成正常登录；本应用不会读取你输入的密码。",
+                    isBusy = false,
+                    canRetry = true,
+                )
+            }
+            UpcTimetableAuthEndpoints.LOGIN_URL
         }
-        interactiveContext = InteractiveContext(binding, businessEpoch.get())
-        _state.update {
-            it.copy(
-                connection = TimetableConnection.INTERACTION_REQUIRED,
-                interactionUrl = UpcTimetableAuthEndpoints.LOGIN_URL,
-                message = "请在学校登录页完成正常登录；本应用不会读取你输入的密码。",
-                isBusy = false,
-                canRetry = true,
-            )
-        }
-        return UpcTimetableAuthEndpoints.LOGIN_URL
     }
 
-    fun cancelInteractiveLogin() {
-        interactiveContext = null
-        _state.update { it.copy(interactionUrl = null) }
+    suspend fun cancelInteractiveLogin() {
+        commitMutex.withLock {
+            interactiveContext = null
+            _state.update { it.copy(interactionUrl = null) }
+        }
     }
 
     /**
@@ -234,16 +278,18 @@ class TimetableService(
                 val index = try {
                     api.getIndex(cookies)
                 } catch (failure: TimetableApiException) {
-                    if (isBindingCurrent(context.binding) &&
-                        businessEpoch.get() == context.businessEpoch
-                    ) {
-                        val mapped = mapApiFailure(failure)
-                        _state.update {
-                            it.copy(
-                                connection = mapped.connection,
-                                message = "尚未检测到有效的课表会话；如已登录请回到课表页重试。",
-                                isBusy = false,
-                            )
+                    commitMutex.withLock {
+                        if (isBindingCurrent(context.binding) &&
+                            businessEpoch.get() == context.businessEpoch
+                        ) {
+                            val mapped = mapApiFailure(failure)
+                            _state.update {
+                                it.copy(
+                                    connection = mapped.connection,
+                                    message = "尚未检测到有效的课表会话；如已登录请回到课表页重试。",
+                                    isBusy = false,
+                                )
+                            }
                         }
                     }
                     return false
@@ -252,48 +298,54 @@ class TimetableService(
                 } catch (_: Exception) {
                     return false
                 }
-                if (!isBindingCurrent(context.binding) ||
-                    businessEpoch.get() != context.businessEpoch
-                ) {
+                commitMutex.withLock {
+                    if (!isBindingCurrent(context.binding) ||
+                        businessEpoch.get() != context.businessEpoch
+                    ) {
+                        interactiveContext = null
+                        applyAccountStateLocked(account.state.value)
+                        return@withLock false
+                    }
+                    val session = TimetableSession(
+                        accountId = context.binding.accountId.value,
+                        credentialGeneration = context.binding.credentialGeneration.value,
+                        businessGeneration = context.businessEpoch,
+                        savedAtEpochMillis = clock(),
+                        cookies = cookies,
+                    )
+                    commitBarrier("adopt-session")
+                    if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
+                        _state.update {
+                            it.copy(
+                                connection = TimetableConnection.PROTOCOL_ERROR,
+                                message = "课表会话已建立，但本机加密保存失败；请稍后重试。",
+                                isBusy = false,
+                            )
+                        }
+                        return@withLock false
+                    }
                     interactiveContext = null
-                    publishAccountState()
-                    return false
-                }
-                val session = TimetableSession(
-                    accountId = context.binding.accountId.value,
-                    credentialGeneration = context.binding.credentialGeneration.value,
-                    businessGeneration = context.businessEpoch,
-                    savedAtEpochMillis = clock(),
-                    cookies = cookies,
-                )
-                if (!sessionStore.save(session)) {
-                    _state.update {
-                        it.copy(
-                            connection = TimetableConnection.PROTOCOL_ERROR,
-                            message = "课表会话已建立，但本机加密保存失败；请稍后重试。",
-                            isBusy = false,
+                    lastIndex = index
+                    applyIndexSelectionLocked(index, preserveSelection = explicitSelection)
+                    commitBarrier("adopt-cache")
+                    withContext(ioDispatcher) {
+                        cacheStore.save(
+                            context.binding.accountId.value,
+                            index,
+                            null,
+                            clock(),
                         )
                     }
-                    return false
+                    _state.update {
+                        it.copy(
+                            connection = TimetableConnection.CONNECTED,
+                            interactionUrl = null,
+                            message = null,
+                            canRetry = false,
+                        )
+                    }
+                    true
                 }
-                interactiveContext = null
-                lastIndex = index
-                applyIndexSelectionLocked(index)
-                cacheStore.save(
-                    context.binding.accountId.value,
-                    index,
-                    null,
-                    clock(),
-                )
-                _state.update {
-                    it.copy(
-                        connection = TimetableConnection.CONNECTED,
-                        interactionUrl = null,
-                        message = null,
-                        canRetry = false,
-                    )
-                }
-                true
             }
         } finally {
             adopting.set(0)
@@ -307,113 +359,114 @@ class TimetableService(
      *
      * SESSIONS_ONLY 保留同账号历史周；PERSONAL_DATA 连课表缓存一起删除。
      */
-    suspend fun invalidateForAccount(scope: AccountDataScope): Boolean {
-        businessEpoch.incrementAndGet()
-        selectionEpoch.incrementAndGet()
-        interactiveContext = null
-        lastIndex = null
-        currentBinding = null
-        _state.update {
-            it.copy(
-                terms = emptyList(),
-                selectedYear = null,
-                selectedTerm = null,
-                selectedWeek = null,
-                weekDates = emptyList(),
-                meetings = emptyList(),
-                weekState = TimetableWeekState.NOT_QUERIED,
-                weekFetchedAtEpochMillis = null,
-                todayMeetings = emptyList(),
-                todayLoaded = false,
-                connection = TimetableConnection.IDLE,
-                message = null,
-                interactionUrl = null,
-                isBusy = false,
-                canRetry = false,
-            )
+    suspend fun invalidateForAccount(scope: AccountDataScope): Boolean =
+        commitMutex.withLock {
+            businessEpoch.incrementAndGet()
+            selectionEpoch.incrementAndGet()
+            accountEpochValue += 1
+            explicitSelection = false
+            interactiveContext = null
+            lastIndex = null
+            currentBinding = null
+            _state.update {
+                it.copy(
+                    accountEpoch = accountEpochValue,
+                    terms = emptyList(),
+                    selectedYear = null,
+                    selectedTerm = null,
+                    selectedWeek = null,
+                    weekDates = emptyList(),
+                    meetings = emptyList(),
+                    weekState = TimetableWeekState.NOT_QUERIED,
+                    weekFetchedAtEpochMillis = null,
+                    todayMeetings = emptyList(),
+                    todayLoaded = false,
+                    connection = TimetableConnection.IDLE,
+                    message = null,
+                    interactionUrl = null,
+                    isBusy = false,
+                    canRetry = false,
+                )
+            }
+            val sessionCleared = withContext(ioDispatcher) { sessionStore.clear() }
+            val cacheCleared = if (scope == AccountDataScope.PERSONAL_DATA) {
+                withContext(ioDispatcher) { cacheStore.clear() }
+            } else {
+                true
+            }
+            sessionCleared && cacheCleared
         }
-        val sessionCleared = sessionStore.clear()
-        val cacheCleared = if (scope == AccountDataScope.PERSONAL_DATA) {
-            cacheStore.clear()
-        } else {
-            true
-        }
-        return sessionCleared && cacheCleared
-    }
 
     // ── index / week ──────────────────────────────────────────────────────
 
-    private suspend fun refreshLocked(
-        binding: SchoolAccountReference,
-        forceIndex: Boolean,
-    ) {
-        val token = selectionEpoch.get()
-        if (forceIndex || lastIndex == null) {
-            loadIndexLocked(binding, token)
-            return
-        }
-        val term = selectedTermLocked() ?: run {
-            loadIndexLocked(binding, token)
-            return
-        }
-        val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
-        _state.update {
-            it.copy(
-                selectedWeek = week,
-                isBusy = true,
-                connection = TimetableConnection.CONNECTING,
-                weekState = TimetableWeekState.LOADING,
-                message = null,
-            )
-        }
-        loadWeekLocked(binding, term, week, token, businessEpoch.get())
-    }
+    private suspend fun loadCache(accountId: String): TimetableCache =
+        withContext(ioDispatcher) { cacheStore.load(accountId) }
 
     private suspend fun loadIndexLocked(binding: SchoolAccountReference, token: Long) {
         val business = businessEpoch.get()
-        _state.update {
-            it.copy(
-                isBusy = true,
-                connection = TimetableConnection.CONNECTING,
-                weekState = TimetableWeekState.LOADING,
-                message = null,
-                interactionUrl = null,
-            )
-        }
-        try {
-            val index = withSession(binding) { cookies -> api.getIndex(cookies) }
+        val started = commitMutex.withLock {
             if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                 selectionEpoch.get() != token
             ) {
-                return
+                false
+            } else {
+                _state.update {
+                    it.copy(
+                        isBusy = true,
+                        connection = TimetableConnection.CONNECTING,
+                        weekState = TimetableWeekState.LOADING,
+                        message = null,
+                        interactionUrl = null,
+                    )
+                }
+                true
             }
-            lastIndex = index
-            applyIndexSelectionLocked(index)
-            cacheStore.save(binding.accountId.value, index, null, clock())
-            val term = selectedTermLocked() ?: throw ServiceFailure(
-                TimetableConnection.PROTOCOL_ERROR,
-                "学校未返回可用学期。",
-            )
-            val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
-            loadWeekLocked(binding, term, week, selectionEpoch.get(), businessEpoch.get())
+        }
+        if (!started) return
+        try {
+            val index = withSession(binding) { cookies -> api.getIndex(cookies) }
+            val next = commitMutex.withLock {
+                if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
+                    selectionEpoch.get() != token
+                ) {
+                    return@withLock null
+                }
+                lastIndex = index
+                applyIndexSelectionLocked(index, preserveSelection = explicitSelection)
+                commitBarrier("index-cache")
+                withContext(ioDispatcher) {
+                    cacheStore.save(binding.accountId.value, index, null, clock())
+                }
+                val term = selectedTermLocked() ?: throw ServiceFailure(
+                    TimetableConnection.PROTOCOL_ERROR,
+                    "学校未返回可用学期。",
+                )
+                val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
+                term to week
+            } ?: return
+            loadWeekLocked(binding, next.first, next.second, selectionEpoch.get(), businessEpoch.get())
         } catch (failure: ServiceFailure) {
-            if (isBindingCurrent(binding) && businessEpoch.get() == business &&
-                selectionEpoch.get() == token
-            ) {
-                publishFailure(failure)
+            commitMutex.withLock {
+                if (isBindingCurrent(binding) && businessEpoch.get() == business &&
+                    selectionEpoch.get() == token
+                ) {
+                    publishFailure(failure)
+                }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (isBindingCurrent(binding) && businessEpoch.get() == business &&
-                selectionEpoch.get() == token
-            ) {
-                publishFailure(
-                    ServiceFailure(
-                        TimetableConnection.PROTOCOL_ERROR,
-                        "课表查询返回了无法确认的结果；已保留上次成功缓存。",
-                    ),
-                )
+            commitMutex.withLock {
+                if (isBindingCurrent(binding) && businessEpoch.get() == business &&
+                    selectionEpoch.get() == token
+                ) {
+                    publishFailure(
+                        ServiceFailure(
+                            TimetableConnection.PROTOCOL_ERROR,
+                            "课表查询返回了无法确认的结果；已保留上次成功缓存。",
+                        ),
+                    )
+                }
             }
         }
     }
@@ -425,46 +478,69 @@ class TimetableService(
         token: Long,
         business: Long,
     ) {
-        _state.update {
-            it.copy(
-                isBusy = true,
-                connection = TimetableConnection.CONNECTING,
-                weekState = TimetableWeekState.LOADING,
-                message = null,
-                interactionUrl = null,
-            )
-        }
-        try {
-            val result = withSession(binding) { cookies -> api.getWeek(cookies, term, week) }
+        val started = commitMutex.withLock {
             if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                 selectionEpoch.get() != token ||
                 _state.value.selectedWeek != week ||
                 _state.value.selectedYear != term.year ||
                 _state.value.selectedTerm != term.term
             ) {
-                return
+                false
+            } else {
+                _state.update {
+                    it.copy(
+                        isBusy = true,
+                        connection = TimetableConnection.CONNECTING,
+                        weekState = TimetableWeekState.LOADING,
+                        message = null,
+                        interactionUrl = null,
+                    )
+                }
+                true
             }
-            val stamped = result.copy(fetchedAtEpochMillis = clock())
-            cacheStore.save(binding.accountId.value, lastIndex, stamped, clock())
-            publishWeekLocked(stamped)
+        }
+        if (!started) return
+        try {
+            val result = withSession(binding) { cookies -> api.getWeek(cookies, term, week) }
+            commitMutex.withLock {
+                if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
+                    selectionEpoch.get() != token ||
+                    _state.value.selectedWeek != week ||
+                    _state.value.selectedYear != term.year ||
+                    _state.value.selectedTerm != term.term
+                ) {
+                    return@withLock
+                }
+                val stamped = result.copy(fetchedAtEpochMillis = clock())
+                commitBarrier("week-cache")
+                withContext(ioDispatcher) {
+                    cacheStore.save(binding.accountId.value, lastIndex, stamped, clock())
+                }
+                commitBarrier("week-publish")
+                publishWeekLocked(stamped)
+            }
         } catch (failure: ServiceFailure) {
-            if (isBindingCurrent(binding) && businessEpoch.get() == business &&
-                selectionEpoch.get() == token
-            ) {
-                publishFailure(failure)
+            commitMutex.withLock {
+                if (isBindingCurrent(binding) && businessEpoch.get() == business &&
+                    selectionEpoch.get() == token
+                ) {
+                    publishFailure(failure)
+                }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
-            if (isBindingCurrent(binding) && businessEpoch.get() == business &&
-                selectionEpoch.get() == token
-            ) {
-                publishFailure(
-                    ServiceFailure(
-                        TimetableConnection.PROTOCOL_ERROR,
-                        "课表查询返回了无法确认的结果；已保留上次成功缓存。",
-                    ),
-                )
+            commitMutex.withLock {
+                if (isBindingCurrent(binding) && businessEpoch.get() == business &&
+                    selectionEpoch.get() == token
+                ) {
+                    publishFailure(
+                        ServiceFailure(
+                            TimetableConnection.PROTOCOL_ERROR,
+                            "课表查询返回了无法确认的结果；已保留上次成功缓存。",
+                        ),
+                    )
+                }
             }
         }
     }
@@ -476,11 +552,19 @@ class TimetableService(
         var authAttempted = false
         var retriedAfterAuth = false
         while (true) {
-            val session = sessionStore.load(
-                binding.accountId.value,
-                binding.credentialGeneration.value,
-            )
+            val session = withContext(ioDispatcher) {
+                sessionStore.load(
+                    binding.accountId.value,
+                    binding.credentialGeneration.value,
+                )
+            }
             if (session != null) {
+                if (!isBindingCurrent(binding)) {
+                    throw ServiceFailure(
+                        TimetableConnection.NOT_CONFIGURED,
+                        "学校账号已变化，请重新打开课表。",
+                    )
+                }
                 try {
                     return operation(session.cookies)
                 } catch (failure: TimetableApiException) {
@@ -492,7 +576,7 @@ class TimetableService(
                             )
                         }
                         // 旧会话明确失效：清掉后最多按当前凭据认证一次。
-                        sessionStore.clear()
+                        withContext(ioDispatcher) { sessionStore.clear() }
                     } else {
                         throw mapApiFailure(failure)
                     }
@@ -523,22 +607,18 @@ class TimetableService(
                     "学校账号已变化，请重新打开课表。",
                 )
             }
-            val existing = sessionStore.load(
-                binding.accountId.value,
-                binding.credentialGeneration.value,
-            )
+            val existing = withContext(ioDispatcher) {
+                sessionStore.load(
+                    binding.accountId.value,
+                    binding.credentialGeneration.value,
+                )
+            }
             if (existing != null) return
             val business = businessEpoch.get()
             val result = authenticator.authenticate(
                 expectedAccountId = binding.accountId,
                 expectedCredentialGeneration = binding.credentialGeneration.value,
             )
-            if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
-                throw ServiceFailure(
-                    TimetableConnection.NOT_CONFIGURED,
-                    "登录期间学校账号已变化，本次结果已丢弃。",
-                )
-            }
             when (result) {
                 is UpcAuthResult.Failure -> throw when (result.reason) {
                     UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
@@ -571,29 +651,38 @@ class TimetableService(
                     )
                 }
                 is UpcAuthResult.Success -> {
-                    val cookies = result.cookies.map {
-                        TimetableCookie(
-                            name = it.name,
-                            value = it.value,
-                            domain = it.domain,
-                            path = it.path,
-                            secure = it.secure,
-                            httpOnly = it.httpOnly,
-                            expiresAtEpochSeconds = it.expiresAtEpochSeconds,
+                    commitMutex.withLock {
+                        if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
+                            throw ServiceFailure(
+                                TimetableConnection.NOT_CONFIGURED,
+                                "登录期间学校账号已变化，本次结果已丢弃。",
+                            )
+                        }
+                        val cookies = result.cookies.map {
+                            TimetableCookie(
+                                name = it.name,
+                                value = it.value,
+                                domain = it.domain,
+                                path = it.path,
+                                secure = it.secure,
+                                httpOnly = it.httpOnly,
+                                expiresAtEpochSeconds = it.expiresAtEpochSeconds,
+                            )
+                        }
+                        val session = TimetableSession(
+                            accountId = binding.accountId.value,
+                            credentialGeneration = binding.credentialGeneration.value,
+                            businessGeneration = business,
+                            savedAtEpochMillis = clock(),
+                            cookies = cookies,
                         )
-                    }
-                    val session = TimetableSession(
-                        accountId = binding.accountId.value,
-                        credentialGeneration = binding.credentialGeneration.value,
-                        businessGeneration = businessEpoch.get(),
-                        savedAtEpochMillis = clock(),
-                        cookies = cookies,
-                    )
-                    if (!sessionStore.save(session)) {
-                        throw ServiceFailure(
-                            TimetableConnection.PROTOCOL_ERROR,
-                            "课表会话已建立，但本机加密保存失败；请稍后重试。",
-                        )
+                        commitBarrier("auth-session")
+                        if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
+                            throw ServiceFailure(
+                                TimetableConnection.PROTOCOL_ERROR,
+                                "课表会话已建立，但本机加密保存失败；请稍后重试。",
+                            )
+                        }
                     }
                 }
             }
@@ -707,25 +796,39 @@ class TimetableService(
         }
     }
 
-    private fun applyIndexSelectionLocked(index: TimetableIndex) {
-        val existing = selectedTermLocked()
+    private fun applyIndexSelectionLocked(index: TimetableIndex, preserveSelection: Boolean) {
+        val current = _state.value
+        val existing = if (preserveSelection) selectedTermLocked() else null
         val selected = existing?.takeIf { old ->
             index.terms.any { it.year == old.year && it.term == old.term }
         } ?: index.current() ?: index.terms.firstOrNull()
+        val preferred = if (preserveSelection && existing != null) {
+            current.selectedWeek
+        } else if (selected != null &&
+            index.currentYear == selected.year && index.currentTerm == selected.term
+        ) {
+            index.currentWeek
+        } else {
+            null
+        }
         val week = selected?.let {
-            val preferred = if (index.currentYear == it.year && index.currentTerm == it.term) {
-                index.currentWeek
-            } else {
-                null
-            }
             (preferred ?: defaultWeekLocked(it)).coerceIn(1, it.totalWeeks)
         }
+        val changed = current.selectedYear != selected?.year ||
+            current.selectedTerm != selected?.term ||
+            current.selectedWeek != week
         _state.update {
             it.copy(
                 terms = index.terms,
                 selectedYear = selected?.year,
                 selectedTerm = selected?.term,
                 selectedWeek = week,
+                weekDates = if (changed) emptyList() else it.weekDates,
+                meetings = if (changed) emptyList() else it.meetings,
+                weekState = if (changed) TimetableWeekState.NOT_QUERIED else it.weekState,
+                weekFetchedAtEpochMillis = if (changed) null else it.weekFetchedAtEpochMillis,
+                todayMeetings = if (changed) emptyList() else it.todayMeetings,
+                todayLoaded = if (changed) false else it.todayLoaded,
             )
         }
     }
@@ -757,23 +860,14 @@ class TimetableService(
         cached.week(term, week)?.let(::publishCachedWeekLocked)
     }
 
-    private fun publishCachedSelectionLocked(cached: TimetableCache) {
-        val term = selectedTermLocked() ?: return
-        val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
-        cached.week(term, week)?.let(::publishCachedWeekLocked)
-    }
-
     private fun defaultWeekLocked(term: TimetableTerm): Int {
         val index = lastIndex
+        // 只使用学校响应里显式给出的 currentWeek；没有时不按开学日推算。
+        // 非当前学期从第 1 周开始，用户可再明确选周。
         if (index?.currentYear == term.year && index.currentTerm == term.term &&
             index.currentWeek != null && index.currentWeek in 1..term.totalWeeks
         ) {
             return index.currentWeek
-        }
-        val today = todayProvider()
-        if (!today.isBefore(term.startDay)) {
-            val computed = ((today.toEpochDay() - term.startDay.toEpochDay()) / 7).toInt() + 1
-            if (computed in 1..term.totalWeeks) return computed
         }
         return 1
     }
@@ -802,7 +896,7 @@ class TimetableService(
             reference.credentialGeneration == binding.credentialGeneration
     }
 
-    private fun applyAccountState(state: SchoolAccountState) {
+    private fun applyAccountStateLocked(state: SchoolAccountState) {
         val reference = account.accountReference.value
             ?.takeIf {
                 state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
@@ -822,12 +916,15 @@ class TimetableService(
             if (previous != null) {
                 businessEpoch.incrementAndGet()
                 selectionEpoch.incrementAndGet()
+                accountEpochValue += 1
             }
             currentBinding = null
             lastIndex = null
+            explicitSelection = false
             interactiveContext = null
             _state.update {
                 it.copy(
+                    accountEpoch = accountEpochValue,
                     accountStatusLabel = label,
                     maskedAccount = state.maskedAccount,
                     accountSavedUnverified = state.isCredentialSaved,
@@ -873,10 +970,13 @@ class TimetableService(
         ) {
             businessEpoch.incrementAndGet()
             selectionEpoch.incrementAndGet()
+            accountEpochValue += 1
+            explicitSelection = false
             lastIndex = null
             interactiveContext = null
             _state.update {
                 it.copy(
+                    accountEpoch = accountEpochValue,
                     terms = emptyList(),
                     selectedYear = null,
                     selectedTerm = null,
@@ -909,8 +1009,8 @@ class TimetableService(
         }
     }
 
-    private fun publishAccountState() {
-        applyAccountState(account.state.value)
+    private suspend fun publishAccountState() {
+        commitMutex.withLock { applyAccountStateLocked(account.state.value) }
     }
 
     private fun parseCookieHeader(header: String): List<TimetableCookie> =

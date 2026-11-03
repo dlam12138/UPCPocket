@@ -8,7 +8,8 @@
 - 认证：核对 CAS 登录页/表单 action/service/ticket 回调/主机与 HTTPS，密码只提交一次；区分错误密码、网络、验证码/二次验证、协议与账号变化；缺会话或明确 10013 最多恢复一次，不循环试密码；验证码走学校正常网页登录并绑定账号/业务代次。
 - 会话：独立 Keystore alias `upcpocket.timetable-session.v1` 加密，绑定内部 accountId 与凭据代次；缓存只保存完整成功教学周，按 accountId + 学年/学期/教学周归属，未查询/失败/空周分开展示，离线只显示成功缓存。
 - 并发与清理：所有认证、索引、周查询、会话保存与缓存发布捕获账号/凭据/业务/选周代次；换号/删号/清缓存/选周旧响应被拒绝，插件隔离时宿主仍清理个人文件；同号改密保留历史课表但清旧会话。
-- 验证：**341 tests，0 failures/errors/skipped**（含新增 71 项）；`checkModuleBoundaries`、`assembleDebug`、`assembleDebugAndroidTest`、全部相关 lint 通过。模拟器 Android 36 实际完成本人账号 CAS 认证与单周课表读取，随后展示周网格/今日课程并验证离线重开缓存；未提交课程原文或凭据。详见 [M3 执行记录](m3/README.md) 与 [验收记录](m3/验收记录.md)。
+- 审阅修正：terms 为空时首次验证码/二次验证入口与正常网页登录可达；冷启动/刷新重取 index，更新 currentTerm/currentWeek，同时保留手选历史周；session/cache/UI 发布与账号失效共用 commitMutex，网络在锁外，文件/crypto 在 IO；账号切换立即撤下旧详情/旧登录弹窗。
+- 验证：**353 tests，0 failures/errors/skipped**（含新增 83 项）；`checkModuleBoundaries`、`assembleDebug`、`assembleDebugAndroidTest`、全部相关 lint 通过。上述真实设备 CAS/单周读取/离线重开是 `e22e60d` 初次实现的历史记录，本次审阅修正未重跑线上认证。详见 [M3 执行记录](m3/README.md) 与 [验收记录](m3/验收记录.md)。
 - 限制：release/R8、真机、其他 ROM/WebView、校园网特殊策略、设备级“清理中杀进程”未验证；WebView 回退读取的 Cookie 属性由系统接口简化，详见验收记录。
 
 ## M2 · 校园卡余额强关联（开发分支，未发布）

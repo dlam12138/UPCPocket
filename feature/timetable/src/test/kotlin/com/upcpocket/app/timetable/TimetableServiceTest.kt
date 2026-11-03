@@ -15,6 +15,8 @@ import com.upcpocket.app.upcauth.UpcAuthResult
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -40,7 +42,7 @@ class TimetableServiceTest {
     private val crypto = TestCrypto()
     private val account = FakeAccount()
     private val auth = FakeAuthenticator()
-    private val today = LocalDate.parse("2026-10-28")
+    private var today = LocalDate.parse("2026-10-28")
     private var now = 1_700_000_000_000L
 
     private val sessionStore = TimetableSessionStore(directory, crypto)
@@ -129,13 +131,114 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun openRefreshesStaleCachedCurrentWeekFromServer() = runTest {
+        seedCacheAndSession()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexJson(week = 9))
+            } else {
+                assertEquals("9", weekFromBody(request))
+                json(emptyWeek(index().terms.first(), 9))
+            }
+        }
+        val service = service(transport)
+        service.open()
+        assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
+        assertEquals(9, service.state.value.selectedWeek)
+        assertEquals(LocalDate.parse("2026-11-01"), service.state.value.weekDates.first())
+        assertEquals(TimetableWeekState.EMPTY, service.state.value.weekState)
+        assertEquals(0, auth.calls)
+        assertEquals(1, transport.count("GET"))
+        assertEquals(1, transport.count("POST"))
+    }
+
+    @Test
+    fun openUsesServerCurrentTermInsteadOfCachedTerm() = runTest {
+        seedCacheAndSession()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexJson(week = 1, term = "2"))
+            } else {
+                assertEquals("2", termFromBody(request))
+                assertEquals("1", weekFromBody(request))
+                json(emptyWeek(index().terms.first { it.term == "2" }, 1))
+            }
+        }
+        val service = service(transport)
+        service.open()
+        assertEquals("2", service.state.value.selectedTerm)
+        assertEquals(1, service.state.value.selectedWeek)
+        assertEquals(LocalDate.parse("2027-02-21"), service.state.value.weekDates.first())
+    }
+
+    @Test
+    fun offlineIndexFailureKeepsCachedWeekInsteadOfGuessingFromStartDay() = runTest {
+        today = LocalDate.parse("2026-12-09")
+        seedCacheAndSession()
+        val service = service(
+            ProgrammedTransport {
+                throw TimetableTransportException(TimetableTransportFailure.NETWORK)
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.NETWORK_UNAVAILABLE, service.state.value.connection)
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertEquals(8, service.state.value.selectedWeek)
+        assertEquals(LocalDate.parse("2026-10-25"), service.state.value.weekDates.first())
+        assertEquals(0, auth.calls)
+    }
+
+    @Test
+    fun manualRefreshFetchesNewIndexAndCurrentWeek() = runTest {
+        var serverWeek = 8
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexJson(week = serverWeek))
+            } else {
+                val week = weekFromBody(request).toInt()
+                json(emptyWeek(index().terms.first(), week))
+            }
+        }
+        val service = service(transport)
+        service.open()
+        assertEquals(8, service.state.value.selectedWeek)
+        serverWeek = 9
+        service.refresh()
+        assertEquals(9, service.state.value.selectedWeek)
+        assertEquals(2, transport.count("GET"))
+        assertEquals(2, transport.count("POST"))
+        assertEquals("9", weekFromBody(transport.lastPost()))
+    }
+
+    @Test
+    fun refreshKeepsExplicitHistoricalWeekWhenIndexMovesOn() = runTest {
+        var serverWeek = 8
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexJson(week = serverWeek))
+            } else {
+                val week = weekFromBody(request).toInt()
+                json(emptyWeek(index().terms.first(), week))
+            }
+        }
+        val service = service(transport)
+        service.open()
+        service.selectWeek(7)
+        assertEquals(7, service.state.value.selectedWeek)
+        serverWeek = 9
+        service.refresh()
+        assertEquals(7, service.state.value.selectedWeek)
+        assertEquals("7", weekFromBody(transport.lastPost()))
+        assertEquals(2, transport.count("GET"))
+    }
+
+    @Test
     fun sessionAuthExpiryRecoversExactlyOnce() = runTest {
         seedCacheAndSession()
         val transport = ProgrammedTransport { request ->
             if (request.method == "GET") {
-                error("refresh should use cached index")
-            }
-            if (transportFailures++ == 0) {
+                json(indexFixture())
+            } else if (transportFailures++ == 0) {
                 json("""{"e":10013,"d":{}}""")
             } else {
                 json(weekFixture())
@@ -151,7 +254,13 @@ class TimetableServiceTest {
     @Test
     fun secondAuthFailureStopsWithoutPasswordLoop() = runTest {
         seedCacheAndSession()
-        val transport = ProgrammedTransport { json("""{"e":10013,"d":{}}""") }
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexFixture())
+            } else {
+                json("""{"e":10013,"d":{}}""")
+            }
+        }
         val service = service(transport)
         service.open()
         assertEquals(TimetableConnection.SESSION_EXPIRED, service.state.value.connection)
@@ -342,7 +451,149 @@ class TimetableServiceTest {
         assertNull(sessionStore.load(ACCOUNT_ID, 1))
     }
 
-    private fun service(transport: ProgrammedTransport): TimetableService =
+    @Test
+    fun weekCacheAndPublishAreOrderedAgainstAccountInvalidation() = runTest {
+        seedCacheAndSession()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") json(indexJson(8)) else json(weekFixture())
+        }
+        val service = service(transport) { label ->
+            if (label == "week-cache") {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        val operation = launch { service.open() }
+        withTimeout(5_000) { entered.await() }
+        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
+            service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
+        }
+        yield()
+        assertFalse(invalidation.isCompleted)
+        release.complete(Unit)
+        operation.join()
+        invalidation.await()
+        assertTrue(service.state.value.meetings.isEmpty())
+        assertNull(service.state.value.selectedWeek)
+        assertNull(sessionStore.load(ACCOUNT_ID, 1))
+        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
+    }
+
+    @Test
+    fun automaticAuthSessionSaveIsOrderedAgainstInvalidation() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") json(indexJson(8)) else json(weekFixture())
+        }
+        val service = service(transport) { label ->
+            if (label == "auth-session") {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        val operation = launch { service.open() }
+        withTimeout(5_000) { entered.await() }
+        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
+            service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
+        }
+        yield()
+        assertFalse(invalidation.isCompleted)
+        release.complete(Unit)
+        operation.join()
+        invalidation.await()
+        assertNull(sessionStore.load(ACCOUNT_ID, 1))
+        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
+        assertTrue(service.state.value.terms.isEmpty())
+    }
+
+    @Test
+    fun webViewAdoptionSessionSaveIsOrderedAgainstInvalidation() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") json(indexJson(8)) else json(weekFixture())
+        }
+        val service = service(transport) { label ->
+            if (label == "adopt-session") {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        assertNotNull(service.beginInteractiveLogin())
+        val adoption = launch { service.adoptInteractiveCookies("eai-sess=web-session") }
+        withTimeout(5_000) { entered.await() }
+        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
+            service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
+        }
+        yield()
+        assertFalse(invalidation.isCompleted)
+        release.complete(Unit)
+        adoption.join()
+        invalidation.await()
+        assertNull(sessionStore.load(ACCOUNT_ID, 1))
+        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
+        assertTrue(service.state.value.terms.isEmpty())
+        assertNull(service.state.value.interactionUrl)
+    }
+
+    @Test
+    fun lateCachedReadCannotRepublishAfterInvalidation() = runTest {
+        seedCacheAndSession()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            ProgrammedTransport { error("late cache must not query") },
+        ) { label ->
+            if (label == "open-cache") {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        val operation = launch { service.open() }
+        withTimeout(5_000) { entered.await() }
+        service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
+        release.complete(Unit)
+        operation.join()
+        assertTrue(service.state.value.meetings.isEmpty())
+        assertTrue(service.state.value.terms.isEmpty())
+        assertNull(sessionStore.load(ACCOUNT_ID, 1))
+        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
+    }
+
+    @Test
+    fun newWeekSelectionWinsOverOldPublication() = runTest {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                json(indexJson(8))
+            } else {
+                json(emptyWeek(index().terms.first(), weekFromBody(request).toInt()))
+            }
+        }
+        val service = service(transport) { label ->
+            if (label == "week-publish") {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        val opening = launch { service.open() }
+        withTimeout(5_000) { entered.await() }
+        val selecting = launch { service.selectWeek(9) }
+        release.complete(Unit)
+        opening.join()
+        selecting.join()
+        assertEquals(9, service.state.value.selectedWeek)
+        assertEquals(TimetableWeekState.EMPTY, service.state.value.weekState)
+    }
+
+    private fun service(
+        transport: ProgrammedTransport,
+        commitBarrier: suspend (String) -> Unit = {},
+    ): TimetableService =
         TimetableService(
             account = account,
             authenticator = auth,
@@ -351,6 +602,8 @@ class TimetableServiceTest {
             cacheStore = cacheStore,
             clock = { now },
             todayProvider = { today },
+            commitBarrier = commitBarrier,
+            ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
         )
 
     private fun seedCacheAndSession() {
@@ -418,6 +671,27 @@ class TimetableServiceTest {
                 json(weekFixture())
             }
         }
+
+    private fun indexJson(week: Int, term: String = "1"): String {
+        val termInfo = index().terms
+        val selected = termInfo.first { it.term == term }
+        val start = selected.startDay.plusDays((week - 1).toLong() * 7)
+        val dates = (0..6).joinToString(",") { "\"${start.plusDays(it.toLong())}\"" }
+        val terms = termInfo.joinToString(",") { item ->
+            """{"year":"${item.year}","term":"${item.term}",""" +
+                """"startday":"${item.startDay}","countweek":"${item.totalWeeks}","id":"${item.id}"}"""
+        }
+        return """{"e":0,"m":"ok","d":{"params":{"year":"${selected.year}",""" +
+            """"term":"${selected.term}","week":$week,"startday":"${selected.startDay}",""" +
+            """"countweek":"${selected.totalWeeks}","id":"${selected.id}"},""" +
+            """"termInfo":[$terms],"weekday":"6","weekdays":[$dates]}}"""
+    }
+
+    private fun weekFromBody(request: TimetableHttpRequest): String =
+        Regex("(?:^|&)week=(\\d+)").find(request.body.orEmpty())!!.groupValues[1]
+
+    private fun termFromBody(request: TimetableHttpRequest): String =
+        Regex("(?:^|&)term=([^&]+)").find(request.body.orEmpty())!!.groupValues[1]
 
     private fun emptyWeek(term: TimetableTerm, week: Int): String {
         val start = term.startDay.plusDays((week - 1).toLong() * 7)
@@ -517,6 +791,8 @@ class TimetableServiceTest {
 
         fun postBodies(): List<String> =
             requests.filter { it.method == "POST" }.map { it.body.orEmpty() }
+
+        fun lastPost(): TimetableHttpRequest = requests.last { it.method == "POST" }
     }
 }
 

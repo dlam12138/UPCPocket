@@ -172,6 +172,7 @@ enum class TimetableWeekState {
 
 data class TimetableUiState(
     val accountStatusLabel: String = "",
+    val accountEpoch: Long = 0,
     val maskedAccount: String? = null,
     val accountSavedUnverified: Boolean = false,
     val connection: TimetableConnection = TimetableConnection.LOADING,

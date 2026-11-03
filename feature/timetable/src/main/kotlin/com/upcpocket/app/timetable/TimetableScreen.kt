@@ -46,6 +46,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -74,18 +76,50 @@ fun TimetableScreen(
                 TimetableViewModel(service) as T
         },
     )
+    TimetableScreen(
+        viewModel = viewModel,
+        onBack = onBack,
+        onOpenAccountSettings = onOpenAccountSettings,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TimetableScreen(
+    viewModel: TimetableViewModel,
+    onBack: () -> Unit,
+    onOpenAccountSettings: () -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var detail by remember { mutableStateOf<TimetableMeeting?>(null) }
     var loginVisible by remember { mutableStateOf(false) }
     var loginUrl by remember { mutableStateOf<String?>(null) }
     var loginHint by remember { mutableStateOf<String?>(null) }
+    var loginEpoch by remember { mutableStateOf(0L) }
+    val visibleDetail = detail?.takeIf { selected ->
+        state.meetings.any { it.instanceId == selected.instanceId }
+    }
 
-    androidx.compose.runtime.LaunchedEffect(state.accountBlocked, state.accountSavedUnverified) {
+    androidx.compose.runtime.LaunchedEffect(
+        state.accountEpoch,
+        state.accountBlocked,
+        state.accountSavedUnverified,
+    ) {
         if (state.accountBlocked || !state.accountSavedUnverified) {
+            detail = null
             loginVisible = false
             loginHint = null
             viewModel.cancelInteractiveLogin()
         }
+    }
+    androidx.compose.runtime.LaunchedEffect(
+        state.accountEpoch,
+        state.selectedYear,
+        state.selectedTerm,
+        state.selectedWeek,
+    ) {
+        // 详情属于某一账号/某一周；换号或换周后不能继续展示旧课程。
+        detail = null
     }
 
     Scaffold(
@@ -130,22 +164,37 @@ fun TimetableScreen(
                 }
                 return@Column
             }
+            ConnectionBanner(
+                state = state,
+                onRetry = viewModel::refresh,
+                onOpenAccountSettings = onOpenAccountSettings,
+                onOpenLogin = {
+                    viewModel.beginInteractiveLogin { url ->
+                        if (url != null) {
+                            loginUrl = url
+                            loginEpoch = state.accountEpoch
+                            loginVisible = true
+                        }
+                    }
+                },
+                onOpenWebLogin = {
+                    viewModel.beginInteractiveLogin { url ->
+                        if (url != null) {
+                            loginUrl = url
+                            loginEpoch = state.accountEpoch
+                            loginVisible = true
+                        }
+                    }
+                },
+            )
             if (state.terms.isEmpty()) {
                 GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            state.message ?: "尚未取得学期列表。",
+                            "尚未取得学期列表。",
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         if (state.isBusy) CircularProgressIndicator(Modifier.height(22.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (state.connection != TimetableConnection.NOT_CONFIGURED &&
-                                !state.accountBlocked
-                            ) {
-                                OutlinedButton(onClick = viewModel::refresh) { Text("重新查询") }
-                            }
-                            TextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
-                        }
                     }
                 }
                 return@Column
@@ -155,25 +204,6 @@ fun TimetableScreen(
                 state = state,
                 onSelectTerm = viewModel::selectTerm,
                 onSelectWeek = viewModel::selectWeek,
-            )
-            ConnectionBanner(
-                state = state,
-                onRetry = viewModel::refresh,
-                onOpenAccountSettings = onOpenAccountSettings,
-                onOpenLogin = {
-                    val url = viewModel.beginInteractiveLogin()
-                    if (url != null) {
-                        loginUrl = url
-                        loginVisible = true
-                    }
-                },
-                onOpenWebLogin = {
-                    val url = viewModel.beginInteractiveLogin()
-                    if (url != null) {
-                        loginUrl = url
-                        loginVisible = true
-                    }
-                },
             )
             WeekPanel(state, onCourseClick = { detail = it })
             TodayPanel(state, onCourseClick = { detail = it })
@@ -186,10 +216,12 @@ fun TimetableScreen(
         }
     }
 
-    detail?.let { meeting ->
+    visibleDetail?.let { meeting ->
         CourseDetailDialog(meeting = meeting, onDismiss = { detail = null })
     }
-    if (loginVisible && loginUrl != null) {
+    if (loginVisible && loginUrl != null && loginEpoch == state.accountEpoch &&
+        state.accountSavedUnverified && !state.accountBlocked
+    ) {
         TimetableLoginDialog(
             url = loginUrl!!,
             hint = loginHint,
@@ -542,6 +574,10 @@ private fun DayColumn(
                         .background(color.copy(alpha = 0.78f))
                         .border(0.5.dp, color, RoundedCornerShape(5.dp))
                         .clickable { onCourseClick(meeting) }
+                        .semantics {
+                            contentDescription =
+                                "课程详情 ${meeting.courseName} ${meeting.sourcePeriodsLabel()}"
+                        }
                         .padding(2.dp),
                 ) {
                     Column {
