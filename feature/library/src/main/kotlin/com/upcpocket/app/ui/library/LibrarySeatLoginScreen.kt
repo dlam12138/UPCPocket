@@ -32,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibrarySeatProtocol
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.school.SchoolLoginWebViewClient
@@ -53,6 +55,22 @@ fun LibrarySeatLoginScreen(
     onLoggedIn: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val accountState by service.accountState.collectAsStateWithLifecycle()
+    if (accountState.blocksPersonalSessions) {
+        LibraryAccountBlocked(accountState, onBack)
+        return
+    }
+    val loginContext = remember(
+        accountState.status,
+        accountState.generation,
+        accountState.cleanupRequired,
+    ) {
+        service.captureLoginContext()
+    }
+    if (loginContext == null) {
+        LibraryAccountBlocked(accountState, onBack)
+        return
+    }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -70,16 +88,19 @@ fun LibrarySeatLoginScreen(
         busy = true
         error = null
         scope.launch {
-            val loginEpoch = service.currentLoginEpoch()
             try {
                 val session = if (alreadySeatToken) {
-                    service.repository.adoptSeatToken(token)
+                    service.repository.adoptSeatToken(token) {
+                        service.isLoginContextCurrent(loginContext)
+                    }
                 } else {
-                    service.repository.exchangeAppToken(token)
+                    service.repository.exchangeAppToken(token) {
+                        service.isLoginContextCurrent(loginContext)
+                    }
                 }
-                // 账号换号/删号或用户退出会使本次登录代次失效；只有仍属于当前代次
-                // 才允许写入加密 token 副本，防止迟到的旧身份落盘。
-                if (!service.persistLoginIfCurrent(loginEpoch, session)) {
+                // 上下文绑定打开登录页时的账号代次与图书馆登录代次；迟到的旧页面
+                // 即使拿到新 token 也不能写回。
+                if (!service.persistLoginIfCurrent(loginContext, session)) {
                     service.repository.clearSession()
                     clearWebSession()
                     busy = false

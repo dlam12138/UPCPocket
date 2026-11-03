@@ -1,6 +1,8 @@
 package com.upcpocket.app.library
 
 import android.content.Context
+import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.plugin.api.Plugin
@@ -27,6 +29,7 @@ val LIBRARY_PLUGIN_ID: PluginId = PluginId.parse("library")
 class LibraryPlugin(
     context: Context,
     accountSettings: LibraryAccountSettings,
+    accountGate: SchoolAccountGate,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = LIBRARY_PLUGIN_ID,
@@ -35,9 +38,12 @@ class LibraryPlugin(
     )
 
     val service: LibraryService = LibraryService(
-        repository = LibrarySeatRepository(),
+        repository = LibrarySeatRepository(
+            sessionAllowed = { !accountGate.state.value.blocksPersonalSessions },
+        ),
         sessionStore = SchoolSessionStore(context.applicationContext),
         settings = accountSettings,
+        accountGate = accountGate,
         clearCookies = SchoolWebCookies::clearAllSchoolCookies,
     )
 

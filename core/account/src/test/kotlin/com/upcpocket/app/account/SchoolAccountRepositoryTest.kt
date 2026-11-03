@@ -50,6 +50,7 @@ class SchoolAccountRepositoryTest {
         val raw = store.read(AccountFormat.ACCOUNT_FILE, 64 * 1024)!!
         assertFalse(raw.toString(Charsets.UTF_8).contains(account))
         assertFalse(raw.toString(Charsets.UTF_8).contains(oldPassword))
+        assertNoCredentialPlaintext(store, account, oldPassword)
 
         val reopened = repository(store, crypto)
         reopened.restore()
@@ -235,6 +236,123 @@ class SchoolAccountRepositoryTest {
     }
 
     @Test
+    fun pendingDeleteFailureKeepsCommittedJournalAndResumesWithoutReinvalidating() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        invalidator.requests.clear()
+        val oldCiphertext = store.files.getValue(AccountFormat.ACCOUNT_FILE).copyOf()
+        store.failDelete = AccountFormat.PENDING_FILE
+
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertEquals(AccountGeneration(2), repository.state.value.generation)
+        assertTrue(repository.state.value.cleanupRequired)
+        assertEquals(SchoolAccountErrorCode.STORAGE_FAILED, repository.state.value.errorCode)
+        assertTrue(store.exists(AccountFormat.ACCOUNT_FILE))
+        assertFalse(oldCiphertext.contentEquals(store.files.getValue(AccountFormat.ACCOUNT_FILE)))
+        assertTrue(store.exists(AccountFormat.PENDING_FILE))
+        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
+        assertEquals(1, invalidator.requests.size)
+
+        // 新正式密文已写入，不能把旧版本误当回滚；重启只收尾 pending/journal。
+        store.failDelete = null
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals(AccountGeneration(2), reopened.state.value.generation)
+        assertEquals(1, invalidator.requests.size)
+        assertFalse(store.exists(AccountFormat.PENDING_FILE))
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+    }
+
+    @Test
+    fun journalDeleteFailureAfterSameAccountUpdateDoesNotReplaySessionsInvalidation() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        invalidator.requests.clear()
+
+        store.failDelete = AccountFormat.JOURNAL_FILE
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertEquals(AccountGeneration(2), repository.state.value.generation)
+        assertEquals(1, invalidator.requests.size)
+
+        store.files["unrelated-personal-after-update"] = byteArrayOf(1, 4, 7)
+        store.failDelete = null
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals(1, invalidator.requests.size)
+        assertArrayEquals(byteArrayOf(1, 4, 7), store.files["unrelated-personal-after-update"])
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+    }
+
+    @Test
+    fun journalDeleteFailureAfterSwitchDoesNotReplayPersonalDataInvalidation() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        invalidator.requests.clear()
+
+        store.failDelete = AccountFormat.JOURNAL_FILE
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(otherAccount, newPassword.toCharArray()),
+        )
+        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
+        assertEquals(1, invalidator.requests.size)
+
+        // 换号完成后用户重新建立的个人数据不能被下一次恢复当成旧数据清掉。
+        store.files["unrelated-personal-after-switch"] = byteArrayOf(7, 8, 9)
+        store.failDelete = null
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals(AccountGeneration(2), reopened.state.value.generation)
+        assertEquals(1, invalidator.requests.size)
+        assertArrayEquals(byteArrayOf(7, 8, 9), store.files["unrelated-personal-after-switch"])
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+    }
+
+    @Test
+    fun journalDeleteFailureAfterDeleteDoesNotReplayPersonalDataInvalidation() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        invalidator.requests.clear()
+
+        store.failDelete = AccountFormat.JOURNAL_FILE
+        assertEquals(SchoolAccountWriteResult.Success, repository.delete())
+        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
+        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
+        assertEquals(1, invalidator.requests.size)
+
+        store.files["new-personal-after-delete"] = byteArrayOf(4, 5, 6)
+        store.failDelete = null
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, reopened.state.value.status)
+        assertEquals(1, invalidator.requests.size)
+        assertArrayEquals(byteArrayOf(4, 5, 6), store.files["new-personal-after-delete"])
+        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+    }
+
+    @Test
     fun deleteRemovesCredentialAndOnlyAccountFiles() = runTest {
         val store = MemoryStore()
         store.files["unrelated-focus"] = byteArrayOf(1, 2, 3)
@@ -342,6 +460,18 @@ class SchoolAccountRepositoryTest {
         invalidators = invalidators,
         maskAccount = { "MASK-${it.takeLast(2)}" },
     )
+
+    private fun assertNoCredentialPlaintext(
+        store: MemoryStore,
+        account: String,
+        password: String,
+    ) {
+        store.files.forEach { (name, bytes) ->
+            val text = bytes.toString(Charsets.UTF_8)
+            assertFalse("$name 含账号明文", text.contains(account))
+            assertFalse("$name 含密码明文", text.contains(password))
+        }
+    }
 
     private class FakeCrypto : ByteCrypto {
         var failEncrypt = false

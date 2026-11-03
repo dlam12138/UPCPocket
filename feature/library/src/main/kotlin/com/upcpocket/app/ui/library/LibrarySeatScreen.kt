@@ -58,6 +58,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryCaptchaRequiredException
 import com.upcpocket.app.data.library.LibraryFilters
@@ -86,6 +87,11 @@ fun LibrarySeatScreen(
     onLogin: () -> Unit,
 ) {
     val repo = service.repository
+    val accountState by service.accountState.collectAsStateWithLifecycle()
+    if (accountState.blocksPersonalSessions) {
+        LibraryAccountBlocked(accountState, onBack)
+        return
+    }
     val session by repo.session.collectAsStateWithLifecycle()
     val factory = remember(repo) {
         object : androidx.lifecycle.ViewModelProvider.Factory {
@@ -97,20 +103,16 @@ fun LibrarySeatScreen(
     val vm: LibrarySeatViewModel = viewModel(factory = factory)
     val state = vm.state
     var restoringSession by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(accountState.status, accountState.generation, accountState.cleanupRequired) {
         // 开启“记住登录”时，重启后先用加密保存的 token 验证会话；失效就清掉重登。
+        // 账号仍处于恢复/清理状态时这里不会执行；状态恢复后也走同一门闩。
         if (repo.session.value == null && service.rememberLoginEnabled()) {
             restoringSession = true
-            val saved = service.sessionStore.loadLibrary()
-            if (saved != null) {
-                runCatching { repo.adoptSeatToken(saved.token) }
-                    .onFailure {
-                        // 只清图书馆这一份；其它业务的密文不动。
-                        service.sessionStore.clearLibrary()
-                        repo.clearSession()
-                    }
+            try {
+                service.restoreSavedLibrarySession()
+            } finally {
+                restoringSession = false
             }
-            restoringSession = false
         }
     }
     LaunchedEffect(session) {

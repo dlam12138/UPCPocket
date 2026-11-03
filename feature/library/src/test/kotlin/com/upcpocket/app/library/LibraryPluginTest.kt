@@ -2,7 +2,12 @@ package com.upcpocket.app.library
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.SchoolAccountState
+import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.plugin.runtime.PluginRuntime
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -24,6 +29,14 @@ class LibraryPluginTest {
             accountSettings = object : LibraryAccountSettings {
                 override val rememberLogin = kotlinx.coroutines.flow.flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
+            },
+            accountGate = object : SchoolAccountGate {
+                override val state = MutableStateFlow(
+                    SchoolAccountState(
+                        status = SchoolAccountStatus.NOT_CONFIGURED,
+                        generation = AccountGeneration.None,
+                    ),
+                )
             },
         )
 

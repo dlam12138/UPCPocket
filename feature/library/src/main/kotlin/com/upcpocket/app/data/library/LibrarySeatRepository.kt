@@ -26,15 +26,21 @@ data class LibrarySeatSession(
  * 只访问 `libspace.upc.edu.cn` 的公开前端使用的正常接口；登录由官方 CAS 网页完成，
  * 本类只接收登录后的 token。token 仅保存在内存里，不写数据库/文件/日志。
  */
-class LibrarySeatRepository {
+class LibrarySeatRepository(
+    private val sessionAllowed: () -> Boolean = { true },
+) {
     private val _session = MutableStateFlow<LibrarySeatSession?>(null)
     val session: StateFlow<LibrarySeatSession?> = _session.asStateFlow()
 
     private val sessionLock = Any()
     private var sessionGeneration = 0L
 
-    suspend fun exchangeAppToken(appToken: String): LibrarySeatSession = withContext(Dispatchers.IO) {
+    suspend fun exchangeAppToken(
+        appToken: String,
+        guard: () -> Boolean = { true },
+    ): LibrarySeatSession = withContext(Dispatchers.IO) {
         require(appToken.isNotBlank()) { "登录 token 为空" }
+        if (!allowed(guard)) throw LibrarySessionExpiredException()
         val expectedGeneration = currentSessionGeneration()
         val body = request(
             method = "POST",
@@ -44,21 +50,26 @@ class LibrarySeatRepository {
             tokenOverride = appToken,
         )
         val seatToken = LibrarySeatProtocol.parseToken(body)
-        adoptSeatTokenInternal(seatToken, expectedGeneration)
+        adoptSeatTokenInternal(seatToken, expectedGeneration, guard)
     }
 
     /** 页面已经把 sessionStorage 换成了 seat token 时直接使用。 */
-    suspend fun adoptSeatToken(seatToken: String): LibrarySeatSession = withContext(Dispatchers.IO) {
+    suspend fun adoptSeatToken(
+        seatToken: String,
+        guard: () -> Boolean = { true },
+    ): LibrarySeatSession = withContext(Dispatchers.IO) {
+        if (!allowed(guard)) throw LibrarySessionExpiredException()
         val expectedGeneration = currentSessionGeneration()
-        adoptSeatTokenInternal(seatToken, expectedGeneration)
+        adoptSeatTokenInternal(seatToken, expectedGeneration, guard)
     }
 
     private suspend fun adoptSeatTokenInternal(
         seatToken: String,
         expectedGeneration: Long,
+        guard: () -> Boolean,
     ): LibrarySeatSession = withContext(Dispatchers.IO) {
         require(seatToken.isNotBlank()) { "登录 token 为空" }
-        if (currentSessionGeneration() != expectedGeneration) {
+        if (currentSessionGeneration() != expectedGeneration || !allowed(guard)) {
             throw LibrarySessionExpiredException()
         }
         val body = request(
@@ -69,7 +80,7 @@ class LibrarySeatRepository {
         )
         val user = LibrarySeatProtocol.parseUser(body)
         val session = LibrarySeatSession(seatToken, user)
-        if (!publishSessionIfCurrent(session, expectedGeneration)) {
+        if (!publishSessionIfCurrent(session, expectedGeneration, guard)) {
             // 换号/删号或退出已让这次登录失效；不能把迟到 token 写进内存或持久层。
             throw LibrarySessionExpiredException()
         }
@@ -83,19 +94,24 @@ class LibrarySeatRepository {
         }
     }
 
-    private fun currentSessionGeneration(): Long = synchronized(sessionLock) {
+    private fun allowed(guard: () -> Boolean): Boolean = sessionAllowed() && guard()
+
+    internal fun currentSessionGeneration(): Long = synchronized(sessionLock) {
         sessionGeneration
     }
 
-    private fun publishSessionIfCurrent(session: LibrarySeatSession, expected: Long): Boolean =
-        synchronized(sessionLock) {
-            if (sessionGeneration != expected) {
-                false
-            } else {
-                _session.value = session
-                true
-            }
+    internal fun publishSessionIfCurrent(
+        session: LibrarySeatSession,
+        expected: Long,
+        guard: () -> Boolean,
+    ): Boolean = synchronized(sessionLock) {
+        if (sessionGeneration != expected || !allowed(guard)) {
+            false
+        } else {
+            _session.value = session
+            true
         }
+    }
 
     suspend fun filters(): LibraryFilters = withToken { token ->
         LibrarySeatProtocol.parseFilters(
@@ -218,9 +234,15 @@ class LibrarySeatRepository {
     }
 
     private suspend fun <T> withToken(block: suspend (String) -> T): T = withContext(Dispatchers.IO) {
+        if (!sessionAllowed()) {
+            clearSession()
+            throw LibrarySessionExpiredException()
+        }
         val token = _session.value?.token ?: throw LibrarySessionExpiredException()
         try {
-            block(token)
+            val result = block(token)
+            if (!sessionAllowed()) throw LibrarySessionExpiredException()
+            result
         } catch (e: LibrarySessionExpiredException) {
             clearSession()
             throw e

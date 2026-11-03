@@ -137,6 +137,7 @@ object AppGraph {
         LibraryPlugin(
             context = appContext,
             accountSettings = HostLibraryAccountSettings(uiPrefsStore),
+            accountGate = account,
         )
     }
 

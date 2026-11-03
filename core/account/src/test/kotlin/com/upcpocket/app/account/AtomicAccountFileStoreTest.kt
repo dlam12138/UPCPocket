@@ -27,9 +27,15 @@ class AtomicAccountFileStoreTest {
         assertNull(store.read(AccountFormat.ACCOUNT_FILE, 1024))
         store.write(AccountFormat.ACCOUNT_FILE, byteArrayOf(1, 2, 3))
         assertArrayEquals(byteArrayOf(1, 2, 3), store.read(AccountFormat.ACCOUNT_FILE, 1024))
+        val backup = File(directory, "${AccountFormat.ACCOUNT_FILE}.bak")
+        val inProgress = File(directory, "${AccountFormat.ACCOUNT_FILE}.new")
+        backup.writeText("synthetic-backup")
+        inProgress.writeText("synthetic-in-progress")
 
         store.delete(AccountFormat.ACCOUNT_FILE)
         assertNull(store.read(AccountFormat.ACCOUNT_FILE, 1024))
         assertFalse(file.exists())
+        assertFalse(backup.exists())
+        assertFalse(inProgress.exists())
     }
 }

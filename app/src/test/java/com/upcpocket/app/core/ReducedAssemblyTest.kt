@@ -2,6 +2,10 @@ package com.upcpocket.app.core
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.SchoolAccountState
+import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardInputStore
 import com.upcpocket.app.card.CardPlugin
@@ -17,6 +21,7 @@ import com.upcpocket.app.power.PowerInput
 import com.upcpocket.app.power.PowerInputStore
 import com.upcpocket.app.power.PowerPlugin
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -55,6 +60,7 @@ class ReducedAssemblyTest {
                 override val rememberLogin = flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
+            accountGate = openAccountGate(),
         )
 
         val runtime = PluginRuntime()
@@ -119,6 +125,7 @@ class ReducedAssemblyTest {
                 override val rememberLogin = flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
+            accountGate = openAccountGate(),
         )
 
         val result = PluginRuntime()
@@ -136,5 +143,14 @@ class ReducedAssemblyTest {
         assertTrue(ui.pages.none { it.pluginId.value == "focus" })
         assertTrue(ui.entries.none { it.pluginId.value == "focus" })
         assertTrue(ui.sectionsFor(UiSurface.MORE_LEARNING).isEmpty())
+    }
+
+    private fun openAccountGate(): SchoolAccountGate = object : SchoolAccountGate {
+        override val state = MutableStateFlow(
+            SchoolAccountState(
+                status = SchoolAccountStatus.NOT_CONFIGURED,
+                generation = AccountGeneration.None,
+            ),
+        )
     }
 }

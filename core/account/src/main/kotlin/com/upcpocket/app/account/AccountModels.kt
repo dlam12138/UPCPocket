@@ -83,6 +83,11 @@ internal data class TransitionJournal(
     val scope: String? = null,
     val pendingCredential: Boolean,
     val errorCode: String? = null,
+    /**
+     * 失效器已完成并已原子写回。带这个标记的 journal 是已提交 tombstone：
+     * 重启只继续收尾文件，不再重放换号/删号的破坏性失效。
+     */
+    val invalidationCompleted: Boolean = false,
 ) {
     fun parsedOperation(): TransitionOperation? =
         TransitionOperation.entries.firstOrNull { it.name == operation }

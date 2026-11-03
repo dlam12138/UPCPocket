@@ -61,7 +61,21 @@ internal class AtomicAccountFileStore(
     }
 
     override fun delete(name: String) {
-        atomic(name).delete()
+        // AtomicFile.delete() only removes base+bak, and does not verify the result.
+        // Also remove the in-progress .new file; otherwise a later write can inherit
+        // a stale partial artifact. The caller may keep a journal tombstone on failure.
+        val candidates = listOf(
+            File(directory, name),
+            backup(name),
+            File(directory, "$name.new"),
+        )
+        var failed = false
+        candidates.forEach { file ->
+            if (file.exists() && !file.delete()) failed = true
+        }
+        if (failed || candidates.any { it.exists() }) {
+            throw IOException("删除账号文件失败")
+        }
     }
 
     override fun exists(name: String): Boolean =

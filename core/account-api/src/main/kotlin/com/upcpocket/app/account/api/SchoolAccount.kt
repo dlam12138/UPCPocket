@@ -71,9 +71,28 @@ data class SchoolAccountState(
 data class AccountRequestToken(val generation: AccountGeneration)
 
 /** 业务插件只依赖这个读取面；恢复由宿主调用。 */
-interface SchoolAccountReader {
+interface SchoolAccountGate {
     val state: StateFlow<SchoolAccountState>
+}
 
+/**
+ * 账号状态是否禁止建立/恢复个人业务会话。
+ *
+ * - LOADING：启动恢复尚未完成，不能假定旧清理已经结束；
+ * - cleanupRequired：换号/删号/恢复清理还在进行或失败待重试；
+ * - SWITCHING/UPDATING/REMOVING：事务已经把旧代次置为不可用。
+ *
+ * 未配置、已保存未验证、需要重新保存且清理已完成时，图书馆仍可按原有方式手动登录；
+ * 这不代表已接入统一认证。
+ */
+val SchoolAccountState.blocksPersonalSessions: Boolean
+    get() = cleanupRequired || status == SchoolAccountStatus.LOADING ||
+        status == SchoolAccountStatus.SWITCHING ||
+        status == SchoolAccountStatus.UPDATING ||
+        status == SchoolAccountStatus.REMOVING
+
+/** 业务插件只依赖这个读取面；恢复由宿主调用。 */
+interface SchoolAccountReader : SchoolAccountGate {
     suspend fun restore()
 }
 

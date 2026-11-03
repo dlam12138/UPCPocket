@@ -430,7 +430,17 @@ class SchoolAccountRepository internal constructor(
                 }
             }
 
-            if (promotePendingLocked(journal)) {
+            // 破坏性失效已经完成，先把它作为已提交 tombstone 原子写回。之后即使
+            // 进程退出或收尾删文件失败，重启也只继续收尾，不再重放 PERSONAL_DATA。
+            val committedJournal = markJournalCommittedLocked(journal)
+                ?: run {
+                    _state.value = transition.copy(
+                        cleanupRequired = true,
+                        errorCode = SchoolAccountErrorCode.STORAGE_FAILED,
+                    )
+                    return SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED)
+                }
+            if (promotePendingLocked(committedJournal)) {
                 return SchoolAccountWriteResult.Success
             }
             currentGeneration = targetGeneration
@@ -486,6 +496,13 @@ class SchoolAccountRepository internal constructor(
             } catch (_: Exception) {
                 return false
             }
+            // 正式密文已经提升；pending 只是同一新版本的副本。删除失败时保持
+            // UPDATING/cleanupRequired，让下次启动只重试收尾而不重放失效。
+            try {
+                fileStore.delete(AccountFormat.PENDING_FILE)
+            } catch (_: Exception) {
+                return false
+            }
         }
 
         try {
@@ -504,8 +521,9 @@ class SchoolAccountRepository internal constructor(
         currentAccount = payload.account
         currentGeneration = AccountGeneration(payload.generation)
         publishSaved(payload)
-        deleteQuietly(AccountFormat.PENDING_FILE)
-        deleteQuietly(AccountFormat.JOURNAL_FILE)
+        // final state 已提交；journal 是已标记的 tombstone，删除失败可以下次启动
+        // 继续删，不能把这次已完成的保存误报为失败或重新执行失效。
+        deleteJournalTombstoneBestEffort()
         return true
     }
 
@@ -565,7 +583,12 @@ class SchoolAccountRepository internal constructor(
             markCleanupFailed(transition)
             return SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_FAILED)
         }
-        if (finalizeDeleteLocked(journal)) {
+        val committedJournal = markJournalCommittedLocked(journal)
+            ?: run {
+                _state.value = transition.copy(errorCode = SchoolAccountErrorCode.STORAGE_FAILED)
+                return SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED)
+            }
+        if (finalizeDeleteLocked(committedJournal)) {
             return SchoolAccountWriteResult.Success
         }
         _state.value = transition.copy(errorCode = SchoolAccountErrorCode.STORAGE_FAILED)
@@ -583,10 +606,10 @@ class SchoolAccountRepository internal constructor(
                     cleanupRequired = false,
                 ),
             )
-            deleteQuietly(AccountFormat.JOURNAL_FILE)
             currentAccount = null
             currentGeneration = AccountGeneration(journal.targetGeneration)
             publishNotConfigured(currentGeneration)
+            deleteJournalTombstoneBestEffort()
             true
         } catch (_: Exception) {
             false
@@ -641,7 +664,11 @@ class SchoolAccountRepository internal constructor(
             markCleanupFailed(transition)
             return
         }
-        finalizeRecoveryLocked(journal, code)
+        val committedJournal = markJournalCommittedLocked(journal) ?: run {
+            _state.value = transition.copy(errorCode = SchoolAccountErrorCode.STORAGE_FAILED)
+            return
+        }
+        finalizeRecoveryLocked(committedJournal, code)
     }
 
     private fun finalizeRecoveryLocked(journal: TransitionJournal, code: SchoolAccountErrorCode): Boolean {
@@ -656,10 +683,10 @@ class SchoolAccountRepository internal constructor(
                     errorCode = code.name,
                 ),
             )
-            deleteQuietly(AccountFormat.JOURNAL_FILE)
             currentAccount = null
             currentGeneration = AccountGeneration(journal.targetGeneration)
             publishNeedsReconfiguration(code, cleanupRequired = false)
+            deleteJournalTombstoneBestEffort()
             true
         } catch (_: Exception) {
             false
@@ -724,16 +751,23 @@ class SchoolAccountRepository internal constructor(
         }
         _state.value = transition
 
-        if (scope != null) {
-            if (!invalidateLocked(journal, reason, scope)) {
-                markCleanupFailed(transition)
+        var committedJournal = journal
+        if (!journal.invalidationCompleted) {
+            if (scope != null) {
+                if (!invalidateLocked(journal, reason, scope)) {
+                    markCleanupFailed(transition)
+                    return false
+                }
+            }
+            committedJournal = markJournalCommittedLocked(journal) ?: run {
+                _state.value = transition.copy(errorCode = SchoolAccountErrorCode.STORAGE_FAILED)
                 return false
             }
         }
 
         return when (operation) {
             TransitionOperation.SAVE -> {
-                if (!promotePendingLocked(journal)) {
+                if (!promotePendingLocked(committedJournal)) {
                     _state.value = transition.copy(
                         errorCode = SchoolAccountErrorCode.STORAGE_FAILED,
                     )
@@ -742,9 +776,9 @@ class SchoolAccountRepository internal constructor(
                     true
                 }
             }
-            TransitionOperation.DELETE -> finalizeDeleteLocked(journal)
+            TransitionOperation.DELETE -> finalizeDeleteLocked(committedJournal)
             TransitionOperation.RECOVER -> finalizeRecoveryLocked(
-                journal,
+                committedJournal,
                 journal.errorCode?.toErrorCodeOrNull()
                     ?: SchoolAccountErrorCode.CREDENTIAL_UNAVAILABLE,
             )
@@ -856,6 +890,29 @@ class SchoolAccountRepository internal constructor(
         val bytes = json.encodeToString(TransitionJournal.serializer(), journal)
             .toByteArray(Charsets.UTF_8)
         fileStore.write(AccountFormat.JOURNAL_FILE, bytes)
+    }
+
+    /**
+     * 失效完成后把 journal 标成已提交。写失败时必须保持清理中，不能进入提升/
+     * 删除完成态；下一次启动会重新执行幂等失效（此时业务门闩仍关闭）。
+     */
+    private fun markJournalCommittedLocked(journal: TransitionJournal): TransitionJournal? {
+        if (journal.invalidationCompleted) return journal
+        val committed = journal.copy(invalidationCompleted = true)
+        return try {
+            writeJournal(committed)
+            committed
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * final state 已发布后删除已提交 journal。删除失败只留下可重试 tombstone，
+     * 不能把它当失败回滚正式密文，也不能让重启重放破坏性失效。
+     */
+    private fun deleteJournalTombstoneBestEffort() {
+        runCatching { fileStore.delete(AccountFormat.JOURNAL_FILE) }
     }
 
     private fun deleteQuietly(name: String) {
