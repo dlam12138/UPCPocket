@@ -2,6 +2,8 @@ package com.upcpocket.app.data.prefs
 
 import android.annotation.SuppressLint
 import android.content.Context
+import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.SchoolAccountId
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.crypto.KeystoreSessionCrypto
@@ -42,6 +44,8 @@ class SchoolSessionStore(
         val token: String,
         val user: LibraryUser,
         val savedAt: Long,
+        val accountId: SchoolAccountId,
+        val credentialGeneration: AccountGeneration,
     )
 
     /**
@@ -61,26 +65,51 @@ class SchoolSessionStore(
     // ── 图书馆 ────────────────────────────────────────────────────────────
 
     @Synchronized
-    fun saveLibrary(token: String, user: LibraryUser) {
-        if (token.isBlank()) return
+    @SuppressLint("ApplySharedPref")
+    fun saveLibrary(
+        token: String,
+        user: LibraryUser,
+        accountId: SchoolAccountId,
+        credentialGeneration: AccountGeneration,
+    ): Boolean {
+        if (token.isBlank()) return false
         val payload = JSONObject()
             .put("token", token)
             .put("id", user.id)
             .put("username", user.username)
             .put("name", user.name)
             .put("savedAt", System.currentTimeMillis())
+            .put("accountId", accountId.value)
+            .put("credentialGeneration", credentialGeneration.value)
             .toString()
-        runCatching { prefs.edit().putString(KEY_LIBRARY, encrypt(payload)).apply() }
-            .onFailure { prefs.edit().remove(KEY_LIBRARY).apply() }
+        return runCatching { prefs.edit().putString(KEY_LIBRARY, encrypt(payload)).commit() }
+            .getOrDefault(false)
+            .also { saved ->
+                if (!saved) prefs.edit().remove(KEY_LIBRARY).apply()
+            }
     }
 
+    /**
+     * 只有会话仍然属于当前 accountId 与凭据代次时才返回；旧格式、旧账号、旧代次
+     * 都直接删除，绝不允许换号后恢复上一位用户的 token。
+     */
     @Synchronized
-    fun loadLibrary(): SavedLibrarySession? {
+    fun loadLibrary(
+        expectedAccountId: SchoolAccountId,
+        expectedCredentialGeneration: AccountGeneration,
+    ): SavedLibrarySession? {
         val stored = prefs.getString(KEY_LIBRARY, null) ?: return null
         return runCatching {
             val json = JSONObject(decrypt(stored))
             val token = json.optString("token")
-            if (token.isBlank()) return dropLibrary()
+            val accountId = SchoolAccountId(json.optString("accountId"))
+            val generation = AccountGeneration(json.optLong("credentialGeneration"))
+            if (token.isBlank() ||
+                accountId != expectedAccountId ||
+                generation != expectedCredentialGeneration
+            ) {
+                return dropLibrary()
+            }
             SavedLibrarySession(
                 token = token,
                 user = LibraryUser(
@@ -89,6 +118,8 @@ class SchoolSessionStore(
                     name = json.optString("name").ifBlank { json.optString("username") },
                 ),
                 savedAt = json.optLong("savedAt"),
+                accountId = accountId,
+                credentialGeneration = generation,
             )
         }.getOrElse { dropLibrary() }
     }

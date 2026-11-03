@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,8 @@ import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.library.LibrarySessionExpiredException
 import com.upcpocket.app.data.library.LibraryTimeOption
 import com.upcpocket.app.data.prefs.SchoolSessionStore
+import com.upcpocket.app.library.LibraryAccountAuthFailure
+import com.upcpocket.app.library.LibraryAccountLoginResult
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
@@ -139,7 +142,7 @@ fun LibrarySeatScreen(
                 Text("正在验证已保存的图书馆会话…")
             }
         } else {
-            LibraryLoginGate(onBack = onBack, onLogin = onLogin)
+            LibraryLoginGate(service = service, onBack = onBack, onLogin = onLogin)
         }
         return
     }
@@ -436,7 +439,17 @@ fun LibrarySeatScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun LibraryLoginGate(onBack: () -> Unit, onLogin: () -> Unit) {
+private fun LibraryLoginGate(
+    service: LibraryService,
+    onBack: () -> Unit,
+    onLogin: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val accountState by service.accountState.collectAsStateWithLifecycle()
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -457,19 +470,82 @@ private fun LibraryLoginGate(onBack: () -> Unit, onLogin: () -> Unit) {
             Spacer(Modifier.height(24.dp))
             Text("需要学校统一认证", style = MaterialTheme.typography.titleLarge)
             Text(
-                "登录由学校 CAS 页面完成；本页不读取统一账号页保存的密码，也不会自动登录。" +
-                    "登录后才能在原生界面查询馆区、选座和取消预约。",
+                if (canAutoLogin) {
+                    "可以使用本机加密保存的学校账号自动登录；学校要求验证码或二次验证时，" +
+                        "改走学校官方网页登录。"
+                } else {
+                    "尚未保存可用的学校账号。请使用学校官方网页登录；登录后仍可查询馆区、选座和取消预约。"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onLogin, modifier = Modifier.fillMaxWidth()) { Text("使用学校统一认证登录") }
+            if (canAutoLogin) {
+                Button(
+                    onClick = {
+                        if (busy) return@Button
+                        busy = true
+                        error = null
+                        scope.launch {
+                            try {
+                                when (val result = service.loginWithSavedAccount()) {
+                                    LibraryAccountLoginResult.Success -> Unit
+                                    is LibraryAccountLoginResult.Failure -> {
+                                        busy = false
+                                        error = libraryAuthMessage(result.reason)
+                                    }
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                busy = false
+                                error = "自动登录失败，请改用学校网页登录"
+                            }
+                        }
+                    },
+                    enabled = !busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (busy) "正在使用学校账号登录…" else "使用已保存学校账号登录")
+                }
+            }
+            OutlinedButton(
+                onClick = onLogin,
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (canAutoLogin) "打开学校网页登录（验证码/二次验证）" else "使用学校统一认证登录")
+            }
+            error?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Text(
-                "如果学校启用了图形验证码，原生提交会明确提示并停止；不会伪造预约成功。",
+                "自动登录只使用本机受控保存的学校账号；密码不会进入本插件。学校返回的本人账号" +
+                    "与已保存账号不一致时，不会保存会话。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+}
+
+private fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = when (reason) {
+    LibraryAccountAuthFailure.INVALID_CREDENTIALS -> "学校账号或密码未被接受，请更新学校账号后重试"
+    LibraryAccountAuthFailure.INTERACTION_REQUIRED -> "学校要求验证码或二次验证，请使用网页登录完成"
+    LibraryAccountAuthFailure.NETWORK_UNAVAILABLE -> "无法连接学校认证服务，请检查网络"
+    LibraryAccountAuthFailure.TLS_ERROR -> "学校认证服务的 TLS 连接失败，未降级"
+    LibraryAccountAuthFailure.UPSTREAM_ERROR -> "学校认证服务暂时不可用，请稍后重试"
+    LibraryAccountAuthFailure.PROTOCOL_ERROR -> "学校登录返回了无法识别的结果，请改用网页登录"
+    LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE -> "当前没有可自动登录的已保存学校账号"
+    LibraryAccountAuthFailure.ACCOUNT_CHANGED -> "账号状态已变化，请重新打开图书馆"
+    LibraryAccountAuthFailure.ACCESS_DENIED -> "学校拒绝了本次认证，请检查账号或稍后重试"
+    LibraryAccountAuthFailure.IDENTITY_MISMATCH ->
+        "学校返回的本人账号与已保存账号不一致，未保存会话"
+    LibraryAccountAuthFailure.PERSISTENCE_FAILED ->
+        "登录成功，但本机加密保存失败，未保留会话"
 }
 
 @Composable

@@ -3,7 +3,8 @@ package com.upcpocket.app.library
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
-import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.plugin.runtime.PluginRuntime
@@ -30,13 +31,17 @@ class LibraryPluginTest {
                 override val rememberLogin = kotlinx.coroutines.flow.flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
-            accountGate = object : SchoolAccountGate {
+            account = object : SchoolAccountReferenceReader {
                 override val state = MutableStateFlow(
                     SchoolAccountState(
                         status = SchoolAccountStatus.NOT_CONFIGURED,
                         generation = AccountGeneration.None,
                     ),
                 )
+                override val accountReference = MutableStateFlow<SchoolAccountReference?>(null)
+            },
+            authenticator = LibraryAccountAuthenticator { _, _ ->
+                error("插件装配测试不得自动认证")
             },
         )
 

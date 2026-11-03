@@ -3,7 +3,8 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
-import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
@@ -14,6 +15,7 @@ import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.focus.FocusCapabilities
 import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.library.LibraryAccountAuthenticator
 import com.upcpocket.app.library.LibraryAccountSettings
 import com.upcpocket.app.library.LibraryPlugin
 import com.upcpocket.app.plugin.api.PluginId
@@ -62,7 +64,10 @@ class ReducedAssemblyTest {
                 override val rememberLogin = flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
-            accountGate = openAccountGate(),
+            account = openAccount(),
+            authenticator = LibraryAccountAuthenticator { _, _ ->
+                error("精简装配测试不得自动认证")
+            },
         )
 
         val runtime = PluginRuntime()
@@ -131,7 +136,10 @@ class ReducedAssemblyTest {
                 override val rememberLogin = flowOf(false)
                 override suspend fun setRememberLogin(enabled: Boolean) = Unit
             },
-            accountGate = openAccountGate(),
+            account = openAccount(),
+            authenticator = LibraryAccountAuthenticator { _, _ ->
+                error("精简装配测试不得自动认证")
+            },
         )
 
         val result = PluginRuntime()
@@ -151,12 +159,14 @@ class ReducedAssemblyTest {
         assertTrue(ui.sectionsFor(UiSurface.MORE_LEARNING).isEmpty())
     }
 
-    private fun openAccountGate(): SchoolAccountGate = object : SchoolAccountGate {
-        override val state = MutableStateFlow(
-            SchoolAccountState(
-                status = SchoolAccountStatus.NOT_CONFIGURED,
-                generation = AccountGeneration.None,
-            ),
-        )
-    }
+    private fun openAccount(): SchoolAccountReferenceReader =
+        object : SchoolAccountReferenceReader {
+            override val state = MutableStateFlow(
+                SchoolAccountState(
+                    status = SchoolAccountStatus.NOT_CONFIGURED,
+                    generation = AccountGeneration.None,
+                ),
+            )
+            override val accountReference = MutableStateFlow<SchoolAccountReference?>(null)
+        }
 }

@@ -21,6 +21,10 @@ import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.data.library.LibraryUser
+import com.upcpocket.app.library.LibraryAccountAuthFailure
+import com.upcpocket.app.library.LibraryAccountAuthResult
+import com.upcpocket.app.library.LibraryAccountAuthenticator
 import com.upcpocket.app.library.LibraryCapabilities
 import com.upcpocket.app.library.LibraryPlugin
 import com.upcpocket.app.library.SchoolWebCookies
@@ -37,6 +41,9 @@ import com.upcpocket.app.timetable.TimetableCapabilities
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
+import com.upcpocket.app.upcauth.UpcLibraryAuthResult
+import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
 import com.upcpocket.app.upcauth.UpcTimetableAuthenticator
 import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
@@ -170,15 +177,57 @@ object AppGraph {
     private val classroomPlugin: ClassroomPlugin by lazy { ClassroomPlugin() }
 
     /**
+     * 图书馆认证适配：只有这里通过 core 的受控凭据完成 libseat 正常 CAS。
+     * 插件只拿到核验后的 seat token 与本人标识，不依赖 core:account、不读密码。
+     */
+    private val libraryAuthenticator: LibraryAccountAuthenticator by lazy {
+        val core = UpcLibraryAuthenticator(account)
+        LibraryAccountAuthenticator { accountId, generation ->
+            when (val result = core.authenticate(accountId, generation)) {
+                is UpcLibraryAuthResult.Success -> LibraryAccountAuthResult.Success(
+                    seatToken = result.seatToken,
+                    user = LibraryUser(
+                        id = result.user.id,
+                        username = result.user.username,
+                        name = result.user.name,
+                    ),
+                )
+                is UpcLibraryAuthResult.Failure -> LibraryAccountAuthResult.Failure(
+                    reason = result.reason.toFeatureFailure(),
+                    interactionUrl = result.interactionUrl,
+                )
+            }
+        }
+    }
+
+    /**
      * 图书馆座位插件：内存会话归插件，持久副本用原有 Keystore 加密存储；
-     * 宿主只提供“记住登录”偏好的读取。
+     * 宿主只提供“记住登录”偏好、受控认证适配和账号引用。
      */
     private val libraryPlugin: LibraryPlugin by lazy {
         LibraryPlugin(
             context = appContext,
             accountSettings = HostLibraryAccountSettings(uiPrefsStore),
-            accountGate = account,
+            account = account,
+            authenticator = libraryAuthenticator,
         )
+    }
+
+    private fun UpcLibraryAuthFailure.toFeatureFailure(): LibraryAccountAuthFailure = when (this) {
+        UpcLibraryAuthFailure.INVALID_CREDENTIALS ->
+            LibraryAccountAuthFailure.INVALID_CREDENTIALS
+        UpcLibraryAuthFailure.INTERACTION_REQUIRED ->
+            LibraryAccountAuthFailure.INTERACTION_REQUIRED
+        UpcLibraryAuthFailure.NETWORK_UNAVAILABLE ->
+            LibraryAccountAuthFailure.NETWORK_UNAVAILABLE
+        UpcLibraryAuthFailure.TLS_ERROR -> LibraryAccountAuthFailure.TLS_ERROR
+        UpcLibraryAuthFailure.UPSTREAM_ERROR -> LibraryAccountAuthFailure.UPSTREAM_ERROR
+        UpcLibraryAuthFailure.PROTOCOL_ERROR -> LibraryAccountAuthFailure.PROTOCOL_ERROR
+        UpcLibraryAuthFailure.ACCOUNT_UNAVAILABLE ->
+            LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE
+        UpcLibraryAuthFailure.ACCOUNT_CHANGED -> LibraryAccountAuthFailure.ACCOUNT_CHANGED
+        UpcLibraryAuthFailure.ACCESS_DENIED -> LibraryAccountAuthFailure.ACCESS_DENIED
+        UpcLibraryAuthFailure.IDENTITY_MISMATCH -> LibraryAccountAuthFailure.IDENTITY_MISMATCH
     }
 
     /**

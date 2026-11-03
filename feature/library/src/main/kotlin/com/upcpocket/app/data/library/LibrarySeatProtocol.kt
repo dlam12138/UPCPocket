@@ -1,12 +1,8 @@
 package com.upcpocket.app.data.library
 
+import com.upcpocket.app.upcauth.UpcLibrarySigning
 import java.net.URLEncoder
-import java.util.Base64
 import java.util.UUID
-import javax.crypto.Cipher
-import javax.crypto.Mac
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -34,10 +30,6 @@ internal object LibrarySeatProtocol {
     const val LOGIN_URL =
         "$BASE_URL/remote/static/sso/login?redirectUrl=https%3A%2F%2Flibspace.upc.edu.cn%2Flibseat%2F%23%2Flogin"
 
-    private const val NUM_CODE = "cDf+jadFUWncEn536MXItw=="
-    private const val CONFIG_KEY = "server_date_time"
-    private const val CONFIG_IV = "client_date_time"
-
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     fun signedHeaders(
@@ -46,40 +38,14 @@ internal object LibrarySeatProtocol {
         uuid: String = UUID.randomUUID().toString(),
         timestamp: Long = System.currentTimeMillis(),
         hmacKey: ByteArray = configKey(),
-    ): Map<String, String> {
-        require(method.uppercase() in setOf("GET", "POST")) { "不支持的请求方法" }
-        val message = "seat::$uuid::$timestamp::${method.uppercase()}"
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(hmacKey, "HmacSHA256"))
-        val signature = mac.doFinal(message.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-        return buildMap {
-            if (!token.isNullOrBlank()) put("Authorization", token)
-            put("loginType", "PC")
-            put("X-request-id", uuid)
-            put("X-request-date", timestamp.toString())
-            put("X-hmac-request-key", signature)
-            put("Accept", "application/json")
-        }
-    }
+    ): Map<String, String> =
+        UpcLibrarySigning.signedHeaders(token, method, uuid, timestamp, hmacKey)
 
-    fun sign(method: String, uuid: String, timestamp: Long, hmacKey: ByteArray = configKey()): String {
-        val message = "seat::$uuid::$timestamp::${method.uppercase()}"
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(hmacKey, "HmacSHA256"))
-        return mac.doFinal(message.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
-    }
+    fun sign(method: String, uuid: String, timestamp: Long, hmacKey: ByteArray = configKey()): String =
+        UpcLibrarySigning.sign(method, uuid, timestamp, hmacKey)
 
     /** 页面配置里的公开 HMAC 密钥；用 AES-CBC 解出，便于单元测试和协议核对。 */
-    fun configKey(): ByteArray {
-        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
-        cipher.init(
-            Cipher.DECRYPT_MODE,
-            SecretKeySpec(CONFIG_KEY.toByteArray(Charsets.UTF_8), "AES"),
-            IvParameterSpec(CONFIG_IV.toByteArray(Charsets.UTF_8)),
-        )
-        return cipher.doFinal(Base64.getDecoder().decode(NUM_CODE))
-    }
+    fun configKey(): ByteArray = UpcLibrarySigning.configKey()
 
     fun formEncode(fields: Map<String, String>): String = fields.entries.joinToString("&") {
         "${URLEncoder.encode(it.key, "UTF-8")}=${URLEncoder.encode(it.value, "UTF-8")}"

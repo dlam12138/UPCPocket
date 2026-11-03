@@ -3,7 +3,9 @@ package com.upcpocket.app.library
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
-import com.upcpocket.app.account.api.SchoolAccountGate
+import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
@@ -17,6 +19,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -30,26 +33,24 @@ import org.robolectric.annotation.Config
 class LibraryAccountSessionTest {
 
     private val context = ApplicationProvider.getApplicationContext<Application>()
+    private val accountId = SchoolAccountId("acct_synthetic_library")
+    private val otherAccountId = SchoolAccountId("acct_another_library")
 
     @Test
     fun `account invalidation epoch rejects a late login write`() = runTest {
-        val gate = MutableGate(openState())
-        val service = service(gate)
+        val account = MutableAccount(savedState())
+        val service = service(account)
         val loginContext = requireNotNull(service.captureLoginContext())
         service.signOut()
 
-        assertFalse(
-            service.persistLoginIfCurrent(
-                loginContext,
-                syntheticSession(),
-            ),
-        )
-        assertNull(service.sessionStore.loadLibrary())
+        assertFalse(service.persistLoginIfCurrent(loginContext, syntheticSession()))
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
     }
 
     @Test
-    fun `current login context can persist a library session`() = runTest {
-        val service = service(MutableGate(openState()))
+    fun `current login context can persist a bound library session`() = runTest {
+        val account = MutableAccount(savedState())
+        val service = service(account)
 
         assertTrue(
             service.persistLoginIfCurrent(
@@ -57,67 +58,71 @@ class LibraryAccountSessionTest {
                 syntheticSession(),
             ),
         )
-        assertTrue(service.sessionStore.loadLibrary()?.token == "synthetic-token")
+        assertEquals(
+            "synthetic-token",
+            service.sessionStore.loadLibrary(accountId, AccountGeneration(1))?.token,
+        )
         service.signOut()
     }
 
     @Test
     fun `account generation change rejects a login opened under the old generation`() = runTest {
-        val gate = MutableGate(openState(generation = 1))
-        val service = service(gate)
+        val account = MutableAccount(savedState(generation = 1))
+        val service = service(account)
         val loginContext = requireNotNull(service.captureLoginContext())
 
-        gate.state.value = openState(generation = 2)
+        account.set(savedState(generation = 2))
 
         assertFalse(service.persistLoginIfCurrent(loginContext, syntheticSession()))
-        assertNull(service.sessionStore.loadLibrary())
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
     }
 
     @Test
     fun `cleanup state blocks context capture restore and writes`() = runTest {
-        val gate = MutableGate(openState(generation = 1))
-        val service = service(gate)
+        val account = MutableAccount(savedState(generation = 1))
+        val service = service(account)
         val oldContext = requireNotNull(service.captureLoginContext())
-        service.sessionStore.saveLibrary("synthetic-token", syntheticUser())
-
-        gate.state.value = SchoolAccountState(
-            status = SchoolAccountStatus.SWITCHING,
-            generation = AccountGeneration(1),
-            cleanupRequired = true,
+        service.sessionStore.saveLibrary(
+            "synthetic-token",
+            syntheticUser(),
+            accountId,
+            AccountGeneration(1),
         )
+
+        account.set(cleanupState(generation = 1))
 
         assertNull(service.captureLoginContext())
         assertTrue(service.signOutForAccountChange())
         assertNull(service.restoreSavedLibrarySession())
         assertFalse(service.persistLoginIfCurrent(oldContext, syntheticSession()))
-        assertNull(service.sessionStore.loadLibrary())
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
     }
 
     @Test
     fun `cleanup wait blocks new login and resumes only after success`() = runTest {
-        val gate = MutableGate(openState(generation = 1))
+        val account = MutableAccount(savedState(generation = 1))
         val cookieStarted = CompletableDeferred<Unit>()
         val cookieResult = CompletableDeferred<Boolean>()
         val service = service(
-            gate = gate,
+            account = account,
             clearAwait = {
                 cookieStarted.complete(Unit)
                 cookieResult.await()
             },
         )
         val oldContext = requireNotNull(service.captureLoginContext())
-        service.sessionStore.saveLibrary("synthetic-token", syntheticUser())
-        gate.state.value = SchoolAccountState(
-            status = SchoolAccountStatus.SWITCHING,
-            generation = AccountGeneration(1),
-            cleanupRequired = true,
+        service.sessionStore.saveLibrary(
+            "synthetic-token",
+            syntheticUser(),
+            accountId,
+            AccountGeneration(1),
         )
+        account.set(cleanupState(generation = 1))
 
         val cleanup = async { service.signOutForAccountChange() }
         cookieStarted.await()
 
-        // invalidator 已清掉持久 token，但 Cookie 屏障还没返回。
-        assertNull(service.sessionStore.loadLibrary())
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
         assertNull(service.captureLoginContext())
         assertNull(service.restoreSavedLibrarySession())
         assertFalse(service.persistLoginIfCurrent(oldContext, syntheticSession()))
@@ -125,39 +130,138 @@ class LibraryAccountSessionTest {
         cookieResult.complete(true)
         assertTrue(cleanup.await())
 
-        // 清理完成后账号进入新代次；旧上下文仍失效，新打开的手动登录才允许。
-        gate.state.value = openState(generation = 2)
+        account.set(savedState(generation = 2))
         assertFalse(service.persistLoginIfCurrent(oldContext, syntheticSession()))
         val freshContext = requireNotNull(service.captureLoginContext())
         assertTrue(service.persistLoginIfCurrent(freshContext, syntheticSession()))
-        assertTrue(service.sessionStore.loadLibrary()?.token == "synthetic-token")
+        assertEquals(
+            "synthetic-token",
+            service.sessionStore.loadLibrary(accountId, AccountGeneration(2))?.token,
+        )
         service.signOut()
     }
 
     @Test
     fun `cleanup failure keeps the gate closed and can be retried`() = runTest {
-        val gate = MutableGate(openState(generation = 1))
+        val account = MutableAccount(savedState(generation = 1))
         val cookieStarted = CompletableDeferred<Unit>()
         val service = service(
-            gate = gate,
+            account = account,
             clearAwait = {
                 cookieStarted.complete(Unit)
                 false
             },
         )
-        service.sessionStore.saveLibrary("synthetic-token", syntheticUser())
-        gate.state.value = SchoolAccountState(
-            status = SchoolAccountStatus.REMOVING,
-            generation = AccountGeneration(1),
-            cleanupRequired = true,
+        service.sessionStore.saveLibrary(
+            "synthetic-token",
+            syntheticUser(),
+            accountId,
+            AccountGeneration(1),
         )
+        account.set(cleanupState(generation = 1))
 
         val failed = async { service.signOutForAccountChange() }
         cookieStarted.await()
         assertFalse(failed.await())
         assertNull(service.captureLoginContext())
         assertNull(service.restoreSavedLibrarySession())
-        assertNull(service.sessionStore.loadLibrary())
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
+    }
+
+    @Test
+    fun `persisted session is rejected for another account or generation`() = runTest {
+        val store = SchoolSessionStore(context, FakeSessionCrypto)
+        store.saveLibrary(
+            "synthetic-token",
+            syntheticUser(),
+            accountId,
+            AccountGeneration(1),
+        )
+
+        assertNull(store.loadLibrary(otherAccountId, AccountGeneration(1)))
+        assertNull(store.loadLibrary(accountId, AccountGeneration(2)))
+    }
+
+    @Test
+    fun `manual login without a saved account is memory-only`() = runTest {
+        val account = MutableAccount(openState())
+        val service = service(account)
+        val loginContext = requireNotNull(service.captureLoginContext())
+
+        assertTrue(service.persistLoginIfCurrent(loginContext, syntheticSession()))
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
+        assertNull(service.sessionStore.loadLibrary(otherAccountId, AccountGeneration(1)))
+    }
+
+    @Test
+    fun `automatic login publishes and persists the authenticated session`() = runTest {
+        val account = MutableAccount(savedState(generation = 1))
+        val service = service(
+            account = account,
+            authenticator = LibraryAccountAuthenticator { expectedId, generation ->
+                assertEquals(accountId, expectedId)
+                assertEquals(1L, generation)
+                LibraryAccountAuthResult.Success("auto-token", syntheticUser())
+            },
+        )
+
+        val result = service.loginWithSavedAccount()
+
+        assertEquals(LibraryAccountLoginResult.Success, result)
+        assertEquals("auto-token", service.repository.session.value?.token)
+        assertEquals(
+            "auto-token",
+            service.sessionStore.loadLibrary(accountId, AccountGeneration(1))?.token,
+        )
+    }
+
+    @Test
+    fun `late automatic login result after account generation change is rejected`() = runTest {
+        val account = MutableAccount(savedState(generation = 1))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            account = account,
+            authenticator = LibraryAccountAuthenticator { _, _ ->
+                started.complete(Unit)
+                release.await()
+                LibraryAccountAuthResult.Success("late-token", syntheticUser())
+            },
+        )
+
+        val job = async { service.loginWithSavedAccount() }
+        started.await()
+        account.set(savedState(generation = 2))
+        release.complete(Unit)
+
+        val result = job.await()
+        assertTrue(result is LibraryAccountLoginResult.Failure)
+        assertEquals(
+            LibraryAccountAuthFailure.ACCOUNT_CHANGED,
+            (result as LibraryAccountLoginResult.Failure).reason,
+        )
+        assertNull(service.repository.session.value)
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
+    }
+
+    @Test
+    fun `identity mismatch does not publish a session`() = runTest {
+        val account = MutableAccount(savedState(generation = 1))
+        val service = service(
+            account = account,
+            authenticator = LibraryAccountAuthenticator { _, _ ->
+                LibraryAccountAuthResult.Failure(LibraryAccountAuthFailure.IDENTITY_MISMATCH)
+            },
+        )
+
+        val result = service.loginWithSavedAccount()
+
+        assertEquals(
+            LibraryAccountAuthFailure.IDENTITY_MISMATCH,
+            (result as LibraryAccountLoginResult.Failure).reason,
+        )
+        assertNull(service.repository.session.value)
+        assertNull(service.sessionStore.loadLibrary(accountId, AccountGeneration(1)))
     }
 
     @Test
@@ -191,29 +295,72 @@ class LibraryAccountSessionTest {
     }
 
     private fun service(
-        gate: SchoolAccountGate,
+        account: MutableAccount,
+        authenticator: LibraryAccountAuthenticator = LibraryAccountAuthenticator { _, _ ->
+            error("测试不应自动认证")
+        },
         clearAwait: suspend () -> Boolean = { true },
     ): LibraryService = LibraryService(
         repository = LibrarySeatRepository(
-            sessionAllowed = { !gate.state.value.blocksPersonalSessions },
+            sessionAllowed = { !account.state.value.blocksPersonalSessions },
         ),
         sessionStore = SchoolSessionStore(context, FakeSessionCrypto),
         settings = object : LibraryAccountSettings {
             override val rememberLogin = flowOf(true)
             override suspend fun setRememberLogin(enabled: Boolean) = Unit
         },
-        accountGate = gate,
+        accountGate = account,
+        accountReference = account,
+        authenticator = authenticator,
         clearCookies = {},
         clearSchoolCookiesAndAwait = clearAwait,
     )
 
-    private class MutableGate(initial: SchoolAccountState) : SchoolAccountGate {
+    private class MutableAccount(
+        initial: SchoolAccountState,
+        initialReference: SchoolAccountReference? = null,
+    ) : SchoolAccountReferenceReader {
         override val state = MutableStateFlow(initial)
+        override val accountReference = MutableStateFlow(
+            initialReference ?: if (initial.isCredentialSaved) {
+                SchoolAccountReference(
+                    SchoolAccountId("acct_synthetic_library"),
+                    initial.generation,
+                )
+            } else {
+                null
+            },
+        )
+
+        fun set(next: SchoolAccountState) {
+            state.value = next
+            accountReference.value = if (next.isCredentialSaved) {
+                SchoolAccountReference(accountIdOf(next), next.generation)
+            } else {
+                null
+            }
+        }
+
+        private fun accountIdOf(state: SchoolAccountState): SchoolAccountId =
+            SchoolAccountId("acct_synthetic_library")
     }
 
     private fun openState(generation: Long = 0) = SchoolAccountState(
         status = SchoolAccountStatus.NOT_CONFIGURED,
         generation = AccountGeneration(generation),
+    )
+
+    private fun savedState(generation: Long = 1) = SchoolAccountState(
+        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+        generation = AccountGeneration(generation),
+        maskedStudentId = "20**********01",
+        studentIdAvailable = true,
+    )
+
+    private fun cleanupState(generation: Long) = SchoolAccountState(
+        status = SchoolAccountStatus.SWITCHING,
+        generation = AccountGeneration(generation),
+        cleanupRequired = true,
     )
 
     private fun syntheticUser() = LibraryUser("1", "synthetic", "合成用户")

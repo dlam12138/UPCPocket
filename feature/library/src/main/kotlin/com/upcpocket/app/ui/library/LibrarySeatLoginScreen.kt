@@ -104,7 +104,11 @@ fun LibrarySeatLoginScreen(
                     service.repository.clearSession()
                     clearWebSession()
                     busy = false
-                    error = "账号状态已变化，请重新登录"
+                    error = if (service.isLoginContextCurrent(loginContext)) {
+                        "登录成功，但本机加密保存失败，未保留会话"
+                    } else {
+                        "账号状态已变化，请重新登录"
+                    }
                     return@launch
                 }
                 finished = true
@@ -168,7 +172,8 @@ fun LibrarySeatLoginScreen(
         ) {
             if (busy || pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(
-                text = "在学校页面登录后，即可在应用内查看和预约座位。可在“学校登录”中设置记住登录。",
+                text = "这是自动登录的验证码/二次验证回退页面。登录后即可在应用内查看和预约座位；" +
+                    "已保存统一账号时会话绑定到该账号，未保存时只在本次运行内有效。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

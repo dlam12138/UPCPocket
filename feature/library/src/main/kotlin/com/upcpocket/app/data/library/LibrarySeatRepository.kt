@@ -53,6 +53,29 @@ class LibrarySeatRepository(
         adoptSeatTokenInternal(seatToken, expectedGeneration, guard)
     }
 
+    /**
+     * 已由受控认证适配完成 token 兑换与本人校验时，只发布已经核验的会话。
+     *
+     * 这里不再次请求 `/rest/v2/user`；调用方必须只传入 core 认证适配返回的
+     * [LibrarySeatSession]。发布仍绑定到当前 repository 代次和账号门闩，迟到的结果
+     * 不能写回。
+     */
+    suspend fun publishAuthenticatedSession(
+        session: LibrarySeatSession,
+        guard: () -> Boolean = { true },
+    ): LibrarySeatSession = withContext(Dispatchers.IO) {
+        require(session.token.isNotBlank()) { "登录 token 为空" }
+        require(session.user.id.isNotBlank() && session.user.username.isNotBlank()) {
+            "本人标识为空"
+        }
+        if (!allowed(guard)) throw LibrarySessionExpiredException()
+        val expectedGeneration = currentSessionGeneration()
+        if (!publishSessionIfCurrent(session, expectedGeneration, guard)) {
+            throw LibrarySessionExpiredException()
+        }
+        session
+    }
+
     /** 页面已经把 sessionStorage 换成了 seat token 时直接使用。 */
     suspend fun adoptSeatToken(
         seatToken: String,

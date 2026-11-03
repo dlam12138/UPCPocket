@@ -37,6 +37,7 @@ kotlin {
 
 dependencies {
     implementation(project(":core:account-api"))
+    implementation(project(":core:upc-auth"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))

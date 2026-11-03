@@ -1,5 +1,16 @@
 # 更新与验证
 
+## M4 · 图书馆 libseat 统一认证（开发分支，未发布）
+
+- 从 `:core:upc-auth` 课表认证中提取公共 `UpcCasLogin`：官方 CAS 表单、错误页、验证码/二次验证识别、service/callback 主机与路径、Cookie 作用域共用；课表 M3 认证回归保持通过。
+- 新增 `UpcLibraryAuthenticator`：固定 libseat SSO 入口 → CAS service ticket → app token（query 或 `#/login?token=...` fragment）→ `/rest/ssoAuth` seat token → `/rest/v2/user` 本人校验；只接受官方 HTTPS 主机/路径，不跟随 OkHttp 自动重定向，密码只提交一次。
+- `feature:library` 通过窄接口 `LibraryAccountAuthenticator` 接收核验后的 seat token/本人标识，不依赖 `:core:account`、不读取密码；公开 HMAC 签名由 `UpcLibrarySigning` 共用。
+- 登录门新增“使用已保存学校账号登录”，验证码/二次验证时明确提示并保留学校官方 WebView 登录；没有保存账号时手动会话只保留内存，不持久化无归属 token。
+- `SchoolSessionStore` 图书馆密文新增 accountId/凭据代次绑定；旧格式、跨账号、跨代次读取即删除。恢复时服务端返回的本人标识还要与副本一致。
+- 自动认证/手动登录捕获登录上下文；网络在登录锁外，最后发布与持久化复核账号门闩、Repository 代次与当前账号引用，迟到结果不能复活旧账号。换号/删号/改密/清理失败沿用 M1 失效器并清理图书馆会话。
+- 验证：**350 tests，0 failures/errors/skipped**（50 套件）；`checkModuleBoundaries`、`assembleDebug`、`assembleDebugAndroidTest`、相关 lint 通过；`RealLibraryAuthTest` 在 `emulator-5554` 以本人账号完成真实 CAS、只读 `filters`/`myReservations`，测试后清理临时凭据与账号。详见 [M4 执行记录](m4/README.md) 与 [验收记录](m4/验收记录.md)。
+- 限制：未做真机/release/R8、真实验证码/二次验证、长期 TTL；`nspace`/Chaoxing 四入口与所有座位写操作不在本轮范围。
+
 ## M3 · 真实课表认证、查询、展示与离线缓存（开发分支，未发布）
 
 - 新增 `:core:upc-auth` 与 `:feature:timetable`：课表认证只由受控 CAS 适配使用统一账号凭据；页面/Repository 不接触密码或通用解密能力。新增 `SchoolAccountReferenceReader` 提供任意合法已保存账号的内部 accountId/代次，保留原学号读取面。
@@ -37,7 +48,7 @@
 - 删除不触碰专注历史、主题、公开教室与独立寝室配置；旧“记住学校登录”明确只是图书馆 token 偏好，不是保存密码的同意。
 - 账号设置页使用 `FLAG_SECURE`、离页/保存清空密码输入、不进入 `rememberSaveable`/SavedStateHandle；页面对未接入业务给出真实说明。
 - 审阅修正：WebView Cookie 按根/`/cas`/`/libseat/`/`/remote/...` 与 `.upc.edu.cn` 域作用域清理并确认；图书馆登录上下文绑定打开时账号代次，清理中/失败重试时 Repository 与 UI 同步阻断；journal 增加已提交 tombstone，收尾删文件失败不重放换号/删号失效，且显式删除 base/`.bak`/`.new`。
-- M2 余额绑定与 M3 课表认证见上两节；M4 图书馆统一认证仍未实现；M1 本阶段保存时尚未发送账密，M3 之后只由课表认证适配在需要时使用。仍不把本机保存状态标成学校已认证或全部业务已连接。
+- M2 余额绑定、M3 课表认证与 M4 图书馆认证见上方各节；M1 本阶段保存时尚未发送账密，之后只由课表/图书馆认证适配在需要时使用。仍不把本机保存状态标成学校已认证或全部业务已连接。
 
 验证结果与限制见 [M1 执行记录](m1/README.md)。
 
