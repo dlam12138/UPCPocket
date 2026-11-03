@@ -45,6 +45,7 @@ android {
         versionCode = 19
         versionName = "0.2.7-lightly-preview"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
@@ -113,6 +114,8 @@ kotlin {
 
 dependencies {
     implementation(project(":core:designsystem"))
+    implementation(project(":core:account"))
+    implementation(project(":core:account-api"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
     implementation(project(":core:plugin-runtime"))
@@ -150,11 +153,18 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     // 已移除的上游依赖，当前功能不需要：
-    //  · androidx.security.crypto（上游用它存 CAS 令牌；本原型不保存任何凭据）
-    //  · okhttp / okhttp-logging（本原型不访问校园系统）
+    //  · androidx.security.crypto（当前凭据/会话使用自有 Keystore + AtomicFile 格式，不依赖 Tink）
+    //  · okhttp / okhttp-logging（当前页面仍使用平台 HTTP 客户端，不引入请求日志）
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(project(":core:account"))
+    androidTestImplementation(project(":core:account-api"))
 
     // 真实 Room（内存 SQLite）+ Android 运行时。
     // 为什么需要：日程换类型、作息改动这类缺陷只在**真的读写数据库**时才暴露 ——

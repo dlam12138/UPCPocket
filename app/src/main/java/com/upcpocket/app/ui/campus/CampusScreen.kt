@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
@@ -31,6 +32,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.upcpocket.app.account.api.SchoolAccountState
+import com.upcpocket.app.account.summaryText
 import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -49,7 +52,9 @@ import com.upcpocket.app.ui.components.GlassCard
 fun CampusScreen(
     learningEntries: List<PluginEntry>,
     schoolSections: List<PluginSection>,
+    accountState: SchoolAccountState,
     onOpenRoute: (PluginRouteId) -> Unit,
+    onOpenAccount: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenAbout: () -> Unit,
 ) {
@@ -76,6 +81,16 @@ fun CampusScreen(
                         )
                     }
                 }
+            }
+
+            GroupTitle("学校账号")
+            EntryCard {
+                Entry(
+                    icon = Icons.Filled.AccountCircle,
+                    title = "学校账号",
+                    subtitle = accountState.summaryText(),
+                    onClick = onOpenAccount,
+                )
             }
 
             if (schoolSections.isNotEmpty()) {

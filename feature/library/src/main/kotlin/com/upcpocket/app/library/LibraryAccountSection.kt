@@ -33,7 +33,8 @@ internal fun LibraryAccountSection(service: LibraryService) {
             Text(
                 "目前只有图书馆座位会话需要登录：开启后 token 用 Android Keystore 加密保存" +
                     "（不随系统备份）；关闭或退出会清理持久副本与 UPC 业务 Cookie。" +
-                    "校园卡余额不需要登录。",
+                    "此开关只保存图书馆 token，不是统一学校账号密码的保存/验证，" +
+                    "也不能代替“更多 → 学校账号”中的选择。校园卡余额不需要登录。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

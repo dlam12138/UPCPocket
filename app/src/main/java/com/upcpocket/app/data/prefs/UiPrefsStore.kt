@@ -25,7 +25,8 @@ data class UiPrefs(
     val darkMode: DarkMode = DarkMode.SYSTEM,
     /**
      * 记住学校登录：把图书馆座位业务签发的 token 用 Keystore 加密保存。
-     * 默认关闭。关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
+     * 默认关闭。这只是图书馆 token 偏好，不是统一学校账号密码的保存同意；
+     * 关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
      */
     val rememberSchoolLogin: Boolean = false,
     /**

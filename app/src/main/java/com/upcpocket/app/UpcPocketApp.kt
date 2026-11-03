@@ -32,8 +32,10 @@ class UpcPocketApp : Application() {
         // release 包不会开启，也不暴露任何页面内容。
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 
-        // 每个已激活插件自行恢复状态；专注计时剩余时间用墙钟算，不需要额外补偿。
+        // 先恢复统一账号并完成上次中断的清理，再允许插件恢复自己的业务状态。
+        // 账号恢复只读本机密文/状态文件，不联网、不遍历业务。
         appScope.launch {
+            AppGraph.account.restore()
             AppGraph.restorePlugins()
         }
     }

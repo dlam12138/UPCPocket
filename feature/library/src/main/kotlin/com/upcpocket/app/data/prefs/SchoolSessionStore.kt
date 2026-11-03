@@ -1,5 +1,6 @@
 package com.upcpocket.app.data.prefs
 
+import android.annotation.SuppressLint
 import android.content.Context
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.platform.AccountMask
@@ -18,7 +19,9 @@ import org.json.JSONObject
  *  - `allowBackup=false`，这些文件不会被系统云备份带走；
  *  - **WebView 自己的 Cookie 不由本类加密**，它由系统 WebView 管理；WebView 业务会话是否跨重启
  *    可用取决于 WebView Cookie 的实际行为，交付说明单独标注；
- *  - 不保存账号密码、CAS ticket、OAuth code、微信 code。
+ *  - **不保存学校账号密码**；统一账号由 `:core:account` 使用独立 alias 与格式保存，
+ *    本类不读取、也不会把业务 token 当作统一账号凭据；
+ *  - 会话清理使用同步 commit：统一账号换号/删号必须等持久清理完成后才能放行新登录。
  *
  * 轻量版第二步删除了校园卡平台登录与流水，因此这里不再保存平台令牌或平台余额快照；
  * 校园卡余额由 `DirectCardBalance` 直接按学号查询，不经过本类。
@@ -91,8 +94,9 @@ class SchoolSessionStore(
     }
 
     @Synchronized
+    @SuppressLint("ApplySharedPref")
     fun clearLibrary() {
-        prefs.edit().remove(KEY_LIBRARY).apply()
+        prefs.edit().remove(KEY_LIBRARY).commit()
     }
 
     // ── 唐岛湾电费会话表单 ────────────────────────────────────────────────
@@ -136,27 +140,30 @@ class SchoolSessionStore(
 
     /** 只清某个业务，不影响其他系统已经建立的会话。 */
     @Synchronized
+    @SuppressLint("ApplySharedPref")
     fun clearAll() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
     }
 
     /**
      * 清掉**全部**持久化会话（退出学校登录 / 关闭“记住登录”时用）。
      *
      * 图书馆单业务退出请用 [clearLibrary]，否则会把仍有效的会话一起踢掉。
+     * 返回 false 表示磁盘提交失败；账号失效协调必须据此保持“清理中”。
      */
     @Synchronized
-    fun clear() {
-        prefs.edit().clear().apply()
-    }
+    @SuppressLint("ApplySharedPref")
+    fun clear(): Boolean = prefs.edit().clear().commit()
 
+    @SuppressLint("ApplySharedPref")
     private fun dropLibrary(): SavedLibrarySession? {
-        prefs.edit().remove(KEY_LIBRARY).apply()
+        prefs.edit().remove(KEY_LIBRARY).commit()
         return null
     }
 
+    @SuppressLint("ApplySharedPref")
     private fun dropPowerForm(): SavedPowerForm? {
-        prefs.edit().remove(KEY_POWER_FORM).apply()
+        prefs.edit().remove(KEY_POWER_FORM).commit()
         return null
     }
 

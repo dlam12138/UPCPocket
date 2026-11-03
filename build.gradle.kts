@@ -61,6 +61,9 @@ tasks.register("checkModuleBoundaries") {
             if (path == ":core:plugin-api" && internal.isNotEmpty()) {
                 violations += ":core:plugin-api 必须保持无内部依赖，实际：${internal.sorted()}"
             }
+            if (path == ":core:account-api" && internal.isNotEmpty()) {
+                violations += ":core:account-api 必须保持无内部依赖，实际：${internal.sorted()}"
+            }
             if (path == ":core:plugin-runtime") {
                 internal.filter { it != ":core:plugin-api" }.forEach {
                     violations += ":core:plugin-runtime 只允许依赖 :core:plugin-api，实际包含 $it"

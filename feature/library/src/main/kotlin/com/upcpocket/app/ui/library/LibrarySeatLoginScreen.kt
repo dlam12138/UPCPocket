@@ -70,15 +70,21 @@ fun LibrarySeatLoginScreen(
         busy = true
         error = null
         scope.launch {
+            val loginEpoch = service.currentLoginEpoch()
             try {
                 val session = if (alreadySeatToken) {
                     service.repository.adoptSeatToken(token)
                 } else {
                     service.repository.exchangeAppToken(token)
                 }
-                // 只有用户打开“记住登录”才落盘；密文由 Keystore 保护（见 SchoolSessionStore）。
-                if (service.rememberLoginEnabled()) {
-                    service.sessionStore.saveLibrary(session.token, session.user)
+                // 账号换号/删号或用户退出会使本次登录代次失效；只有仍属于当前代次
+                // 才允许写入加密 token 副本，防止迟到的旧身份落盘。
+                if (!service.persistLoginIfCurrent(loginEpoch, session)) {
+                    service.repository.clearSession()
+                    clearWebSession()
+                    busy = false
+                    error = "账号状态已变化，请重新登录"
+                    return@launch
                 }
                 finished = true
                 clearWebSession()

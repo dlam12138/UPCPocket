@@ -1,0 +1,406 @@
+package com.upcpocket.app.account
+
+import com.upcpocket.app.account.api.AccountDataScope
+import com.upcpocket.app.account.api.AccountGeneration
+import com.upcpocket.app.account.api.AccountInvalidationFailure
+import com.upcpocket.app.account.api.AccountInvalidationRequest
+import com.upcpocket.app.account.api.AccountInvalidationResult
+import com.upcpocket.app.account.api.SchoolAccountErrorCode
+import com.upcpocket.app.account.api.SchoolAccountInvalidator
+import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.account.api.SchoolAccountWriteResult
+import com.upcpocket.app.platform.crypto.ByteCrypto
+import java.io.IOException
+import java.security.GeneralSecurityException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+import org.junit.Test
+
+class SchoolAccountRepositoryTest {
+
+    private val oldPassword = "synthetic-old-password"
+    private val newPassword = "synthetic-new-password"
+    private val account = "20260001"
+    private val otherAccount = "20260002"
+
+    @Test
+    fun firstSaveEncryptsAndRestoresWithoutPlaintext() = runTest {
+        val store = MemoryStore()
+        val crypto = FakeCrypto()
+        val repository = repository(store, crypto)
+        repository.restore()
+
+        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
+        val secret = oldPassword.toCharArray()
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(account, secret),
+        )
+        assertTrue("保存后调用方传入的密码数组应被清零", secret.all { it == '\u0000' })
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)
+        assertEquals(AccountGeneration(1), repository.state.value.generation)
+        assertEquals("MASK-01", repository.state.value.maskedAccount)
+
+        val raw = store.read(AccountFormat.ACCOUNT_FILE, 64 * 1024)!!
+        assertFalse(raw.toString(Charsets.UTF_8).contains(account))
+        assertFalse(raw.toString(Charsets.UTF_8).contains(oldPassword))
+
+        val reopened = repository(store, crypto)
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals(AccountGeneration(1), reopened.state.value.generation)
+        assertEquals("MASK-01", reopened.state.value.maskedAccount)
+        assertFalse(reopened.state.value.cleanupRequired)
+    }
+
+    @Test
+    fun passwordUpdateIncrementsGenerationAndOnlyClearsSessions() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        invalidator.requests.clear()
+
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertEquals(AccountGeneration(2), repository.state.value.generation)
+        assertEquals(1, invalidator.requests.size)
+        assertEquals(AccountDataScope.SESSIONS_ONLY, invalidator.requests.single().scope)
+        assertEquals(AccountGeneration(1), invalidator.requests.single().previousGeneration)
+        assertEquals(AccountGeneration(2), invalidator.requests.single().nextGeneration)
+    }
+
+    @Test
+    fun accountSwitchClearsPersonalDataAndRejectsOldToken() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        val oldToken = repository.state.value.captureRequestToken()!!
+
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            repository.save(otherAccount, newPassword.toCharArray()),
+        )
+        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
+        assertFalse(repository.state.value.isCurrent(oldToken))
+        assertEquals(AccountGeneration(2), repository.state.value.generation)
+        assertEquals("MASK-02", repository.state.value.maskedAccount)
+    }
+
+    @Test
+    fun encryptionFailureKeepsOldVersion() = runTest {
+        val store = MemoryStore()
+        val crypto = FakeCrypto()
+        val repository = repository(store, crypto)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        val before = store.snapshot()
+
+        crypto.failEncrypt = true
+        val result = repository.save(account, newPassword.toCharArray())
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.ENCRYPTION_FAILED),
+            result,
+        )
+        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
+        assertEquals(AccountGeneration(1), repository.state.value.generation)
+
+        val reopened = repository(store, FakeCrypto())
+        reopened.restore()
+        assertEquals(AccountGeneration(1), reopened.state.value.generation)
+        assertEquals("MASK-01", reopened.state.value.maskedAccount)
+    }
+
+    @Test
+    fun pendingWriteFailureKeepsOldVersion() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        val before = store.snapshot()
+
+        store.failWrite = AccountFormat.PENDING_FILE
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
+        assertEquals(AccountGeneration(1), repository.state.value.generation)
+    }
+
+    @Test
+    fun journalWriteFailureKeepsOldVersionAndRemovesPending() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        val before = store.snapshot()
+
+        store.failWrite = AccountFormat.JOURNAL_FILE
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertFalse(store.exists(AccountFormat.PENDING_FILE))
+        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
+        assertEquals(AccountGeneration(1), repository.state.value.generation)
+    }
+
+    @Test
+    fun transitionStateWriteFailureKeepsOldVersion() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        val before = store.snapshot()
+
+        store.failWrite = AccountFormat.STATE_FILE
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
+            repository.save(account, newPassword.toCharArray()),
+        )
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+        assertFalse(store.exists(AccountFormat.PENDING_FILE))
+        assertArrayEquals(before[AccountFormat.STATE_FILE], store.files[AccountFormat.STATE_FILE])
+
+        val reopened = repository(store, FakeCrypto())
+        reopened.restore()
+        assertEquals(AccountGeneration(1), reopened.state.value.generation)
+        assertEquals("MASK-01", reopened.state.value.maskedAccount)
+    }
+
+    @Test
+    fun crashAfterJournalResumesSwitchOnRestart() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        store.crashAfterWrite = AccountFormat.JOURNAL_FILE
+        try {
+            repository.save(otherAccount, newPassword.toCharArray())
+            fail("应当模拟进程中断")
+        } catch (_: SimulatedCrash) {
+            // 模拟进程在 journal 写入后退出。
+        }
+        store.crashAfterWrite = null
+        invalidator.requests.clear()
+
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals(AccountGeneration(2), reopened.state.value.generation)
+        assertEquals("MASK-02", reopened.state.value.maskedAccount)
+        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+        assertFalse(store.exists(AccountFormat.PENDING_FILE))
+    }
+
+    @Test
+    fun cleanupFailurePersistsRemovingAndResumes() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator(fail = true)
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_FAILED),
+            repository.delete(),
+        )
+        assertEquals(SchoolAccountStatus.REMOVING, repository.state.value.status)
+        assertTrue(repository.state.value.cleanupRequired)
+        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
+        assertTrue(store.exists(AccountFormat.ACCOUNT_FILE))
+
+        invalidator.fail = false
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, reopened.state.value.status)
+        assertFalse(reopened.state.value.cleanupRequired)
+        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
+        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+    }
+
+    @Test
+    fun deleteRemovesCredentialAndOnlyAccountFiles() = runTest {
+        val store = MemoryStore()
+        store.files["unrelated-focus"] = byteArrayOf(1, 2, 3)
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        assertEquals(SchoolAccountWriteResult.Success, repository.delete())
+        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
+        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
+        assertArrayEquals(byteArrayOf(1, 2, 3), store.files["unrelated-focus"])
+        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
+        assertFalse(store.exists(AccountFormat.PENDING_FILE))
+        assertTrue(store.exists(AccountFormat.STATE_FILE))
+    }
+
+    @Test
+    fun keyFailureMarksNeedsReconfigurationAndClearsPersonalData() = runTest {
+        val store = MemoryStore()
+        val crypto = FakeCrypto()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, crypto, listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+
+        crypto.failDecrypt = true
+        val reopened = repository(store, crypto, listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
+        assertEquals(SchoolAccountErrorCode.CREDENTIAL_UNAVAILABLE, reopened.state.value.errorCode)
+        assertFalse(reopened.state.value.cleanupRequired)
+        assertNull(reopened.state.value.maskedAccount)
+        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
+        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
+    }
+
+    @Test
+    fun corruptCiphertextIsFixedErrorAndRecoverable() = runTest {
+        val store = MemoryStore()
+        val invalidator = RecordingInvalidator()
+        val repository = repository(store, invalidators = listOf(invalidator))
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        store.files[AccountFormat.ACCOUNT_FILE] = "not-an-envelope".toByteArray()
+
+        val reopened = repository(store, invalidators = listOf(invalidator))
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
+        assertEquals(SchoolAccountErrorCode.CREDENTIAL_CORRUPTED, reopened.state.value.errorCode)
+
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            reopened.save(otherAccount, newPassword.toCharArray()),
+        )
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertEquals("MASK-02", reopened.state.value.maskedAccount)
+    }
+
+    @Test
+    fun unsupportedVersionIsNotTreatedAsSuccess() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+        repository.save(account, oldPassword.toCharArray())
+        store.files[AccountFormat.ACCOUNT_FILE] =
+            """{"format":"${AccountFormat.CREDENTIAL_FORMAT}","version":99,"ciphertext":"AAAA"}"""
+                .toByteArray()
+
+        val reopened = repository(store, FakeCrypto())
+        reopened.restore()
+        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
+        assertEquals(SchoolAccountErrorCode.UNSUPPORTED_VERSION, reopened.state.value.errorCode)
+    }
+
+    @Test
+    fun invalidInputDoesNotWriteAnything() = runTest {
+        val store = MemoryStore()
+        val repository = repository(store)
+        repository.restore()
+
+        val invalidAccountSecret = oldPassword.toCharArray()
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.INVALID_ACCOUNT),
+            repository.save("   ", invalidAccountSecret),
+        )
+        assertTrue(invalidAccountSecret.all { it == '\u0000' })
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.INVALID_PASSWORD),
+            repository.save(account, CharArray(0)),
+        )
+        assertTrue(store.files.isEmpty())
+    }
+
+    private fun repository(
+        store: MemoryStore,
+        crypto: FakeCrypto = FakeCrypto(),
+        invalidators: List<SchoolAccountInvalidator> = emptyList(),
+    ) = SchoolAccountRepository(
+        directory = java.io.File("/unused"),
+        crypto = crypto,
+        fileStore = store,
+        clock = { 1_700_000_000_000 },
+        ioDispatcher = Dispatchers.Unconfined,
+        invalidators = invalidators,
+        maskAccount = { "MASK-${it.takeLast(2)}" },
+    )
+
+    private class FakeCrypto : ByteCrypto {
+        var failEncrypt = false
+        var failDecrypt = false
+
+        override fun encrypt(plain: ByteArray): ByteArray {
+            if (failEncrypt) throw GeneralSecurityException("synthetic")
+            val output = ByteArray(plain.size + 1)
+            output[0] = 7
+            plain.forEachIndexed { index, byte -> output[index + 1] = (byte.toInt() xor 0x5A).toByte() }
+            return output
+        }
+
+        override fun decrypt(stored: ByteArray): ByteArray {
+            if (failDecrypt) throw GeneralSecurityException("synthetic")
+            if (stored.isEmpty() || stored[0] != 7.toByte()) throw GeneralSecurityException("synthetic")
+            return ByteArray(stored.size - 1) { index ->
+                (stored[index + 1].toInt() xor 0x5A).toByte()
+            }
+        }
+    }
+
+    private class RecordingInvalidator(var fail: Boolean = false) : SchoolAccountInvalidator {
+        val requests = mutableListOf<AccountInvalidationRequest>()
+
+        override suspend fun invalidate(request: AccountInvalidationRequest): AccountInvalidationResult {
+            requests += request
+            return if (fail) {
+                AccountInvalidationResult.failure(AccountInvalidationFailure.UNAVAILABLE)
+            } else {
+                AccountInvalidationResult.Success
+            }
+        }
+    }
+
+    private class SimulatedCrash : Error()
+
+    private class MemoryStore : AccountFileStore {
+        val files = linkedMapOf<String, ByteArray>()
+        var failWrite: String? = null
+        var crashAfterWrite: String? = null
+        var failDelete: String? = null
+
+        fun snapshot(): Map<String, ByteArray> = files.mapValues { it.value.copyOf() }
+
+        override fun read(name: String, maxBytes: Int): ByteArray? =
+            files[name]?.copyOf()?.takeIf { it.size <= maxBytes }
+
+        override fun write(name: String, bytes: ByteArray) {
+            if (failWrite == name) throw IOException("synthetic write failure")
+            files[name] = bytes.copyOf()
+            if (crashAfterWrite == name) throw SimulatedCrash()
+        }
+
+        override fun delete(name: String) {
+            if (failDelete == name) throw IOException("synthetic delete failure")
+            files.remove(name)
+        }
+
+        override fun exists(name: String): Boolean = files.containsKey(name)
+    }
+}

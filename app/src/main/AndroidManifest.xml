@@ -3,8 +3,9 @@
 
     <!-- 用户主动查询：空闲教室（公开）、图书馆座位（官方 CAS 登录）、校园卡余额（官方登录）、
          唐岛湾宿舍剩余电量（公开的楼号＋房间号查询）。
-         不接入自建认证代理，不保存账号密码，不做后台轮询；
-         明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
+         不接入自建认证代理；默认不保存凭据。只有用户在“更多 → 学校账号”主动保存时，
+         当前一个学校账号密码才用独立 Keystore alias 的 AES-GCM 密文写入 noBackup 目录。
+         不做后台轮询；明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--

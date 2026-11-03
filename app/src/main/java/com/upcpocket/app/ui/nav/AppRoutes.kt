@@ -13,6 +13,7 @@ object AppRoutes {
     const val MORE = "more"
 
     /** 宿主设置/信息页（不是 tab，进去之后底部导航栏会隐藏） */
+    const val ACCOUNT = "account"
     const val APPEARANCE = "appearance"
     const val ABOUT = "about"
 }

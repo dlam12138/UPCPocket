@@ -30,8 +30,12 @@ class LibrarySeatRepository {
     private val _session = MutableStateFlow<LibrarySeatSession?>(null)
     val session: StateFlow<LibrarySeatSession?> = _session.asStateFlow()
 
+    private val sessionLock = Any()
+    private var sessionGeneration = 0L
+
     suspend fun exchangeAppToken(appToken: String): LibrarySeatSession = withContext(Dispatchers.IO) {
         require(appToken.isNotBlank()) { "登录 token 为空" }
+        val expectedGeneration = currentSessionGeneration()
         val body = request(
             method = "POST",
             path = "/rest/ssoAuth",
@@ -40,12 +44,23 @@ class LibrarySeatRepository {
             tokenOverride = appToken,
         )
         val seatToken = LibrarySeatProtocol.parseToken(body)
-        adoptSeatToken(seatToken)
+        adoptSeatTokenInternal(seatToken, expectedGeneration)
     }
 
     /** 页面已经把 sessionStorage 换成了 seat token 时直接使用。 */
     suspend fun adoptSeatToken(seatToken: String): LibrarySeatSession = withContext(Dispatchers.IO) {
+        val expectedGeneration = currentSessionGeneration()
+        adoptSeatTokenInternal(seatToken, expectedGeneration)
+    }
+
+    private suspend fun adoptSeatTokenInternal(
+        seatToken: String,
+        expectedGeneration: Long,
+    ): LibrarySeatSession = withContext(Dispatchers.IO) {
         require(seatToken.isNotBlank()) { "登录 token 为空" }
+        if (currentSessionGeneration() != expectedGeneration) {
+            throw LibrarySessionExpiredException()
+        }
         val body = request(
             method = "GET",
             path = "/rest/v2/user",
@@ -53,12 +68,34 @@ class LibrarySeatRepository {
             tokenOverride = seatToken,
         )
         val user = LibrarySeatProtocol.parseUser(body)
-        LibrarySeatSession(seatToken, user).also { _session.value = it }
+        val session = LibrarySeatSession(seatToken, user)
+        if (!publishSessionIfCurrent(session, expectedGeneration)) {
+            // 换号/删号或退出已让这次登录失效；不能把迟到 token 写进内存或持久层。
+            throw LibrarySessionExpiredException()
+        }
+        session
     }
 
     fun clearSession() {
-        _session.value = null
+        synchronized(sessionLock) {
+            sessionGeneration += 1
+            _session.value = null
+        }
     }
+
+    private fun currentSessionGeneration(): Long = synchronized(sessionLock) {
+        sessionGeneration
+    }
+
+    private fun publishSessionIfCurrent(session: LibrarySeatSession, expected: Long): Boolean =
+        synchronized(sessionLock) {
+            if (sessionGeneration != expected) {
+                false
+            } else {
+                _session.value = session
+                true
+            }
+        }
 
     suspend fun filters(): LibraryFilters = withToken { token ->
         LibrarySeatProtocol.parseFilters(
@@ -185,7 +222,7 @@ class LibrarySeatRepository {
         try {
             block(token)
         } catch (e: LibrarySessionExpiredException) {
-            _session.value = null
+            clearSession()
             throw e
         }
     }

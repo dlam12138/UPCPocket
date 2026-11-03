@@ -343,8 +343,9 @@ fun LibrarySeatScreen(
             item {
                 Text(
                     "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。" +
-                        "当前版本登录 token 只在本次运行内存中，退出登录会清除；不保存密码、" +
-                        "不把预约历史写入本地数据库。登录页只清理本业务的 Cookie，不会清掉统一认证或其它业务的登录状态。",
+                        "未开启“记住登录”时 token 只在本次运行内存中；开启后 token 用 Keystore 加密保存，" +
+                        "退出登录会清除。图书馆不读取统一账号页保存的密码，也不把预约历史写入本地数据库。" +
+                        "登录页只清理本业务的 Cookie，不会清掉统一认证或其它业务的登录状态。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -454,7 +455,8 @@ private fun LibraryLoginGate(onBack: () -> Unit, onLogin: () -> Unit) {
             Spacer(Modifier.height(24.dp))
             Text("需要学校统一认证", style = MaterialTheme.typography.titleLarge)
             Text(
-                "登录由学校 CAS 页面完成，App 不保存密码。登录后才能在原生界面查询馆区、选座和取消预约。",
+                "登录由学校 CAS 页面完成；本页不读取统一账号页保存的密码，也不会自动登录。" +
+                    "登录后才能在原生界面查询馆区、选座和取消预约。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

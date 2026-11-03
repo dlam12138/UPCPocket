@@ -47,11 +47,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.plugin.ui.PluginPageHost
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -103,6 +105,7 @@ fun AppNav(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val pluginUi = AppGraph.ui
+    val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
     val destinations = (hostDestinations + pluginUi.bottomNav.map { tab ->
         Destination(
             route = tab.route.value,
@@ -195,7 +198,9 @@ fun AppNav(
                         CampusScreen(
                             learningEntries = pluginUi.entriesFor(UiSurface.MORE_LEARNING),
                             schoolSections = pluginUi.sectionsFor(UiSurface.MORE_SCHOOL),
+                            accountState = accountState,
                             onOpenRoute = pageHost::open,
+                            onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
                             onOpenAppearance = { navController.navigate(AppRoutes.APPEARANCE) },
                             onOpenAbout = { navController.navigate(AppRoutes.ABOUT) },
                         )
@@ -204,6 +209,12 @@ fun AppNav(
                         composable(page.routeId.value) {
                             page.content(pageHost)
                         }
+                    }
+                    composable(AppRoutes.ACCOUNT) {
+                        SchoolAccountScreen(
+                            accounts = AppGraph.account,
+                            onBack = { navController.popBackStack() },
+                        )
                     }
                     composable(AppRoutes.APPEARANCE) {
                         AppearanceScreen(onBack = { navController.popBackStack() })

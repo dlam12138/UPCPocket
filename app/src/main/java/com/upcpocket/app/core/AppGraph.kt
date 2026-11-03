@@ -6,6 +6,12 @@ import android.content.Intent
 import android.util.Log
 import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.MainActivity
+import com.upcpocket.app.account.SchoolAccountRepository
+import com.upcpocket.app.account.api.AccountDataScope
+import com.upcpocket.app.account.api.AccountInvalidationFailure
+import com.upcpocket.app.account.api.AccountInvalidationRequest
+import com.upcpocket.app.account.api.AccountInvalidationResult
+import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
@@ -14,7 +20,9 @@ import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.library.LibraryCapabilities
 import com.upcpocket.app.library.LibraryPlugin
+import com.upcpocket.app.library.SchoolWebCookies
 import com.upcpocket.app.plugin.api.PluginAppLifecycle
 import com.upcpocket.app.plugin.runtime.ActivePlugins
 import com.upcpocket.app.plugin.runtime.PluginDiagnostic
@@ -50,6 +58,46 @@ object AppGraph {
     }
 
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }
+
+    /**
+     * 统一学校账号是共享核心能力，不属于某个业务插件。
+     *
+     * 账号层只持有密文与代次；换号/删号通过下面的失效器清理图书馆会话、
+     * WebView 学校 Cookie 与校园卡个人缓存。恢复在 Application 启动时执行，
+     * 先完成半途清理，再恢复业务插件。
+     */
+    val account: SchoolAccountRepository by lazy {
+        SchoolAccountRepository(
+            context = appContext,
+            invalidators = listOf(
+                SchoolAccountInvalidator { request -> invalidateSchoolAccountData(request) },
+            ),
+        )
+    }
+
+    private suspend fun invalidateSchoolAccountData(
+        request: AccountInvalidationRequest,
+    ): AccountInvalidationResult {
+        var failure: AccountInvalidationFailure? = null
+        val library = activePlugins.capability(LibraryCapabilities.seat)
+        if (library != null) {
+            if (!library.signOutForAccountChange()) {
+                failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
+            }
+        } else if (!SchoolWebCookies.clearAllSchoolCookiesAndAwait()) {
+            // 图书馆插件被移除时，旧 WebView Cookie 仍可能留在系统中；这里仍按
+            // 学校域名清理并等待，避免换号后自动带回旧身份。
+            failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
+        }
+        if (request.scope == AccountDataScope.PERSONAL_DATA) {
+            val card = cardServiceOrNull
+            if (card != null && runCatching { card.clear() }.isFailure) {
+                failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
+            }
+        }
+        return failure?.let(AccountInvalidationResult::failure)
+            ?: AccountInvalidationResult.Success
+    }
 
     /**
      * 校园卡余额插件。

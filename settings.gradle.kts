@@ -34,6 +34,8 @@ rootProject.name = "UPCPocket"
 include(
     ":app",
     ":core:designsystem",
+    ":core:account-api",
+    ":core:account",
     ":core:platform",
     ":core:plugin-api",
     ":core:plugin-runtime",
