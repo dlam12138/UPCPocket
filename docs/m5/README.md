@@ -252,8 +252,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 未提交任何真实预约、取消、签到、团队或写请求。nspace 个人预约表单已接入并有合成
   JSON/规则测试，但未点击最终“确认提交”；A123 需多人组队，应用明确引导官方页面，没有
   伪造参与人/团队。已从公开前端核对 `participants` 为被邀请人 username 的逗号连接、
-  `teamId` 团队模式、`searchUser`/`verifyUsername`/`queryUserTeamList` 的只读形状，但
-  没有搜索真实姓名、加入/创建团队或添加成员。
+  `teamId` 团队模式、`searchUser`/`verifyUsername`/`queryUserTeamList` 的只读形状；
+  本人 `queryUserTeamList` 只读返回空 `pageList`/`totalCount=0`（当前无团队），没有
+  搜索真实姓名、加入/创建团队或添加成员。
 - 未在 App 内 WebView 完成 nspace 验证码后的回跳（本轮模拟器只复核统一页文案/布局；
   未在 App 内提交凭据）。Chaoxing seat/seatengine/reservepc 的官方页已在独立浏览器
   已登录会话中核对；应用内仍是系统浏览器官方页，不是原生查询。
