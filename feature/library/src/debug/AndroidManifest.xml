@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only visual acceptance entry. Never merged into release builds. -->
+        <activity
+            android:name="com.upcpocket.app.ui.library.LibrarySeatPreviewActivity"
+            android:exported="true"
+            android:label="座位视觉预览"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>

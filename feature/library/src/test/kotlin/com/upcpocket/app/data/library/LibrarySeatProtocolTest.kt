@@ -111,7 +111,7 @@ class LibrarySeatProtocolTest {
     fun `房间按 floor 和 roomId 解析并去重`() {
         val rooms = LibrarySeatProtocol.parseRooms(
             """{"status":true,"data":[
-              {"roomId":"r1","room":"A101","floor":1},
+              {"roomId":"r1","room":"A101","floor":1,"totalSeats":40,"free":7,"reserved":2,"inUse":1,"away":0,"disableSeat":3},
               {"roomId":"r2","room":"A102","floor":1},
               {"roomId":"r1","room":"A101","floor":1}
             ]}""",
@@ -119,6 +119,10 @@ class LibrarySeatProtocolTest {
         )
         assertEquals(2, rooms.size)
         assertEquals(1, rooms.first().floor)
+        assertEquals(40, rooms.first().totalSeats)
+        assertEquals(7, rooms.first().freeSeats)
+        assertEquals(0.175f, rooms.first().occupancy)
+        assertEquals("余 7 / 共 40 座", rooms.first().remainingLabel)
     }
 
     @Test

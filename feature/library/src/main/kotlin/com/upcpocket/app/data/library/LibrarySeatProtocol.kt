@@ -112,6 +112,12 @@ internal object LibrarySeatProtocol {
                 roomId = string(obj, "roomId", "id"),
                 name = string(obj, "room", "roomName", "name"),
                 floor = int(obj, "floor"),
+                totalSeats = intOrNull(obj, "totalSeats"),
+                freeSeats = intOrNull(obj, "free"),
+                reserved = intOrNull(obj, "reserved"),
+                inUse = intOrNull(obj, "inUse"),
+                away = intOrNull(obj, "away"),
+                disabled = intOrNull(obj, "disableSeat"),
             )
         }.filter { it.roomId.isNotBlank() && it.name.isNotBlank() }
             .distinctBy { it.roomId }
@@ -288,8 +294,10 @@ internal object LibrarySeatProtocol {
     }
 
     private fun int(obj: JsonObject, vararg keys: String): Int =
+        intOrNull(obj, *keys) ?: fail("缺少数字字段 ${keys.first()}")
+
+    private fun intOrNull(obj: JsonObject, vararg keys: String): Int? =
         keys.firstNotNullOfOrNull { key -> (obj[key] as? JsonPrimitive)?.intOrNull }
-            ?: fail("缺少数字字段 ${keys.first()}")
 
     private fun boolean(obj: JsonObject, key: String): Boolean {
         val raw = (obj[key] as? JsonPrimitive)?.contentOrNull ?: return false

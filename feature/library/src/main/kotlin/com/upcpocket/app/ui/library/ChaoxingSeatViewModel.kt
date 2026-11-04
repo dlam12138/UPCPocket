@@ -160,13 +160,7 @@ class ChaoxingSeatViewModel(
     }
 
     fun closeRoom() {
-        _state.value = _state.value.copy(
-            detail = null,
-            detailBusy = false,
-            detailError = null,
-            selectedStart = null,
-            usedSeats = emptySet(),
-        )
+        _state.value = _state.value.afterCloseRoom()
     }
 
     private fun loadRooms() {
@@ -219,6 +213,15 @@ internal fun dateOptions(): List<String> {
     val today = LocalDate.now(ZoneId.of("Asia/Shanghai"))
     return listOf(today.toString(), today.plusDays(1).toString())
 }
+
+internal fun ChaoxingSeatUiState.afterCloseRoom(): ChaoxingSeatUiState =
+    copy(
+        detail = null,
+        detailBusy = false,
+        detailError = null,
+        selectedStart = null,
+        usedSeats = emptySet(),
+    )
 
 internal fun formatMinute(value: Int): String =
     "%02d:%02d".format(value / 60, value % 60)

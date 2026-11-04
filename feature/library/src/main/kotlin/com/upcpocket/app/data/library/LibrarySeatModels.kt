@@ -33,7 +33,33 @@ data class LibraryRoom(
     val name: String,
     val floor: Int,
     val floorName: String? = null,
-)
+    /** 学校 stats2 的真实统计；缺失时 UI 不能猜成 0。 */
+    val totalSeats: Int? = null,
+    val freeSeats: Int? = null,
+    val reserved: Int? = null,
+    val inUse: Int? = null,
+    val away: Int? = null,
+    val disabled: Int? = null,
+) {
+    val floorLabel: String
+        get() = floorName?.takeIf { it.isNotBlank() } ?: if (floor > 0) "楼层 $floor" else "楼层未提供"
+
+    val remainingLabel: String
+        get() = when {
+            freeSeats != null && totalSeats != null -> "余 $freeSeats / 共 $totalSeats 座"
+            freeSeats != null -> "余 $freeSeats 座"
+            totalSeats != null -> "共 $totalSeats 座"
+            else -> "座位统计待查询"
+        }
+
+    val occupancy: Float?
+        get() {
+            val total = totalSeats ?: return null
+            val free = freeSeats ?: return null
+            if (total <= 0) return null
+            return (free.toFloat() / total).coerceIn(0f, 1f)
+        }
+}
 
 data class LibrarySeat(
     val id: String,

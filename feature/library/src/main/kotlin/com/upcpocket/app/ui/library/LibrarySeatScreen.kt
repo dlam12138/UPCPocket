@@ -1,12 +1,19 @@
 package com.upcpocket.app.ui.library
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,13 +24,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,24 +46,32 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -63,6 +82,7 @@ import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryCaptchaRequiredException
 import com.upcpocket.app.data.library.LibraryFilters
+import com.upcpocket.app.data.library.LibraryFloor
 import com.upcpocket.app.data.library.LibraryReservation
 import com.upcpocket.app.data.library.LibraryReservationMatch
 import com.upcpocket.app.data.library.LibraryRoom
@@ -107,8 +127,6 @@ fun LibrarySeatScreen(
     val state = vm.state
     var restoringSession by remember { mutableStateOf(false) }
     LaunchedEffect(accountState.status, accountState.generation, accountState.cleanupRequired) {
-        // 开启“记住登录”时，重启后先用加密保存的 token 验证会话；失效就清掉重登。
-        // 账号仍处于恢复/清理状态时这里不会执行；状态恢复后也走同一门闩。
         if (repo.session.value == null && service.rememberLoginEnabled()) {
             restoringSession = true
             try {
@@ -130,9 +148,6 @@ fun LibrarySeatScreen(
         }
     }
 
-    var buildingMenu by remember { mutableStateOf(false) }
-    var dateMenu by remember { mutableStateOf(false) }
-
     if (session == null) {
         if (restoringSession) {
             Column(
@@ -149,10 +164,32 @@ fun LibrarySeatScreen(
         return
     }
 
+    var mode by rememberSaveable { mutableStateOf(SeatMode.AREA) }
+    val areaListState = rememberLazyListState()
+    val reservationListState = rememberLazyListState()
+
+    if (state.room != null) {
+        LibrarySeatDetailPage(
+            state = state,
+            vm = vm,
+            onExit = vm::closeRoom,
+        )
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("图书馆座位") },
+                title = {
+                    Column {
+                        Text("图书馆座位")
+                        Text(
+                            "唐岛湾 · libseat",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -166,276 +203,603 @@ fun LibrarySeatScreen(
             )
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Text(
-                    "已通过学校统一认证登录：${session?.user?.name.orEmpty()}。查询、选座和取消都由你主动操作；" +
-                        "不自动抢座、不后台轮询。预约结果以学校返回和“我的预约”为准。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SeatModeChip("选座", mode == SeatMode.AREA) { mode = SeatMode.AREA }
+                SeatModeChip("预约记录", mode == SeatMode.RESERVATIONS) {
+                    mode = SeatMode.RESERVATIONS
+                    vm.refreshReservations()
+                }
+            }
+            when (mode) {
+                SeatMode.AREA -> LibrarySeatAreaContent(
+                    state = state,
+                    listState = areaListState,
+                    onBuilding = vm::selectBuilding,
+                    onDate = vm::selectDate,
+                    onFloor = vm::selectFloor,
+                    onRetry = vm::queryRooms,
+                    onRoom = vm::openRoom,
+                    onRefresh = vm::queryRooms,
+                )
+                SeatMode.RESERVATIONS -> LibrarySeatReservationContent(
+                    state = state,
+                    listState = reservationListState,
+                    onRefresh = vm::refreshReservations,
+                    onRetry = vm::refreshReservations,
+                    onCancel = vm::cancel,
                 )
             }
-            if (state.loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-            state.error?.let { message ->
-                item {
-                    Text(message, color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = vm::clearError) { Text("知道了") }
-                }
-            }
-            state.notice?.let { message ->
-                item {
-                    Text(message, color = MaterialTheme.colorScheme.primary)
-                    TextButton(onClick = vm::clearNotice) { Text("知道了") }
-                }
-            }
+        }
+    }
+}
 
+private enum class SeatMode { AREA, RESERVATIONS }
+
+@Composable
+private fun SeatModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+}
+
+@Composable
+private fun LibrarySeatAreaContent(
+    state: LibrarySeatViewModel.UiState,
+    listState: LazyListState,
+    onBuilding: (LibraryBuilding) -> Unit,
+    onDate: (String) -> Unit,
+    onFloor: (Int?) -> Unit,
+    onRetry: () -> Unit,
+    onRoom: (LibraryRoom) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val filters = state.filters
+    val visible = state.visibleSeatRooms()
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        if (filters == null) {
             item {
-                GlassCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("查询条件", fontWeight = FontWeight.SemiBold)
-                        val filters = state.filters
-                        if (filters == null) {
-                            Text("正在读取馆区与日期…", style = MaterialTheme.typography.bodySmall)
-                            Button(onClick = vm::ensureLoaded, enabled = !state.loading) { Text("重新读取") }
-                        } else {
-                            Box {
-                                OutlinedButton(
-                                    onClick = { buildingMenu = true },
-                                    enabled = !state.loading,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("馆区：${state.building?.name ?: "请选择"}") }
-                                DropdownMenu(expanded = buildingMenu, onDismissRequest = { buildingMenu = false }) {
-                                    filters.buildings.forEach { building ->
-                                        DropdownMenuItem(
-                                            text = { Text(building.name) },
-                                            onClick = {
-                                                vm.selectBuilding(building)
-                                                buildingMenu = false
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                            Box {
-                                OutlinedButton(
-                                    onClick = { dateMenu = true },
-                                    enabled = !state.loading,
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) { Text("日期：${state.date ?: "请选择"}") }
-                                DropdownMenu(expanded = dateMenu, onDismissRequest = { dateMenu = false }) {
-                                    filters.dates.forEach { date ->
-                                        DropdownMenuItem(
-                                            text = { Text(date) },
-                                            onClick = {
-                                                vm.selectDate(date)
-                                                dateMenu = false
-                                            },
-                                        )
-                                    }
-                                }
-                            }
-                            Button(
-                                onClick = vm::queryRooms,
-                                enabled = !state.loading && state.building != null && state.date != null,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) { Text("查询房间") }
-                        }
-                    }
+                CompactNotice(
+                    title = if (state.error == null) "正在读取馆区" else "馆区读取失败",
+                    body = state.error ?: if (state.loading) "请稍候。" else "暂时没有拿到馆区/日期。",
+                )
+                if (!state.loading) {
+                    TextButton(onClick = onRetry) { Text("重试") }
                 }
             }
-
-            state.layout?.let { layout ->
-                item {
-                    GlassCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                "座位图 · ${state.room?.name.orEmpty()}",
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(
-                                "灰色不可选，绿色可用，橙色暂离，红色使用中/已预约。点选可用座位后选择时间。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            SeatMap(
-                                layout = layout,
-                                selectedId = state.seat?.id,
-                                onSelect = vm::chooseSeat,
-                            )
-                        }
-                    }
-                }
+        } else {
+            item {
+                CompactFilterPanel(
+                    state = state,
+                    filters = filters,
+                    onBuilding = onBuilding,
+                    onDate = onDate,
+                    onFloor = onFloor,
+                    onRefresh = onRefresh,
+                )
             }
-
-            if (state.rooms.isNotEmpty()) {
-                item {
-                    Text(
-                        "房间（${state.rooms.size}）",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                items(state.rooms, key = { it.roomId }) { room ->
-                    RoomCard(
-                        room = room,
-                        selected = state.room?.roomId == room.roomId,
-                        onClick = { vm.openRoom(room) },
-                    )
-                }
-            } else if (state.filters != null && !state.loading) {
-                item {
-                    Text(
-                        "选择馆区和日期后查询房间；没有查询结果时不显示空房间列表。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
             item {
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column {
-                        Text("我的预约", style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            state.reservationsUpdatedAt?.let { "上次成功读取：${clockLabel(it)}" }
-                                ?: "尚未成功读取预约状态",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    TextButton(
-                        onClick = vm::refreshReservations,
-                        enabled = !state.loading && !state.reservationsBusy,
-                    ) { Text(if (state.reservationsBusy) "刷新中…" else "刷新") }
-                }
-            }
-            state.reservationsError?.let { message ->
-                item {
-                    Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = vm::refreshReservations, enabled = !state.loading) {
-                        Text("重新核对")
-                    }
-                }
-            }
-            if (state.reservations.isEmpty()) {
-                item {
                     Text(
-                        if (state.reservationsError == null && state.reservationsUpdatedAt != null) {
-                            "本次成功读取到 0 条当前预约。"
+                        "可预约区域",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (state.selectedFloor == null) {
+                            "${visible.size} 个"
                         } else {
-                            "还没有成功读取到预约列表，不能判断是否有预约。"
+                            "${visible.size} 个 · ${state.floors.firstOrNull { it.floorNum == state.selectedFloor }?.floorName ?: "${state.selectedFloor} 楼"}"
                         },
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            } else {
-                items(state.reservations, key = { it.id }) { reservation ->
-                    ReservationCard(
-                        reservation = reservation,
-                        enabled = !state.loading && state.reservationsError == null,
-                        pending = reservation.id in state.pendingCancelIds,
-                        onCancel = { vm.cancel(reservation) },
+            }
+            if (state.loading) {
+                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            }
+            state.error?.let { message ->
+                item {
+                    CompactNotice("暂时无法读取", message)
+                    TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
+                }
+            }
+            if (!state.loading && state.error == null && visible.isEmpty()) {
+                item {
+                    CompactNotice(
+                        "没有可预约区域",
+                        "当前馆区、日期和楼层没有返回区域；可以换日期或楼层再查。",
                     )
                 }
             }
+            items(visible, key = { it.roomId }) { room ->
+                SeatRoomRow(room = room, onClick = { onRoom(room) })
+            }
             item {
                 Text(
-                    "数据来源：libspace.upc.edu.cn 座位预约系统的正常登录与接口。" +
-                        "未开启“记住登录”时 token 只在本次运行内存中；开启后 token 用 Keystore 加密保存，" +
-                        "退出登录会清除。图书馆不读取统一账号页保存的密码，也不把预约历史写入本地数据库。" +
-                        "登录页只清理本业务的 Cookie，不会清掉统一认证或其它业务的登录状态。",
+                    "余座与总数来自学校当前查询。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
     }
+}
 
-    state.seat?.let { seat ->
-        val start = state.start
-        val end = state.end
-        if (state.showTimeDialog) {
-            AlertDialog(
-                onDismissRequest = { vm.closeTimeDialog() },
-                title = { Text("选择时间 · ${seat.name}") },
-                text = {
-                    Column(
-                        Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text("开始时间", style = MaterialTheme.typography.labelLarge)
-                        val starts = state.startTimes
-                        if (starts.isEmpty()) {
-                            Text("该座位当天没有可预约的开始时间。", color = MaterialTheme.colorScheme.error)
-                        } else {
-                            starts.forEach { option ->
-                                FilterChip(
-                                    selected = start?.id == option.id,
-                                    onClick = { vm.chooseStart(option) },
-                                    label = { Text(option.value) },
-                                )
-                            }
-                        }
-                        Text("结束时间", style = MaterialTheme.typography.labelLarge)
-                        if (start != null) {
-                            val ends = state.endTimes
-                            if (ends.isEmpty()) {
-                                Text("该开始时间没有可选的结束时间。", color = MaterialTheme.colorScheme.error)
-                            } else {
-                                ends.forEach { option ->
-                                    FilterChip(
-                                        selected = end?.id == option.id,
-                                        onClick = { vm.chooseEnd(option) },
-                                        label = { Text(option.value) },
-                                    )
-                                }
-                            }
-                        } else {
-                            Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(
-                        enabled = start != null && end != null && !state.loading,
-                        onClick = { vm.requestReservation() },
-                    ) { Text("下一步") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { vm.closeTimeDialog() }) { Text("取消") }
-                },
-            )
+@Composable
+internal fun CompactFilterPanel(
+    state: LibrarySeatViewModel.UiState,
+    filters: LibraryFilters,
+    onBuilding: (LibraryBuilding) -> Unit,
+    onDate: (String) -> Unit,
+    onFloor: (Int?) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("馆区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = onRefresh, enabled = !state.loading) {
+                Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
+            }
         }
-        if (state.showConfirm) {
-            AlertDialog(
-                onDismissRequest = { vm.dismissConfirm() },
-                title = { Text("确认预约") },
-                text = {
-                    Text(
-                        "${state.room?.name.orEmpty()} · ${seat.name}\n" +
-                            "${state.date.orEmpty()} ${start?.value.orEmpty()}–${end?.value.orEmpty()}\n\n" +
-                            "提交后由学校系统处理；本应用不会自动重试或抢座。",
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            filters.buildings.forEach { building ->
+                FilterChip(
+                    selected = state.building?.id == building.id,
+                    onClick = { onBuilding(building) },
+                    enabled = !state.loading,
+                    label = { Text(building.name) },
+                )
+            }
+        }
+        Text("日期", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            filters.dates.forEach { date ->
+                FilterChip(
+                    selected = state.date == date,
+                    onClick = { onDate(date) },
+                    enabled = !state.loading,
+                    label = { Text(shortDate(date)) },
+                )
+            }
+        }
+        if (state.floors.isNotEmpty()) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("楼层", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilterChip(
+                    selected = state.selectedFloor == null,
+                    onClick = { onFloor(null) },
+                    label = { Text("全部") },
+                )
+                state.floors.forEach { floor ->
+                    FilterChip(
+                        selected = state.selectedFloor == floor.floorNum,
+                        onClick = { onFloor(floor.floorNum) },
+                        label = { Text(floor.floorName.ifBlank { "${floor.floorNum} 楼" }) },
                     )
-                },
-                confirmButton = {
-                    TextButton(enabled = !state.loading, onClick = { vm.confirmReservation() }) {
-                        Text("确认提交")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { vm.dismissConfirm() }) { Text("返回") }
-                },
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LibrarySeatReservationContent(
+    state: LibrarySeatViewModel.UiState,
+    listState: LazyListState,
+    onRefresh: () -> Unit,
+    onRetry: () -> Unit,
+    onCancel: (LibraryReservation) -> Unit,
+) {
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("我的预约", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        state.reservationsUpdatedAt?.let { "更新于 ${clockLabel(it)}" } ?: "尚未读取",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onRefresh, enabled = !state.loading && !state.reservationsBusy) {
+                    Text(if (state.reservationsBusy) "刷新中…" else "刷新")
+                }
+            }
+        }
+        state.reservationsError?.let { message ->
+            item {
+                CompactNotice("预约状态读取失败", message)
+                TextButton(onClick = onRetry, enabled = !state.loading) { Text("重新核对") }
+            }
+        }
+        if (state.reservations.isEmpty()) {
+            item {
+                CompactNotice(
+                    "当前没有预约记录",
+                    if (state.reservationsUpdatedAt != null) "已成功读取，当前账号没有进行中的预约。"
+                    else "还没有成功读取，不能判断是否有预约。",
+                )
+            }
+        } else {
+            items(state.reservations, key = { it.id }) { reservation ->
+                ReservationCard(
+                    reservation = reservation,
+                    enabled = !state.loading && state.reservationsError == null,
+                    pending = reservation.id in state.pendingCancelIds,
+                    onCancel = { onCancel(reservation) },
+                )
+            }
+        }
+        item {
+            Text(
+                "取消前会二次确认；真实结果以学校返回和刷新后的记录为准。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    room.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${room.floorLabel} · ${room.remainingLabel}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                room.occupancy?.let { progress ->
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = onClick,
+                modifier = Modifier.widthIn(min = 64.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) {
+                Text(if ((room.freeSeats ?: 0) > 0) "选座" else "查看")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun LibrarySeatDetailPage(
+    state: LibrarySeatViewModel.UiState,
+    vm: LibrarySeatViewModel,
+    onExit: () -> Unit,
+) {
+    BackHandler(onBack = onExit)
+    val context = LocalContext.current
+    val room = state.room
+    val seat = state.seat
+    val time = if (state.start != null && state.end != null) {
+        "${state.start.value}–${state.end.value}"
+    } else {
+        "选择时间"
+    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(room?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            "${state.date.orEmpty()} · ${room?.floorLabel.orEmpty()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onExit) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回区域")
+                    }
+                },
+                actions = {
+                    TextButton(onClick = { openSeatOfficial(context) }) { Text("官方页") }
+                },
+            )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(seat?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
+                        Text(time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Button(
+                        onClick = {
+                            when {
+                                seat == null -> Unit
+                                state.start == null || state.end == null -> vm.openTimeSheet()
+                                else -> vm.requestReservation()
+                            }
+                        },
+                        enabled = seat != null && !state.loading,
+                    ) {
+                        Text(
+                            when {
+                                seat == null -> "选择座位"
+                                state.start == null || state.end == null -> "选择时间"
+                                else -> "确认预约"
+                            },
+                        )
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
+                        Text(
+                            if (state.start != null && state.end != null) {
+                                "已选时段 ${state.start.value}–${state.end.value} · 点底部可改"
+                            } else {
+                                "先点选座位，再选择使用时间"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
+                }
+            }
+            state.error?.let { message ->
+                item {
+                    CompactNotice("座位操作未完成", message)
+                }
+            }
+            item {
+                SeatLegend()
+            }
+            item {
+                if (state.loading && state.layout == null) {
+                    Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Text("正在读取座位布局…", style = MaterialTheme.typography.bodySmall)
+                    }
+                } else {
+                    state.layout?.let { layout ->
+                        SeatMap(
+                            layout = layout,
+                            selectedId = seat?.id,
+                            onSelect = vm::chooseSeat,
+                        )
+                    } ?: CompactNotice("没有座位布局", "学校未返回该区域的座位布局，不能显示虚构平面图。")
+                }
+            }
+            item {
+                Text(
+                    "点可用座位选择；布局可横向、纵向滑动。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                state.notice?.let { notice ->
+                    Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+    }
+
+    if (state.showTimeDialog && seat != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = vm::closeTimeDialog,
+            sheetState = sheetState,
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text("选择使用时间", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "${room?.name.orEmpty()} · ${seat.name} · ${state.date.orEmpty()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text("开始时间", style = MaterialTheme.typography.labelLarge)
+                if (state.startTimes.isEmpty()) {
+                    Text("该座位当天没有可预约的开始时间。", color = MaterialTheme.colorScheme.error)
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.startTimes.forEach { option ->
+                            FilterChip(
+                                selected = state.start?.id == option.id,
+                                onClick = { vm.chooseStart(option) },
+                                label = { Text(option.value) },
+                            )
+                        }
+                    }
+                }
+                Text("结束时间", style = MaterialTheme.typography.labelLarge)
+                if (state.start == null) {
+                    Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
+                } else if (state.endTimes.isEmpty()) {
+                    Text("该开始时间没有可选的结束时间。", color = MaterialTheme.colorScheme.error)
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        state.endTimes.forEach { option ->
+                            FilterChip(
+                                selected = state.end?.id == option.id,
+                                onClick = { vm.chooseEnd(option) },
+                                label = { Text(option.value) },
+                            )
+                        }
+                    }
+                }
+                Button(
+                    onClick = {
+                        vm.closeTimeDialog()
+                    },
+                    enabled = state.start != null && state.end != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("完成") }
+            }
+        }
+    }
+
+    if (state.showConfirm && seat != null) {
+        AlertDialog(
+            onDismissRequest = vm::dismissConfirm,
+            title = { Text("确认预约") },
+            text = {
+                Text(
+                    "${room?.name.orEmpty()} · ${seat.name}\n" +
+                        "${state.date.orEmpty()} ${state.start?.value.orEmpty()}–${state.end?.value.orEmpty()}\n\n" +
+                        "由学校系统处理；应用不会自动重试或抢座。",
+                )
+            },
+            confirmButton = {
+                TextButton(enabled = !state.loading, onClick = vm::confirmReservation) {
+                    Text("确认提交")
+                }
+            },
+            dismissButton = { TextButton(onClick = vm::dismissConfirm) { Text("返回") } },
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun SeatLegend() {
+    FlowRow(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        LegendItem(MaterialTheme.colorScheme.primary, "可用")
+        LegendItem(MaterialTheme.colorScheme.error, "已约/使用中")
+        LegendItem(MaterialTheme.colorScheme.tertiary, "暂离")
+        LegendItem(MaterialTheme.colorScheme.outline, "不可选")
+    }
+}
+
+@Composable
+private fun LegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+internal fun CompactNotice(title: String, body: String) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+internal fun LibrarySeatViewModel.UiState.visibleSeatRooms(): List<LibraryRoom> =
+    rooms.filter { selectedFloor == null || it.floor == selectedFloor }
+
+internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel.UiState =
+    copy(
+        room = null,
+        layout = null,
+        seat = null,
+        startTimes = emptyList(),
+        endTimes = emptyList(),
+        start = null,
+        end = null,
+        showTimeDialog = false,
+        showConfirm = false,
+        error = null,
+    )
+
+private fun shortDate(value: String): String = value.takeLast(5)
+
+private fun openSeatOfficial(context: android.content.Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://libspace.upc.edu.cn/libseat/"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 
@@ -553,34 +917,6 @@ internal fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = whe
 }
 
 @Composable
-private fun RoomCard(room: LibraryRoom, selected: Boolean, onClick: () -> Unit) {
-    val bg = if (selected) {
-        MaterialTheme.colorScheme.secondaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    }
-    Row(
-        Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(bg)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(room.name, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                if (room.floor > 0) "楼层 ${room.floor}" else "楼层未提供",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Text(if (selected) "已打开" else "查看座位", style = MaterialTheme.typography.labelMedium)
-    }
-}
-
-@Composable
 private fun ReservationCard(
     reservation: LibraryReservation,
     enabled: Boolean,
@@ -623,16 +959,22 @@ private fun clockLabel(epochMs: Long): String {
 }
 
 @Composable
-private fun SeatMap(
+internal fun SeatMap(
     layout: LibrarySeatLayout,
     selectedId: String?,
     onSelect: (LibrarySeat) -> Unit,
 ) {
     val byPosition = remember(layout) { layout.seats.associateBy { it.row to it.col } }
-    val cell = 34.dp
+    val cell = 38.dp
     val h = rememberScrollState()
     val v = rememberScrollState()
-    Box(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(v)) {
+    Box(
+        Modifier.fillMaxWidth().heightIn(max = 430.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .verticalScroll(v)
+            .padding(8.dp),
+    ) {
         Column(Modifier.horizontalScroll(h)) {
             for (row in 0 until layout.rows) {
                 Row {
@@ -663,27 +1005,39 @@ private fun SeatCell(
     onClick: () -> Unit,
 ) {
     val color = when {
-        selected -> MaterialTheme.colorScheme.primary
-        !seat.enabled || seat.localOnly -> MaterialTheme.colorScheme.surfaceVariant
-        seat.status == "FREE" || seat.status == "YESSELECT" -> Color(0xFF81C784)
-        seat.status == "AWAY" -> Color(0xFFFFB74D)
-        seat.status == "IN_USE" || seat.status == "BOOKED" || seat.status == "FULL" -> Color(0xFFE57373)
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        selected -> MaterialTheme.colorScheme.tertiary
+        !seat.enabled || seat.localOnly -> MaterialTheme.colorScheme.surfaceContainerHighest
+        seat.status == "FREE" || seat.status == "YESSELECT" -> MaterialTheme.colorScheme.primaryContainer
+        seat.status == "AWAY" -> MaterialTheme.colorScheme.tertiaryContainer
+        seat.status == "IN_USE" || seat.status == "BOOKED" || seat.status == "FULL" ->
+            MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceContainerHighest
     }
+    val textColor = when {
+        selected -> MaterialTheme.colorScheme.onTertiary
+        !seat.enabled || seat.localOnly -> MaterialTheme.colorScheme.onSurfaceVariant
+        seat.status == "FREE" || seat.status == "YESSELECT" -> MaterialTheme.colorScheme.onPrimaryContainer
+        seat.status == "AWAY" -> MaterialTheme.colorScheme.onTertiaryContainer
+        seat.status == "IN_USE" || seat.status == "BOOKED" || seat.status == "FULL" ->
+            MaterialTheme.colorScheme.onErrorContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val status = com.upcpocket.app.data.library.LibrarySeatStatus.label(seat.status)
     Box(
-        Modifier.size(cell).padding(1.dp)
-            .clip(RoundedCornerShape(3.dp))
+        Modifier.size(cell).padding(1.5.dp)
+            .clip(RoundedCornerShape(6.dp))
             .background(color)
+            .semantics { contentDescription = "座位 ${seat.name}，$status" }
             .clickable(enabled = seat.selectable, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = seat.name.takeLast(4),
-            fontSize = 7.sp,
-            lineHeight = 8.sp,
+            text = seat.name.takeLast(5),
+            fontSize = 8.sp,
+            lineHeight = 9.sp,
             maxLines = 1,
             textAlign = TextAlign.Center,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+            color = textColor,
         )
     }
 }
@@ -697,6 +1051,8 @@ internal class LibrarySeatViewModel(
         val building: LibraryBuilding? = null,
         val date: String? = null,
         val rooms: List<LibraryRoom> = emptyList(),
+        val floors: List<LibraryFloor> = emptyList(),
+        val selectedFloor: Int? = null,
         val room: LibraryRoom? = null,
         val layout: LibrarySeatLayout? = null,
         val seat: LibrarySeat? = null,
@@ -723,6 +1079,7 @@ internal class LibrarySeatViewModel(
 
     var state by mutableStateOf(UiState())
         private set
+    private var roomRequestGeneration = 0L
 
     fun ensureLoaded() {
         if (state.filters != null || state.loading) return
@@ -757,21 +1114,37 @@ internal class LibrarySeatViewModel(
         state = state.copy(
             building = value,
             rooms = emptyList(),
+            floors = emptyList(),
+            selectedFloor = null,
             room = null,
             layout = null,
             seat = null,
             error = null,
         )
+        queryRooms()
     }
 
     fun selectDate(value: String) {
         state = state.copy(
             date = value,
             rooms = emptyList(),
+            floors = emptyList(),
+            selectedFloor = null,
             room = null,
             layout = null,
             seat = null,
             error = null,
+        )
+        queryRooms()
+    }
+
+    fun selectFloor(floor: Int?) {
+        if (state.selectedFloor == floor) return
+        state = state.copy(
+            selectedFloor = floor,
+            room = null,
+            layout = null,
+            seat = null,
         )
     }
 
@@ -779,6 +1152,7 @@ internal class LibrarySeatViewModel(
         val building = state.building ?: return
         val date = state.date ?: return
         val requestToken = repo.session.value?.token
+        val generation = ++roomRequestGeneration
         state = state.copy(loading = true, error = null, rooms = emptyList(), room = null, layout = null, seat = null)
         viewModelScope.launch {
             try {
@@ -787,9 +1161,17 @@ internal class LibrarySeatViewModel(
                 val rooms = repo.rooms(building.id, date)
                     .map { if (it.floorName == null) it.copy(floorName = names[it.floor]) else it }
                     .sortedWith(compareBy({ it.floor }, { it.name }))
-                state = state.copy(rooms = rooms, loading = false)
-                if (rooms.isEmpty()) state = state.copy(error = "学校未返回该馆区/日期的房间，不能解释为全部可约")
+                if (generation != roomRequestGeneration) return@launch
+                state = state.copy(
+                    rooms = rooms,
+                    floors = floors,
+                    selectedFloor = state.selectedFloor?.takeIf { floor ->
+                        rooms.any { it.floor == floor }
+                    },
+                    loading = false,
+                )
             } catch (e: Exception) {
+                if (generation != roomRequestGeneration) return@launch
                 fail(e, requestToken)
             }
         }
@@ -820,6 +1202,7 @@ internal class LibrarySeatViewModel(
             endTimes = emptyList(),
             start = null,
             end = null,
+            showTimeDialog = false,
         )
         viewModelScope.launch {
             try {
@@ -827,12 +1210,21 @@ internal class LibrarySeatViewModel(
                 state = state.copy(
                     startTimes = starts,
                     loading = false,
-                    showTimeDialog = true,
                     error = if (starts.isEmpty()) "该座位当天没有可预约时间" else null,
                 )
             } catch (e: Exception) {
                 fail(e, requestToken)
             }
+        }
+    }
+
+    fun closeRoom() {
+        state = state.afterCloseRoom()
+    }
+
+    fun openTimeSheet() {
+        if (state.seat != null) {
+            state = state.copy(showTimeDialog = true, showConfirm = false)
         }
     }
 

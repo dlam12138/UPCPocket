@@ -73,6 +73,14 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
   Chaoxing 座位首次需在应用内受限官方 WebView 登录；真实预约仍走学校页面。旧研讨间
   路由只落到图书馆首页，不保留房间/预约接口。历史研究见
   [图书馆六入口（归档）](图书馆六入口.md)。
+- 座位页重做（2026-11-04）：区域页把馆区/日期/楼层放在顶部紧凑筛选区，区域行显示
+  名称、楼层、总数/余座和进度，动作按钮按余座显示“选座/查看”；支持横向/纵向滚动的
+  真实 row/col 座位图、文字+颜色的状态图例、选中座位和时段底栏；选时段改为底部面板，
+  不再用拥挤弹窗。返回区域页保留筛选、日期、楼层和滚动位置；“我的预约”作为同一入口的
+  第二个 tab，取消仍需确认。
+  超星区域页使用校区/日期条和开放时间/座位数/余座/进度；座位详情使用学校 x/y 真实的
+  楼层坐标图（可横向/纵向滑动）、编号、时段底部面板和与选中状态联动的“官方预约”动作；
+  只读不伪装原生提交。无数据、失败、无余座和当前不在开放时段分别显示真实状态。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
@@ -174,7 +182,20 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 | [31-chaoxing-reserve-context-blocked.png](screenshots/31-chaoxing-reserve-context-blocked.png) | **历史研究截图**：reservepc 租户上下文错误；功能已撤下 |
 | [32-library-hub-chaoxing-native.png](screenshots/32-library-hub-chaoxing-native.png) | **历史研究截图**：六入口“原生只读”状态 |
 | [33-library-hub-three-seats.png](screenshots/33-library-hub-three-seats.png) | **现行**：图书馆只保留三个座位入口 |
-| [34-library-seat-chaoxing.png](screenshots/34-library-seat-chaoxing.png) | **现行**：Chaoxing 座位原生只读列表/时段 |
+| [34-library-seat-chaoxing.png](screenshots/34-library-seat-chaoxing.png) | **现行**：Chaoxing 座位未登录/区域入口 |
+| [35-library-seat-area.png](screenshots/35-library-seat-area.png) | **Debug 合成预览**：libseat 紧凑馆区/日期/楼层与区域余座 |
+| [36-library-seat-map.png](screenshots/36-library-seat-map.png) | **Debug 合成预览**：libseat 全页座位图、文字图例、选中/底栏 |
+| [37-library-seat-time.png](screenshots/37-library-seat-time.png) | **Debug 合成预览**：libseat 时段选择与确认动作 |
+| [38-chaoxing-seat-area.png](screenshots/38-chaoxing-seat-area.png) | **Debug 合成预览**：Chaoxing 区域/开放时间/座位/余座 |
+| [39-chaoxing-seat-map.png](screenshots/39-chaoxing-seat-map.png) | **Debug 合成预览**：Chaoxing 真实坐标座位图、编号、时段 |
+| [40-library-seat-dark.png](screenshots/40-library-seat-dark.png) | **Debug 合成预览**：libseat 区域页深色 |
+| [41-library-seat-large-font.png](screenshots/41-library-seat-large-font.png) | **Debug 合成预览**：libseat 区域页 1.5× |
+| [42-library-seat-detail-large-font.png](screenshots/42-library-seat-detail-large-font.png) | **Debug 合成预览**：libseat 座位页 1.5× |
+| [43-library-seat-detail-dark.png](screenshots/43-library-seat-detail-dark.png) | **Debug 合成预览**：libseat 座位页深色 |
+
+座位合成预览由 `feature/library/src/debug/.../LibrarySeatPreviewActivity.kt` 提供，页面顶部
+始终显示“合成预览 · 仅视觉，不连接学校、无账号/真实数据”；它只使用内存假数据，不创建账号、
+会话、缓存或网络请求，也不在 release 变体存在。真实 libseat/Chaoxing 区域仍由学校接口返回。
 
 合成预览由 `feature/timetable/src/debug/.../TimetablePreviewActivity.kt` 明确标注
 “本地预览 · 合成内容”，只读取内存中的 `TimetableUiState`，不创建账号/会话/缓存、不发网络请求，
@@ -219,7 +240,7 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **18 tests，0 failures/errors/skipped**（nspace 认证测试随功能删除；CAS/课表/座位认证用例保留） |
-| `:feature:library:testDebugUnitTest` | **85 tests，0 failures/errors，1 skipped**（libseat 座位、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
+| `:feature:library:testDebugUnitTest` | **88 tests，0 failures/errors，1 skipped**（libseat 座位/筛选/返回状态、区域统计、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
 | `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合保留旧研讨间路由的兼容落点断言 |
 | Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；不再包含 reserve 请求 |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
@@ -235,17 +256,19 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 
 ### 5.1 本轮 APK
 
-- 评审副本：`release/UPC-Pocket-M5-library-seats-only-debug.apk`
+- 评审副本：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`64,426,840` bytes
-- SHA-256：`5CCEF1C1DADC409DD7C30FA71EE34A3FAD86EDC5BA8C20E54BFB3A83CD447F21`
-- 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
-- 文件名明确为 seats-only；旧含研讨间的本地 APK 已删除，不再作为现行或历史交付物。
+- 大小：`65,474,558` bytes
+- SHA-256：`543CE18D15D1AB55D08270FAF70AB1DDDBAFAE840B7557E3D8AA9034B693A2CA`
+- 该 APK 为 debug 构建，含 debug-only 合成课表预览与座位预览 Activity；release 构建不会合并它们。未上传、未发布。
+- 文件名明确为 seat-pages；旧 seats-only 构建与研讨间 APK 不再作为现行交付物。
 
 ## 6. 未验证 / 限制
 
 - 研讨间/空间预约已按用户 2026-11-04 决定撤下；历史 nspace/reservepc 研究证据仍保留在
   [图书馆六入口（归档）](图书馆六入口.md) 和 `docs/research/`，不代表现行产品能力。
+- 截图 35–43 是 Debug 合成预览，用于评审布局、深色和 1.5×，不连接学校、没有账号/真实数据；
+  真实 libseat 区域/座位/时段仍需登录后由学校接口返回，本轮没有使用真实账密重验。
 - Chaoxing 真实 App 内登录仍未验收：`passport2` 要求手机号/超星号 + 学习通密码，不是学校
   CAS；不能把统一学校账号密码自动提交。受控 UI 验收只在测试进程注入过一次本机已登录会话
   Cookie，测试结束只清理私有文件；本轮未再 `pm clear`。

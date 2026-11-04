@@ -1,5 +1,16 @@
 # 更新与验证
 
+## M5.3 · 图书馆三个座位页重做（开发分支，未发布）
+
+- 只优化唐岛湾 libseat、古镇口 Chaoxing seat、求是 Chaoxing seatengine，不恢复研讨间、不新增认证/预约协议、不执行真实预约。
+- libseat 区域页：馆区/日期/楼层集中为紧凑筛选，区域行展示名称、楼层、总数/余座、进度和“选座/查看”；请求自动刷新并防止迟到响应覆盖新筛选。
+- libseat 座位页：真实 row/col 网格改为可横纵滚动的全页布局，加文字+颜色图例、选中座位、持续可见的日期/座位/时段底栏；选时段改为底部面板，确认仍是原有二次确认；返回区域保留筛选、楼层和列表滚动位置。
+- Chaoxing 区域页：校区/日期条、开放时间、座位总数/余座/进度、当前非开放时段提示；座位页使用学校 x/y 真实坐标绘制可横纵滑动的楼层座位图，显示编号、已用/已选图例、时段面板和官方预约动作；只读，不伪装原生提交。
+- 增加稳定纯状态测试：楼层筛选、关闭座位页保留馆区/日期/楼层/列表、关闭 Chaoxing 详情保留校区/日期；区域统计解析测试。
+- 新增 Debug-only 座位视觉预览 Activity，明确标注合成内容；用于浅色/深色/1.5× 截图，不进入 release，不创建账号/会话/缓存或网络请求。
+- 验证：`feature:library` **88 tests（1 skipped，真实座位回放）**、`app` 32 tests、`core:upc-auth` 18 tests；`checkModuleBoundaries`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 通过；library lint 无问题、app lint 0 errors/2 既有 warnings。
+- APK：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`，`65,474,558` bytes，SHA-256 `543CE18D15D1AB55D08270FAF70AB1DDDBAFAE840B7557E3D8AA9034B693A2CA`。
+
 ## M5.2 · 图书馆研讨间/空间预约撤下（开发分支，未发布）
 
 - 用户 2026-11-04 明确决定：研讨间研究文档保留，相关产品功能直接删除。范围包括唐岛湾东馆 nspace、古镇口东区 reservepc、求是 reservepc。
@@ -8,7 +19,7 @@
 - 保留 libseat 座位查询/预约/取消、Chaoxing seat/seatengine 原生只读、Chaoxing WebView 登录/身份核验/清理门闩/退出并发修复，以及 CAS 课表/账号清理。
 - 研究资料保留：`docs/research/图书馆与空间预约六入口接口研究-20261103.md`、`docs/m5/图书馆六入口.md`（加归档说明）、`E:\UPC-MCP\docs\LIBRARY_M5_RESEARCH.md` 不删除；原始 HAR 未改。旧 nspace/reservepc 专属测试随功能删除，座位/CAS/清理测试保留。
 - 验证：`core:upc-auth` 18 tests、`feature:library` 85 tests（1 skipped，座位真实回放）、`app` 32 tests；删除范围为测试数下降原因。未执行真实预约/取消/签到，未 `pm clear`。
-- APK：`release/UPC-Pocket-M5-library-seats-only-debug.apk`，`64,426,840` bytes，SHA-256 `5CCEF1C1DADC409DD7C30FA71EE34A3FAD86EDC5BA8C20E54BFB3A83CD447F21`。
+- 当时 APK（历史文件，已删除）：`release/UPC-Pocket-M5-library-seats-only-debug.apk`，`64,426,840` bytes，SHA-256 `5CCEF1C1DADC409DD7C30FA71EE34A3FAD86EDC5BA8C20E54BFB3A83CD447F21`。
 
 ## M5.1 · 图书馆统一入口与六入口审计（历史记录，2026-11-04 撤下研讨间）
 

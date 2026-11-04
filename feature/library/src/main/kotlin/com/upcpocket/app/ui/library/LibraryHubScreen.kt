@@ -82,25 +82,23 @@ fun LibraryHubScreen(
             icon = Icons.Filled.EventSeat,
             actionLabel = if (seatSession == null) "登录并查询" else "查询/预约",
             action = onOpenSeat,
-            note = "原生查询、预约与取消；沿用既有 libseat 会话与账号保护。",
+            note = "查询、选座与取消；使用统一认证。",
         ),
         LibraryPlatform(
             title = "东区座位",
             subtitle = "古镇口 · Chaoxing seat",
             icon = Icons.Filled.EventSeat,
-            actionLabel = "查看区域/座位/时段",
+            actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
-            note = "原生只读：区域、座位图、30 分钟时段与已用座位；首次需 Chaoxing 网页登录，" +
-                "真实预约仍在学校页面完成。",
+            note = "查看区域、座位与已用时段；预约在官方页。",
         ),
         LibraryPlatform(
             title = "求是座位",
             subtitle = "求是 · Chaoxing seatengine",
             icon = Icons.Filled.EventSeat,
-            actionLabel = "查看区域/座位/时段",
+            actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },
-            note = "原生只读：求是区域、座位图、30 分钟时段与已用座位；首次需 Chaoxing " +
-                "网页登录，真实预约仍在学校页面完成。",
+            note = "查看区域、座位与已用时段；预约在官方页。",
         ),
     )
 
@@ -139,7 +137,7 @@ fun LibraryHubScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        "唐岛湾、古镇口、求是的座位入口集中在这里；各平台仍使用独立登录和会话。",
+                        "三个座位入口；各平台使用独立登录。",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
@@ -185,9 +183,7 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "“原生/原生只读”表示应用内调用学校接口；Chaoxing 座位首次需在应用内受限 " +
-                    "官方 WebView 登录，之后只读区域/座位/时段。真实预约、选座和签到仍在学校" +
-                    "页面完成，应用不代持浏览器 Cookie。",
+                "Chaoxing 座位首次需网页登录；真实预约、选座和签到在学校页面完成。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
