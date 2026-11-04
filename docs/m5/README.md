@@ -162,7 +162,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | [20-focus-font-130.png](screenshots/20-focus-font-130.png) | 专注初始进入 1.3×；完整计时环、状态、开始按钮 |
 | [21-focus-font-150.png](screenshots/21-focus-font-150.png) | 专注初始进入 1.5×；完整计时环、状态、开始按钮 |
 | [22-home-font-150.png](screenshots/22-home-font-150.png) | 首页 1.5×；标题/服务卡文字完整，可滚动到两组服务与页脚 |
-| [23-library-hub.png](screenshots/23-library-hub.png) | 图书馆统一入口；六入口分组、学校数据/官方登录标注；reservepc 已使用稳定租户入口 |
+| [23-library-hub.png](screenshots/23-library-hub.png) | 图书馆统一入口；六入口分组、学校数据/官方登录/查看缺口标注；reservepc 不再冒充可用入口 |
 | [24-library-nspace.png](screenshots/24-library-nspace.png) | 东馆研讨间 nspace 未登录态；说明个人房间可填预约信息，多人/选座/附件走官方页面 |
 | [25-library-hub-font-150.png](screenshots/25-library-hub-font-150.png) | 图书馆统一入口 1.5× 顶部；长文案不截断 |
 | [26-library-hub-font-150-bottom.png](screenshots/26-library-hub-font-150-bottom.png) | 1.5× 滚动到底部；六入口/官方登录说明/学校官网均可到达 |
@@ -208,7 +208,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **28 tests，0 failures/errors/skipped**（CAS 验证码挑战、Web token 兑换/身份错配/非法 token） |
-| `:feature:library:testDebugUnitTest` | **101 tests，0 failures/errors/skipped**（nspace 协议/分页/账号隔离/Web 回调/取消/表单/稳定入口） |
+| `:feature:library:testDebugUnitTest` | **100 tests，0 failures/errors/skipped**（nspace 协议/分页/账号隔离/Web 回调/取消/表单/稳定入口） |
 | `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；首页入口/页面集合断言包含 `library.home` 与 `library.nspace.login` |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
@@ -225,26 +225,25 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - 评审副本：`release/UPC-Pocket-M5-library-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`66,399,393` bytes
-- SHA-256：`25719C20E891988A4D011167E25CD6A4CC3B22B0BB3CC94A91F3DEED77A28E7D`
+- 大小：`66,405,513` bytes
+- SHA-256：`61D9E5A9FBCB44DFECE0ECC858229CE6C1C8343E93DA7ECFA6BFE6DC59F48C4F`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 - 上一版 M5 评审 APK `release/UPC-Pocket-M5-preview-debug.apk` 保留为对照；本轮图书馆改动在该新副本中。
 
 ## 6. 未验证 / 限制
 
-- 模拟器上的真实凭据尝试到达 CAS 后被验证码挑战拦下；后续独立 Chrome 正常打开 CAS
-  表单（无验证码），但本地凭据两行均被 CAS 返回“用户名或密码错误”，随即停止、未继续
-  重试。两者说明：验证码是模拟器路径的阻碍，而本机凭据文件与本次 CAS 登录也不匹配；
-  不能据此反推用户手机会话无效。未绕过、未重复失败密码、未把挑战或页面可达当认证成功。
-- **用户手机真机验收（用户提供，不是 agent 新设备）**：nspace 会话已建立，1 馆区、4 空间
-  类型、3 日期可显示切换，A123 详情/表单已加载（3–6 人、08:00–21:50、60–120 分钟、使用
-  类型、手机号/主题/大纲）。没有点击最终预约；这不等于真实预约成功，也不等于 agent 新设备
-  已完成本人读取。
+- 模拟器上的真实凭据尝试到达 CAS 后被验证码挑战拦下；随后独立 Chrome 用修正后的
+  “两行一组”（第一行首个冒号后为账号、第二行首个冒号后为密码）正常登录**一次成功**，
+  最终到 libspace，无错误。不会再把先前的错误解析/错误提示当作凭据无效证据。
+- **用户手机真机验收（用户提供）**：nspace 会话已建立，1 馆区、4 空间类型、3 日期可显示
+  切换，A123 详情/表单已加载（3–6 人、08:00–21:50、60–120 分钟、使用类型、手机号/主题/
+  大纲）。agent 独立 Chrome 也读取到 A123 详情/表单（11/05、11/06 有时段，11/04 当天无
+  可用时段），未点击最终预约；这不等于真实预约成功。
 - 未提交任何真实预约、取消、签到、团队或写请求；未打开真实座位图。nspace 个人预约表单
   已接入并有合成 JSON/规则测试，但未点击最终“确认提交”；A123 需多人组队，应用明确引导
   官方页面，没有伪造参与人/团队。
-- 未在真机/其他 WebView 完成 nspace CAS 验证码后的回跳、Chaoxing/reservepc 的登录后页面；
-  Chaoxing 稳定入口只验证到官方登录/CAS。
+- 未在 App 内 WebView 完成 nspace 验证码后的回跳；Chaoxing seat/seatengine 只到官方
+  登录页；reservepc 参数入口在已登录会话中落到 office 座位页，未取得研讨间列表。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。

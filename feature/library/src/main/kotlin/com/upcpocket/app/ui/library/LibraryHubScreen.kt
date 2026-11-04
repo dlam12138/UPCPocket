@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EventSeat
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -29,6 +30,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -82,6 +86,7 @@ fun LibraryHubScreen(
     val accountState by libraryService.accountState.collectAsStateWithLifecycle()
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
     val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
+    var blocker by remember { mutableStateOf<String?>(null) }
 
     val platforms = listOf(
         LibraryPlatform(
@@ -100,7 +105,7 @@ fun LibraryHubScreen(
             icon = Icons.Filled.MeetingRoom,
             actionLabel = "浏览房间",
             action = onOpenNspace,
-            note = "原生只读馆区/空间类型/日期/房间；预约在官方页面完成。",
+            note = "查看馆区/类型/日期/房间；个人房间可填写预约，多人/选座房间走官方组队。",
         ),
         LibraryPlatform(
             title = "东区座位",
@@ -116,14 +121,15 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "东区研讨间",
             subtitle = "古镇口 · reservepc",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.BLOCKED,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "在浏览器打开官方登录",
+            actionLabel = "查看缺口",
             action = {
-                openOfficial(context, UpcOfficialEntryLinks.RESERVEPC_A)
+                blocker = "从 HAR 拼出的稳定参数入口在已登录会话中落到 Chaoxing 座位页，" +
+                    "不是 reservepc 房间列表。不能把该跳转当作研讨间入口；仍需从学校图书馆" +
+                    "正式业务目录进入或取得新的稳定租户入口。"
             },
-            note = "已从 HAR 提取稳定 reserveId/resvAppId/fidEnc/appId/mappId 入口，" +
-                "不含 uid/enc/code/state；需正常登录后查看房间，未做原生查询/预约。",
+            note = "稳定参数入口实测会串到座位页；未取得 reservepc 登录后房间列表。",
         ),
         LibraryPlatform(
             title = "求是座位",
@@ -139,14 +145,14 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "求是研讨间",
             subtitle = "求是 · reservepc",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.BLOCKED,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "在浏览器打开官方登录",
+            actionLabel = "查看缺口",
             action = {
-                openOfficial(context, UpcOfficialEntryLinks.RESERVEPC_B)
+                blocker = "求是 reservepc 同样只有 HAR 中的租户参数；没有验证到登录后的" +
+                    "房间列表或稳定入口，不能把参数链接当作原生/可用入口。"
             },
-            note = "已从 HAR 提取稳定的求是租户入口；需正常登录后查看房间，" +
-                "未做原生查询/预约。",
+            note = "只有 HAR 只读证据；未取得登录后房间列表。",
         ),
     )
 
@@ -233,13 +239,24 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "“原生只读”表示已实现协议解析，但没有实测写操作；“官方登录”只保证打开平台官方页面，" +
+                "“可预约”表示已接入学校表单；“官方登录”只保证打开平台官方页面，" +
                     "不保证登录后一定有可用租户。未接入的平台不会被说成已支持。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.padding(bottom = 16.dp))
         }
+    }
+
+    blocker?.let { text ->
+        AlertDialog(
+            onDismissRequest = { blocker = null },
+            title = { Text("当前入口未接通") },
+            text = { Text(text) },
+            confirmButton = {
+                TextButton(onClick = { blocker = null }) { Text("知道了") }
+            },
+        )
     }
 }
 

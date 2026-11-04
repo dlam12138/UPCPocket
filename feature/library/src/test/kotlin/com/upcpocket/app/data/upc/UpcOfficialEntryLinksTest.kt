@@ -20,18 +20,6 @@ class UpcOfficialEntryLinksTest {
         }
     }
 
-    @Test
-    fun `reservepc tenant links keep reserve ids and never session values`() {
-        listOf(UpcOfficialEntryLinks.RESERVEPC_A, UpcOfficialEntryLinks.RESERVEPC_B).forEach { raw ->
-            val uri = URI(raw)
-            assertEquals("reserve.chaoxing.com", uri.host)
-            assertTrue(uri.query.contains("reserveId="))
-            assertTrue(uri.query.contains("resvAppId="))
-            assertTrue(uri.query.contains("fidEnc="))
-            assertNoOneTimeParams(uri.query)
-        }
-    }
-
     private fun assertNoOneTimeParams(query: String) {
         val keys = query.split('&').map { it.substringBefore('=') }.toSet()
         listOf("uid", "enc", "code", "state", "wfwEnc", "wfw_token")
