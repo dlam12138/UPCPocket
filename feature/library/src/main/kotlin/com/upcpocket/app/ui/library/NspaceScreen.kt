@@ -53,10 +53,10 @@ import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.StatusPill
 
 /**
- * 唐岛湾东馆研讨间的原生只读浏览。
+ * 唐岛湾东馆研讨间的房间浏览与个人预约。
  *
- * 这不是预约提交页：房间、容量、开放日期来自 nspace 的已观察只读接口；真正的预约、
- * 参与人和取消仍在学校官方 nspace 页面完成，避免在没有实测写协议时伪造成功。
+ * 房间、容量、开放日期来自 nspace 的只读接口；个人房间可直接填写预约表单，
+ * 多人/选座/附件房间会引导到学校官方页面。真正的最终提交仍需用户确认。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,7 +93,7 @@ fun NspaceScreen(
                     Column {
                         Text("东馆研讨间")
                         Text(
-                            "唐岛湾 · nspace 原生只读浏览",
+                            "唐岛湾 · 空间预约",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -122,20 +122,20 @@ fun NspaceScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         StatusPill(
-                            text = "原生只读",
+                            text = "学校数据",
                             containerColor = MaterialTheme.colorScheme.secondaryContainer,
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "原生表单 / 官方页面",
+                            "个人房间 / 官方组队",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Text(
                         "这里读取馆区、空间类型、开放日期和房间容量，并提供本人预约查询/取消；" +
-                            "新预约仍走官方页面，不提交新预约、不签到。",
+                            "个人房间可填写预约信息，多人/选座/附件房间请使用官方页面。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -399,8 +399,18 @@ private fun RoomCard(
                     )
                 }
             }
-            TextButton(onClick = { onBook(room) }) {
-                Text("原生预约表单")
+            val canTryNative = (room.minUser ?: 1) <= 1 &&
+                !room.seatOpen.equals("OPEN", ignoreCase = true)
+            if (canTryNative) {
+                TextButton(onClick = { onBook(room) }) {
+                    Text("填写预约信息")
+                }
+            } else {
+                Text(
+                    "该房间需要多人组队或选座，请在官方页面预约。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             TextButton(onClick = { onOfficial(room) }) {
                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)

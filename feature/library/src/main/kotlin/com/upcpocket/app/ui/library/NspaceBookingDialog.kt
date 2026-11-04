@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -146,7 +147,7 @@ fun NspaceBookingDialog(
                         )
                         Text(
                             "人数：${state.detail!!.minUser}–${state.detail!!.maxUser} 人；" +
-                                "本页仅支持单人且无需选座/附件的房间。",
+                                "多人房间（如 A123）需要组队，请使用官方页面。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -175,8 +176,8 @@ fun NspaceBookingDialog(
                             )
                         }
                         Text(
-                            "时段边界来自房间 open/close、timeSlice 和 disableTime；" +
-                                "确认前仍会按 bookPolicy 再校验。",
+                            "可预约时间以学校返回的开放时段和不可预约时段为准；" +
+                                "确认前会再次检查人数、时长和必填项。",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -284,7 +285,25 @@ private fun FormField(
 ) {
     val selectLike = field.type == "SELEC" || field.type == "RADIO"
     val label = field.label + if (field.required) " *" else ""
-    if (selectLike && field.options.isNotEmpty()) {
+    if (field.type == "CHECKBOX" && field.options.isNotEmpty()) {
+        val selected = value.split(',').filter { it.isNotBlank() }.toSet()
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(label)
+            field.options.forEach { option ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = option.value in selected,
+                        onCheckedChange = { checked ->
+                            val next = if (checked) selected + option.value
+                            else selected - option.value
+                            onChange(field.field, next.joinToString(","))
+                        },
+                    )
+                    Text(option.name)
+                }
+            }
+        }
+    } else if (selectLike && field.options.isNotEmpty()) {
         var open by remember { mutableStateOf(false) }
         val selected = field.options.firstOrNull { it.value == value }?.name ?: "请选择"
         Box {

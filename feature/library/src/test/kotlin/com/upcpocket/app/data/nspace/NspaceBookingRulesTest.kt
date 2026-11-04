@@ -85,10 +85,17 @@ class NspaceBookingRulesTest {
                 listOf(NspaceUseType("1", "个人")),
             ),
         )
-        assertNotNull(
+        assertNull(
             NspaceBookingRules.nativeEligibilityReason(
                 detail,
                 listOf(field("team", "CHECKBOX")),
+                listOf(NspaceUseType("1", "个人")),
+            ),
+        )
+        assertNotNull(
+            NspaceBookingRules.nativeEligibilityReason(
+                detail,
+                listOf(field("team", "DATE")),
                 listOf(NspaceUseType("1", "个人")),
             ),
         )

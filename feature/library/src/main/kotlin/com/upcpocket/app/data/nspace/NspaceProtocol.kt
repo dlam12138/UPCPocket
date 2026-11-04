@@ -42,7 +42,7 @@ internal object NspaceProtocol {
             NspaceRoomType(
                 id = string(obj, "id"),
                 name = string(obj, "name"),
-                enabled = int(obj, "status")?.let { it == 1 } ?: true,
+                enabled = int(obj, "status")?.let { it == 0 } ?: true,
             )
         }.filter { it.id.isNotBlank() && it.name.isNotBlank() }
     }

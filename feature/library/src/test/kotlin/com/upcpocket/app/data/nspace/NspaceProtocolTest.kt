@@ -60,7 +60,13 @@ class NspaceProtocolTest {
         assertEquals(
             listOf(NspaceRoomType("t1", "研讨间", true)),
             NspaceProtocol.parseRoomTypes(
-                """{"status":true,"code":200,"data":[{"id":"t1","name":"研讨间","status":1}]}""",
+                """{"status":true,"code":200,"data":[{"id":"t1","name":"研讨间","status":0}]}""",
+            ),
+        )
+        assertEquals(
+            listOf(NspaceRoomType("t2", "停用房间", false)),
+            NspaceProtocol.parseRoomTypes(
+                """{"status":true,"code":200,"data":[{"id":"t2","name":"停用房间","status":1}]}""",
             ),
         )
         assertEquals(

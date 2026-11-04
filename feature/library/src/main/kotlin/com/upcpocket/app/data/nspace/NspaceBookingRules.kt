@@ -10,7 +10,7 @@ import kotlin.math.min
  * 未知表单类型）会明确拒绝，而不是提交一个可能失败的请求。
  */
 object NspaceBookingRules {
-    private val supportedTypes = setOf("INPUT", "TEXTAREA", "SELEC", "RADIO")
+    private val supportedTypes = setOf("INPUT", "TEXTAREA", "SELEC", "RADIO", "CHECKBOX")
 
     fun nativeEligibilityReason(
         detail: NspaceRoomDetail,
