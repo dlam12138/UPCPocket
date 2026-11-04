@@ -10,14 +10,11 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingException
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
-import com.upcpocket.app.data.chaoxing.ChaoxingReserveContext
-import com.upcpocket.app.data.chaoxing.ChaoxingReserveRoom
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomDetail
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomPage
 import com.upcpocket.app.data.chaoxing.ChaoxingSession
 import com.upcpocket.app.data.chaoxing.ChaoxingSessionExpiredException
-import com.upcpocket.app.data.chaoxing.ChaoxingTenant
 import com.upcpocket.app.data.chaoxing.ChaoxingTimeInterval
 import com.upcpocket.app.data.chaoxing.ChaoxingUser
 import com.upcpocket.app.data.chaoxing.ChaoxingWebCookies
@@ -46,14 +43,8 @@ enum class ChaoxingAuthFailure {
     STALE_WEB_ENTRY,
 }
 
-/** 页面入口；reservepc 的租户上下文页面复用同一门闩，但使用独立来源路径。 */
-enum class ChaoxingWebSource(val path: String) {
-    SEAT_LOGIN("/front/third/apps/seat/index"),
-    RESERVEPC_TENANT("/front/web/apps/reservepc/index"),
-}
-
 /**
- * 打开 WebView 时捕获的页面入口上下文。
+ * 打开 Chaoxing 座位 WebView 时捕获的页面入口上下文。
  *
  * 不包含 Cookie/密码/页面正文；旧页面在退出、换号或清理期间的回调会因 epoch/
  * revision/entryId 不匹配而失败，不能重新绑定成新会话。
@@ -64,8 +55,6 @@ data class ChaoxingWebEntryContext(
     val generation: AccountGeneration,
     val epoch: Long,
     val revision: Long,
-    val source: ChaoxingWebSource,
-    val tenant: ChaoxingTenant? = null,
 )
 
 enum class ChaoxingCleanupState {
@@ -87,7 +76,7 @@ private data class ChaoxingLoginContext(
 )
 
 /**
- * Chaoxing 座位/研讨间内存会话。
+ * Chaoxing 座位内存会话。
  *
  * - Cookie 只来自应用内受限官方 WebView 的正常登录，不来自系统浏览器/临时 profile；
  * - 不持久化 Cookie；退出/换号清除内存会话并清理应用 WebView Cookie；
@@ -120,10 +109,6 @@ class ChaoxingService(
     private var cleanupInProgress = false
     private var cleanupFailed = false
     private var cleanupJob: CompletableDeferred<Boolean>? = null
-    private var reserveContext: ChaoxingReserveContext? = null
-    private var reserveContextTenant: ChaoxingTenant? = null
-    private var reserveContextEpoch = -1L
-    private var reserveContextRevision = -1L
 
     fun hasSavedAccount(): Boolean = synchronized(stateLock) {
         currentReferenceLocked() != null
@@ -132,10 +117,7 @@ class ChaoxingService(
     /**
      * 在打开 WebView 前调用。清理进行中/清理失败/账号不可用时返回 null，页面不应开始登录。
      */
-    fun beginWebLogin(
-        source: ChaoxingWebSource = ChaoxingWebSource.SEAT_LOGIN,
-        tenant: ChaoxingTenant? = null,
-    ): ChaoxingWebEntryContext? = synchronized(stateLock) {
+    fun beginWebLogin(): ChaoxingWebEntryContext? = synchronized(stateLock) {
         if (cleanupInProgress || cleanupFailed) return@synchronized null
         val reference = currentReferenceLocked() ?: return@synchronized null
         val entry = ChaoxingWebEntryContext(
@@ -144,8 +126,6 @@ class ChaoxingService(
             generation = reference.credentialGeneration,
             epoch = epoch,
             revision = revision,
-            source = source,
-            tenant = tenant,
         )
         activeEntryId = entry.entryId
         entry
@@ -263,53 +243,6 @@ class ChaoxingService(
         repository.usedTimes(kind, cookie, roomId, seatNum, date)
     }
 
-    /**
-     * 使用当前内存租户上下文读取 reservepc；没有上下文时才回退到官方页面解析。
-     * 上下文由 WebView 持有页面的 `reserveIdEnc` 捕获，绑定账号/代次/租户/来源路径。
-     */
-    suspend fun reserveRooms(tenant: ChaoxingTenant): List<ChaoxingReserveRoom> =
-        callSession { cookie, _ ->
-            val context = synchronized(stateLock) {
-                reserveContext?.takeIf {
-                    reserveContextTenant == tenant &&
-                        reserveContextEpoch == epoch &&
-                        reserveContextRevision == revision
-                }
-            }
-            if (context != null) {
-                repository.reserveRooms(tenant, cookie, context).rooms
-            } else {
-                repository.reserveRooms(tenant, cookie).rooms
-            }
-        }
-
-    /**
-     * 由受限 WebView 在已加载的租户页面中读取到 `reserveIdEnc` 后调用。
-     * 只接受固定 reservepc 页面入口、当前账号/代次/epoch/revision 与匹配租户。
-     */
-    fun adoptReserveContext(
-        entry: ChaoxingWebEntryContext,
-        tenant: ChaoxingTenant,
-        reserveIdEnc: String,
-    ): Boolean = synchronized(stateLock) {
-        if (entry.source != ChaoxingWebSource.RESERVEPC_TENANT) return@synchronized false
-        if (entry.tenant != tenant) return@synchronized false
-        if (!isPlausibleReserveContext(reserveIdEnc)) return@synchronized false
-        if (cleanupInProgress || cleanupFailed || !isCurrentLocked(entry)) {
-            return@synchronized false
-        }
-        activeEntryId = null
-        reserveContext = ChaoxingReserveContext(
-            tenant = tenant,
-            reserveIdEnc = reserveIdEnc,
-            sourcePath = entry.source.path,
-        )
-        reserveContextTenant = tenant
-        reserveContextEpoch = epoch
-        reserveContextRevision = revision
-        true
-    }
-
     suspend fun signOut(): ChaoxingCleanupResult = performCleanup(expectedCookie = null)
 
     suspend fun signOutForAccountChange(): Boolean =
@@ -368,7 +301,6 @@ class ChaoxingService(
             revision++
             _session.value = null
             activeEntryId = null
-            clearReserveContextLocked()
             cleanupInProgress = true
             cleanupFailed = false
             _cleanupState.value = ChaoxingCleanupState.CLEARING
@@ -453,16 +385,6 @@ class ChaoxingService(
         return accountReference.accountReference.value
             ?.takeIf { it.credentialGeneration == state.generation }
     }
-
-    private fun clearReserveContextLocked() {
-        reserveContext = null
-        reserveContextTenant = null
-        reserveContextEpoch = -1
-        reserveContextRevision = -1
-    }
-
-    private fun isPlausibleReserveContext(value: String): Boolean =
-        value.matches(Regex("""[A-Za-z0-9+/=]{8,128}"""))
 
     private fun isPlausibleCookieHeader(value: String): Boolean =
         value.isNotBlank() &&

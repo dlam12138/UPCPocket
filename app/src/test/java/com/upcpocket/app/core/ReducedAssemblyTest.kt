@@ -20,9 +20,6 @@ import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.library.LibraryAccountAuthenticator
 import com.upcpocket.app.library.LibraryAccountSettings
 import com.upcpocket.app.library.LibraryPlugin
-import com.upcpocket.app.library.NspaceAccountAuthResult
-import com.upcpocket.app.library.NspaceAccountAuthenticator
-import com.upcpocket.app.library.NspaceAuthFailure
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.runtime.PluginRuntime
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -76,7 +73,6 @@ class ReducedAssemblyTest {
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },
-            nspaceAuthenticator = unavailableNspaceAuthenticator(),
         )
 
         val runtime = PluginRuntime()
@@ -161,7 +157,6 @@ class ReducedAssemblyTest {
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },
-            nspaceAuthenticator = unavailableNspaceAuthenticator(),
         )
 
         val result = PluginRuntime()
@@ -180,11 +175,6 @@ class ReducedAssemblyTest {
         assertTrue(ui.entries.none { it.pluginId.value == "focus" })
         assertTrue(ui.sectionsFor(UiSurface.MORE_LEARNING).isEmpty())
     }
-
-    private fun unavailableNspaceAuthenticator(): NspaceAccountAuthenticator =
-        NspaceAccountAuthenticator { _, _ ->
-            NspaceAccountAuthResult.Failure(NspaceAuthFailure.ACCOUNT_UNAVAILABLE)
-        }
 
     private fun openAccount(): SchoolAccountReferenceReader =
         object : SchoolAccountReferenceReader {

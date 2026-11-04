@@ -16,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EventSeat
-import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -38,54 +37,41 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
-import com.upcpocket.app.data.chaoxing.ChaoxingTenant
 import com.upcpocket.app.library.ChaoxingCleanupState
 import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.library.LibraryService
-import com.upcpocket.app.library.NspaceService
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.StatusPill
 
-private enum class LibraryAccess {
-    NATIVE,
-    NATIVE_READ_ONLY,
-}
-
 private data class LibraryPlatform(
     val title: String,
     val subtitle: String,
-    val access: LibraryAccess,
     val icon: ImageVector,
-    val actionLabel: String?,
-    val action: (() -> Unit)?,
+    val actionLabel: String,
+    val action: () -> Unit,
     val note: String,
 )
 
 /**
- * 图书馆统一入口。
+ * 图书馆统一入口：只展示三个座位入口。
  *
- * 六个平台仍是独立业务/会话；宿主只负责分组呈现，不把 libspace 与 Chaoxing
- * 的 token、Cookie 或签名混在一起。无法原生接入的入口明确标注，而不是伪装成
- * “已支持”。
+ * 唐岛湾 libseat 与 Chaoxing seat/seatengine 仍是独立会话；研讨间/空间预约已撤下，
+ * 这里不提供入口、房间数据或预约表单。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryHubScreen(
     libraryService: LibraryService,
-    nspaceService: NspaceService,
     chaoxingService: ChaoxingService,
     onBack: () -> Unit,
     onOpenSeat: () -> Unit,
-    onOpenNspace: () -> Unit,
     onOpenChaoxingSeat: (ChaoxingSeatKind) -> Unit,
-    onOpenChaoxingReserve: (ChaoxingTenant) -> Unit,
     onOpenAccount: () -> Unit,
 ) {
     val context = LocalContext.current
     val accountState by libraryService.accountState.collectAsStateWithLifecycle()
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
-    val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
     val chaoxingSession by chaoxingService.session.collectAsStateWithLifecycle()
     val chaoxingCleanup by chaoxingService.cleanupState.collectAsStateWithLifecycle()
 
@@ -93,25 +79,14 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "座位",
             subtitle = "唐岛湾 · libseat",
-            access = LibraryAccess.NATIVE,
             icon = Icons.Filled.EventSeat,
             actionLabel = if (seatSession == null) "登录并查询" else "查询/预约",
             action = onOpenSeat,
             note = "原生查询、预约与取消；沿用既有 libseat 会话与账号保护。",
         ),
         LibraryPlatform(
-            title = "东馆研讨间",
-            subtitle = "唐岛湾 · nspace",
-            access = LibraryAccess.NATIVE_READ_ONLY,
-            icon = Icons.Filled.MeetingRoom,
-            actionLabel = "浏览房间",
-            action = onOpenNspace,
-            note = "查看馆区/类型/日期/房间；个人房间可填写预约，多人/选座房间走官方组队。",
-        ),
-        LibraryPlatform(
             title = "东区座位",
             subtitle = "古镇口 · Chaoxing seat",
-            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看区域/座位/时段",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
@@ -119,34 +94,13 @@ fun LibraryHubScreen(
                 "真实预约仍在学校页面完成。",
         ),
         LibraryPlatform(
-            title = "东区研讨间",
-            subtitle = "古镇口 · reservepc 租户 A",
-            access = LibraryAccess.NATIVE_READ_ONLY,
-            icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看研讨间",
-            action = { onOpenChaoxingReserve(ChaoxingTenant.GUZHENKOU) },
-            note = "原生只读：8 个研讨间、容量与开放时段；首次需 Chaoxing 网页登录，" +
-                "团队/附件/选座流程走官方页面。",
-        ),
-        LibraryPlatform(
             title = "求是座位",
             subtitle = "求是 · Chaoxing seatengine",
-            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看区域/座位/时段",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },
             note = "原生只读：求是区域、座位图、30 分钟时段与已用座位；首次需 Chaoxing " +
                 "网页登录，真实预约仍在学校页面完成。",
-        ),
-        LibraryPlatform(
-            title = "求是研讨间",
-            subtitle = "求是 · reservepc 租户 B",
-            access = LibraryAccess.NATIVE_READ_ONLY,
-            icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看研讨间",
-            action = { onOpenChaoxingReserve(ChaoxingTenant.QIUSHI) },
-            note = "原生只读：23 个研讨间、容量与开放时段；首次需 Chaoxing 网页登录，" +
-                "团队/附件/选座流程走官方页面。",
         ),
     )
 
@@ -157,7 +111,7 @@ fun LibraryHubScreen(
                     Column {
                         Text("图书馆")
                         Text(
-                            "座位与研讨间 · 统一入口",
+                            "座位 · 统一入口",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -185,7 +139,7 @@ fun LibraryHubScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        "唐岛湾、古镇口、求是的座位与研讨间集中在这里；各平台仍使用独立登录和会话。",
+                        "唐岛湾、古镇口、求是的座位入口集中在这里；各平台仍使用独立登录和会话。",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Text(
@@ -195,7 +149,6 @@ fun LibraryHubScreen(
                     )
                     Text(
                         "libseat：" + (seatSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
-                            " · nspace：" + (nspaceSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
                             " · Chaoxing：" + when {
                                 chaoxingCleanup == ChaoxingCleanupState.FAILED -> "Cookie 清理失败"
                                 chaoxingCleanup == ChaoxingCleanupState.CLEARING -> "Cookie 清理中"
@@ -214,17 +167,11 @@ fun LibraryHubScreen(
             }
 
             SectionHeader("唐岛湾")
-            platforms.take(2).forEach { platform ->
-                PlatformCard(platform)
-            }
+            PlatformCard(platforms[0])
             SectionHeader("古镇口")
-            platforms.slice(2..3).forEach { platform ->
-                PlatformCard(platform)
-            }
+            PlatformCard(platforms[1])
             SectionHeader("求是")
-            platforms.slice(4..5).forEach { platform ->
-                PlatformCard(platform)
-            }
+            PlatformCard(platforms[2])
 
             TextButton(onClick = {
                 runCatching {
@@ -238,9 +185,9 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "“原生/原生只读”表示应用内调用学校接口；Chaoxing 四入口首次需在应用内受限 " +
-                    "官方 WebView 登录，之后只读区域/座位/时段/研讨间。真实预约、团队、附件和" +
-                    "选座仍在学校页面完成，应用不代持浏览器 Cookie。",
+                "“原生/原生只读”表示应用内调用学校接口；Chaoxing 座位首次需在应用内受限 " +
+                    "官方 WebView 登录，之后只读区域/座位/时段。真实预约、选座和签到仍在学校" +
+                    "页面完成，应用不代持浏览器 Cookie。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -260,25 +207,13 @@ private fun accountStatusLabel(status: SchoolAccountStatus): String = when (stat
 }
 
 @Composable
-private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColor, pillContent) = when (platform.access) {
-        LibraryAccess.NATIVE -> Triple(
-            "原生",
-            MaterialTheme.colorScheme.primaryContainer,
-            MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-        LibraryAccess.NATIVE_READ_ONLY -> Triple(
-            "原生只读",
-            MaterialTheme.colorScheme.secondaryContainer,
-            MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-    }
+private fun PlatformCard(platform: LibraryPlatform) {
     Surface(
-        onClick = { platform.action?.invoke() },
+        onClick = platform.action,
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         tonalElevation = 0.dp,
-        enabled = platform.action != null,
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -299,7 +234,11 @@ private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColo
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.padding(start = 6.dp))
-                    StatusPill(pillText, pillColor, pillContent)
+                    StatusPill(
+                        "原生",
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
                 }
                 Text(
                     platform.subtitle,
@@ -311,13 +250,11 @@ private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColo
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                platform.actionLabel?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    platform.actionLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,

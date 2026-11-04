@@ -12,7 +12,7 @@ class ChaoxingLoginPolicyTest {
     fun `only fixed Chaoxing hosts over https are allowed`() {
         assertTrue(isAllowedChaoxingLoginUrl("https://passport2.chaoxing.com/login?refer=x"))
         assertTrue(isAllowedChaoxingLoginUrl("https://office.chaoxing.com/front/third/apps/seat/index"))
-        assertTrue(isAllowedChaoxingLoginUrl("https://reserve.chaoxing.com/front/web/apps/reservepc/index"))
+        assertFalse(isAllowedChaoxingLoginUrl("https://reserve.chaoxing.com/front/web/apps/reservepc/index"))
         assertFalse(isAllowedChaoxingLoginUrl("http://office.chaoxing.com/front/third/apps/seat/index"))
         assertFalse(isAllowedChaoxingLoginUrl("https://office.chaoxing.com.evil.test/x"))
         assertFalse(isAllowedChaoxingLoginUrl("https://user-secret@office.chaoxing.com/x"))

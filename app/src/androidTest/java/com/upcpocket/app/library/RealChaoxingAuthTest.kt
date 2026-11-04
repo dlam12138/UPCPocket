@@ -5,10 +5,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.upcpocket.app.account.SchoolAccountRepository
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
-import com.upcpocket.app.data.chaoxing.ChaoxingException
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
-import com.upcpocket.app.data.chaoxing.ChaoxingTenant
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
@@ -27,7 +25,7 @@ import org.junit.runner.RunWith
  *
  * 凭据/Cookie 只由宿主机通过 run-as 标准输入写入 target app 私有临时文件；测试不打印
  * 账号、密码、Cookie、学号、页面正文或房间名。未提供文件时跳过；只读区域/座位图/
- * 已用座位/研讨间，不提交预约、不取消、不签到、不加入团队。
+ * 已用座位，不提交预约、不取消、不签到。
  */
 @RunWith(AndroidJUnit4::class)
 class RealChaoxingAuthTest {
@@ -66,7 +64,7 @@ class RealChaoxingAuthTest {
     }
 
     @Test
-    fun realChaoxingIdentitySeatAndReserveReadOnly() = runBlocking {
+    fun realChaoxingIdentityAndSeatReadOnly() = runBlocking {
         val fixture = JSONObject(credentialFile.readText())
         val account = fixture.getString("account")
         val password = fixture.getString("password").toCharArray()
@@ -118,17 +116,5 @@ class RealChaoxingAuthTest {
 
         val engine = chaoxing.seatRooms(ChaoxingSeatKind.SEATENGINE, date)
         assertTrue("学校未返回 seatengine 区域", engine.rooms.isNotEmpty())
-
-        // 当前稳定 URL 缺少学校业务目录上下文时会明确失败，不能当作空列表。
-        val reserve = runCatching {
-            chaoxing.reserveRooms(ChaoxingTenant.GUZHENKOU)
-        }
-        val failure = reserve.exceptionOrNull()
-        if (failure != null) {
-            assertTrue(failure is ChaoxingException)
-            assertEquals("chaoxing_tenant_context", (failure as ChaoxingException).code)
-        } else {
-            assertTrue(reserve.getOrThrow().isNotEmpty())
-        }
     }
 }

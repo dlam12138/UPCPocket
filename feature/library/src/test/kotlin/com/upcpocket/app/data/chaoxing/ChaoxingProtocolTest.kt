@@ -96,30 +96,6 @@ class ChaoxingProtocolTest {
     }
 
     @Test
-    fun `reserve rooms keep tenant intervals and capacity`() {
-        val body = """
-            {"success":true,"data":{"reserveItemList":[
-              {"id":25504,"name":"403","minUserNum":1,"maxUserNum":20,"reserveNum":1,"details":"",
-               "reserveIntervalList":[
-                 {"week":1,"startTime":"08:00","endTime":"22:00"},
-                 {"week":3,"startTime":"08:00","endTime":"22:00"}
-               ]}
-            ],"reserveUserList":[]}}
-        """.trimIndent()
-        val page = ChaoxingProtocol.parseReserveRooms(body)
-        assertEquals("403", page.rooms.single().name)
-        assertEquals(20, page.rooms.single().maxUser)
-        assertEquals(2, page.rooms.single().intervals.size)
-        assertEquals("08:00", page.rooms.single().intervals.last().start)
-    }
-
-    @Test
-    fun `reserveIdEnc is read from the official page context`() {
-        val html = """var reserveId = '13492', reserveIdEnc = '0123456789abcdef';"""
-        assertEquals("0123456789abcdef", ChaoxingProtocol.parseReserveIdEnc(html))
-    }
-
-    @Test
     fun `business failure is not treated as an empty list`() {
         val failure = runCatching {
             ChaoxingProtocol.parseSeatRooms(

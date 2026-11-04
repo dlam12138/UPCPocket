@@ -11,7 +11,6 @@ import com.upcpocket.app.data.chaoxing.ChaoxingHttpRequest
 import com.upcpocket.app.data.chaoxing.ChaoxingHttpResponse
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
-import com.upcpocket.app.data.chaoxing.ChaoxingTenant
 import com.upcpocket.app.data.chaoxing.ChaoxingTransport
 import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CompletableDeferred
@@ -289,48 +288,6 @@ class ChaoxingServiceTest {
     }
 
     @Test
-    fun `reserve context is accepted only for its tenant and skips page discovery`() = runTest {
-        val account = Account()
-        val requests = mutableListOf<ChaoxingHttpRequest>()
-        val repository = repository { request ->
-            requests += request
-            when {
-                request.url.contains("/front/third/apps/seat/index") -> html(
-                    """var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""",
-                )
-                request.url.contains("/data/apps/reserve/item/list/time") -> json(
-                    """{"success":true,"data":{"reserveItemList":[
-                       {"id":1,"name":"403","minUserNum":1,"maxUserNum":20,
-                        "reserveNum":1,"details":"","reserveIntervalList":[]}
-                    ]}}""",
-                )
-                else -> error("unexpected ${request.url}")
-            }
-        }
-        val service = service(account, repository, SchoolAccountIdentityCheck.MATCH)
-        service.loginWithWebCookies(COOKIE)
-
-        val seatPage = requireNotNull(service.beginWebLogin())
-        assertFalse(service.adoptReserveContext(seatPage, ChaoxingTenant.GUZHENKOU, "0123456789abcdef"))
-
-        val reservePage = requireNotNull(
-            service.beginWebLogin(ChaoxingWebSource.RESERVEPC_TENANT, ChaoxingTenant.GUZHENKOU),
-        )
-        assertFalse(
-            service.adoptReserveContext(reservePage, ChaoxingTenant.QIUSHI, "0123456789abcdef"),
-        )
-        assertFalse(
-            service.adoptReserveContext(reservePage, ChaoxingTenant.GUZHENKOU, "short"),
-        )
-        assertTrue(service.adoptReserveContext(reservePage, ChaoxingTenant.GUZHENKOU, "0123456789abcdef"))
-        val rooms = service.reserveRooms(ChaoxingTenant.GUZHENKOU)
-
-        assertEquals("403", rooms.single().name)
-        assertTrue(requests.none { it.url.contains("/front/web/apps/reservepc/index") })
-        assertTrue(requests.last().formBody.orEmpty().contains("reserveIdEnc=0123456789abcdef"))
-    }
-
-    @Test
     fun `seat and seatengine used-seat queries keep their real parameter difference`() = runTest {
         val urls = mutableListOf<String>()
         val repository = repository { request ->
@@ -359,35 +316,6 @@ class ChaoxingServiceTest {
         assertTrue(!urls[0].contains("seatId="))
         assertTrue(urls[1].contains("seatId=4258"))
         assertTrue(!urls[1].contains("fidEnc="))
-    }
-
-    @Test
-    fun `reserve list reads official page context before posting the tenant list`() = runTest {
-        val forms = mutableListOf<String>()
-        val repository = repository { request ->
-            when {
-                request.url.contains("/front/web/apps/reservepc/index") -> html(
-                    """var reserveId = '13492'; var reserveIdEnc = '0123456789abcdef';""",
-                )
-                request.url.contains("/data/apps/reserve/item/list/time") -> {
-                    forms += request.formBody.orEmpty()
-                    json(
-                        """{"success":true,"data":{"reserveItemList":[
-                           {"id":25504,"name":"403","minUserNum":1,"maxUserNum":20,
-                            "reserveNum":1,"details":"","reserveIntervalList":[]}
-                        ]}}""",
-                    )
-                }
-                else -> error("unexpected ${request.url}")
-            }
-        }
-
-        val rooms = repository.reserveRooms(ChaoxingTenant.GUZHENKOU, COOKIE)
-
-        assertEquals("403", rooms.rooms.single().name)
-        assertTrue(forms.single().contains("reserveIdEnc=0123456789abcdef"))
-        assertTrue(forms.single().contains("reserveId=13492"))
-        assertTrue(!forms.single().contains("uid="))
     }
 
     private fun repository(

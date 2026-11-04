@@ -18,7 +18,7 @@ import org.junit.Test
 class ChaoxingLiveReadTest {
 
     @Test
-    fun `real read-only seat and reserve responses match the parser contract`() = runBlocking {
+    fun `real read-only seat responses match the parser contract`() = runBlocking {
         val path = System.getenv("CHAOXING_COOKIE_FILE")
         val file = path?.let(::File)
         assumeTrue("manual live test requires CHAOXING_COOKIE_FILE", file?.isFile == true)
@@ -47,23 +47,5 @@ class ChaoxingLiveReadTest {
 
         val enginePage = repository.seatRooms(ChaoxingSeatKind.SEATENGINE, cookie, date)
         assertTrue(enginePage.rooms.isNotEmpty())
-
-        // reservepc 的稳定 URL 当前会 302 到“未查询到应用”；这不是会话失效，而是
-        // 缺少学校业务目录生成的租户上下文。seat/engine 的只读契约仍必须通过。
-        val guzhenkou = runCatching {
-            repository.reserveRooms(ChaoxingTenant.GUZHENKOU, cookie)
-        }
-        val qiushi = runCatching {
-            repository.reserveRooms(ChaoxingTenant.QIUSHI, cookie)
-        }
-        listOf(guzhenkou, qiushi).forEach { result ->
-            val failure = result.exceptionOrNull()
-            if (failure != null) {
-                assertTrue(failure is ChaoxingException)
-                assertEquals("chaoxing_tenant_context", (failure as ChaoxingException).code)
-            } else {
-                assertTrue(result.getOrThrow().rooms.isNotEmpty())
-            }
-        }
     }
 }

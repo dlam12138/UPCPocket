@@ -1,6 +1,16 @@
 # 更新与验证
 
-## M5.1 · 图书馆统一入口与六入口审计（开发分支，未发布）
+## M5.2 · 图书馆研讨间/空间预约撤下（开发分支，未发布）
+
+- 用户 2026-11-04 明确决定：研讨间研究文档保留，相关产品功能直接删除。范围包括唐岛湾东馆 nspace、古镇口东区 reservepc、求是 reservepc。
+- 已删除 nspace 的协议/模型/Repository/Service/认证 provider/WebView 回退/表单/本人预约/取消/队伍与 UI；删除 reservepc 的模型/解析/Repository/Service/租户上下文桥接/页面；删除 `core:upc-auth` 的 nspace 认证实现与测试、`LibraryPlugin` 的 nspace 能力/装配、`AppGraph` 的 nspace 失效器与认证适配。
+- 图书馆统一页只保留三个座位入口：唐岛湾 libseat、古镇口 Chaoxing seat、求是 Chaoxing seatengine。宿主首页/设置/官方网页目录不再提供研讨间专属可点入口；旧研讨间路由仅作为兼容落点打开图书馆首页，不注册房间/预约接口。
+- 保留 libseat 座位查询/预约/取消、Chaoxing seat/seatengine 原生只读、Chaoxing WebView 登录/身份核验/清理门闩/退出并发修复，以及 CAS 课表/账号清理。
+- 研究资料保留：`docs/research/图书馆与空间预约六入口接口研究-20261103.md`、`docs/m5/图书馆六入口.md`（加归档说明）、`E:\UPC-MCP\docs\LIBRARY_M5_RESEARCH.md` 不删除；原始 HAR 未改。旧 nspace/reservepc 专属测试随功能删除，座位/CAS/清理测试保留。
+- 验证：`core:upc-auth` 18 tests、`feature:library` 85 tests（1 skipped，座位真实回放）、`app` 32 tests；删除范围为测试数下降原因。未执行真实预约/取消/签到，未 `pm clear`。
+- APK：`release/UPC-Pocket-M5-library-seats-only-debug.apk`，`64,426,840` bytes，SHA-256 `5CCEF1C1DADC409DD7C30FA71EE34A3FAD86EDC5BA8C20E54BFB3A83CD447F21`。
+
+## M5.1 · 图书馆统一入口与六入口审计（历史记录，2026-11-04 撤下研讨间）
 
 - 首页原“图书馆座位”改为统一“图书馆”入口，按唐岛湾/古镇口/求是分组展示六个平台；保留既有 `library.seat` 页面，新增 `library.home` 和 `library.nspace`，不改变三 tab 与设置入口。
 - 新增独立 nspace 认证：libspace 的 nspace SSO 入口 → 正常 CAS → app token（query/fragment）→ `/spa/static/public/api/remoteCasLogin` → `userInfo` 本人核验；入口 302 到 CAS 已实测。nspace token 只存内存，使用独立 `library.nspace` 能力和 `/spa` Repository，绝不与 libseat seat token 混用。

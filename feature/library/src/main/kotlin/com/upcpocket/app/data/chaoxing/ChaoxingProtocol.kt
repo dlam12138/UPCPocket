@@ -13,7 +13,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
- * Chaoxing 座位/研讨间的严格只读适配器。
+ * Chaoxing 座位的严格只读适配器。
  *
  * 字段名来自已登录页面真实响应；缺字段/HTML 登录页/`success=false` 分别失败，
  * 不把空列表当成“无座位”。时间统一转为北京时间当天分钟。
@@ -145,44 +145,6 @@ object ChaoxingProtocol {
                 endMinute = if (endMinute <= startMinute) endMinute + 24 * 60 else endMinute,
             )
         }
-    }
-
-    fun parseReserveRooms(body: String): ChaoxingReserveRoomPage {
-        val data = objectData(body)
-        val list = data["reserveItemList"] as? JsonArray
-            ?: throw ChaoxingException("研讨间响应缺少 reserveItemList", "chaoxing_protocol")
-        val rooms = list.mapNotNull { item ->
-            val obj = item as? JsonObject ?: return@mapNotNull null
-            val id = int(obj, "id") ?: return@mapNotNull null
-            val intervals = (obj["reserveIntervalList"] as? JsonArray).orEmpty().mapNotNull { raw ->
-                val interval = raw as? JsonObject ?: return@mapNotNull null
-                val week = int(interval, "week") ?: return@mapNotNull null
-                val start = stringOrNull(interval, "startTime") ?: return@mapNotNull null
-                val end = stringOrNull(interval, "endTime") ?: return@mapNotNull null
-                ChaoxingReserveInterval(week, start, end)
-            }
-            ChaoxingReserveRoom(
-                id = id,
-                name = stringOrNull(obj, "name") ?: "研讨间 $id",
-                minUser = int(obj, "minUserNum"),
-                maxUser = int(obj, "maxUserNum"),
-                reserveNum = int(obj, "reserveNum"),
-                details = stringOrNull(obj, "details").orEmpty(),
-                intervals = intervals,
-            )
-        }
-        return ChaoxingReserveRoomPage(rooms)
-    }
-
-    /** 从官方 reservepc 页面取服务器渲染的租户上下文；不是用户票据。 */
-    fun parseReserveIdEnc(html: String): String {
-        val patterns = listOf(
-            Regex("""reserveIdEnc\s*:\s*['"]([A-Za-z0-9+/=]{8,128})['"]"""),
-            Regex("""reserveIdEnc\s*=\s*['"]([A-Za-z0-9+/=]{8,128})['"]"""),
-            Regex("""reserveIdEnc\s*:\s*['"]([A-Za-z0-9+/=]{8,128})['"]"""),
-        )
-        return patterns.firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) }
-            ?: throw ChaoxingException("官方页面未返回 reserveIdEnc", "chaoxing_protocol")
     }
 
     fun dayLabel(date: String): String = parseDate(date).toString()

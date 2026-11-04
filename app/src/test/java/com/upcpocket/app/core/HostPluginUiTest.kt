@@ -44,7 +44,7 @@ class HostPluginUiTest {
             listOf(
                 "唐岛湾查询 · 古镇口网页",
                 "两校区 · 按日期与节次查询",
-                "座位 · 研讨间 · 统一入口",
+                "唐岛湾 / 古镇口 / 求是座位",
             ),
             entries.map { it.subtitle },
         )

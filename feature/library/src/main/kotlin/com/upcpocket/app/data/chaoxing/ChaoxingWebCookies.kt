@@ -16,7 +16,6 @@ import kotlinx.coroutines.withContext
 object ChaoxingWebCookies {
     private val hosts = listOf(
         "https://office.chaoxing.com",
-        "https://reserve.chaoxing.com",
         "https://passport2.chaoxing.com",
         "https://passport2-api.chaoxing.com",
     )
@@ -29,8 +28,6 @@ object ChaoxingWebCookies {
         "/front/third/apps/seat/index",
         "/front/third/apps/seatengine",
         "/front/third/apps/seatengine/index",
-        "/front/web/apps/reservepc",
-        "/front/web/apps/reservepc/index",
     )
 
     private data class Scope(val host: String, val path: String) {

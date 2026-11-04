@@ -2,13 +2,11 @@
 
 状态：**本地可评审第一版**（开发分支，未合并 main、未发布、未推送）。M5 不改变
 M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页面层级与原生 Compose 视觉。
-本轮补充“图书馆”统一入口、nspace 浏览/预约取消、个人预约表单、WebView 验证码回退和
-真实凭据检查；用户手机已验收 nspace 会话与 A123 表单。2026-11-04 又在已登录 Chaoxing
-会话中核对 seat/seatengine 的真实馆区、座位图与 30 分钟时段，并完成这两个入口的原生
-只读接入；reservepc 两租户的解析/UI 和内存上下文桥接已实现（用页面 `reserveIdEnc`
-回放可读到 8/23 项），但稳定 URL 仍缺学校业务目录/微信侧生成的租户上下文，应用明确报错
-并回退官方页，不伪造列表。四个 Chaoxing 入口不是“全部原生完成”；详见
-[图书馆六入口](图书馆六入口.md)。
+**2026-11-04 用户决定撤下全部研讨间/空间预约产品功能**：唐岛湾东馆 nspace、古镇口东区
+reservepc、求是 reservepc 的页面、路由、协议、Service、表单、队伍/租户桥接和相关装配
+均已删除；图书馆统一页只保留三个座位入口（唐岛湾 libseat、古镇口 Chaoxing seat、求是
+Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能力；详见
+[图书馆六入口（历史研究）](图书馆六入口.md)。
 
 - 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）
 - 分支/工作树：`lody/m5-campus-home`；本会话工作树（独立于其他会话）
@@ -55,7 +53,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 更多 → 外观 | 首页右上角 → 设置 → 配色与深色模式 |
 | 更多 → 关于 | 首页右上角 → 设置 → 关于 UPC Pocket |
 | 首页校园卡区 | 首页“校园卡”区（余额、脱敏绑定、账号、清除缓存、数据说明） |
-| 首页电费 / 空教室 / 图书馆座位 | 首页“常用服务”的电费 / 空教室 / **图书馆**（图书馆内再分六入口） |
+| 首页电费 / 空教室 / 图书馆座位 | 首页“常用服务”的电费 / 空教室 / **图书馆**（图书馆内只分三个座位入口） |
 | 桌面组件由长按桌面添加 | 仍由系统桌面添加；新增设置 → 桌面组件说明与可选“添加到桌面” |
 | 古镇口电费学校页面 | 电费页保留；设置 → 校园官方网页也提供入口 |
 | 校园官方网页 | 首页“校园网页”快捷卡 / 设置 → 校园官方网页（同一页面） |
@@ -68,22 +66,13 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
   同号改密标记、清除缓存与缓存清理失败状态保留。详细安全说明折叠，但不删除。
 - 电费：唐岛湾原生查询，古镇口官方网页；两校区说明保留。
 - 空教室：两校区、日期、楼栋、节次筛选和结果页不变。
-- 图书馆：首页统一入口为“图书馆”（libseat 座位 + nspace 东馆研讨间 + 古镇口/求是四个
-  Chaoxing 入口）。libseat 保留统一认证、座位查询/预约/取消、记住登录与会话清理；nspace
-  新增独立 CAS/token、馆区/类型/日期/房间分页、本人预约列表与取消、个人预约
-  表单（用途/时段/必填/最终确认）和官方 WebView 验证码回退；每个房间仍保留官方
-  `#/detail?id=...&selectDate=...` 深链。真实 CAS 自动登录仍停在模拟器验证码挑战；用户手机
-  已验收 nspace 会话、1 馆区/4 类型/3 日期切换和 A123 详情/表单可达，但未提交真实预约。
-  A123 需多人组队，应用只引导官方页面，不伪造团队成员。空间类型 `status=0` 曾因解析
-  反向被灰置；现按 `0` 可用/`1` 停用处理，四类型可切换。
-  Chaoxing seat/seatengine 已接入类型化区域/座位图/已用座位/时段和受限官方 WebView
-  内存会话；seat 东区 6 个区域（48–66 座，08:00–21:30，30 分钟）、seatengine 求是
-  21 个区域（16–240 座，08:00–22:00，30 分钟）已在真实 Android 进程内只读验证。
-  reservepc 两租户的解析/UI 和 `ChaoxingReserveContext` 内存桥接已实现；用页面
-  `reserveIdEnc` + 当前 Cookie 的真实回放读到 8/23 项，但稳定 URL 302 到“未查询到应用”，
-  缺少学校业务目录/微信侧生成的 `reserveIdEnc`。应用明确显示租户上下文缺失并回退官方页，
-  不伪造房间。真实预约/取消/签到/团队仍未实现。六入口矩阵见
-  [图书馆六入口](图书馆六入口.md)。
+- 图书馆：首页统一入口为“图书馆”，只展示三个座位入口：
+  1. 唐岛湾 libseat：统一认证、座位查询/预约/取消、记住登录与会话清理；
+  2. 古镇口 Chaoxing seat：原生只读区域/座位图/已用座位/30 分钟时段；
+  3. 求是 Chaoxing seatengine：同协议，保留 `seatId`/参数差异，原生只读。
+  Chaoxing 座位首次需在应用内受限官方 WebView 登录；真实预约仍走学校页面。旧研讨间
+  路由只落到图书馆首页，不保留房间/预约接口。历史研究见
+  [图书馆六入口（归档）](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
@@ -116,9 +105,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - `TimetablePlugin`：新增 `PluginBottomNav(order = 5)`；删除旧的 `MORE_LEARNING` 入口。
 - `FocusPlugin`：保留 `PluginBottomNav(order = 10)`；删除旧的“学习统计”`MORE_LEARNING` 入口。
-- 图书馆：保留 `MORE_SCHOOL` 登录区；新增 `library.home` 统一入口和 `library.nspace`
-  只读页。`LibraryCapabilities.seat` 与 `LibraryCapabilities.nspace` 是两个独立能力/会话，
-  nspace token 不持久化、不与 seat token 混用。
+- 图书馆：保留 `MORE_SCHOOL` 登录区；`library.home` 只展示三个座位入口。
+  `LibraryCapabilities.seat` 与 `LibraryCapabilities.chaoxing` 是两个独立能力/会话；
+  nspace 与 reservepc 能力/页面/协议已删除。
 - 空教室/电费/图书馆：继续贡献 `HOME_SERVICES`，首页不硬编码这些功能实现。
 - `MORE_LEARNING` 枚举保留以维持源级契约兼容，但宿主不再挂载“更多”页；选择它不会产生
   可点入口。`PluginBottomNav` 文档由“宿主保底首页/更多”改为“宿主固定首页，插件 tab 排在其后”。
@@ -133,10 +122,13 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 ### 2.1 路由与删除文件审计
 
 - 稳定插件页路由：`power.electricity`、`power.tangdaowan`、`classroom.free`、
-  `library.home`、`library.seat`、`library.login`、`library.nspace`、
-  `library.nspace.login`、`library.nspace.reservations`、`focus`、`focus.stats`、
+  `library.home`、`library.seat`、`library.login`、`library.chaoxing.seat`、
+  `library.chaoxing.seatengine`、`library.chaoxing.login`、`focus`、`focus.stats`、
   `timetable.week` 均注册。`library.seat` 没有被删除，只是从首页入口改为统一图书馆内的
   libseat 子页；`HostPluginUiTest` 额外断言所有首页入口/底部 tab 的目标页存在。
+- 旧研讨间路由 `library.nspace*`、`library.chaoxing.reserve*` 仅注册为**兼容落点**，
+  页面直接显示图书馆首页；不注册房间/预约页面、不提供 Service/Repository/深链，
+  避免旧返回栈或深链崩溃，同时不重新暴露研讨间能力。
 - `CampusScreen` 是旧“更多”宿主页，只承载入口列表，不包含任一官方 URL 或浏览器跳转；
   其账号/课表/统计/图书馆登录/外观/关于能力已分别迁移到三 tab 与设置。删除的是入口页壳，
   不是功能实现。
@@ -171,16 +163,18 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | [20-focus-font-130.png](screenshots/20-focus-font-130.png) | 专注初始进入 1.3×；完整计时环、状态、开始按钮 |
 | [21-focus-font-150.png](screenshots/21-focus-font-150.png) | 专注初始进入 1.5×；完整计时环、状态、开始按钮 |
 | [22-home-font-150.png](screenshots/22-home-font-150.png) | 首页 1.5×；标题/服务卡文字完整，可滚动到两组服务与页脚 |
-| [23-library-hub.png](screenshots/23-library-hub.png) | 图书馆统一入口历史截图；六入口分组、学校数据/官方登录标注（reservepc 文案已由 27/28 更新） |
-| [24-library-nspace.png](screenshots/24-library-nspace.png) | 东馆研讨间 nspace 未登录态；说明个人房间可填预约信息，多人/选座/附件走官方页面 |
-| [25-library-hub-font-150.png](screenshots/25-library-hub-font-150.png) | 图书馆统一入口 1.5× 顶部；长文案不截断 |
-| [26-library-hub-font-150-bottom.png](screenshots/26-library-hub-font-150-bottom.png) | 1.5× 滚动到底部；六入口/官方登录说明/学校官网均可到达 |
-| [27-library-hub-chaoxing.png](screenshots/27-library-hub-chaoxing.png) | 历史统一页：seat 官方页与已核对的 6 区域/30 分钟时段 |
-| [28-library-hub-chaoxing-bottom.png](screenshots/28-library-hub-chaoxing-bottom.png) | 历史底部：reservepc 两租户官方页、seatengine 与求是租户说明 |
+| [23-library-hub.png](screenshots/23-library-hub.png) | **历史研究截图**：六入口分组；已不代表现行产品 |
+| [24-library-nspace.png](screenshots/24-library-nspace.png) | **历史研究截图**：东馆研讨间 nspace；功能已撤下 |
+| [25-library-hub-font-150.png](screenshots/25-library-hub-font-150.png) | **历史研究截图**：六入口统一页 1.5× |
+| [26-library-hub-font-150-bottom.png](screenshots/26-library-hub-font-150-bottom.png) | **历史研究截图**：六入口统一页底部 |
+| [27-library-hub-chaoxing.png](screenshots/27-library-hub-chaoxing.png) | **历史研究截图**：Chaoxing 六入口页 |
+| [28-library-hub-chaoxing-bottom.png](screenshots/28-library-hub-chaoxing-bottom.png) | **历史研究截图**：reservepc 两租户/seatengine 底部 |
 | [29-chaoxing-seatengine-native.png](screenshots/29-chaoxing-seatengine-native.png) | **原生只读**：求是 21 个区域、08:00–22:00、真实已用人数 |
 | [30-chaoxing-seat-map-native.png](screenshots/30-chaoxing-seat-map-native.png) | **原生只读**：座位图、30 分钟时段、已用座位图例 |
-| [31-chaoxing-reserve-context-blocked.png](screenshots/31-chaoxing-reserve-context-blocked.png) | reservepc 租户上下文缺失的精确错误态，不伪造空列表 |
-| [32-library-hub-chaoxing-native.png](screenshots/32-library-hub-chaoxing-native.png) | 六入口统一页的“原生只读”状态 |
+| [31-chaoxing-reserve-context-blocked.png](screenshots/31-chaoxing-reserve-context-blocked.png) | **历史研究截图**：reservepc 租户上下文错误；功能已撤下 |
+| [32-library-hub-chaoxing-native.png](screenshots/32-library-hub-chaoxing-native.png) | **历史研究截图**：六入口“原生只读”状态 |
+| [33-library-hub-three-seats.png](screenshots/33-library-hub-three-seats.png) | **现行**：图书馆只保留三个座位入口 |
+| [34-library-seat-chaoxing.png](screenshots/34-library-seat-chaoxing.png) | **现行**：Chaoxing 座位原生只读列表/时段 |
 
 合成预览由 `feature/timetable/src/debug/.../TimetablePreviewActivity.kt` 明确标注
 “本地预览 · 合成内容”，只读取内存中的 `TimetableUiState`，不创建账号/会话/缓存、不发网络请求，
@@ -209,28 +203,25 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 边界：未登录、无数据、合成周网格、空“今天”、离线/失败状态代码路径；没有触发真实学校登录、
   预约、取消、签到、充值或电量查询。
 - 账号：`FLAG_SECURE` 已确认，但未创建账号、未走真实登录。
-- 图书馆统一页：首页“图书馆”进入；唐岛湾/古镇口/求是六卡均可达；新版统一页已在模拟器
-  复核，第 29–32 张截图无账号/姓名/预约数据。Chaoxing 原生卡不再跳到浏览器，而是打开
-  原生只读页；页内仍保留官方预约按钮。
+- 图书馆统一页：首页“图书馆”进入，只显示唐岛湾、古镇口东区、求是三个座位卡；新版统一页
+  已在模拟器复核，无账号/姓名/预约数据。Chaoxing 座位卡打开原生只读页，页内保留官方预约
+  回退；没有研讨间卡片或深链。
 - Chaoxing 原生只读：seat 东区 6 区域/48 座位/08:00–21:30、seatengine 求是 21 区域/
   30 座位/08:00–22:00 已在真实 Android 进程内读取；模拟器从“求是座位”卡直接进入求是，
   加载真实区域和已用人数；座位图 30/48 座；没有点击最终预约。
-- reservepc：真实稳定 URL 返回 302 到“未查询到您所访问的应用”，应用显示“需要学校业务
-  目录生成的租户上下文”，不把 302 当空列表；没有伪造 8/23 个房间或执行预约/团队/附件。
-- 图书馆写操作：未触发任何真实 libseat/nspace/Chaoxing 预约、取消、签到、团队或成员
-  添加；用户手机只验收了 nspace 浏览/A123 表单可达，没有点击最终预约；“我的预约/取消”
-  仍无真实记录验收，界面取消有二次确认，模拟器未点击确认。原因与最小协助见
-  [图书馆六入口](图书馆六入口.md)。
+- 图书馆写操作：未触发任何真实 libseat/Chaoxing 预约、取消、签到；libseat 座位取消功能
+  保留，但没有用真实记录执行。研讨间/空间预约已撤下，不再有可调用的预约、取消、团队、
+  成员或租户上下文接口。
 
 ## 5. 自动化结果
 
 | 检查 | 结果 |
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
-| `:core:upc-auth:testDebugUnitTest` | **28 tests，0 failures/errors/skipped**（CAS 验证码挑战、Web token 兑换/身份错配/非法 token） |
-| `:feature:library:testDebugUnitTest` | **129 tests，0 failures/errors，2 skipped**（nspace 协议/分页/账号隔离/Web 回调/取消/表单；Chaoxing 解析/身份/会话/主机路径/reserve 上下文；清理挂起/并发/失败门闩；需显式 Cookie/租户上下文的真实回放默认跳过） |
-| `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合包含 `library.chaoxing.*` 五个路由 |
-| Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；reserve 精确返回 `chaoxing_tenant_context` |
+| `:core:upc-auth:testDebugUnitTest` | **18 tests，0 failures/errors/skipped**（nspace 认证测试随功能删除；CAS/课表/座位认证用例保留） |
+| `:feature:library:testDebugUnitTest` | **85 tests，0 failures/errors，1 skipped**（libseat 座位、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
+| `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合保留旧研讨间路由的兼容落点断言 |
+| Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；不再包含 reserve 请求 |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
 | `:feature:library:lintDebug` / `:app:lintDebug` | 通过；app **0 errors / 2 warnings**（既有 `RedundantLabel`、`ObsoleteSdkInt`），library 无问题 |
@@ -244,43 +235,25 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 ### 5.1 本轮 APK
 
-- 评审副本：`release/UPC-Pocket-M5-library-chaoxing-native-debug.apk`
+- 评审副本：`release/UPC-Pocket-M5-library-seats-only-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,620,449` bytes
-- SHA-256：`825C94E5A2D2992BC4250AB0E9C3BAFAE09164909315FDE82B1C7F4DCDA93984`
+- 大小：`64,426,840` bytes
+- SHA-256：`5CCEF1C1DADC409DD7C30FA71EE34A3FAD86EDC5BA8C20E54BFB3A83CD447F21`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
-- 上一版 `release/UPC-Pocket-M5-library-official-entries-debug.apk` 保留为对照；本轮原生 Chaoxing 改动在该新副本中。
+- 文件名明确为 seats-only；旧含研讨间的本地 APK 已删除，不再作为现行或历史交付物。
 
 ## 6. 未验证 / 限制
 
-- 模拟器上的真实凭据尝试到达 CAS 后被验证码挑战拦下；随后独立 Chrome 用修正后的
-  “两行一组”（第一行首个冒号后为账号、第二行首个冒号后为密码）正常登录**一次成功**，
-  最终到 libspace，无错误。不会再把先前的错误解析/错误提示当作凭据无效证据。
-- **用户手机真机验收（用户提供）**：nspace 会话已建立，1 馆区、4 空间类型、3 日期可显示
-  切换，A123 详情/表单已加载（3–6 人、08:00–21:50、60–120 分钟、使用类型、手机号/主题/
-  大纲）。agent 独立 Chrome 也读取到 A123 详情/表单（11/05、11/06 有时段，11/04 当天无
-  可用时段），未点击最终预约；这不等于真实预约成功。
-- 未提交任何真实预约、取消、签到、团队或写请求。nspace 个人预约表单已接入并有合成
-  JSON/规则测试，但未点击最终“确认提交”；A123 需多人组队，应用明确引导官方页面，没有
-  伪造参与人/团队。已从公开前端核对 `participants` 为被邀请人 username 的逗号连接、
-  `teamId` 团队模式、`searchUser`/`verifyUsername`/`queryUserTeamList` 的只读形状；
-  本人 `queryUserTeamList` 只读返回空 `pageList`/`totalCount=0`（当前无团队），没有
-  搜索真实姓名、加入/创建团队或添加成员。
-- 未在 App 内 WebView 完成 nspace 验证码后的回跳（本轮模拟器只复核统一页文案/布局；
-  未在 App 内提交凭据）。Chaoxing seat/seatengine 已完成原生只读；reservepc 因稳定 URL
-  缺学校业务目录生成的租户上下文而明确报错，不是原生列表全通。
+- 研讨间/空间预约已按用户 2026-11-04 决定撤下；历史 nspace/reservepc 研究证据仍保留在
+  [图书馆六入口（归档）](图书馆六入口.md) 和 `docs/research/`，不代表现行产品能力。
 - Chaoxing 真实 App 内登录仍未验收：`passport2` 要求手机号/超星号 + 学习通密码，不是学校
   CAS；不能把统一学校账号密码自动提交。受控 UI 验收只在测试进程注入过一次本机已登录会话
-  Cookie，上一轮随后 `pm clear` 清除，不是产品持久化路径；本轮未再清除应用数据。
+  Cookie，测试结束只清理私有文件；本轮未再 `pm clear`。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。
 - 未重排空教室、图书馆、电费内部页面；本轮只统一外层视觉/入口。它们沿用 M0—M4 的页面与交互，
   因此仍可能保留旧 spacing/文案密度，作为下一轮迭代项。
-- 图书馆统一页的 nspace 认证/表单虽然已实现，用户手机也已验收浏览/表单可达，但 agent
-  新设备尚未完成 App 内 WebView 端到端；Chaoxing seat/seatengine 已是原生只读，
-  reservepc 仍受租户上下文阻塞，不能据此声称六个平台都已原生接入。六入口矩阵和具体边界
-  见 [图书馆六入口](图书馆六入口.md)。
 - 未执行 release/R8、真机、其他 ROM/WebView；桌面组件仅验证设置页与既有测试。
-- 本轮没有执行任何真实预约/取消/签到；nspace 取消和预约提交仅在代码/合成测试中验证。
+- 本轮没有执行任何真实预约/取消/签到；libseat 座位取消功能保留但未用真实记录验收。
 - 这不代表最终设计定稿；需要用户先看实际第一版，再决定是否继续细化。

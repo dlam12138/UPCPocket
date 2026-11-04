@@ -141,79 +141,6 @@ class ChaoxingRepository internal constructor(
         ChaoxingProtocol.parseUsedTimes(body)
     }
 
-    /**
-     * reservepc 的列表接口要求页面服务端渲染的 `reserveIdEnc`。先以同一 Cookie
-     * 打开官方页面读取该租户上下文，再调用列表；不复制一次性 URL，也不猜签名。
-     */
-    suspend fun reserveRooms(
-        tenant: ChaoxingTenant,
-        cookieHeader: String,
-    ): ChaoxingReserveRoomPage = withContext(Dispatchers.IO) {
-        val pageResponse = fetch(
-            cookieHeader,
-            "https://reserve.chaoxing.com/front/web/apps/reservepc/index?" +
-                query(
-                    linkedMapOf(
-                        "reserveId" to tenant.reserveId,
-                        "resvAppId" to tenant.reserveId,
-                        "fidEnc" to FID_ENC,
-                        "mappId" to tenant.mappId,
-                    ),
-                ),
-        )
-        if (pageResponse.status != 200) {
-            if (pageResponse.status in setOf(302, 303) &&
-                pageResponse.location.contains("passport", ignoreCase = true)
-            ) {
-                throw ChaoxingSessionExpiredException()
-            }
-            throw ChaoxingException(
-                "研讨间入口缺少学校业务目录上下文",
-                "chaoxing_tenant_context",
-            )
-        }
-        val reserveIdEnc = ChaoxingProtocol.parseReserveIdEnc(pageResponse.body)
-        listReserveRooms(tenant, cookieHeader, reserveIdEnc)
-    }
-
-    /**
-     * 使用受限 WebView 已经渲染出的租户上下文，跳过不可复现的入口页面。
-     * 上下文只接受固定官方页面来源、匹配租户和 `reserveIdEnc` 形状；不持久化。
-     */
-    suspend fun reserveRooms(
-        tenant: ChaoxingTenant,
-        cookieHeader: String,
-        context: ChaoxingReserveContext,
-    ): ChaoxingReserveRoomPage = withContext(Dispatchers.IO) {
-        if (!context.isUsableFor(tenant)) {
-            throw ChaoxingException("研讨间租户上下文不匹配", "chaoxing_tenant_context")
-        }
-        listReserveRooms(tenant, cookieHeader, context.reserveIdEnc)
-    }
-
-    private fun listReserveRooms(
-        tenant: ChaoxingTenant,
-        cookieHeader: String,
-        reserveIdEnc: String,
-    ): ChaoxingReserveRoomPage {
-        val body = read(
-            cookieHeader,
-            "https://reserve.chaoxing.com/data/apps/reserve/item/list/time",
-            formBody = form(
-                linkedMapOf(
-                    "sw" to "",
-                    "reserveId" to tenant.reserveId,
-                    "resvAppId" to tenant.reserveId,
-                    "startTime" to "",
-                    "endTime" to "",
-                    "reserveIdEnc" to reserveIdEnc,
-                    "fidEnc" to FID_ENC,
-                ),
-            ),
-        )
-        return ChaoxingProtocol.parseReserveRooms(body)
-    }
-
     private fun fetch(
         cookieHeader: String,
         url: String,
@@ -277,9 +204,6 @@ class ChaoxingRepository internal constructor(
                     path.startsWith("/data/apps/seatengine/") ||
                     path == "/front/third/apps/seat/index" ||
                     path == "/front/third/apps/seatengine/index"
-            "reserve.chaoxing.com" ->
-                path.startsWith("/data/apps/reserve/") ||
-                    path == "/front/web/apps/reservepc/index"
             else -> false
         }
         if (!allowed) throw ChaoxingException("未允许的 Chaoxing 路径", "chaoxing_protocol")

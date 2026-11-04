@@ -27,10 +27,6 @@ import com.upcpocket.app.library.LibraryAccountAuthResult
 import com.upcpocket.app.library.LibraryAccountAuthenticator
 import com.upcpocket.app.library.LibraryCapabilities
 import com.upcpocket.app.library.LibraryPlugin
-import com.upcpocket.app.library.NspaceAccountAuthResult
-import com.upcpocket.app.library.NspaceAccountAuthenticator
-import com.upcpocket.app.library.NspaceAuthFailure
-import com.upcpocket.app.library.NspaceWebTokenExchanger
 import com.upcpocket.app.library.SchoolWebCookies
 import com.upcpocket.app.plugin.api.PluginAppLifecycle
 import com.upcpocket.app.plugin.runtime.ActivePlugins
@@ -48,8 +44,6 @@ import com.upcpocket.app.timetable.TimetableService
 import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
 import com.upcpocket.app.upcauth.UpcLibraryAuthResult
 import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
-import com.upcpocket.app.upcauth.UpcNspaceAuthResult
-import com.upcpocket.app.upcauth.UpcNspaceAuthenticator
 import com.upcpocket.app.upcauth.UpcTimetableAuthenticator
 import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
@@ -111,10 +105,6 @@ object AppGraph {
             // 图书馆插件被移除时，旧 WebView Cookie 仍可能留在系统中；这里仍按
             // 学校域名清理并等待，避免换号后自动带回旧身份。
             failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
-        }
-        val nspace = activePlugins.capability(LibraryCapabilities.nspace)
-        if (nspace != null && !nspace.signOutForAccountChange()) {
-            failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
         }
         val chaoxing = activePlugins.capability(LibraryCapabilities.chaoxing)
         if (chaoxing != null && !chaoxing.signOutForAccountChange()) {
@@ -225,65 +215,7 @@ object AppGraph {
             account = account,
             identityVerifier = account,
             authenticator = libraryAuthenticator,
-            nspaceAuthenticator = nspaceAuthenticator,
-            nspaceWebTokenExchanger = nspaceWebTokenExchanger,
         )
-    }
-
-    /** nspace 使用独立 token/接口；只复用受控凭据与账号门闩，不复用 seat token。 */
-    private val nspaceCore: UpcNspaceAuthenticator by lazy {
-        UpcNspaceAuthenticator(account)
-    }
-
-    private val nspaceAuthenticator: NspaceAccountAuthenticator by lazy {
-        NspaceAccountAuthenticator { accountId, generation ->
-            when (val result = nspaceCore.authenticate(accountId, generation)) {
-                is UpcNspaceAuthResult.Success -> NspaceAccountAuthResult.Success(
-                    token = result.token,
-                    user = com.upcpocket.app.data.nspace.NspaceUser(
-                        id = result.user.id,
-                        username = result.user.username,
-                        name = result.user.name,
-                    ),
-                )
-                is UpcNspaceAuthResult.Failure -> NspaceAccountAuthResult.Failure(
-                    reason = result.reason.toNspaceFailure(),
-                    interactionUrl = result.interactionUrl,
-                )
-            }
-        }
-    }
-
-    private val nspaceWebTokenExchanger: NspaceWebTokenExchanger by lazy {
-        NspaceWebTokenExchanger { accountId, generation, appToken ->
-            when (val result = nspaceCore.exchangeWebToken(appToken, accountId, generation)) {
-                is UpcNspaceAuthResult.Success -> NspaceAccountAuthResult.Success(
-                    token = result.token,
-                    user = com.upcpocket.app.data.nspace.NspaceUser(
-                        id = result.user.id,
-                        username = result.user.username,
-                        name = result.user.name,
-                    ),
-                )
-                is UpcNspaceAuthResult.Failure -> NspaceAccountAuthResult.Failure(
-                    reason = result.reason.toNspaceFailure(),
-                    interactionUrl = result.interactionUrl,
-                )
-            }
-        }
-    }
-
-    private fun UpcLibraryAuthFailure.toNspaceFailure(): NspaceAuthFailure = when (this) {
-        UpcLibraryAuthFailure.INVALID_CREDENTIALS -> NspaceAuthFailure.INVALID_CREDENTIALS
-        UpcLibraryAuthFailure.INTERACTION_REQUIRED -> NspaceAuthFailure.INTERACTION_REQUIRED
-        UpcLibraryAuthFailure.NETWORK_UNAVAILABLE -> NspaceAuthFailure.NETWORK_UNAVAILABLE
-        UpcLibraryAuthFailure.TLS_ERROR -> NspaceAuthFailure.TLS_ERROR
-        UpcLibraryAuthFailure.UPSTREAM_ERROR -> NspaceAuthFailure.UPSTREAM_ERROR
-        UpcLibraryAuthFailure.PROTOCOL_ERROR -> NspaceAuthFailure.PROTOCOL_ERROR
-        UpcLibraryAuthFailure.ACCOUNT_UNAVAILABLE -> NspaceAuthFailure.ACCOUNT_UNAVAILABLE
-        UpcLibraryAuthFailure.ACCOUNT_CHANGED -> NspaceAuthFailure.ACCOUNT_CHANGED
-        UpcLibraryAuthFailure.ACCESS_DENIED -> NspaceAuthFailure.ACCESS_DENIED
-        UpcLibraryAuthFailure.IDENTITY_MISMATCH -> NspaceAuthFailure.IDENTITY_MISMATCH
     }
 
     private fun UpcLibraryAuthFailure.toFeatureFailure(): LibraryAccountAuthFailure = when (this) {

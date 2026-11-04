@@ -172,7 +172,7 @@ fun ChaoxingLoginScreen(
                     Column {
                         Text("Chaoxing 网页登录")
                         Text(
-                            "座位 / 研讨间 · 官方会话",
+                            "座位 · 官方会话",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -305,7 +305,6 @@ internal fun isAllowedChaoxingLoginUrl(raw: String): Boolean {
 
 internal val chaoxingLoginHosts = setOf(
     "office.chaoxing.com",
-    "reserve.chaoxing.com",
     "passport2.chaoxing.com",
     "passport2-api.chaoxing.com",
     "captcha.chaoxing.com",
@@ -313,14 +312,10 @@ internal val chaoxingLoginHosts = setOf(
 )
 
 /**
- * 合并 office/reserve 两个 host 的 Cookie，按名称去重，保留先出现的值。
- * 返回值只在内存中使用，不能写日志。
+ * 只读取应用 WebView 的 office Chaoxing Cookie；返回值只在内存中使用，不能写日志。
  */
-internal fun collectChaoxingCookies(manager: CookieManager): String {
-    val office = manager.getCookie("https://office.chaoxing.com/").orEmpty()
-    val reserve = manager.getCookie("https://reserve.chaoxing.com/").orEmpty()
-    return mergeCookieHeaders(office, reserve)
-}
+internal fun collectChaoxingCookies(manager: CookieManager): String =
+    manager.getCookie("https://office.chaoxing.com/").orEmpty()
 
 internal fun mergeCookieHeaders(first: String, second: String): String {
     val result = linkedMapOf<String, String>()
