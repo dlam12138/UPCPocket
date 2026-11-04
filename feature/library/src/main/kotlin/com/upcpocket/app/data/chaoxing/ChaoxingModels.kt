@@ -118,6 +118,23 @@ data class ChaoxingReserveRoomPage(
     val rooms: List<ChaoxingReserveRoom>,
 )
 
+/**
+ * 已加载 reservepc 页面里的租户上下文。
+ *
+ * `reserveIdEnc` 是服务端在页面中渲染的租户标识，不是用户票据；只在内存中随当前
+ * 账号/代次/会话修订绑定，退出/换号/会话失效即丢弃。来源路径必须精确匹配官方页面。
+ */
+data class ChaoxingReserveContext(
+    val tenant: ChaoxingTenant,
+    val reserveIdEnc: String,
+    val sourcePath: String,
+) {
+    fun isUsableFor(tenant: ChaoxingTenant): Boolean =
+        this.tenant == tenant &&
+            sourcePath == "/front/web/apps/reservepc/index" &&
+            reserveIdEnc.matches(Regex("""[A-Za-z0-9+/=]{8,128}"""))
+}
+
 class ChaoxingException(
     message: String,
     val code: String = "chaoxing_protocol",

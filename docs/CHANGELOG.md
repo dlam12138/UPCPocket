@@ -9,11 +9,13 @@
 - 修复空间类型灰置：HAR 的 4 个空间类型 `status` 均为 `0`，旧解析把 `0` 当禁用；公开页面/用户手机可切换。现按 `status=0` 可用、`status=1` 停用处理，并新增协议测试。nspace 页面文案去掉“原生只读/不提交新预约”等与现有表单矛盾的实现术语；A123 等多人/选座房间不再显示会失败的个人表单入口，明确引导官方组队。
 - Chaoxing 原生只读（新增）：seat/seatengine 使用固定 `fidEnc/mappId[/seatId]`，类型化解析 room-list/room/info/seat-map/used-seat/used-times；新增 `ChaoxingService` 内存会话、受限官方 WebView 登录、`userLoginInfo.sno` 本人核验、账号代次/epoch/revision 门闩和 WebView Cookie 清理。seat 东区 6 区域（48/44/52/44/66/66 座，08:00–21:30，30 分钟）、seatengine 求是 21 区域（16–240 座，08:00–22:00，30 分钟）已在真实 Android 进程内只读验证；模拟器加载真实区域/座位图/已用人数。真实预约仍走官方页。
 - reservepc 原生解析/UI 已实现，但稳定 URL 当前 302 到“未查询到应用”：列表要求学校业务目录页面渲染的 `reserveIdEnc`，不是用户票据；HAR 中的 `enc/code/state/wfwEnc` 不硬编码。无上下文时应用显示精确错误并回退官方页，不伪造 8/23 个房间。此前“稳定 URL 可打开列表”的浏览器结论被本轮真实请求纠正。
+- 新增 `ChaoxingReserveContext` 内存桥接：`adoptReserveContext` 只接受固定 reservepc 来源、匹配租户、16 位上下文，绑定 accountId/代次/epoch/revision/来源路径；Repository 可直接用该上下文调用 `item/list/time`。用两个租户页面 `reserveIdEnc` + 当前 Cookie 的私有回放分别读到 8/23 项；尚未接入 WebView 自动采集，因为还没有当前可加载的学校/微信入口链接。
+- Chaoxing 会话安全回归：WebView 打开时捕获 `entryId/epoch/revision/accountId/代次`，旧 onPageFinished 不能重绑定；`signOut`/`signOutForAccountChange` 进入单飞清理门闩，清理挂起期间拒绝新登录，旧清理完成后不会删除新会话；清理失败/超时保持 `FAILED` 并阻止登录，`retryCookieCleanup` 成功后才恢复。新增确定性挂起/并发/失败/旧回调测试。
 - 修复 CAS 挑战误判：CAS 以 401/403 返回登录/验证码页时，不再直接报 `ACCESS_DENIED`，而是解析页面并返回 `INTERACTION_REQUIRED` + 学校交互 URL；无表单才拒绝。模拟器真实凭据尝试到达验证码挑战后停止，不绕过、不重复失败密码。
 - 独立 Chrome 使用修正后的文件解析（第一行首个冒号后账号、第二行首个冒号后密码；保留值内冒号、不交换）正常登录一次成功，读取到 1 馆区/4 类型/3 日期和 A123 详情/表单（11/05、11/06 有时段；11/04 当天无可用时段）。未执行真实预约/取消/签到，未添加成员/团队。
 - 统一页标签区分“原生/原生只读”；Chaoxing 四卡不再跳系统浏览器，而是进入原生只读页；seat/seatengine 已原生查询，reservepc 明确受租户上下文阻塞，不把入口页、HTTP 200 或浏览器列表当作业务成功。
 - 账号门闩：nspace 登录与 libseat 一样绑定当前 accountId/凭据代次；换号/删号同时清理两面会话，迟到认证结果不发布；新增合成测试覆盖协议分页、401、本人不一致、代次变化和独立 token。
-- 验证：`core:upc-auth` 28 tests、`feature:library` **123 tests（1 skipped，需显式 Cookie 的真实回放）**、`app:testDebugUnitTest` 32 tests、`assembleDebug` 通过；`feature:library:lintDebug` 无问题、`app:lintDebug` 0 errors / 2 既有 warnings。`RealChaoxingAuthTest` 在 API 36 模拟器进程内通过（账号保存→本人核验→seat/engine 真实只读；reserve 返回租户上下文错误）；模拟器验收原生 seat/seatengine 区域/座位图/reserve 错误态（29–32 截图），测试账号/Cookie 已清除；未执行任何真实预约/取消/签到/团队。详见 [六入口记录](m5/图书馆六入口.md)。
+- 验证：`core:upc-auth` 28 tests、`feature:library` **129 tests（2 skipped，需显式 Cookie/租户上下文的真实回放）**、`app:testDebugUnitTest` 32 tests、`assembleDebug` 通过；`feature:library:lintDebug` 无问题、`app:lintDebug` 0 errors / 2 既有 warnings。`RealChaoxingAuthTest` 在 API 36 模拟器进程内通过（账号保存→本人核验→seat/engine 真实只读；reserve 返回租户上下文错误）；模拟器验收原生 seat/seatengine 区域/座位图/reserve 错误态（29–32 截图），测试进程只清理私有账号/Cookie，本轮未再 `pm clear`；未执行任何真实预约/取消/签到/团队。详见 [六入口记录](m5/图书馆六入口.md)。
 
 ## M5 · 首页/课表/专注与统一设置入口（开发分支，未发布）
 

@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingTenant
+import com.upcpocket.app.library.ChaoxingCleanupState
 import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.library.NspaceService
@@ -86,6 +87,7 @@ fun LibraryHubScreen(
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
     val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
     val chaoxingSession by chaoxingService.session.collectAsStateWithLifecycle()
+    val chaoxingCleanup by chaoxingService.cleanupState.collectAsStateWithLifecycle()
 
     val platforms = listOf(
         LibraryPlatform(
@@ -194,7 +196,12 @@ fun LibraryHubScreen(
                     Text(
                         "libseat：" + (seatSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
                             " · nspace：" + (nspaceSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
-                            " · Chaoxing：" + (chaoxingSession?.let { "已连接" } ?: "未登录"),
+                            " · Chaoxing：" + when {
+                                chaoxingCleanup == ChaoxingCleanupState.FAILED -> "Cookie 清理失败"
+                                chaoxingCleanup == ChaoxingCleanupState.CLEARING -> "Cookie 清理中"
+                                chaoxingSession != null -> "已连接"
+                                else -> "未登录"
+                            },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

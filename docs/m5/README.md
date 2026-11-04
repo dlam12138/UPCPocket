@@ -5,8 +5,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 本轮补充“图书馆”统一入口、nspace 浏览/预约取消、个人预约表单、WebView 验证码回退和
 真实凭据检查；用户手机已验收 nspace 会话与 A123 表单。2026-11-04 又在已登录 Chaoxing
 会话中核对 seat/seatengine 的真实馆区、座位图与 30 分钟时段，并完成这两个入口的原生
-只读接入；reservepc 两租户的解析/UI 已实现，但稳定 URL 缺学校业务目录生成的租户上下文，
-应用明确报错并回退官方页，不伪造列表。四个 Chaoxing 入口不是“全部原生完成”；详见
+只读接入；reservepc 两租户的解析/UI 和内存上下文桥接已实现（用页面 `reserveIdEnc`
+回放可读到 8/23 项），但稳定 URL 仍缺学校业务目录/微信侧生成的租户上下文，应用明确报错
+并回退官方页，不伪造列表。四个 Chaoxing 入口不是“全部原生完成”；详见
 [图书馆六入口](图书馆六入口.md)。
 
 - 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）
@@ -78,9 +79,10 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
   Chaoxing seat/seatengine 已接入类型化区域/座位图/已用座位/时段和受限官方 WebView
   内存会话；seat 东区 6 个区域（48–66 座，08:00–21:30，30 分钟）、seatengine 求是
   21 个区域（16–240 座，08:00–22:00，30 分钟）已在真实 Android 进程内只读验证。
-  reservepc 两租户的解析/UI 已实现，但当前稳定 URL 302 到“未查询到应用”，缺少学校业务
-  目录生成的 `reserveIdEnc`；应用明确显示租户上下文缺失并回退官方页，不伪造 8/23 个
-  房间。真实预约/取消/签到/团队仍未实现。六入口矩阵见
+  reservepc 两租户的解析/UI 和 `ChaoxingReserveContext` 内存桥接已实现；用页面
+  `reserveIdEnc` + 当前 Cookie 的真实回放读到 8/23 项，但稳定 URL 302 到“未查询到应用”，
+  缺少学校业务目录/微信侧生成的 `reserveIdEnc`。应用明确显示租户上下文缺失并回退官方页，
+  不伪造房间。真实预约/取消/签到/团队仍未实现。六入口矩阵见
   [图书馆六入口](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
@@ -226,7 +228,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **28 tests，0 failures/errors/skipped**（CAS 验证码挑战、Web token 兑换/身份错配/非法 token） |
-| `:feature:library:testDebugUnitTest` | **123 tests，0 failures/errors，1 skipped**（nspace 协议/分页/账号隔离/Web 回调/取消/表单；Chaoxing 解析/身份/会话/主机路径/reserve 上下文；需显式 Cookie 的真实回放默认跳过） |
+| `:feature:library:testDebugUnitTest` | **129 tests，0 failures/errors，2 skipped**（nspace 协议/分页/账号隔离/Web 回调/取消/表单；Chaoxing 解析/身份/会话/主机路径/reserve 上下文；清理挂起/并发/失败门闩；需显式 Cookie/租户上下文的真实回放默认跳过） |
 | `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合包含 `library.chaoxing.*` 五个路由 |
 | Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；reserve 精确返回 `chaoxing_tenant_context` |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
@@ -244,8 +246,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - 评审副本：`release/UPC-Pocket-M5-library-chaoxing-native-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,609,141` bytes
-- SHA-256：`EC3229F4310E3E0012E8BCA5F1B432DEAA52DFA2D57B3E631FBB6BCC4F061F20`
+- 大小：`65,620,449` bytes
+- SHA-256：`825C94E5A2D2992BC4250AB0E9C3BAFAE09164909315FDE82B1C7F4DCDA93984`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 - 上一版 `release/UPC-Pocket-M5-library-official-entries-debug.apk` 保留为对照；本轮原生 Chaoxing 改动在该新副本中。
 
@@ -269,7 +271,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
   缺学校业务目录生成的租户上下文而明确报错，不是原生列表全通。
 - Chaoxing 真实 App 内登录仍未验收：`passport2` 要求手机号/超星号 + 学习通密码，不是学校
   CAS；不能把统一学校账号密码自动提交。受控 UI 验收只在测试进程注入过一次本机已登录会话
-  Cookie，随后 `pm clear` 清除，不是产品持久化路径。
+  Cookie，上一轮随后 `pm clear` 清除，不是产品持久化路径；本轮未再清除应用数据。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。

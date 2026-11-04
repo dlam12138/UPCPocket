@@ -43,6 +43,7 @@ import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingWebCookies
 import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
 import com.upcpocket.app.library.ChaoxingAuthFailure
+import com.upcpocket.app.library.ChaoxingCleanupState
 import com.upcpocket.app.library.ChaoxingLoginResult
 import com.upcpocket.app.library.ChaoxingService
 import java.net.URI
@@ -63,6 +64,7 @@ fun ChaoxingLoginScreen(
     onLoggedIn: () -> Unit,
 ) {
     val account by service.accountState.collectAsStateWithLifecycle()
+    val cleanupState by service.cleanupState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var webView by remember { mutableStateOf<WebView?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -70,6 +72,9 @@ fun ChaoxingLoginScreen(
     var pageLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var attempted by remember { mutableStateOf<String?>(null) }
+    var entry by remember(account.status, account.generation) {
+        mutableStateOf(service.beginWebLogin())
+    }
 
     if (account.blocksPersonalSessions ||
         account.status != SchoolAccountStatus.SAVED_UNVERIFIED
@@ -89,8 +94,48 @@ fun ChaoxingLoginScreen(
         return
     }
 
+    if (entry == null) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("Chaoxing 登录暂不可用", style = MaterialTheme.typography.titleMedium)
+            Text(
+                when (cleanupState) {
+                    ChaoxingCleanupState.CLEARING ->
+                        "上一次退出/换号仍在清理 Chaoxing Cookie；完成前不会发布新会话。"
+                    ChaoxingCleanupState.FAILED ->
+                        "上一次 Chaoxing Cookie 清理失败或超时；已阻止新登录，避免旧会话残留。"
+                    ChaoxingCleanupState.IDLE ->
+                        "当前账号或会话状态不可用；请先在设置中确认学校账号。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            if (cleanupState == ChaoxingCleanupState.FAILED) {
+                Button(onClick = {
+                    scope.launch {
+                        if (service.retryCookieCleanup()) {
+                            entry = service.beginWebLogin()
+                            error = null
+                        } else {
+                            error = "Cookie 清理仍未成功；不会发布 Chaoxing 会话。"
+                        }
+                    }
+                }) { Text("重试清理") }
+            }
+            TextButton(onClick = onBack) { Text("返回") }
+        }
+        return
+    }
+
     fun tryFinish() {
         if (busy || finished) return
+        val activeEntry = entry
+        if (activeEntry == null) {
+            error = "网页登录入口已失效或 Cookie 清理尚未完成；请返回后重新打开。"
+            return
+        }
         val cookie = collectChaoxingCookies(CookieManager.getInstance())
         if (!ChaoxingWebCookies.hasSessionCookie(cookie) || cookie == attempted) return
         attempted = cookie
@@ -98,7 +143,7 @@ fun ChaoxingLoginScreen(
         error = null
         webView?.stopLoading()
         scope.launch {
-            when (val result = service.loginWithWebCookies(cookie)) {
+            when (val result = service.loginWithWebCookies(activeEntry, cookie)) {
                 ChaoxingLoginResult.Success -> {
                     finished = true
                     CookieManager.getInstance().flush()
@@ -299,4 +344,10 @@ private fun chaoxingLoginMessage(reason: ChaoxingAuthFailure): String = when (re
     ChaoxingAuthFailure.INVALID_SESSION -> "登录后没有取得有效 Chaoxing 会话。"
     ChaoxingAuthFailure.NETWORK_UNAVAILABLE -> "网络不可用，登录未完成。"
     ChaoxingAuthFailure.PROTOCOL_ERROR -> "Chaoxing 登录页/身份响应不符合已验证契约。"
+    ChaoxingAuthFailure.CLEANUP_IN_PROGRESS ->
+        "Chaoxing Cookie 清理进行中；完成前不会发布新会话。"
+    ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED ->
+        "上次 Cookie 清理失败/超时；已阻止新登录，请先重试清理。"
+    ChaoxingAuthFailure.STALE_WEB_ENTRY ->
+        "该网页登录页已过期（之后打开过新的登录/清理）；请重新打开登录页。"
 }

@@ -87,7 +87,8 @@ class RealChaoxingAuthTest {
         )
         service = chaoxing
 
-        val login = chaoxing.loginWithWebCookies(cookie)
+        val entry = requireNotNull(chaoxing.beginWebLogin())
+        val login = chaoxing.loginWithWebCookies(entry, cookie)
         assertEquals(
             "身份/会话未通过：${(login as? ChaoxingLoginResult.Failure)?.reason}",
             ChaoxingLoginResult.Success,

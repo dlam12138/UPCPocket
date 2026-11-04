@@ -76,8 +76,9 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | 项目 | 说明 |
 | --- | --- |
 | 认证 | 受限官方 WebView；`passport2` 要求手机号/超星号 + 学习通密码，不是学校 CAS。应用不预填、不读取、不保存密码，也不把统一学校账号密码自动提交给 Chaoxing |
-| 会话 | 只读取应用 WebView 的 Chaoxing Cookie，保存在 `ChaoxingService` 内存；不写 DataStore/Keystore/文件/日志；退出、换号、删号或会话失效时清理固定 host/path Cookie |
+| 会话 | 只读取应用 WebView 的 Chaoxing Cookie，保存在 `ChaoxingService` 内存；不写 DataStore/Keystore/文件/日志；退出、换号、删号或会话失效时清理固定 host/path Cookie。WebView 打开时捕获入口 `entryId/epoch/revision`；清理单飞进行中拒绝新登录，清理失败/超时保持失败状态并阻止登录，必须重试成功后才可再登录 |
 | 身份核验 | 服务端 `userLoginInfo.sno` 与当前统一账号比较；发布前复核 accountId/凭据代次/epoch/revision，迟到结果不发布 |
+| 租户上下文 | reservepc 的 `reserveIdEnc` 只在从官方页面捕获后存内存，绑定 tenant/accountId/代次/epoch/revision/来源路径；退出/换号/会话失效即清，不持久化、不拼接稳定 URL |
 | 读取 | seat/seatengine 固定 `/data/apps/{seat,seatengine}/...` 路径：区域、房间信息、座位图、已用座位、已用时段；reservepc 固定 `/data/apps/reserve/...` 路径：先读官方页面的 `reserveIdEnc`，再读租户房间列表 |
 | 写入 | 本轮没有实现预约/取消/签到；seat/seatengine 原生页只读，真实预约走官方页。reservepc 缺租户上下文时只显示错误和官方回退，不伪造房间 |
 | 浏览器隔离 | 不读取、不导入系统浏览器/Edge/微信/临时 profile 的 Cookie；受控 UI 验收的测试注入已在结束后 `pm clear`，不是产品路径 |

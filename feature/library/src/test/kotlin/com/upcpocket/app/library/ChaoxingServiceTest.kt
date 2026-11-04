@@ -14,11 +14,14 @@ import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingTenant
 import com.upcpocket.app.data.chaoxing.ChaoxingTransport
 import java.util.concurrent.CountDownLatch
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -136,6 +139,195 @@ class ChaoxingServiceTest {
         assertTrue(service.signOutForAccountChange())
         assertNull(service.session.value)
         assertTrue(cleared >= 1)
+    }
+
+    @Test
+    fun `cleanup gate blocks old callback and new login until clear completes`() = runTest {
+        val account = Account()
+        val clearStarted = CompletableDeferred<Unit>()
+        val releaseClear = CompletableDeferred<Unit>()
+        var clearCount = 0
+        val service = ChaoxingService(
+            repository = repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            accountGate = account,
+            accountReference = account,
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.MATCH
+            },
+            clearCookies = {
+                clearCount++
+                clearStarted.complete(Unit)
+                releaseClear.await()
+                true
+            },
+        )
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(COOKIE))
+        val oldPage = requireNotNull(service.beginWebLogin())
+        val signOut = async { service.signOut() }
+        clearStarted.await()
+
+        assertEquals(
+            ChaoxingAuthFailure.CLEANUP_IN_PROGRESS,
+            (service.loginWithWebCookies(oldPage, COOKIE) as ChaoxingLoginResult.Failure).reason,
+        )
+        assertNull(service.beginWebLogin())
+        assertNull(service.session.value)
+
+        releaseClear.complete(Unit)
+        assertEquals(ChaoxingCleanupResult.Success, signOut.await())
+        assertEquals(1, clearCount)
+        assertEquals(ChaoxingCleanupState.IDLE, service.cleanupState.value)
+
+        assertEquals(
+            ChaoxingAuthFailure.STALE_WEB_ENTRY,
+            (service.loginWithWebCookies(oldPage, COOKIE) as ChaoxingLoginResult.Failure).reason,
+        )
+        val newPage = requireNotNull(service.beginWebLogin())
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(newPage, COOKIE))
+        assertEquals(COOKIE, service.session.value?.cookieHeader)
+    }
+
+    @Test
+    fun `concurrent sign-outs share one cleanup and cannot clear a later session`() = runTest {
+        val account = Account()
+        val clearStarted = CompletableDeferred<Unit>()
+        val releaseClear = CompletableDeferred<Unit>()
+        var clearCount = 0
+        val service = ChaoxingService(
+            repository = repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            accountGate = account,
+            accountReference = account,
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.MATCH
+            },
+            clearCookies = {
+                clearCount++
+                clearStarted.complete(Unit)
+                releaseClear.await()
+                true
+            },
+        )
+        service.loginWithWebCookies(COOKIE)
+        val first = launch { service.signOut() }
+        clearStarted.await()
+        val second = launch { service.signOut() }
+        yield()
+        releaseClear.complete(Unit)
+        first.join()
+        second.join()
+        assertEquals(1, clearCount)
+
+        val page = requireNotNull(service.beginWebLogin())
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(page, COOKIE))
+        assertEquals(COOKIE, service.session.value?.cookieHeader)
+        assertEquals(ChaoxingCleanupState.IDLE, service.cleanupState.value)
+    }
+
+    @Test
+    fun `cleanup failure stays visible and blocks login until retry succeeds`() = runTest {
+        val account = Account()
+        var clearSucceeds = false
+        var clearCount = 0
+        val service = ChaoxingService(
+            repository = repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            accountGate = account,
+            accountReference = account,
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.MATCH
+            },
+            clearCookies = {
+                clearCount++
+                clearSucceeds
+            },
+        )
+        service.loginWithWebCookies(COOKIE)
+        val oldPage = requireNotNull(service.beginWebLogin())
+
+        assertTrue(service.signOut() is ChaoxingCleanupResult.Failed)
+        assertEquals(ChaoxingCleanupState.FAILED, service.cleanupState.value)
+        assertNull(service.session.value)
+        assertNull(service.beginWebLogin())
+        assertEquals(
+            ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED,
+            (service.loginWithWebCookies(oldPage, COOKIE) as ChaoxingLoginResult.Failure).reason,
+        )
+        assertEquals(1, clearCount)
+
+        clearSucceeds = true
+        assertTrue(service.retryCookieCleanup())
+        assertEquals(ChaoxingCleanupState.IDLE, service.cleanupState.value)
+        val page = requireNotNull(service.beginWebLogin())
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(page, COOKIE))
+        assertEquals(2, clearCount)
+    }
+
+    @Test
+    fun `account change reports a failed cookie cleanup instead of success`() = runTest {
+        val account = Account()
+        val service = ChaoxingService(
+            repository = repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            accountGate = account,
+            accountReference = account,
+            identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
+                SchoolAccountIdentityCheck.MATCH
+            },
+            clearCookies = { false },
+        )
+        service.loginWithWebCookies(COOKIE)
+
+        assertFalse(service.signOutForAccountChange())
+        assertEquals(ChaoxingCleanupState.FAILED, service.cleanupState.value)
+        assertNull(service.session.value)
+    }
+
+    @Test
+    fun `reserve context is accepted only for its tenant and skips page discovery`() = runTest {
+        val account = Account()
+        val requests = mutableListOf<ChaoxingHttpRequest>()
+        val repository = repository { request ->
+            requests += request
+            when {
+                request.url.contains("/front/third/apps/seat/index") -> html(
+                    """var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""",
+                )
+                request.url.contains("/data/apps/reserve/item/list/time") -> json(
+                    """{"success":true,"data":{"reserveItemList":[
+                       {"id":1,"name":"403","minUserNum":1,"maxUserNum":20,
+                        "reserveNum":1,"details":"","reserveIntervalList":[]}
+                    ]}}""",
+                )
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val service = service(account, repository, SchoolAccountIdentityCheck.MATCH)
+        service.loginWithWebCookies(COOKIE)
+
+        val seatPage = requireNotNull(service.beginWebLogin())
+        assertFalse(service.adoptReserveContext(seatPage, ChaoxingTenant.GUZHENKOU, "0123456789abcdef"))
+
+        val reservePage = requireNotNull(
+            service.beginWebLogin(ChaoxingWebSource.RESERVEPC_TENANT, ChaoxingTenant.GUZHENKOU),
+        )
+        assertFalse(
+            service.adoptReserveContext(reservePage, ChaoxingTenant.QIUSHI, "0123456789abcdef"),
+        )
+        assertFalse(
+            service.adoptReserveContext(reservePage, ChaoxingTenant.GUZHENKOU, "short"),
+        )
+        assertTrue(service.adoptReserveContext(reservePage, ChaoxingTenant.GUZHENKOU, "0123456789abcdef"))
+        val rooms = service.reserveRooms(ChaoxingTenant.GUZHENKOU)
+
+        assertEquals("403", rooms.single().name)
+        assertTrue(requests.none { it.url.contains("/front/web/apps/reservepc/index") })
+        assertTrue(requests.last().formBody.orEmpty().contains("reserveIdEnc=0123456789abcdef"))
     }
 
     @Test

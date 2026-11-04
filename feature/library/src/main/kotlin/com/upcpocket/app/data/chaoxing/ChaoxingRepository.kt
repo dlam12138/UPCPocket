@@ -173,6 +173,29 @@ class ChaoxingRepository internal constructor(
             )
         }
         val reserveIdEnc = ChaoxingProtocol.parseReserveIdEnc(pageResponse.body)
+        listReserveRooms(tenant, cookieHeader, reserveIdEnc)
+    }
+
+    /**
+     * 使用受限 WebView 已经渲染出的租户上下文，跳过不可复现的入口页面。
+     * 上下文只接受固定官方页面来源、匹配租户和 `reserveIdEnc` 形状；不持久化。
+     */
+    suspend fun reserveRooms(
+        tenant: ChaoxingTenant,
+        cookieHeader: String,
+        context: ChaoxingReserveContext,
+    ): ChaoxingReserveRoomPage = withContext(Dispatchers.IO) {
+        if (!context.isUsableFor(tenant)) {
+            throw ChaoxingException("研讨间租户上下文不匹配", "chaoxing_tenant_context")
+        }
+        listReserveRooms(tenant, cookieHeader, context.reserveIdEnc)
+    }
+
+    private fun listReserveRooms(
+        tenant: ChaoxingTenant,
+        cookieHeader: String,
+        reserveIdEnc: String,
+    ): ChaoxingReserveRoomPage {
         val body = read(
             cookieHeader,
             "https://reserve.chaoxing.com/data/apps/reserve/item/list/time",
@@ -188,7 +211,7 @@ class ChaoxingRepository internal constructor(
                 ),
             ),
         )
-        ChaoxingProtocol.parseReserveRooms(body)
+        return ChaoxingProtocol.parseReserveRooms(body)
     }
 
     private fun fetch(
