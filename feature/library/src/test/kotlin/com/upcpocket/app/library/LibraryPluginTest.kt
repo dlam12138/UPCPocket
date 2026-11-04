@@ -26,7 +26,7 @@ import org.robolectric.annotation.Config
 class LibraryPluginTest {
 
     @Test
-    fun `plugin declares and provides the seat capability`() {
+    fun `plugin declares and provides independent seat and nspace capabilities`() {
         val plugin = LibraryPlugin(
             context = ApplicationProvider.getApplicationContext(),
             accountSettings = object : LibraryAccountSettings {
@@ -48,6 +48,9 @@ class LibraryPluginTest {
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("插件装配测试不得自动认证")
             },
+            nspaceAuthenticator = NspaceAccountAuthenticator { _, _ ->
+                NspaceAccountAuthResult.Failure(NspaceAuthFailure.ACCOUNT_UNAVAILABLE)
+            },
         )
 
         val result = PluginRuntime()
@@ -56,7 +59,11 @@ class LibraryPluginTest {
 
         val active = result.plugins
         assertEquals("library", plugin.descriptor.id.value)
-        assertEquals(setOf("library.seat"), plugin.descriptor.capabilities)
+        assertEquals(
+            setOf("library.seat", "library.nspace"),
+            plugin.descriptor.capabilities,
+        )
         assertSame(plugin.service, active.capability(LibraryCapabilities.seat))
+        assertSame(plugin.nspaceService, active.capability(LibraryCapabilities.nspace))
     }
 }

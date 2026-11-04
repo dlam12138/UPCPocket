@@ -90,7 +90,8 @@ internal fun LibraryAccountSection(service: LibraryService) {
             ) {
                 Text(
                     "开启后，图书馆座位业务 token 用 Android Keystore 加密保存（不随系统备份）；" +
-                        "关闭或退出会清理持久副本与学校业务 Cookie。",
+                        "关闭或退出会清理持久副本与学校业务 Cookie。" +
+                        "nspace 空间预约 token 只在图书馆页面内存中，不随此开关保存。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

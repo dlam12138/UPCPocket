@@ -2,6 +2,8 @@
 
 状态：**本地可评审第一版**（开发分支，未合并 main、未发布、未推送）。M5 不改变
 M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页面层级与原生 Compose 视觉。
+本轮补充“图书馆”统一入口和 nspace 原生只读，详见
+[图书馆六入口](图书馆六入口.md)。
 
 - 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）
 - 分支/工作树：`lody/m5-campus-home`；本会话工作树（独立于其他会话）
@@ -48,7 +50,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 更多 → 外观 | 首页右上角 → 设置 → 配色与深色模式 |
 | 更多 → 关于 | 首页右上角 → 设置 → 关于 UPC Pocket |
 | 首页校园卡区 | 首页“校园卡”区（余额、脱敏绑定、账号、清除缓存、数据说明） |
-| 首页电费 / 空教室 / 图书馆 | 首页“常用服务”（课表不重复出现在这里） |
+| 首页电费 / 空教室 / 图书馆座位 | 首页“常用服务”的电费 / 空教室 / **图书馆**（图书馆内再分六入口） |
 | 桌面组件由长按桌面添加 | 仍由系统桌面添加；新增设置 → 桌面组件说明与可选“添加到桌面” |
 | 古镇口电费学校页面 | 电费页保留；设置 → 校园官方网页也提供入口 |
 | 校园官方网页 | 首页“校园网页”快捷卡 / 设置 → 校园官方网页（同一页面） |
@@ -61,7 +63,11 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
   同号改密标记、清除缓存与缓存清理失败状态保留。详细安全说明折叠，但不删除。
 - 电费：唐岛湾原生查询，古镇口官方网页；两校区说明保留。
 - 空教室：两校区、日期、楼栋、节次筛选和结果页不变。
-- 图书馆：统一认证、座位查询/预约/取消、记住登录、会话清理不变。
+- 图书馆：首页统一入口为“图书馆”（libseat 座位 + nspace 东馆研讨间 + 古镇口/求是四个
+  Chaoxing 入口）。libseat 保留统一认证、座位查询/预约/取消、记住登录与会话清理；nspace
+  新增独立 CAS/token 与原生只读馆区/类型/日期/房间分页，预约明确引导官方页面；Chaoxing
+  seat/seatengine 只提供官方浏览器入口，reservepc 两租户因缺稳定入口上下文保持“待入口”。
+  六入口矩阵见 [图书馆六入口](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
@@ -94,7 +100,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - `TimetablePlugin`：新增 `PluginBottomNav(order = 5)`；删除旧的 `MORE_LEARNING` 入口。
 - `FocusPlugin`：保留 `PluginBottomNav(order = 10)`；删除旧的“学习统计”`MORE_LEARNING` 入口。
-- 图书馆：保留 `MORE_SCHOOL` 区，由新的设置页承载；学校账号仍由宿主提供。
+- 图书馆：保留 `MORE_SCHOOL` 登录区；新增 `library.home` 统一入口和 `library.nspace`
+  只读页。`LibraryCapabilities.seat` 与 `LibraryCapabilities.nspace` 是两个独立能力/会话，
+  nspace token 不持久化、不与 seat token 混用。
 - 空教室/电费/图书馆：继续贡献 `HOME_SERVICES`，首页不硬编码这些功能实现。
 - `MORE_LEARNING` 枚举保留以维持源级契约兼容，但宿主不再挂载“更多”页；选择它不会产生
   可点入口。`PluginBottomNav` 文档由“宿主保底首页/更多”改为“宿主固定首页，插件 tab 排在其后”。
@@ -108,9 +116,10 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 ### 2.1 路由与删除文件审计
 
-- 稳定插件页路由未改：`power.electricity`、`power.tangdaowan`、`classroom.free`、
-  `library.seat`、`library.login`、`focus`、`focus.stats`、`timetable.week` 仍全部注册。
-  `HostPluginUiTest` 现在额外断言所有底部 tab 的目标页确实存在。
+- 稳定插件页路由：`power.electricity`、`power.tangdaowan`、`classroom.free`、
+  `library.home`、`library.seat`、`library.login`、`library.nspace`、`focus`、`focus.stats`、
+  `timetable.week` 均注册。`library.seat` 没有被删除，只是从首页入口改为统一图书馆内的
+  libseat 子页；`HostPluginUiTest` 额外断言所有首页入口/底部 tab 的目标页存在。
 - `CampusScreen` 是旧“更多”宿主页，只承载入口列表，不包含任一官方 URL 或浏览器跳转；
   其账号/课表/统计/图书馆登录/外观/关于能力已分别迁移到三 tab 与设置。删除的是入口页壳，
   不是功能实现。
@@ -145,6 +154,10 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | [20-focus-font-130.png](screenshots/20-focus-font-130.png) | 专注初始进入 1.3×；完整计时环、状态、开始按钮 |
 | [21-focus-font-150.png](screenshots/21-focus-font-150.png) | 专注初始进入 1.5×；完整计时环、状态、开始按钮 |
 | [22-home-font-150.png](screenshots/22-home-font-150.png) | 首页 1.5×；标题/服务卡文字完整，可滚动到两组服务与页脚 |
+| [23-library-hub.png](screenshots/23-library-hub.png) | 图书馆统一入口；六入口分组、原生/官方登录/待入口标注 |
+| [24-library-nspace.png](screenshots/24-library-nspace.png) | 东馆研讨间 nspace 未登录态；明确“原生只读、预约走官方” |
+| [25-library-hub-font-150.png](screenshots/25-library-hub-font-150.png) | 图书馆统一入口 1.5× 顶部；长文案不截断 |
+| [26-library-hub-font-150-bottom.png](screenshots/26-library-hub-font-150-bottom.png) | 1.5× 滚动到底部；六入口/阻塞说明/学校官网均可到达 |
 
 合成预览由 `feature/timetable/src/debug/.../TimetablePreviewActivity.kt` 明确标注
 “本地预览 · 合成内容”，只读取内存中的 `TimetableUiState`，不创建账号/会话/缓存、不发网络请求，
@@ -173,17 +186,25 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 边界：未登录、无数据、合成周网格、空“今天”、离线/失败状态代码路径；没有触发真实学校登录、
   预约、取消、签到、充值或电量查询。
 - 账号：`FLAG_SECURE` 已确认，但未创建账号、未走真实登录。
+- 图书馆统一页：首页“图书馆”进入；唐岛湾两卡、古镇口两卡、求是两卡均可达；nspace 未登录态
+  与官方页按钮可达；统一页 1.5× 顶部/底部滚动截图已保存。Chaoxing 官方按钮在系统浏览器打开，
+  没有把浏览器页面计入原生成功。
+- 图书馆写操作：未触发任何真实 libseat/nspace 预约、取消、签到；nspace 原生只读认证未用真实
+  账号验收（原因与最小协助见 [图书馆六入口](图书馆六入口.md)）。
 
 ## 5. 自动化结果
 
 | 检查 | 结果 |
 | --- | --- |
-| `:app:assembleDebug` | 通过（修正提交后复跑） |
-| Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 `focus` + `app` 用例，仍 0 failures |
+| `:app:assembleDebug` | 通过（图书馆改动后复跑） |
+| `:core:upc-auth:testDebugUnitTest` | **24 tests，0 failures/errors/skipped**（含 nspace 认证 6 项） |
+| `:feature:library:testDebugUnitTest` | **71 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token） |
+| `:app:testDebugUnitTest` | **0 failures/errors/skipped**；首页入口/页面集合断言更新为 `library.home` |
+| Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
-| `:app:lintDebug` | **0 errors / 2 warnings**（`RedundantLabel`、`ObsoleteSdkInt`，均为既有资源提示；修正提交后复跑） |
+| `:feature:library:lintDebug` / `:app:lintDebug` | 通过；app **0 errors / 2 warnings**（既有 `RedundantLabel`、`ObsoleteSdkInt`），library 无问题 |
 | 模块边界 | `checkModuleBoundaries` 随构建通过 |
-| 基线 | M4 357 Android + 16 JVM 全部保留；插件 tab 断言更新为课表(5)+专注(10)，并断言 tab 目标页存在 |
+| 基线 | M4 357 Android + 16 JVM 全部保留；库页面/首页入口断言已随统一入口更新 |
 
 `./gradlew test` 还会触发 release unit test；其中 Compose UI 测试依赖 debug-only
 `ui-test-manifest`，release 变体无法启动 instrumentation，属于现有测试基础设施限制，
@@ -192,11 +213,12 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 ### 5.1 本轮 APK
 
-- 评审副本：`release/UPC-Pocket-M5-preview-debug.apk`
+- 评审副本：`release/UPC-Pocket-M5-library-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,718,286` bytes
-- SHA-256：`004A42C3870F6C6FDCC9B7E59B0047D14E9180E406A4C7437C1A28AE571B9687`
+- 大小：`66,067,349` bytes
+- SHA-256：`63FFC6C8C524BE220C115A6F7EB9A8E8E5795DA82816474D4898892B4CFB9C28`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
+- 上一版 M5 评审 APK `release/UPC-Pocket-M5-preview-debug.apk` 保留为对照；本轮图书馆改动在该新副本中。
 
 ## 6. 未验证 / 限制
 
@@ -209,4 +231,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。
 - 未重排空教室、图书馆、电费内部页面；本轮只统一外层视觉/入口。它们沿用 M0—M4 的页面与交互，
   因此仍可能保留旧 spacing/文案密度，作为下一轮迭代项。
+- 图书馆统一页的 nspace 认证/只读虽然已实现，但未用真实账号完成端到端验收；Chaoxing 四入口
+  中 seat/seatengine 仅官方浏览器回退，reservepc 两租户仍缺稳定入口上下文。六入口矩阵和具体
+  阻塞/最小协助见 [图书馆六入口](图书馆六入口.md)，不能据此声称六个平台都已原生接入。
+- 本轮没有执行任何真实预约/取消/签到；nspace 写接口保持未实现。
 - 这不代表最终设计定稿；需要用户先看实际第一版，再决定是否继续细化。

@@ -5,6 +5,7 @@ import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.library.LibrarySeatRepository
+import com.upcpocket.app.data.nspace.NspaceRepository
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.plugin.api.Plugin
 import com.upcpocket.app.plugin.api.PluginCapability
@@ -14,18 +15,20 @@ import com.upcpocket.app.plugin.api.capabilityKey
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
 
-/** 图书馆插件公开能力的稳定键。 */
+/** 图书馆插件公开能力的稳定键；座位与空间会话是两个独立能力/对象。 */
 object LibraryCapabilities {
     val seat = capabilityKey<LibraryService>("library.seat")
+    val nspace = capabilityKey<NspaceService>("library.nspace")
 }
 
 val LIBRARY_PLUGIN_ID: PluginId = PluginId.parse("library")
 
 /**
- * 图书馆座位插件。
+ * 图书馆插件。
  *
- * 登录仍走学校官方 WebView 页面；插件只持有内存会话与加密持久副本，
- * 构造时不登录、不联网、不发预约请求。
+ * - libseat 保留既有内存会话与可选加密副本；
+ * - nspace 使用独立业务 token、独立 `/spa` 模型、独立内存会话，绝不与 seat token 混用；
+ * - 构造时不登录、不联网、不发起预约；需要用户主动进入页面/点击登录。
  */
 class LibraryPlugin(
     context: Context,
@@ -33,11 +36,15 @@ class LibraryPlugin(
     account: SchoolAccountReferenceReader,
     identityVerifier: SchoolAccountIdentityVerifier,
     authenticator: LibraryAccountAuthenticator,
+    nspaceAuthenticator: NspaceAccountAuthenticator,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = LIBRARY_PLUGIN_ID,
-        version = "1.0.0",
-        capabilities = setOf(LibraryCapabilities.seat.id),
+        version = "2.0.0",
+        capabilities = setOf(
+            LibraryCapabilities.seat.id,
+            LibraryCapabilities.nspace.id,
+        ),
     )
 
     val service: LibraryService = LibraryService(
@@ -53,10 +60,21 @@ class LibraryPlugin(
         clearCookies = SchoolWebCookies::clearAllSchoolCookies,
     )
 
-    override fun capabilities(): List<PluginCapability> =
-        listOf(PluginCapability(LibraryCapabilities.seat, service))
+    val nspaceService: NspaceService = NspaceService(
+        repository = NspaceRepository(),
+        accountGate = account,
+        accountReference = account,
+        identityVerifier = identityVerifier,
+        authenticator = nspaceAuthenticator,
+    )
+
+    override fun capabilities(): List<PluginCapability> = listOf(
+        PluginCapability(LibraryCapabilities.seat, service),
+        PluginCapability(LibraryCapabilities.nspace, nspaceService),
+    )
 
     override val pluginId get() = descriptor.id
 
-    override fun contribute(registry: PluginUiRegistry) = LibraryUi(service).contribute(registry)
+    override fun contribute(registry: PluginUiRegistry) =
+        LibraryUi(service, nspaceService).contribute(registry)
 }

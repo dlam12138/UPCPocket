@@ -33,23 +33,23 @@ class HostPluginUiTest {
         val entries = AppGraph.ui.entriesFor(UiSurface.HOME_SERVICES)
 
         assertEquals(
-            listOf("power.electricity", "classroom.free", "library.seat"),
+            listOf("power.electricity", "classroom.free", "library.home"),
             entries.map { it.entryId.value },
         )
         assertEquals(
-            listOf("电费", "空闲教室", "图书馆座位"),
+            listOf("电费", "空闲教室", "图书馆"),
             entries.map { it.title },
         )
         assertEquals(
             listOf(
                 "唐岛湾查询 · 古镇口网页",
                 "两校区 · 按日期与节次查询",
-                "统一认证 · 查询馆区与座位",
+                "座位 · 研讨间 · 统一入口",
             ),
             entries.map { it.subtitle },
         )
         assertEquals(
-            listOf("power.electricity", "classroom.free", "library.seat"),
+            listOf("power.electricity", "classroom.free", "library.home"),
             entries.map { it.route?.value },
         )
         entries.forEach { entry ->
@@ -108,8 +108,10 @@ class HostPluginUiTest {
                 "power.electricity",
                 "power.tangdaowan",
                 "classroom.free",
+                "library.home",
                 "library.seat",
                 "library.login",
+                "library.nspace",
                 "focus",
                 "focus.stats",
                 "timetable.week",
