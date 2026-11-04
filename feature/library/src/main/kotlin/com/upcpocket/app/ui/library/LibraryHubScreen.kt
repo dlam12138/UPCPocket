@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EventSeat
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,9 +29,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -52,7 +48,6 @@ private enum class LibraryAccess {
     NATIVE,
     NATIVE_READ_ONLY,
     OFFICIAL_LOGIN,
-    BLOCKED,
 }
 
 private data class LibraryPlatform(
@@ -86,7 +81,6 @@ fun LibraryHubScreen(
     val accountState by libraryService.accountState.collectAsStateWithLifecycle()
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
     val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
-    var blocker by remember { mutableStateOf<String?>(null) }
 
     val platforms = listOf(
         LibraryPlatform(
@@ -112,47 +106,48 @@ fun LibraryHubScreen(
             subtitle = "古镇口 · Chaoxing seat",
             access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.EventSeat,
-            actionLabel = "在浏览器打开官方登录",
+            actionLabel = "在浏览器打开官方入口",
             action = {
                 openOfficial(context, UpcOfficialEntryLinks.SEAT)
             },
-            note = "使用稳定的学校/应用入口；仍需正常登录。未取得馆区/座位图，未做原生查询。",
+            note = "已登录 Chaoxing 会话中核对：东区 6 个区域（48–66 座）、08:00–21:30、" +
+                "30 分钟时段与座位图；应用只打开官方页，不代持 Chaoxing 会话。",
         ),
         LibraryPlatform(
             title = "东区研讨间",
-            subtitle = "古镇口 · reservepc",
-            access = LibraryAccess.BLOCKED,
+            subtitle = "古镇口 · reservepc 租户 A",
+            access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看缺口",
+            actionLabel = "在浏览器打开官方入口",
             action = {
-                blocker = "从 HAR 拼出的稳定参数入口在已登录会话中落到 Chaoxing 座位页，" +
-                    "不是 reservepc 房间列表。不能把该跳转当作研讨间入口；仍需从学校图书馆" +
-                    "正式业务目录进入或取得新的稳定租户入口。"
+                openOfficial(context, UpcOfficialEntryLinks.RESERVE_GUZHENKOU)
             },
-            note = "稳定参数入口实测会串到座位页；未取得 reservepc 登录后房间列表。",
+            note = "稳定租户入口已核对：8 个研讨间（如 403，8 人）与 30/60 分钟时段；" +
+                "仍需 Chaoxing 登录，应用不代持会话，未做原生预约。",
         ),
         LibraryPlatform(
             title = "求是座位",
             subtitle = "求是 · Chaoxing seatengine",
             access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.EventSeat,
-            actionLabel = "在浏览器打开官方登录",
+            actionLabel = "在浏览器打开官方入口",
             action = {
                 openOfficial(context, UpcOfficialEntryLinks.SEATENGINE)
             },
-            note = "使用稳定的学校/应用/seatId 入口；仍需正常登录。缺座位图，未做原生查询。",
+            note = "已登录 Chaoxing 会话中核对：求是 21 个区域（16–240 座）、08:00–22:00、" +
+                "30 分钟时段与座位图；应用只打开官方页，不代持 Chaoxing 会话。",
         ),
         LibraryPlatform(
             title = "求是研讨间",
-            subtitle = "求是 · reservepc",
-            access = LibraryAccess.BLOCKED,
+            subtitle = "求是 · reservepc 租户 B",
+            access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看缺口",
+            actionLabel = "在浏览器打开官方入口",
             action = {
-                blocker = "求是 reservepc 同样只有 HAR 中的租户参数；没有验证到登录后的" +
-                    "房间列表或稳定入口，不能把参数链接当作原生/可用入口。"
+                openOfficial(context, UpcOfficialEntryLinks.RESERVE_QIUSHI)
             },
-            note = "只有 HAR 只读证据；未取得登录后房间列表。",
+            note = "稳定租户入口已核对：23 个研讨间（A301 等）与房间详情/时段页；" +
+                "仍需 Chaoxing 登录，应用不代持会话，未做原生预约。",
         ),
     )
 
@@ -239,24 +234,14 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "“可预约”表示已接入学校表单；“官方登录”只保证打开平台官方页面，" +
-                    "不保证登录后一定有可用租户。未接入的平台不会被说成已支持。",
+                "“原生/原生只读”表示应用内调用学校接口；“官方页”只表示本机已在已登录 " +
+                    "Chaoxing 会话中核对入口与页面数据，预约仍在学校页面完成。应用不代持 " +
+                    "Chaoxing Cookie，也不把四张官方页卡片说成四个原生平台。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.padding(bottom = 16.dp))
         }
-    }
-
-    blocker?.let { text ->
-        AlertDialog(
-            onDismissRequest = { blocker = null },
-            title = { Text("当前入口未接通") },
-            text = { Text(text) },
-            confirmButton = {
-                TextButton(onClick = { blocker = null }) { Text("知道了") }
-            },
-        )
     }
 }
 
@@ -270,7 +255,8 @@ private fun accountStatusLabel(status: SchoolAccountStatus): String = when (stat
     SchoolAccountStatus.REMOVING -> "清理中，暂不可登录"
 }
 
-private fun openOfficial(context: android.content.Context, url: String) {    if (!url.startsWith("https://office.chaoxing.com/")) return
+private fun openOfficial(context: android.content.Context, url: String) {
+    if (!UpcOfficialEntryLinks.isAllowedChaoxingHost(url)) return
     runCatching {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -291,14 +277,9 @@ private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColo
             MaterialTheme.colorScheme.onSecondaryContainer,
         )
         LibraryAccess.OFFICIAL_LOGIN -> Triple(
-            "官方登录",
+            "官方页",
             MaterialTheme.colorScheme.tertiaryContainer,
             MaterialTheme.colorScheme.onTertiaryContainer,
-        )
-        LibraryAccess.BLOCKED -> Triple(
-            "待入口",
-            MaterialTheme.colorScheme.errorContainer,
-            MaterialTheme.colorScheme.onErrorContainer,
         )
     }
     Surface(

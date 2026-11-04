@@ -78,7 +78,7 @@
       ],
       "authentication": "Unauthenticated entries redirect to passport2.chaoxing.com; the 2026-11-03 captures start from already-authorized pages and contain no passport/CAS login exchange",
       "integration": "official_stable_entry_browser_only",
-      "verification": "Stable seat/seatengine entries keep only fidEnc/mappId[/seatId] and land on passport2 login. No seat map/time list was obtained; no native query or write is claimed. uid/enc/code/state/wfw values are excluded."
+      "verification": "2026-11-04: in a logged-in Chaoxing browser session the stable entries loaded real data instead of passport2: seat Guzhenkou East 6 areas (48/44/52/44/66/66 seats, 08:00-21:30, 30-minute slots, 48-seat map for area A) and seatengine Qiushi 21 areas (16-240 seats, 08:00-22:00, 30-minute slots, 30-seat map for the stepped area). The app opens only the official page, does not hold Chaoxing cookies, and claims no native query or write. uid/enc/code/state/wfw values are excluded."
     },
     {
       "id": "chaoxing_reserve",
@@ -86,8 +86,8 @@
       "campus": null,
       "url": "https://reserve.chaoxing.com/front/web/apps/reservepc/index",
       "authentication": "Tenant/session-dependent reservepc app; without matching context the entry returns a local 303 error page; the 2026-11-03 captures contain no passport/CAS login exchange and no Cookie/Authorization header",
-      "integration": "unstable_parameter_entry_lands_on_seat_page",
-      "verification": "Two HARs contain reservepc read-only data (8/23 reserve items, empty reserveUserList, loginStatus=true). The parameter entry built from reserveId/resvAppId/fidEnc/appId/mappId was opened in an authenticated CAS session and ended on an office seat page, not the reservepc room list. It is therefore not exposed as a working reserve entry; the correct tenant entry is still unresolved. No native read/write is claimed."
+      "integration": "official_stable_tenant_browser_only",
+      "verification": "2026-11-04: two stable tenant entries were verified in a logged-in Chaoxing browser session: Guzhenkou East reserveId=13492/resvAppId=13492/mappId=10570653 loads 8 discussion rooms (e.g. 403, 8 people, 08:00-22:00, 30/60-minute slots); Qiushi reserveId=31841/resvAppId=31841/mappId=20875315 loads 23 rooms (e.g. A301 12 people, A402 8, A403/A404 6). The earlier office-seat-page result is attributed to an incomplete/mismatched tenant parameter set, not to a dead system. The app opens only the official page, does not hold Chaoxing cookies, and claims no native read/write. User/one-time params uid/enc/code/state/wfwEnc are excluded."
     },
     {
       "id": "campus_card_balance",

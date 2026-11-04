@@ -7,12 +7,12 @@
 - 新增 nspace 原生只读：馆区/空间类型/开放日期/房间分页，严格解析 `status/code/data`、区分 401 与空 `pageList`；每个房间提供官方 `#/detail?id=...&selectDate=...` 预约深链（只带房间/日期，不带 token/uid/enc）；新增原生“我的预约”列表与确认式取消（`GET cancelBook/{id}`）；新增单人预约表单（详情/用途/时段/必填/最终真实确认），对多人、选座、附件或未知字段明确拒绝。未点击真实最终提交；`stopBook`/团队/签到未实现。
 - 新增 nspace 官方 WebView 验证码回退：学校 CAS 401 验证码页转 `INTERACTION_REQUIRED`；应用内加载固定学校入口，只捕获 `/nspace` app token，经 `remoteCasLogin`、本人核验和账号代次/epoch/revision 门闩发布；换号/退出后的迟到回调不发布。token 不持久化、不与 libseat 混用。
 - 修复空间类型灰置：HAR 的 4 个空间类型 `status` 均为 `0`，旧解析把 `0` 当禁用；公开页面/用户手机可切换。现按 `status=0` 可用、`status=1` 停用处理，并新增协议测试。nspace 页面文案去掉“原生只读/不提交新预约”等与现有表单矛盾的实现术语；A123 等多人/选座房间不再显示会失败的个人表单入口，明确引导官方组队。
-- Chaoxing：seat/seatengine 只保留 `fidEnc/mappId[/seatId]`，实测到 passport2 登录；reservepc 的 `reserveId/resvAppId/fidEnc/appId/mappId` 参数入口在已登录会话中落到 office 座位页，**不是**研讨间列表，已从可用入口撤回并显示缺口。仍是官方登录回退，不是原生查询。
+- Chaoxing：seat/seatengine 只保留 `fidEnc/mappId[/seatId]`；reservepc 恢复稳定租户入口 `reserveId/resvAppId/fidEnc/mappId`（古镇口 13492、求是 31841），不含 uid/enc/code/state/wfwEnc。2026-11-04 在已登录 Chaoxing 会话中核对：seat 东区 6 区域（48–66 座，08:00–21:30）、seatengine 求是 21 区域（16–240 座，08:00–22:00）、reservepc 古镇口 8 项/求是 23 项；仍是在系统浏览器打开官方页，不是原生查询。此前“落到 office 座位页”修正为租户参数不完整/不匹配，不是系统失效。
 - 修复 CAS 挑战误判：CAS 以 401/403 返回登录/验证码页时，不再直接报 `ACCESS_DENIED`，而是解析页面并返回 `INTERACTION_REQUIRED` + 学校交互 URL；无表单才拒绝。模拟器真实凭据尝试到达验证码挑战后停止，不绕过、不重复失败密码。
 - 独立 Chrome 使用修正后的文件解析（第一行首个冒号后账号、第二行首个冒号后密码；保留值内冒号、不交换）正常登录一次成功，读取到 1 馆区/4 类型/3 日期和 A123 详情/表单（11/05、11/06 有时段；11/04 当天无可用时段）。未执行真实预约/取消/签到，未添加成员/团队。
-- 统一页标签区分“可预约/官方登录/查看缺口”；reservepc 不再标“官方登录”；seat/seatengine/reservepc 都不是原生查询，不把入口页或 HTTP 200 当作业务成功。
+- 统一页标签区分“原生/原生只读/官方页”；reservepc 不再显示“查看缺口”；seat/seatengine/reservepc 都不是原生查询，不把入口页或 HTTP 200 当作业务成功。
 - 账号门闩：nspace 登录与 libseat 一样绑定当前 accountId/凭据代次；换号/删号同时清理两面会话，迟到认证结果不发布；新增合成测试覆盖协议分页、401、本人不一致、代次变化和独立 token。
-- 验证：`core:upc-auth` 28 tests、`feature:library` 100 tests、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug`/`app:lintDebug` 通过（app 仍 0 errors / 2 既有 warnings）。模拟器验收统一页、nspace 未登录态、1.5× 滚动；独立 Chrome 完成真实 nspace 只读；未执行任何真实预约/取消/签到。详见 [六入口记录](m5/图书馆六入口.md)。
+- 验证：`core:upc-auth` 28 tests、`feature:library` **102 tests**（新增 reservepc 稳定租户入口/一次性参数排除/主机白名单）、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug` 无问题、`app:lintDebug` 0 errors / 2 既有 warnings。模拟器验收新版统一页（27/28 截图）、nspace 未登录态；独立 Chrome 完成真实 nspace 只读与四个 Chaoxing 官方页核对；未执行任何真实预约/取消/签到/团队。详见 [六入口记录](m5/图书馆六入口.md)。
 
 ## M5 · 首页/课表/专注与统一设置入口（开发分支，未发布）
 

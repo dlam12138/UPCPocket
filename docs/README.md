@@ -24,8 +24,10 @@ M4 前置的六个图书馆/空间预约入口研究已完成，见
 HAR：nspace 已到 venue/roomType/dates/roomList 浏览（6/11，2 页），seat/seatengine 仅到
 入口配置与空 current/near，reservepc 两租户分别到 8/23 个预约项且 user list 为空。六份 HAR
 都没有 CAS/passport 登录跳转或写请求，因此它们不是端到端统一认证证据；M4 的 libseat
-认证由正常 CAS 重新完成，HAR 只作为只读业务协议证据。`nspace` 与 Chaoxing 四入口继续
-作为独立后续范围。M1 保存成功只表示“已保存，尚未验证”，不改变当前发布版对学校接口的
+认证由正常 CAS 重新完成，HAR 只作为只读业务协议证据。2026-11-04 的后续复核在已登录
+Chaoxing 会话中确认 seat/seatengine 真实馆区/座位图与 reservepc 两租户列表，并修正了
+“稳定入口失效”的旧结论；它们仍是官方网页，不是应用内原生查询，见
+[M5 六入口记录](m5/图书馆六入口.md)。`nspace` 与 Chaoxing 四入口继续作为独立后续范围。M1 保存成功只表示“已保存，尚未验证”，不改变当前发布版对学校接口的
 接入方式。
 
 页面安排、导航及视觉设计在核心能力稳定后的 M5 统一落地：三 tab「首页 / 课表 / 专注」，

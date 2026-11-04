@@ -71,7 +71,7 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | 读取 | 馆区、空间类型、开放日期、房间分页、房间详情、使用类型、必填项、本人预约列表；请求只发往固定 `libspace.upc.edu.cn` 的 `/spa` 路径 |
 | 写入边界 | 本轮不调用 `saveReservation`、结束使用、团队或签到；仅对 `status=0` 的本人记录提供“取消”，必须经确认对话框后调用 `GET cancelBook/{id}`；预约由学校官方页面完成 |
 | 账号隔离 | 绑定 accountId/凭据代次，登录结果与查询发布前复核；账号变化时迟到结果不发布；取消发送前复核当前会话 |
-| Chaoxing | seat/seatengine 只在系统浏览器打开固定官方入口；reservepc 因缺稳定租户上下文不打开伪造入口。应用不读取或导入浏览器 Cookie |
+| Chaoxing | seat/seatengine/reservepc 只在系统浏览器打开固定官方入口（稳定 `fidEnc/mappId/seatId` 或 `reserveId/resvAppId/mappId`，不含 uid/enc/code/state/wfwEnc）；应用不读取或导入浏览器 Cookie，也不做原生查询/预约 |
 
 ## 查询会用到什么
 
