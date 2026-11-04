@@ -103,6 +103,42 @@ class NspaceProtocolTest {
     }
 
     @Test
+    fun `room detail parses policy slots and disabled intervals`() {
+        val detail = NspaceProtocol.parseRoomDetail(
+            """
+            {"status":true,"code":200,"data":{
+              "id":"room-1","name":"A301","minUser":1,"maxUser":4,"seatOpen":"","annex":0,
+              "roomTimeSliceDto":{"openTime":480,"closeTime":720,"timeSlice":30,
+                "disableTime":[[600,660]]},
+              "bookPolicy":{"minTime":60,"maxTime":180}}}
+            """.trimIndent(),
+        )
+        assertEquals(480, detail.openTime)
+        assertEquals(30, detail.timeSlice)
+        assertEquals(1, detail.disableTimes.size)
+        assertEquals(600, detail.disableTimes.single().start)
+        assertEquals(180, detail.maxTime)
+    }
+
+    @Test
+    fun `use types and required form fields parse public frontend shapes`() {
+        val types = NspaceProtocol.parseUseTypes(
+            """{"status":true,"code":200,"data":[{"id":"1","name":"个人"}]}""",
+        )
+        assertEquals("个人", types.single().name)
+        val fields = NspaceProtocol.parseFormFields(
+            """{"status":true,"code":200,"data":[
+              {"field":"theme","label":"主题","type":"INPUT","required":0,"value":""},
+              {"field":"kind","label":"类型","type":"SELECT","required":1,
+               "optionList":[{"name":"讨论","value":"1"}]}]}""",
+        )
+        assertEquals(2, fields.size)
+        assertEquals("theme", fields[0].field)
+        assertEquals(true, fields[0].required)
+        assertEquals("1", fields[1].options.single().value)
+    }
+
+    @Test
     fun `cancel action requires a success envelope`() {
         NspaceProtocol.ensureActionSuccess("""{"status":true,"code":200,"data":null}""")
         try {

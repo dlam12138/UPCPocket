@@ -8,13 +8,17 @@ import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.nspace.NspaceBookingRequest
 import com.upcpocket.app.data.nspace.NspaceException
+import com.upcpocket.app.data.nspace.NspaceFormField
 import com.upcpocket.app.data.nspace.NspaceRepository
 import com.upcpocket.app.data.nspace.NspaceReservationPage
+import com.upcpocket.app.data.nspace.NspaceRoomDetail
 import com.upcpocket.app.data.nspace.NspaceRoomPage
 import com.upcpocket.app.data.nspace.NspaceRoomType
 import com.upcpocket.app.data.nspace.NspaceSession
 import com.upcpocket.app.data.nspace.NspaceSessionExpiredException
+import com.upcpocket.app.data.nspace.NspaceUseType
 import com.upcpocket.app.data.nspace.NspaceUser
 import com.upcpocket.app.data.nspace.NspaceVenue
 import java.util.concurrent.atomic.AtomicLong
@@ -175,6 +179,36 @@ class NspaceService(
 
     suspend fun myReservations(page: Int): NspaceReservationPage = callSession { token, guard ->
         repository.myReservations(token, page)
+    }
+
+    suspend fun roomDetail(
+        roomId: String,
+        date: String,
+        seatNo: String,
+    ): NspaceRoomDetail = callSession { token, guard ->
+        repository.roomDetail(token, roomId, date, seatNo)
+    }
+
+    suspend fun useTypes(): List<NspaceUseType> = callSession { token, guard ->
+        repository.useTypes(token)
+    }
+
+    suspend fun requiredFields(): List<NspaceFormField> = callSession { token, guard ->
+        repository.requiredFields(token)
+    }
+
+    suspend fun book(request: NspaceBookingRequest) {
+        val current = _session.value ?: throw NspaceSessionExpiredException()
+        val context = captureContext() ?: throw NspaceSessionExpiredException()
+        if (_session.value?.token != current.token || !isCurrent(context)) {
+            throw NspaceSessionExpiredException()
+        }
+        try {
+            repository.book(current.token, request)
+        } catch (expired: NspaceSessionExpiredException) {
+            signOutIfCurrent(current.token)
+            throw expired
+        }
     }
 
     suspend fun cancelReservation(reservationId: String) {

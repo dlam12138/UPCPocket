@@ -101,7 +101,10 @@ internal class UpcCasLogin(
         if (page.status in 300..399) {
             return UpcCasLoginResult.Failure(UpcAuthFailure.PROTOCOL_ERROR)
         }
-        if (page.status == 401 || page.status == 403 || page.status == 429) {
+        if (page.status == 401 || page.status == 403) {
+            return challengeOrDenied(page.text(), casUrl)
+        }
+        if (page.status == 429) {
             return UpcCasLoginResult.Failure(UpcAuthFailure.ACCESS_DENIED)
         }
         if (page.status != 200) {
@@ -158,7 +161,10 @@ internal class UpcCasLogin(
                 else -> UpcCasLoginResult.Failure(UpcAuthFailure.PROTOCOL_ERROR)
             }
         }
-        if (submitted.status == 401 || submitted.status == 403 || submitted.status == 429) {
+        if (submitted.status == 401 || submitted.status == 403) {
+            return challengeOrDenied(submitted.text(), casUrl)
+        }
+        if (submitted.status == 429) {
             return UpcCasLoginResult.Failure(UpcAuthFailure.ACCESS_DENIED)
         }
         if (submitted.status != 200) {
@@ -175,6 +181,26 @@ internal class UpcCasLogin(
                 UpcAuthFailure.UPSTREAM_ERROR
             },
         )
+    }
+
+    /**
+     * CAS 用 401/403 返回登录页/验证码页是正常的挑战，不是“账号被拒绝”。
+     * 必须保留 interactionUrl，让用户在学校页面完成验证码/二次验证；
+     * 只有没有可交互表单时才返回 ACCESS_DENIED。
+     */
+    private fun challengeOrDenied(
+        html: String,
+        casUrl: String,
+    ): UpcCasLoginResult {
+        val challenge = runCatching { parseCasLoginForm(html) }.getOrNull()
+        return if (
+            challenge != null &&
+            (challenge.captchaRequired || challenge.hasPassword || challenge.hasSecondFactor)
+        ) {
+            UpcCasLoginResult.Failure(UpcAuthFailure.INTERACTION_REQUIRED, casUrl)
+        } else {
+            UpcCasLoginResult.Failure(UpcAuthFailure.ACCESS_DENIED)
+        }
     }
 
     private fun classifyCasReturn(

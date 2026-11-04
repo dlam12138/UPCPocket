@@ -33,8 +33,10 @@ internal fun interface NspaceTransport {
  * 普通查询只读；预约提交/取消不在此层静默调用。
  */
 class NspaceRepository internal constructor(
-    private val transport: NspaceTransport = UrlConnectionNspaceTransport(),
+    private val transport: NspaceTransport,
 ) {
+    /** 生产/跨模块只暴露固定学校主机的真实传输，不允许调用方换 transport。 */
+    constructor() : this(UrlConnectionNspaceTransport())
     suspend fun venues(token: String): List<NspaceVenue> = withContext(Dispatchers.IO) {
         NspaceProtocol.parseVenues(read(token, "/spa/static/api/book/getVenueList"))
     }
@@ -89,6 +91,39 @@ class NspaceRepository internal constructor(
                 read(token, "/spa/static/api/user/getUserReservationList", body),
             )
         }
+
+    suspend fun roomDetail(
+        token: String,
+        roomId: String,
+        date: String,
+        seatNo: String,
+    ): NspaceRoomDetail = withContext(Dispatchers.IO) {
+        val body = buildJsonObject {
+            put("roomId", roomId)
+            put("selectDate", date)
+            put("seatNo", seatNo)
+        }.toString()
+        NspaceProtocol.parseRoomDetail(
+            read(token, "/spa/static/api/book/getRoomDtoByRoomIdAndDate", body),
+        )
+    }
+
+    suspend fun useTypes(token: String): List<NspaceUseType> = withContext(Dispatchers.IO) {
+        NspaceProtocol.parseUseTypes(read(token, "/spa/static/api/book/getAllUseType"))
+    }
+
+    suspend fun requiredFields(token: String): List<NspaceFormField> =
+        withContext(Dispatchers.IO) {
+            NspaceProtocol.parseFormFields(read(token, "/spa/static/api/book/getRequiredOption"))
+        }
+
+    suspend fun book(token: String, request: NspaceBookingRequest) {
+        withContext(Dispatchers.IO) {
+            val body = NspaceBookingPayload.toJson(request)
+            val response = read(token, "/spa/static/api/book/saveReservation", body)
+            NspaceProtocol.ensureActionSuccess(response)
+        }
+    }
 
     suspend fun cancelReservation(token: String, reservationId: String) {
         withContext(Dispatchers.IO) {

@@ -2,8 +2,8 @@
 
 状态：**本地可评审第一版**（开发分支，未合并 main、未发布、未推送）。M5 不改变
 M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页面层级与原生 Compose 视觉。
-本轮补充“图书馆”统一入口和 nspace 原生只读，详见
-[图书馆六入口](图书馆六入口.md)。
+本轮补充“图书馆”统一入口、nspace 原生只读/预约取消和真实凭据 CAS 验证；真实登录停在
+CAS 验证码交互，未把挑战当成功，详见 [图书馆六入口](图书馆六入口.md)。
 
 - 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）
 - 分支/工作树：`lody/m5-campus-home`；本会话工作树（独立于其他会话）
@@ -67,6 +67,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
   Chaoxing 入口）。libseat 保留统一认证、座位查询/预约/取消、记住登录与会话清理；nspace
   新增独立 CAS/token、原生只读馆区/类型/日期/房间分页、原生本人预约列表与取消，每个房间
   可直接打开官方 `#/detail?id=...&selectDate=...` 预约页（只带房间/日期，不注入 token）；
+  预约表单/JSON 协议已有合成测试但原生提交 UI 未接入；真实 CAS 登录停在验证码挑战。
   Chaoxing seat/seatengine 只提供官方浏览器入口，reservepc 两租户因缺稳定入口上下文保持
   “待入口”。六入口矩阵见 [图书馆六入口](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
@@ -118,7 +119,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 ### 2.1 路由与删除文件审计
 
 - 稳定插件页路由：`power.electricity`、`power.tangdaowan`、`classroom.free`、
-  `library.home`、`library.seat`、`library.login`、`library.nspace`、`focus`、`focus.stats`、
+  `library.home`、`library.seat`、`library.login`、`library.nspace`、
+  `library.nspace.reservations`、`focus`、`focus.stats`、
   `timetable.week` 均注册。`library.seat` 没有被删除，只是从首页入口改为统一图书馆内的
   libseat 子页；`HostPluginUiTest` 额外断言所有首页入口/底部 tab 的目标页存在。
 - `CampusScreen` 是旧“更多”宿主页，只承载入口列表，不包含任一官方 URL 或浏览器跳转；
@@ -199,8 +201,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 检查 | 结果 |
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
-| `:core:upc-auth:testDebugUnitTest` | **24 tests，0 failures/errors/skipped**（含 nspace 认证 6 项） |
-| `:feature:library:testDebugUnitTest` | **80 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token/官方深链/预约取消） |
+| `:core:upc-auth:testDebugUnitTest` | **25 tests，0 failures/errors/skipped**（含 CAS 401 验证码挑战回归 + nspace 认证 6 项） |
+| `:feature:library:testDebugUnitTest` | **88 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/官方深链/预约取消/表单规则） |
 | `:app:testDebugUnitTest` | **0 failures/errors/skipped**；首页入口/页面集合断言更新为 `library.home` |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
@@ -218,16 +220,19 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 评审副本：`release/UPC-Pocket-M5-library-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
 - 大小：`66,213,345` bytes
-- SHA-256：`C5DBBCD6068F4619BE0379501B4C70C5D4957ACE4E8542C885447C56201E4431`
+- SHA-256：`6B13D1A77D0D2C0625EE3FB628532CCE090D7FAECB51756C5CAADAE9AC8E2C3C`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 - 上一版 M5 评审 APK `release/UPC-Pocket-M5-preview-debug.apk` 保留为对照；本轮图书馆改动在该新副本中。
 
 ## 6. 未验证 / 限制
 
-- 未重新执行真实学校 CAS、课表单周读取、图书馆本人只读或任何写操作；真实登录/真实课程不进入
-  本轮截图。
-- 未执行 release/R8、真机、其他 ROM/WebView、真实组件 pin 到第三方桌面；桌面组件仅验证了设置页
-  与既有测试，未新增自动刷新/周期任务。
+- 本轮使用用户提供的真实凭据重试了 CAS：nspace/libseat 都到达 CAS 登录页，提交一次后
+  服务器返回 401 登录/验证码页，随即停止。修复了 CAS 把 401 验证码页误判为
+  `ACCESS_DENIED` 的问题，现返回 `INTERACTION_REQUIRED` 并保留学校交互 URL；未绕过、
+  未重复失败密码、未把挑战当认证成功。真实本人读取仍未完成，需要用户完成验证码后继续。
+- 未提交任何真实预约、取消、签到、团队或写请求；未打开真实座位图。nspace 的
+  `saveReservation` 协议基础已有测试，但原生提交 UI 未接入。
+- 未在真机/其他 WebView 验证 Chaoxing 官方浏览器跳转；未取得租户入口上下文。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。
@@ -236,5 +241,6 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 图书馆统一页的 nspace 认证/只读虽然已实现，但未用真实账号完成端到端验收；Chaoxing 四入口
   中 seat/seatengine 仅官方浏览器回退，reservepc 两租户仍缺稳定入口上下文。六入口矩阵和具体
   阻塞/最小协助见 [图书馆六入口](图书馆六入口.md)，不能据此声称六个平台都已原生接入。
-- 本轮没有执行任何真实预约/取消/签到；nspace 写接口保持未实现。
+- 未执行 release/R8、真机、其他 ROM/WebView；桌面组件仅验证设置页与既有测试。
+- 本轮没有执行任何真实预约/取消/签到；nspace 新预约 UI 未接入，取消仅在代码/合成测试中验证。
 - 这不代表最终设计定稿；需要用户先看实际第一版，再决定是否继续细化。

@@ -59,6 +59,61 @@ data class NspaceReservationPage(
     val totalCount: Int,
 )
 
+data class NspaceInterval(val start: Int, val end: Int)
+
+/** 房间详情中的预约规则/时段；时间单位为当天绝对分钟。 */
+data class NspaceRoomDetail(
+    val roomId: String,
+    val name: String,
+    val openTime: Int,
+    val closeTime: Int,
+    val timeSlice: Int,
+    val disableTimes: List<NspaceInterval>,
+    val minTime: Int,
+    val maxTime: Int,
+    val minUser: Int,
+    val maxUser: Int,
+    val seatOpen: String,
+    val annexRequired: Boolean,
+)
+
+data class NspaceUseType(
+    val id: String,
+    val name: String,
+)
+
+data class NspaceFormOption(
+    val name: String,
+    val value: String,
+)
+
+data class NspaceFormField(
+    val field: String,
+    val label: String,
+    val type: String,
+    val required: Boolean,
+    val value: String,
+    val options: List<NspaceFormOption>,
+)
+
+/** 公开前端 saveReservation 的固定字段；字段值来自用户在当前表单中的选择。 */
+data class NspaceBookingRequest(
+    val begin: Int,
+    val end: Int,
+    val onDate: String,
+    val roomId: String,
+    val useType: String,
+    val participants: String,
+    val filePath: String,
+    val source: String,
+    val seatNo: String,
+    val teamId: Int,
+    val theme: String?,
+    val phone: String?,
+    val outline: String?,
+    val extraField: Map<String, String>,
+)
+
 data class NspaceSession(
     val token: String,
     val user: NspaceUser,

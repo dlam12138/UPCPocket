@@ -117,6 +117,30 @@ class UpcNspaceAuthenticatorTest {
     }
 
     @Test
+    fun `CAS 401 captcha page requests interaction instead of access denied`() = runTest {
+        val transport = NspaceFakeTransport { request ->
+            when {
+                request.method == "GET" && request.url == UpcNspaceAuthEndpoints.ENTRY_URL ->
+                    response(302, mapOf("Location" to casUrl()))
+                request.method == "GET" && request.url == casUrl() ->
+                    htmlResponse(formPage(casUrl()))
+                request.method == "POST" && request.url == casUrl() ->
+                    response(
+                        401,
+                        mapOf("Content-Type" to "text/html; charset=utf-8"),
+                        formPage(casUrl(), captcha = true),
+                    )
+                else -> error("验证码挑战后不得继续请求")
+            }
+        }
+        val result = authenticator(transport).authenticate(accountId, 7)
+        val failure = result as UpcNspaceAuthResult.Failure
+        assertEquals(UpcLibraryAuthFailure.INTERACTION_REQUIRED, failure.reason)
+        assertEquals(casUrl(), failure.interactionUrl)
+        assertEquals(1, transport.posts)
+    }
+
+    @Test
     fun `external callback is rejected`() = runTest {
         val transport = NspaceFakeTransport { request ->
             when {

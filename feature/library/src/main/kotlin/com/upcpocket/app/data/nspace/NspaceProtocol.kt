@@ -112,6 +112,75 @@ internal object NspaceProtocol {
         )
     }
 
+    fun parseRoomDetail(body: String): NspaceRoomDetail {
+        val data = objectData(body)
+        val time = data["roomTimeSliceDto"] as? JsonObject
+            ?: fail("房间详情缺少 roomTimeSliceDto")
+        val policy = data["bookPolicy"] as? JsonObject
+            ?: fail("房间详情缺少 bookPolicy")
+        val disable = (time["disableTime"] as? JsonArray).orEmpty().map { item ->
+            val pair = item as? JsonArray ?: fail("disableTime 不是区间")
+            if (pair.size < 2) fail("disableTime 缺少起止")
+            val start = (pair[0] as? JsonPrimitive)?.intOrNull
+                ?: fail("disableTime 起点不是整数")
+            val end = (pair[1] as? JsonPrimitive)?.intOrNull
+                ?: fail("disableTime 终点不是整数")
+            NspaceInterval(start, end)
+        }
+        val open = int(time, "openTime") ?: fail("房间缺少 openTime")
+        val close = int(time, "closeTime") ?: fail("房间缺少 closeTime")
+        val slice = int(time, "timeSlice") ?: fail("房间缺少 timeSlice")
+        val minTime = int(policy, "minTime") ?: fail("房间缺少 minTime")
+        val maxTime = int(policy, "maxTime") ?: fail("房间缺少 maxTime")
+        return NspaceRoomDetail(
+            roomId = string(data, "id"),
+            name = string(data, "name"),
+            openTime = open,
+            closeTime = close,
+            timeSlice = slice,
+            disableTimes = disable,
+            minTime = minTime,
+            maxTime = maxTime,
+            minUser = int(data, "minUser") ?: 1,
+            maxUser = int(data, "maxUser") ?: 1,
+            seatOpen = stringOrNull(data, "seatOpen").orEmpty(),
+            annexRequired = (int(data, "annex") ?: 0) != 0,
+        )
+    }
+
+    fun parseUseTypes(body: String): List<NspaceUseType> {
+        val data = arrayData(body)
+        return data.map { item ->
+            val obj = item as? JsonObject ?: fail("使用类型不是对象")
+            NspaceUseType(
+                id = string(obj, "id"),
+                name = string(obj, "name"),
+            )
+        }.filter { it.id.isNotBlank() && it.name.isNotBlank() }
+    }
+
+    fun parseFormFields(body: String): List<NspaceFormField> {
+        val data = arrayData(body)
+        return data.mapNotNull { item ->
+            val obj = item as? JsonObject ?: return@mapNotNull null
+            val field = stringOrNull(obj, "field") ?: return@mapNotNull null
+            val options = (obj["optionList"] as? JsonArray).orEmpty().mapNotNull { raw ->
+                val option = raw as? JsonObject ?: return@mapNotNull null
+                val name = stringOrNull(option, "name") ?: return@mapNotNull null
+                val value = stringOrNull(option, "value") ?: return@mapNotNull null
+                NspaceFormOption(name, value)
+            }
+            NspaceFormField(
+                field = field,
+                label = stringOrNull(obj, "label").orEmpty().ifBlank { field },
+                type = stringOrNull(obj, "type").orEmpty().uppercase(),
+                required = int(obj, "required") == 0,
+                value = stringOrNull(obj, "value").orEmpty(),
+                options = options,
+            )
+        }
+    }
+
     fun ensureActionSuccess(body: String) {
         val root = try {
             json.parseToJsonElement(body) as? JsonObject
