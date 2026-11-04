@@ -48,6 +48,7 @@ import com.upcpocket.app.data.library.LibraryFloor
 import com.upcpocket.app.data.library.LibraryRoom
 import com.upcpocket.app.data.library.LibrarySeat
 import com.upcpocket.app.data.library.LibrarySeatLayout
+import com.upcpocket.app.data.library.LibraryTimeOption
 
 @Composable
 fun LibrarySeatPreviewPage(page: String) {
@@ -209,10 +210,32 @@ private fun LibAreaPreview() {
     }
 }
 
+private fun previewSeatState(): LibrarySeatViewModel.UiState {
+    val layout = previewLayout()
+    val seat = layout.seats.first { it.name == "A01" }
+    return LibrarySeatViewModel.UiState(
+        filters = previewFilters,
+        building = previewFilters.buildings.first(),
+        date = "2026-11-04",
+        rooms = previewRooms,
+        floors = listOf(LibraryFloor(1, "1 楼"), LibraryFloor(2, "2 楼")),
+        room = previewRooms.first(),
+        layout = layout,
+        seat = seat,
+        startTimes = listOf(LibraryTimeOption("480", "08:00")),
+        endTimes = listOf(LibraryTimeOption("600", "10:00")),
+        start = LibraryTimeOption("480", "08:00"),
+        end = LibraryTimeOption("600", "10:00"),
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibSeatPreview(showTime: Boolean) {
-    val layout = previewLayout()
+    val state = previewSeatState()
+    val seat = state.seat
+    val start = state.start
+    val end = state.end
     Scaffold(
         topBar = {
             TopAppBar(
@@ -238,10 +261,14 @@ private fun LibSeatPreview(showTime: Boolean) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("已选 A03", fontWeight = FontWeight.SemiBold)
-                        Text("08:00–10:00", style = MaterialTheme.typography.labelSmall)
+                        Text("已选 ${seat?.name.orEmpty()}", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "${start?.value.orEmpty()}–${end?.value.orEmpty()} · " +
+                                (durationText(start, end) ?: "时长未知"),
+                            style = MaterialTheme.typography.labelSmall,
+                        )
                     }
-                    Button(onClick = {}) { Text("确认预约") }
+                    Button(onClick = {}, enabled = state.canConfirmReservation()) { Text("确认预约") }
                 }
             }
         },
@@ -263,8 +290,8 @@ private fun LibSeatPreview(showTime: Boolean) {
                     Column(Modifier.weight(1f)) {
                         Text("日期 2026-11-04", style = MaterialTheme.typography.labelMedium)
                         Text(
-                            if (showTime) "已选时段 08:00–10:00 · 点底部可改"
-                            else "先点选座位，再选择使用时间",
+                            "已选时段 ${start?.value.orEmpty()}–${end?.value.orEmpty()} · " +
+                                (durationText(start, end) ?: "时长未知") + " · 点底部可改",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -275,13 +302,13 @@ private fun LibSeatPreview(showTime: Boolean) {
             item { SeatLegend() }
             item {
                 SeatMap(
-                    layout = layout,
-                    selectedId = "s3",
+                    layout = state.layout ?: previewLayout(),
+                    selectedId = seat?.id,
                     onSelect = {},
                 )
             }
             if (showTime) {
-                item { PreviewTimeChips(title = "选择使用时间") }
+                item { PreviewTimeChips(title = "选择使用时间", state = state) }
             }
             item {
                 Text(
@@ -402,7 +429,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                 )
             }
             if (showTime) {
-                item { PreviewTimeChips(title = "选择查看时段") }
+                item { PreviewChaoxingTimeChips(title = "选择查看时段") }
             }
             item {
                 Text(
@@ -417,7 +444,9 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PreviewTimeChips(title: String) {
+private fun PreviewChaoxingTimeChips(title: String) {
+    val start = "08:00"
+    val end = "10:00"
     Column(
         Modifier.fillMaxWidth().background(
             MaterialTheme.colorScheme.surfaceContainerLow,
@@ -427,25 +456,72 @@ private fun PreviewTimeChips(title: String) {
     ) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         Text("开始时间", style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("08:00", "09:00", "10:00").forEach { value ->
+                FilterChip(selected = value == start, onClick = {}, label = { Text(value) })
+            }
+        }
+        Text("结束时间", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("09:00", "10:00", "11:00").forEach { value ->
+                FilterChip(selected = value == end, onClick = {}, label = { Text(value) })
+            }
+        }
+        Text(
+            "已选 $start–$end · 2 小时",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            "这里只读查看所选区间；真实预约仍在官方页完成。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PreviewTimeChips(title: String, state: LibrarySeatViewModel.UiState) {
+    val start = state.start?.value.orEmpty()
+    val end = state.end?.value.orEmpty()
+    Column(
+        Modifier.fillMaxWidth().background(
+            MaterialTheme.colorScheme.surfaceContainerLow,
+            RoundedCornerShape(16.dp),
+        ).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text("开始时间", style = MaterialTheme.typography.labelMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("08:00", "09:00", "10:00").forEach { value ->
                 FilterChip(
-                    selected = value == "08:00",
+                    selected = value == start,
                     onClick = {},
                     label = { Text(value) },
                 )
             }
         }
         Text("结束时间", style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("09:00", "10:00", "11:00").forEach { value ->
-                FilterChip(selected = value == "10:00", onClick = {}, label = { Text(value) })
+                FilterChip(
+                    selected = value == end,
+                    onClick = {},
+                    label = { Text(value) },
+                )
             }
         }
         Text(
-            "已选 08:00–10:00 · 2 小时",
+            "已选 $start–$end" + (durationText(state.start, state.end)?.let { " · $it" } ?: ""),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
+        )
+        Text(
+            "确认时会使用同一组开始/结束选项；本页为合成预览。",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

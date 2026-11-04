@@ -587,7 +587,11 @@ private fun LibrarySeatDetailPage(
                                 else -> vm.requestReservation()
                             }
                         },
-                        enabled = seat != null && !state.loading,
+                        enabled = when {
+                            seat == null -> false
+                            state.start == null || state.end == null -> seat.selectable && !state.loading
+                            else -> state.canConfirmReservation()
+                        },
                     ) {
                         Text(
                             when {
@@ -773,7 +777,7 @@ private fun LibrarySeatDetailPage(
                 )
             },
             confirmButton = {
-                TextButton(enabled = !state.loading, onClick = vm::confirmReservation) {
+                TextButton(enabled = state.canConfirmReservation(), onClick = vm::confirmReservation) {
                     Text("确认提交")
                 }
             },
@@ -855,6 +859,17 @@ internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel
         showConfirm = false,
         error = null,
     )
+
+internal fun LibrarySeatViewModel.UiState.canConfirmReservation(): Boolean {
+    val selectedSeat = seat ?: return false
+    val selectedStart = start ?: return false
+    val selectedEnd = end ?: return false
+    val currentLayout = layout ?: return false
+    if (loading || !selectedSeat.selectable) return false
+    if (currentLayout.seats.none { it.id == selectedSeat.id && it.selectable }) return false
+    if (endTimes.none { it.id == selectedEnd.id }) return false
+    return timeDurationMinutes(selectedStart, selectedEnd) != null
+}
 
 internal fun timeDurationMinutes(start: LibraryTimeOption?, end: LibraryTimeOption?): Int? {
     if (start == null || end == null) return null
@@ -1373,10 +1388,10 @@ internal class LibrarySeatViewModel(
     }
 
     fun requestReservation() {
-        val start = state.start ?: return
-        val end = state.end ?: return
-        if (state.endTimes.none { it.id == end.id }) return
-        if (timeDurationMinutes(start, end) == null) return
+        if (!state.canConfirmReservation()) {
+            state = state.copy(error = "所选座位或时段已不可用，请重新选择")
+            return
+        }
         state = state.copy(showConfirm = true)
     }
 
@@ -1385,6 +1400,10 @@ internal class LibrarySeatViewModel(
     }
 
     fun confirmReservation() {
+        if (!state.canConfirmReservation()) {
+            state = state.copy(showConfirm = false, error = "所选座位或时段已不可用，请重新选择")
+            return
+        }
         val date = state.date ?: return
         val seat = state.seat ?: return
         val start = state.start ?: return

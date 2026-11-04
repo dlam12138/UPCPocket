@@ -86,7 +86,8 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
   时长与确认参数；开始变化清空旧结束并重新请求；切换座位/日期/楼层/区域清空旧时段。`maxHour`
   只在服务端返回时作为提示，不据此截断选项，最终以 `endTimesForSeat` 为准。
   Chaoxing 只读查看按 `timeUnit` 和开放结束时间生成开始/结束选项，默认查看一个步长而非固定一小时；
-  结束变化按所选区间重新读取已用座位，始终只打开官方页，不新增原生写请求。
+  结束变化按所选区间重新读取已用座位，始终只打开官方页，不新增原生写请求。 确认前统一校验座位仍在当前布局且可选、结束属于当前 `endTimes`、时长为正；
+  不可用/暂离/过期座位不能确认。Debug 预览复用同一选择状态和校验，不再使用矛盾硬编码。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
@@ -247,7 +248,7 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **18 tests，0 failures/errors/skipped**（nspace 认证测试随功能删除；CAS/课表/座位认证用例保留） |
-| `:feature:library:testDebugUnitTest` | **96 tests，0 failures/errors，1 skipped**（libseat 座位/筛选/返回状态、区域统计、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
+| `:feature:library:testDebugUnitTest` | **99 tests，0 failures/errors，1 skipped**（libseat 座位/筛选/返回状态、区域统计、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
 | `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合保留旧研讨间路由的兼容落点断言 |
 | Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；不再包含 reserve 请求 |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
@@ -265,8 +266,8 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 
 - 评审副本：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,489,018` bytes
-- SHA-256：`4A645214B4E18AC6F68AEE586A113D8C2F94F3CE6C3F3971173B2E87F4EAF8DC`
+- 大小：`65,502,318` bytes
+- SHA-256：`D65C3AE1FB4826DA94C0380A78A192A5D77BCA3AE37B9A6407BF2E5E01C2EF76`
 - 该 APK 为 debug 构建，含 debug-only 合成课表预览与座位预览 Activity；release 构建不会合并它们。未上传、未发布。
 - 文件名明确为 seat-pages；旧 seats-only 构建与研讨间 APK 不再作为现行交付物。
 
