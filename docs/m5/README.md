@@ -114,6 +114,33 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 - 课程详情用 AlertDialog 展示日期、原始节次、周次、教师、地点、时间、类型、编号；
   缺失显示“未提供”，并说明源节次拆段与不推测钟点/校区。
 
+### 1.6 Chaoxing 网页登录黑屏定位（2026-11-04）
+
+用户实测「Chaoxing 登录打开是黑的」。本轮在 API 36 模拟器复现了同类空白页，并用普通
+Activity WebView、裸 Compose `AndroidView`、实际登录页三层对比拆开根因：
+
+- **入口白名单**：HEAD 的 `shouldOverrideUrlLoading` 只允许 Chaoxing 域；真实入口先
+  303 到 `tyrzfw.chaoxing.com/auth3/upc/cas/init`，再由该页 JS 跳到
+  `cas.upc.edu.cn/cas/login`。HEAD 会直接显示「已停止打开未允许的登录地址」。本轮保留
+  精确的 `tyrzfw` / CAS / `app.upc.edu.cn` 路径白名单，未放开任意域名或 TLS。
+- **真正导致网页区空白/黑屏的布局根因**：Compose `AndroidView` 工厂里的 WebView 没有
+  显式 `MATCH_PARENT` layoutParams。实测同一 CAS URL：
+  - 普通 Activity WebView：`html/body` 计算高度 915px，登录卡片在视口内；
+  - 裸 Compose `AndroidView`：`window.innerHeight=915`，但 `html/body` 计算高度为
+    **0px**，CAS `.container` 的 `top:50%; margin-top:-250px` 把表单顶到负坐标；
+  - 修复后实际登录页：`html/body` 为 778px，空用户名/密码表单可见。
+  这不是 tab 高度、父子 Scaffold padding 或 Insets 叠加：登录路由不在底部 tab 集合，
+  WebView 实际 bounds 为 `0,296–1080,2337`，底部仅余 63px 系统导航 inset，页面没有被
+  底栏或遮罩覆盖。
+- **修复同时收敛的诊断**：等 WebView 完成首次布局再导航；tyrzfw 空白中继页继续显示
+  非阻塞进度提示；加载失败、重新加载、返回均可恢复；reload/清理旧会话会重建 WebView
+  和 entryId，旧页面回调不能绑定新入口；renderer 退出时移除死 WebView，重新加载时重建。
+  不保留正文 DOM 日志、临时探针或软件渲染开关；未使用 `FLAG_SECURE` 解释黑屏。
+
+验证使用 `emulator-5556`（`upcpocket_probe`）的干净安装和保存的**合成测试账号状态**；
+空登录框、系统深色、1.5× 字体、断网错误→恢复网络→重新加载、清理旧会话后重开均已检查。
+没有输入真实 Chaoxing/学校密码，没有发起真实预约、取消或签到。
+
 ## 2. 插件契约与装配
 
 复用现有 `PluginUiContract`，没有为 M5 新增字段：
@@ -157,8 +184,9 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 
 ## 3. 截图
 
-截图均来自本会话模拟器 `emulator-5554`（Android 16 / API 36，1080×2400，Pixel 风格），
-无登录账号、真实余额、真实课程或真实学生数据。
+截图均来自本会话模拟器（Android 16 / API 36，1080×2400，Pixel 风格）；45/46 来自
+`emulator-5556`，其余历史截图来自 `emulator-5554`。截图无真实登录账号、真实余额、真实
+课程或真实学生数据。
 
 | 文件 | 内容 |
 | --- | --- |
@@ -200,6 +228,8 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 | [42-library-seat-detail-large-font.png](screenshots/42-library-seat-detail-large-font.png) | **Debug 合成预览**：libseat 座位页 1.5× |
 | [43-library-seat-detail-dark.png](screenshots/43-library-seat-detail-dark.png) | **Debug 合成预览**：libseat 座位页深色 |
 | [44-chaoxing-seat-time.png](screenshots/44-chaoxing-seat-time.png) | **Debug 合成预览**：Chaoxing 开始/结束时段与 2 小时示例 |
+| [45-chaoxing-login-cas.png](screenshots/45-chaoxing-login-cas.png) | **真实验证**：修复后空 CAS 登录表单可见（浅色，无账号） |
+| [46-chaoxing-login-cas-dark.png](screenshots/46-chaoxing-login-cas-dark.png) | **真实验证**：同一空表单在系统深色/应用深色下可见 |
 
 座位合成预览由 `feature/library/src/debug/.../LibrarySeatPreviewActivity.kt` 提供，页面顶部
 始终显示“合成预览 · 仅视觉，不连接学校、无账号/真实数据”；它只使用内存假数据，不创建账号、
@@ -248,7 +278,7 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **18 tests，0 failures/errors/skipped**（nspace 认证测试随功能删除；CAS/课表/座位认证用例保留） |
-| `:feature:library:testDebugUnitTest` | **99 tests，0 failures/errors，1 skipped**（libseat 座位/筛选/返回状态、区域统计、Chaoxing seat 解析/身份/会话/清理门闩；需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
+| `:feature:library:testDebugUnitTest` | **100 tests，0 failures/errors，1 skipped**（新增 CAS 中继加载状态回归；其余同前，需显式 Cookie 的真实座位回放默认跳过。nspace/reservepc 专属测试随功能删除） |
 | `:app:testDebugUnitTest` | **32 tests，0 failures/errors/skipped**；页面集合保留旧研讨间路由的兼容落点断言 |
 | Android 真实只读 | `RealChaoxingAuthTest` 在 API 36 模拟器进程内通过：账号保存→本人核验→seat/engine 区域/座位图/已用座位；不再包含 reserve 请求 |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
@@ -264,12 +294,12 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
 
 ### 5.1 本轮 APK
 
-- 评审副本：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`
+- 评审副本：`release/UPC-Pocket-M5-library-chaoxing-login-fix-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,502,318` bytes
-- SHA-256：`D65C3AE1FB4826DA94C0380A78A192A5D77BCA3AE37B9A6407BF2E5E01C2EF76`
+- 大小：`65,526,518` bytes
+- SHA-256：`545394CEBAFEBB0706AA47D8EDA3C10CCE15104164E3B59F57382053C46FA418`
 - 该 APK 为 debug 构建，含 debug-only 合成课表预览与座位预览 Activity；release 构建不会合并它们。未上传、未发布。
-- 文件名明确为 seat-pages；旧 seats-only 构建与研讨间 APK 不再作为现行交付物。
+- 临时 Chaoxing WebView 探针已从源码和 debug manifest 删除，不进入本 APK。
 
 ## 6. 未验证 / 限制
 
@@ -277,9 +307,10 @@ Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能�
   [图书馆六入口（归档）](图书馆六入口.md) 和 `docs/research/`，不代表现行产品能力。
 - 截图 35–44 是 Debug 合成预览，用于评审布局、深色、1.5× 和时长选择，不连接学校、没有账号/真实数据；
   真实 libseat 区域/座位/时段仍需登录后由学校接口返回，本轮没有使用真实账密重验。
-- Chaoxing 真实 App 内登录仍未验收：`passport2` 要求手机号/超星号 + 学习通密码，不是学校
-  CAS；不能把统一学校账号密码自动提交。受控 UI 验收只在测试进程注入过一次本机已登录会话
-  Cookie，测试结束只清理私有文件；本轮未再 `pm clear`。
+- Chaoxing 空 CAS 登录表单已在本轮实际显示并验证；真实 App 内登录仍未验收：`passport2`
+  要求手机号/超星号 + 学习通密码，不是学校 CAS；不能把统一学校账号密码自动提交。受控 UI
+  验收只在测试进程注入过一次本机已登录会话 Cookie，测试结束只清理私有文件；本轮未再
+  `pm clear`。本轮没有输入真实 Chaoxing/学校密码。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。
