@@ -71,7 +71,16 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | 读取 | 馆区、空间类型、开放日期、房间分页、房间详情、使用类型、必填项、本人预约列表；请求只发往固定 `libspace.upc.edu.cn` 的 `/spa` 路径 |
 | 写入边界 | 本轮不调用 `saveReservation`、结束使用、团队或签到；仅对 `status=0` 的本人记录提供“取消”，必须经确认对话框后调用 `GET cancelBook/{id}`；预约由学校官方页面完成 |
 | 账号隔离 | 绑定 accountId/凭据代次，登录结果与查询发布前复核；账号变化时迟到结果不发布；取消发送前复核当前会话 |
-| Chaoxing | seat/seatengine/reservepc 只在系统浏览器打开固定官方入口（稳定 `fidEnc/mappId/seatId` 或 `reserveId/resvAppId/mappId`，不含 uid/enc/code/state/wfwEnc）；应用不读取或导入浏览器 Cookie，也不做原生查询/预约 |
+## 超星座位/研讨间（Chaoxing，M5 后续开发分支）
+
+| 项目 | 说明 |
+| --- | --- |
+| 认证 | 受限官方 WebView；`passport2` 要求手机号/超星号 + 学习通密码，不是学校 CAS。应用不预填、不读取、不保存密码，也不把统一学校账号密码自动提交给 Chaoxing |
+| 会话 | 只读取应用 WebView 的 Chaoxing Cookie，保存在 `ChaoxingService` 内存；不写 DataStore/Keystore/文件/日志；退出、换号、删号或会话失效时清理固定 host/path Cookie |
+| 身份核验 | 服务端 `userLoginInfo.sno` 与当前统一账号比较；发布前复核 accountId/凭据代次/epoch/revision，迟到结果不发布 |
+| 读取 | seat/seatengine 固定 `/data/apps/{seat,seatengine}/...` 路径：区域、房间信息、座位图、已用座位、已用时段；reservepc 固定 `/data/apps/reserve/...` 路径：先读官方页面的 `reserveIdEnc`，再读租户房间列表 |
+| 写入 | 本轮没有实现预约/取消/签到；seat/seatengine 原生页只读，真实预约走官方页。reservepc 缺租户上下文时只显示错误和官方回退，不伪造房间 |
+| 浏览器隔离 | 不读取、不导入系统浏览器/Edge/微信/临时 profile 的 Cookie；受控 UI 验收的测试注入已在结束后 `pm clear`，不是产品路径 |
 
 ## 查询会用到什么
 
@@ -82,6 +91,7 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | 空闲教室 | 校区、教学楼、日期、节次 | 页面查询状态 |
 | 图书馆座位 | 学校正常认证所需登录名/密码（仅认证适配）；libseat 接口只接收 seat token 与查询/预约参数 | 运行会话；开启记住登录后保存绑定 accountId/代次的业务令牌 |
 | 图书馆空间（nspace） | 学校正常认证所需登录名/密码（仅认证适配）；nspace 接口只接收独立业务 token 与馆区/日期/房间/预约参数 | 仅内存 nspace 业务 token；不持久化；不保存真实房间/预约结果 |
+| 超星座位/研讨间 | 本次应用 WebView 的 Chaoxing Cookie；固定区域/日期/座位/时段参数；不发送账号密码 | 仅内存 Cookie；不保存区域/座位/房间结果；退出/换号即清 |
 | 课表 | 学校 CAS 正常登录表单所需的登录名与密码（仅认证适配）；课表接口只接收课表业务 Cookie 与学年/学期/教学周 | 加密课表业务会话；按账号归属的成功教学周缓存、查询时间与完整性 |
 | 学校账号（M1/M2/M3/M4） | 余额只发送当前账号的受控学号；课表/图书馆认证只向核对后的 CAS HTTPS 端点发送账密 | 独立 alias 加密的账号与密码完整版本、代次和清理状态；余额快照/课表缓存/图书馆令牌另存且带账号归属 |
 | 专注 | 不需要校园网络请求 | 标签、计时记录和统计 |
@@ -106,6 +116,6 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 
 校园卡余额和唐岛湾电量当前由学校 HTTP 接口提供，学号、寝室参数及返回值不受 HTTPS 传输加密保护。只查询本人账号与有权查询的房间；避免在不可信网络查询。古镇口通过学校外部页面访问，证书或网络异常时不绕过校验。
 
-图书馆登录页面由学校提供。学校服务和外部浏览器有各自的数据处理规则，应用不能控制校方保存的数据或保证服务持续可用。M2 余额只向现有 HTTP 接口发送当前账号中整串有效的本人学号，不发送密码。M3 课表只向核对后的学校 CAS HTTPS 端点发送账密，业务请求只访问 `app.upc.edu.cn`；M4 图书馆同样只向核对后的 CAS 提交账密，业务请求只访问 `libspace.upc.edu.cn` 的固定路径；nspace WebView 只加载 `*.upc.edu.cn` 且不读取输入，业务请求只访问 `libspace.upc.edu.cn/spa`；Chaoxing 只通过系统浏览器打开从 HAR 提取的稳定官方入口（不含 uid/enc/code/state）。不关闭证书校验，不向任意重定向发送密码或认证头，也不依赖开发电脑的现成 Cookie。真实课表/预约内容属于个人业务数据，不写入仓库、公开材料或聊天。
+图书馆登录页面由学校提供。学校服务和外部浏览器有各自的数据处理规则，应用不能控制校方保存的数据或保证服务持续可用。M2 余额只向现有 HTTP 接口发送当前账号中整串有效的本人学号，不发送密码。M3 课表只向核对后的学校 CAS HTTPS 端点发送账密，业务请求只访问 `app.upc.edu.cn`；M4 图书馆同样只向核对后的 CAS 提交账密，业务请求只访问 `libspace.upc.edu.cn` 的固定路径；nspace WebView 只加载 `*.upc.edu.cn` 且不读取输入，业务请求只访问 `libspace.upc.edu.cn/spa`；Chaoxing WebView 只加载固定 `office/reserve/passport2.chaoxing.com` HTTPS 页面，不读取输入，业务请求只访问固定 `office.chaoxing.com/data/apps/{seat,seatengine}` 与 `reserve.chaoxing.com/data/apps/reserve` 路径，不硬编码一次性的 uid/enc/code/state/wfwEnc。不关闭证书校验，不向任意重定向发送密码或认证头，也不依赖开发电脑的现成 Cookie。真实课表/预约内容属于个人业务数据，不写入仓库、公开材料或聊天。
 
 公开仓库和发布演示不得包含真实学生信息、密码、Cookie、Token、私钥或个人交易记录。README 组件截图使用虚构样本；教室示例来自公开查询。

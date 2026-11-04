@@ -60,10 +60,11 @@ class LibraryPluginTest {
         val active = result.plugins
         assertEquals("library", plugin.descriptor.id.value)
         assertEquals(
-            setOf("library.seat", "library.nspace"),
+            setOf("library.seat", "library.nspace", "library.chaoxing"),
             plugin.descriptor.capabilities,
         )
         assertSame(plugin.service, active.capability(LibraryCapabilities.seat))
         assertSame(plugin.nspaceService, active.capability(LibraryCapabilities.nspace))
+        assertSame(plugin.chaoxingService, active.capability(LibraryCapabilities.chaoxing))
     }
 }

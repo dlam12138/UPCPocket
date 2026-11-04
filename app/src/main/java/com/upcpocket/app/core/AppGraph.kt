@@ -116,6 +116,10 @@ object AppGraph {
         if (nspace != null && !nspace.signOutForAccountChange()) {
             failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
         }
+        val chaoxing = activePlugins.capability(LibraryCapabilities.chaoxing)
+        if (chaoxing != null && !chaoxing.signOutForAccountChange()) {
+            failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
+        }
         val timetable = activePlugins.capability(TimetableCapabilities.week)
         val timetableCleared = if (timetable != null) {
             timetable.invalidateForAccount(request.scope)

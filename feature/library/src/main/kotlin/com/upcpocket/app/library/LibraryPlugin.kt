@@ -4,6 +4,7 @@ import android.content.Context
 import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.chaoxing.ChaoxingRepository
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.nspace.NspaceRepository
 import com.upcpocket.app.data.prefs.SchoolSessionStore
@@ -19,6 +20,7 @@ import com.upcpocket.app.plugin.ui.PluginUiRegistry
 object LibraryCapabilities {
     val seat = capabilityKey<LibraryService>("library.seat")
     val nspace = capabilityKey<NspaceService>("library.nspace")
+    val chaoxing = capabilityKey<ChaoxingService>("library.chaoxing")
 }
 
 val LIBRARY_PLUGIN_ID: PluginId = PluginId.parse("library")
@@ -45,6 +47,7 @@ class LibraryPlugin(
         capabilities = setOf(
             LibraryCapabilities.seat.id,
             LibraryCapabilities.nspace.id,
+            LibraryCapabilities.chaoxing.id,
         ),
     )
 
@@ -70,13 +73,25 @@ class LibraryPlugin(
         webTokenExchanger = nspaceWebTokenExchanger,
     )
 
+    /**
+     * Chaoxing 是独立 Cookie 会话：只接受应用内受限 WebView 的官方登录，
+     * 与 libseat seat token、nspace token 都不共享。
+     */
+    val chaoxingService: ChaoxingService = ChaoxingService(
+        repository = ChaoxingRepository(),
+        accountGate = account,
+        accountReference = account,
+        identityVerifier = identityVerifier,
+    )
+
     override fun capabilities(): List<PluginCapability> = listOf(
         PluginCapability(LibraryCapabilities.seat, service),
         PluginCapability(LibraryCapabilities.nspace, nspaceService),
+        PluginCapability(LibraryCapabilities.chaoxing, chaoxingService),
     )
 
     override val pluginId get() = descriptor.id
 
     override fun contribute(registry: PluginUiRegistry) =
-        LibraryUi(service, nspaceService).contribute(registry)
+        LibraryUi(service, nspaceService, chaoxingService).contribute(registry)
 }

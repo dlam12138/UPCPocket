@@ -37,7 +37,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountStatus
-import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
+import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
+import com.upcpocket.app.data.chaoxing.ChaoxingTenant
+import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.library.NspaceService
 import com.upcpocket.app.ui.components.GlassCard
@@ -47,7 +49,6 @@ import com.upcpocket.app.ui.components.StatusPill
 private enum class LibraryAccess {
     NATIVE,
     NATIVE_READ_ONLY,
-    OFFICIAL_LOGIN,
 }
 
 private data class LibraryPlatform(
@@ -72,15 +73,19 @@ private data class LibraryPlatform(
 fun LibraryHubScreen(
     libraryService: LibraryService,
     nspaceService: NspaceService,
+    chaoxingService: ChaoxingService,
     onBack: () -> Unit,
     onOpenSeat: () -> Unit,
     onOpenNspace: () -> Unit,
+    onOpenChaoxingSeat: (ChaoxingSeatKind) -> Unit,
+    onOpenChaoxingReserve: (ChaoxingTenant) -> Unit,
     onOpenAccount: () -> Unit,
 ) {
     val context = LocalContext.current
     val accountState by libraryService.accountState.collectAsStateWithLifecycle()
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
     val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
+    val chaoxingSession by chaoxingService.session.collectAsStateWithLifecycle()
 
     val platforms = listOf(
         LibraryPlatform(
@@ -104,50 +109,42 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "东区座位",
             subtitle = "古镇口 · Chaoxing seat",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.EventSeat,
-            actionLabel = "在浏览器打开官方入口",
-            action = {
-                openOfficial(context, UpcOfficialEntryLinks.SEAT)
-            },
-            note = "已登录 Chaoxing 会话中核对：东区 6 个区域（48–66 座）、08:00–21:30、" +
-                "30 分钟时段与座位图；应用只打开官方页，不代持 Chaoxing 会话。",
+            actionLabel = "查看区域/座位/时段",
+            action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
+            note = "原生只读：区域、座位图、30 分钟时段与已用座位；首次需 Chaoxing 网页登录，" +
+                "真实预约仍在学校页面完成。",
         ),
         LibraryPlatform(
             title = "东区研讨间",
             subtitle = "古镇口 · reservepc 租户 A",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "在浏览器打开官方入口",
-            action = {
-                openOfficial(context, UpcOfficialEntryLinks.RESERVE_GUZHENKOU)
-            },
-            note = "稳定租户入口已核对：8 个研讨间（如 403，8 人）与 30/60 分钟时段；" +
-                "仍需 Chaoxing 登录，应用不代持会话，未做原生预约。",
+            actionLabel = "查看研讨间",
+            action = { onOpenChaoxingReserve(ChaoxingTenant.GUZHENKOU) },
+            note = "原生只读：8 个研讨间、容量与开放时段；首次需 Chaoxing 网页登录，" +
+                "团队/附件/选座流程走官方页面。",
         ),
         LibraryPlatform(
             title = "求是座位",
             subtitle = "求是 · Chaoxing seatengine",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.EventSeat,
-            actionLabel = "在浏览器打开官方入口",
-            action = {
-                openOfficial(context, UpcOfficialEntryLinks.SEATENGINE)
-            },
-            note = "已登录 Chaoxing 会话中核对：求是 21 个区域（16–240 座）、08:00–22:00、" +
-                "30 分钟时段与座位图；应用只打开官方页，不代持 Chaoxing 会话。",
+            actionLabel = "查看区域/座位/时段",
+            action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },
+            note = "原生只读：求是区域、座位图、30 分钟时段与已用座位；首次需 Chaoxing " +
+                "网页登录，真实预约仍在学校页面完成。",
         ),
         LibraryPlatform(
             title = "求是研讨间",
             subtitle = "求是 · reservepc 租户 B",
-            access = LibraryAccess.OFFICIAL_LOGIN,
+            access = LibraryAccess.NATIVE_READ_ONLY,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "在浏览器打开官方入口",
-            action = {
-                openOfficial(context, UpcOfficialEntryLinks.RESERVE_QIUSHI)
-            },
-            note = "稳定租户入口已核对：23 个研讨间（A301 等）与房间详情/时段页；" +
-                "仍需 Chaoxing 登录，应用不代持会话，未做原生预约。",
+            actionLabel = "查看研讨间",
+            action = { onOpenChaoxingReserve(ChaoxingTenant.QIUSHI) },
+            note = "原生只读：23 个研讨间、容量与开放时段；首次需 Chaoxing 网页登录，" +
+                "团队/附件/选座流程走官方页面。",
         ),
     )
 
@@ -195,9 +192,9 @@ fun LibraryHubScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "libseat 会话：" + (seatSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
-                            " · nspace 会话：" +
-                            (nspaceSession?.user?.name?.ifBlank { "已登录" } ?: "未登录"),
+                        "libseat：" + (seatSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
+                            " · nspace：" + (nspaceSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
+                            " · Chaoxing：" + (chaoxingSession?.let { "已连接" } ?: "未登录"),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -234,9 +231,9 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "“原生/原生只读”表示应用内调用学校接口；“官方页”只表示本机已在已登录 " +
-                    "Chaoxing 会话中核对入口与页面数据，预约仍在学校页面完成。应用不代持 " +
-                    "Chaoxing Cookie，也不把四张官方页卡片说成四个原生平台。",
+                "“原生/原生只读”表示应用内调用学校接口；Chaoxing 四入口首次需在应用内受限 " +
+                    "官方 WebView 登录，之后只读区域/座位/时段/研讨间。真实预约、团队、附件和" +
+                    "选座仍在学校页面完成，应用不代持浏览器 Cookie。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -255,15 +252,6 @@ private fun accountStatusLabel(status: SchoolAccountStatus): String = when (stat
     SchoolAccountStatus.REMOVING -> "清理中，暂不可登录"
 }
 
-private fun openOfficial(context: android.content.Context, url: String) {
-    if (!UpcOfficialEntryLinks.isAllowedChaoxingHost(url)) return
-    runCatching {
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
-}
-
 @Composable
 private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColor, pillContent) = when (platform.access) {
         LibraryAccess.NATIVE -> Triple(
@@ -275,11 +263,6 @@ private fun PlatformCard(platform: LibraryPlatform) {    val (pillText, pillColo
             "原生只读",
             MaterialTheme.colorScheme.secondaryContainer,
             MaterialTheme.colorScheme.onSecondaryContainer,
-        )
-        LibraryAccess.OFFICIAL_LOGIN -> Triple(
-            "官方页",
-            MaterialTheme.colorScheme.tertiaryContainer,
-            MaterialTheme.colorScheme.onTertiaryContainer,
         )
     }
     Surface(
