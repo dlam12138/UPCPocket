@@ -623,7 +623,7 @@ class TimetableService(
                 is UpcAuthResult.Failure -> throw when (result.reason) {
                     UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
                         TimetableConnection.AUTH_FAILED,
-                        "学校认证未通过。请核对“更多 → 学校账号”中的账号密码；本轮不会自动重试。",
+                        "学校认证未通过。请核对“首页 → 设置 → 学校账号”中的账号密码；本轮不会自动重试。",
                     )
                     UpcAuthFailure.INTERACTION_REQUIRED -> ServiceFailure(
                         TimetableConnection.INTERACTION_REQUIRED,
@@ -637,7 +637,7 @@ class TimetableService(
                         )
                     UpcAuthFailure.ACCOUNT_UNAVAILABLE -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
-                        "当前学校账号不可用，请先在“更多 → 学校账号”重新保存。",
+                        "当前学校账号不可用，请先在“首页 → 设置 → 学校账号”重新保存。",
                     )
                     UpcAuthFailure.ACCOUNT_CHANGED -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
@@ -956,7 +956,7 @@ class TimetableService(
                             "学校账号正在清理或切换；完成前不会登录或显示旧课表。"
                         state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION ->
                             "学校账号密文不可用，请重新保存后再使用课表。"
-                        else -> "请先在“更多 → 学校账号”保存学校账号。"
+                        else -> "请先在“首页 → 设置 → 学校账号”保存学校账号。"
                     },
                     interactionUrl = null,
                     isBusy = false,

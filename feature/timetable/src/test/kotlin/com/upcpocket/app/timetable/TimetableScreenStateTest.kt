@@ -195,6 +195,9 @@ class TimetableScreenStateTest {
         }
         rule.onNodeWithText("2026-2027 秋季").assertIsDisplayed()
         rule.onNodeWithText("第 8 周 / 共 19 周").assertIsDisplayed()
+        // 周日起点与 ISO 星期的展示排序不同：日期范围必须按真实日期取最小/最大，
+        // 不能取“周一列/周日列”的排序结果，否则会显示 10/26 – 10/25。
+        rule.onNodeWithText("10/25 – 10/31").assertIsDisplayed()
         rule.onNodeWithText("2").performClick()
         assertEquals(2, selected)
     }

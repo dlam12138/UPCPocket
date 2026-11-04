@@ -16,7 +16,7 @@ val LIBRARY_SEAT_ROUTE: PluginRouteId = PluginRouteId.parse("library.seat")
 val LIBRARY_LOGIN_ROUTE: PluginRouteId = PluginRouteId.parse("library.login")
 
 /**
- * 图书馆插件贡献的首页入口、座位/登录页面和“更多”里的学校登录区。
+ * 图书馆插件贡献的首页入口、座位/登录页面和设置里的学校登录区。
  *
  * 页面内部仍由原 Repository/ViewModel 负责请求与会话；插件只把宿主提供的
  * 导航、偏好和 Cookie 清理适配器接起来。
@@ -52,8 +52,8 @@ internal class LibraryUi(
                 pluginId = LIBRARY_PLUGIN_ID,
                 surface = UiSurface.HOME_SERVICES,
                 order = 2,
-                title = "图书馆座位预约",
-                subtitle = "学校统一认证登录后选馆区、座位与时间",
+                title = "图书馆座位",
+                subtitle = "统一认证 · 查询馆区与座位",
                 icon = UiIcon.LIBRARY,
                 route = LIBRARY_SEAT_ROUTE,
             ),

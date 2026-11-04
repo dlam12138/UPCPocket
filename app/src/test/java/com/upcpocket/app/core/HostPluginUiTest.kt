@@ -13,7 +13,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * 宿主装配检查：首页/更多入口来自已激活插件，而不是 AppNav/HomeScreen 里的第二份硬编码。
+ * 宿主装配检查：首页服务、课表/专注 tab 与设置里的学校登录区来自已激活插件，
+ * 而不是 AppNav/HomeScreen 的第二份硬编码。
  *
  * 只构建注册表与 UI 快照，不组合页面、不联网、不打开专注数据库。
  */
@@ -28,7 +29,7 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `home service entries keep existing order copy and stable routes`() {
+    fun `home service entries keep M5 copy and stable routes`() {
         val entries = AppGraph.ui.entriesFor(UiSurface.HOME_SERVICES)
 
         assertEquals(
@@ -36,11 +37,15 @@ class HostPluginUiTest {
             entries.map { it.entryId.value },
         )
         assertEquals(
-            listOf("电费", "空闲教室", "图书馆座位预约"),
+            listOf("电费", "空闲教室", "图书馆座位"),
             entries.map { it.title },
         )
         assertEquals(
-            listOf("唐岛湾 · 古镇口", "按校区、日期、楼宇和节次查询", "学校统一认证登录后选馆区、座位与时间"),
+            listOf(
+                "唐岛湾查询 · 古镇口网页",
+                "两校区 · 按日期与节次查询",
+                "统一认证 · 查询馆区与座位",
+            ),
             entries.map { it.subtitle },
         )
         assertEquals(
@@ -53,21 +58,19 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `more groups and card section are plugin owned`() {
-        val learning = AppGraph.ui.entriesFor(UiSurface.MORE_LEARNING)
+    fun `timetable and focus are the only plugin tabs and more list is gone`() {
+        val tabs = AppGraph.ui.bottomNav
         assertEquals(
-            listOf("focus.stats", "timetable.week"),
-            learning.map { it.entryId.value },
+            listOf("timetable.tab", "focus.tab"),
+            tabs.map { it.entryId.value },
         )
-        assertEquals(listOf("学习统计", "课表"), learning.map { it.title })
+        assertEquals(listOf("课表", "专注"), tabs.map { it.label })
+        assertEquals(listOf(5, 10), tabs.map { it.order })
         assertEquals(
-            listOf("专注时长、热力图、标签分布", "学期、教学周、周网格与今日课程（只读）"),
-            learning.map { it.subtitle },
+            listOf("timetable.week", "focus"),
+            tabs.map { it.route.value },
         )
-        assertEquals(
-            listOf("focus.stats", "timetable.week"),
-            learning.map { it.route?.value },
-        )
+        assertTrue(AppGraph.ui.entriesFor(UiSurface.MORE_LEARNING).isEmpty())
 
         assertEquals(
             listOf("card.balance.section"),
@@ -88,12 +91,11 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `focus tab is a plugin contribution between host tabs`() {
-        val tabs = AppGraph.ui.bottomNav
-        assertEquals(listOf("focus.tab"), tabs.map { it.entryId.value })
-        assertEquals("专注", tabs.single().label)
-        assertEquals("focus", tabs.single().route.value)
-        assertEquals(10, tabs.single().order)
+    fun `focus tab remains a plugin contribution between host home and timetable`() {
+        val tabs = AppGraph.ui.bottomNav.associateBy { it.entryId.value }
+        assertEquals("专注", tabs.getValue("focus.tab").label)
+        assertEquals("focus", tabs.getValue("focus.tab").route.value)
+        assertEquals(10, tabs.getValue("focus.tab").order)
     }
 
     @Test

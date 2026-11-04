@@ -1,5 +1,18 @@
 # 更新与验证
 
+## M5 · 首页/课表/专注与统一设置入口（开发分支，未发布）
+
+- 顶级导航收束为 **首页 / 课表 / 专注**：课表从“更多 → 学习”提升为插件 tab（order 5），专注 tab 保留（order 10）；删除宿主“更多”页与旧学习统计入口。
+- 首页改为日期问候、校园卡摘要和“常用服务”四宫格；账号、图书馆登录、桌面组件、官方网页、外观、关于统一收进首页右上角设置。
+- 新增原生设置页、桌面组件说明/可选系统 pin、学校官方网页外链目录；官方链接来自既有 `docs/upc/官方入口.md`，不预填账号、不代理登录。
+- 视觉系统去掉半透明玻璃叠层/重阴影，统一 `surfaceContainerLow + 1dp outlineVariant + 20dp` 卡片、字号层级、20dp 页面边距和 filled/outlined 图标状态。
+- 课表重做教学周头部、今日课程、7 天×14 节横向周网格、重叠分栏、当前日强调、在线/缓存/空周/未查询/失败标签和课程详情；缺失字段仍显示“未提供”，不推测量纲/钟点/校区。
+- 校园卡卡片保留账号绑定、脱敏、历史值、失败、清除缓存和安全说明；安全细节改为可展开，不删除语义。账号页 `FLAG_SECURE` 与密码清空保留。
+- 插件契约未新增字段；课表/专注改用既有 `PluginBottomNav`，`MORE_LEARNING` 保留枚举兼容但不再挂载。缺插件仍由宿主原子裁剪，无空 tab。
+- 修复宿主底部导航与内层 Scaffold 重复消费底部 Insets；`adjustResize` 已加入 Manifest。
+- 验证：按项目基线 `testDebugUnitTest` **50 套件 / 357 tests，0 failures/errors/skipped**；JVM 16 tests 通过；`assembleDebug`、`lintDebug` 通过（0 errors / 2 warnings）；模拟器 Android 16 实测浅/深色、1.0×/1.3×/1.5× 字号和主要页面/返回。详见 [M5 记录](m5/README.md)。
+- 限制：未重跑真实学校登录/只读查询，未做 release/R8、真机、其他 ROM 或第三方桌面 pin；截图中的课表为 Debug-only 明确标注的合成预览。
+
 ## M4 · 图书馆 libseat 统一认证（开发分支，未发布）
 
 - 从 `:core:upc-auth` 课表认证中提取公共 `UpcCasLogin`：官方 CAS 表单、错误页、验证码/二次验证识别、service/callback 主机与路径、Cookie 作用域共用；课表 M3 认证回归保持通过。

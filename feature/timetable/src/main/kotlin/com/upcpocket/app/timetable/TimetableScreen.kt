@@ -10,23 +10,39 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -38,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +66,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,8 +74,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.IconBadge
+import com.upcpocket.app.ui.components.StatusPill
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -66,7 +85,6 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun TimetableScreen(
     service: TimetableService,
-    onBack: () -> Unit,
     onOpenAccountSettings: () -> Unit,
 ) {
     val viewModel: TimetableViewModel = viewModel(
@@ -78,7 +96,6 @@ fun TimetableScreen(
     )
     TimetableScreen(
         viewModel = viewModel,
-        onBack = onBack,
         onOpenAccountSettings = onOpenAccountSettings,
     )
 }
@@ -87,7 +104,6 @@ fun TimetableScreen(
 @Composable
 internal fun TimetableScreen(
     viewModel: TimetableViewModel,
-    onBack: () -> Unit,
     onOpenAccountSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -100,7 +116,7 @@ internal fun TimetableScreen(
         state.meetings.any { it.instanceId == selected.instanceId }
     }
 
-    androidx.compose.runtime.LaunchedEffect(
+    LaunchedEffect(
         state.accountEpoch,
         state.accountBlocked,
         state.accountSavedUnverified,
@@ -112,26 +128,49 @@ internal fun TimetableScreen(
             viewModel.cancelInteractiveLogin()
         }
     }
-    androidx.compose.runtime.LaunchedEffect(
+    LaunchedEffect(
         state.accountEpoch,
         state.selectedYear,
         state.selectedTerm,
         state.selectedWeek,
     ) {
-        // 详情属于某一账号/某一周；换号或换周后不能继续展示旧课程。
         detail = null
     }
 
+    fun beginWebLogin() {
+        viewModel.beginInteractiveLogin { url ->
+            if (url != null) {
+                loginUrl = url
+                loginEpoch = state.accountEpoch
+                loginVisible = true
+            }
+        }
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
         topBar = {
             TopAppBar(
-                title = { Text("课表") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                title = {
+                    Column {
+                        Text("课表")
+                        Text(
+                            text = "只读 · 当前学期",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenAccountSettings) {
+                        Icon(
+                            Icons.Outlined.AccountCircle,
+                            contentDescription = "学校账号",
+                        )
+                    }
                     IconButton(
                         onClick = viewModel::refresh,
                         enabled = !state.isBusy && !state.accountBlocked,
@@ -147,72 +186,54 @@ internal fun TimetableScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp)
-                .padding(bottom = DOCK_CLEARANCE),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Spacer(Modifier.height(2.dp))
-            AccountHeader(state)
             if (state.accountBlocked) {
-                GlassCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(state.message ?: "学校账号暂不可用。", style = MaterialTheme.typography.bodyMedium)
-                        OutlinedButton(onClick = onOpenAccountSettings) {
-                            Text("前往学校账号")
-                        }
-                    }
-                }
-                return@Column
-            }
-            ConnectionBanner(
-                state = state,
-                onRetry = viewModel::refresh,
-                onOpenAccountSettings = onOpenAccountSettings,
-                onOpenLogin = {
-                    viewModel.beginInteractiveLogin { url ->
-                        if (url != null) {
-                            loginUrl = url
-                            loginEpoch = state.accountEpoch
-                            loginVisible = true
-                        }
-                    }
-                },
-                onOpenWebLogin = {
-                    viewModel.beginInteractiveLogin { url ->
-                        if (url != null) {
-                            loginUrl = url
-                            loginEpoch = state.accountEpoch
-                            loginVisible = true
-                        }
-                    }
-                },
-            )
-            if (state.terms.isEmpty()) {
-                GlassCard(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "尚未取得学期列表。",
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        if (state.isBusy) CircularProgressIndicator(Modifier.height(22.dp))
-                    }
-                }
+                AccountBlockedCard(
+                    message = state.message ?: "学校账号暂不可用。",
+                    onOpenAccountSettings = onOpenAccountSettings,
+                )
                 return@Column
             }
 
-            TermAndWeekHeader(
-                state = state,
-                onSelectTerm = viewModel::selectTerm,
-                onSelectWeek = viewModel::selectWeek,
-            )
-            WeekPanel(state, onCourseClick = { detail = it })
-            TodayPanel(state, onCourseClick = { detail = it })
-            Text(
-                "课表为只读查询；学期、周次、节次与日期均按学校源数据展示，未提供项不推测。" +
-                    "本页不会自动遍历整学期或周期轮询。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!state.accountSavedUnverified) {
+                FirstRunCard(
+                    isLoading = state.connection == TimetableConnection.LOADING,
+                    onOpenAccountSettings = onOpenAccountSettings,
+                )
+                return@Column
+            }
+
+            if (state.connection != TimetableConnection.CONNECTED || state.message != null) {
+                ConnectionBanner(
+                    state = state,
+                    onRetry = viewModel::refresh,
+                    onOpenAccountSettings = onOpenAccountSettings,
+                    onOpenLogin = ::beginWebLogin,
+                    onOpenWebLogin = ::beginWebLogin,
+                )
+            } else {
+                ConnectedStrip(onOpenWebLogin = ::beginWebLogin)
+            }
+
+            if (state.terms.isEmpty()) {
+                if (state.isBusy) {
+                    ReadingCard()
+                } else {
+                    NoTermsCard(onRetry = viewModel::refresh)
+                }
+            } else {
+                TermAndWeekHeader(
+                    state = state,
+                    onSelectTerm = viewModel::selectTerm,
+                    onSelectWeek = viewModel::selectWeek,
+                )
+                TodayPanel(state, onCourseClick = { detail = it })
+                WeekPanel(state, onCourseClick = { detail = it })
+                ReadOnlyNote()
+            }
+            Spacer(Modifier.height(2.dp))
         }
     }
 
@@ -245,26 +266,91 @@ internal fun TimetableScreen(
 }
 
 @Composable
-internal fun AccountHeader(state: TimetableUiState) {
+private fun AccountBlockedCard(message: String, onOpenAccountSettings: () -> Unit) {
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("学校账号", style = MaterialTheme.typography.labelLarge)
-                Spacer(Modifier.weight(1f))
-                Text(
-                    state.accountStatusLabel.ifBlank { "账号状态未知" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            IconBadge(
+                icon = Icons.Outlined.AccountCircle,
+                contentDescription = null,
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                contentColor = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text("学校账号需要处理", style = MaterialTheme.typography.titleLarge)
             Text(
-                "本机保存状态与课表连接状态分开显示；保存成功不代表账号已通过学校认证。",
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(onClick = onOpenAccountSettings) { Text("前往学校账号") }
+        }
+    }
+}
+
+@Composable
+private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            IconBadge(
+                icon = Icons.Outlined.CalendarMonth,
+                contentDescription = null,
+                size = 48.dp,
+            )
+            Text("连接你的课表", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = "课表使用当前学校账号，通过正常学校认证只读查询当前教学周。" +
+                    "它不会在首页后台自动登录，也不会遍历整个学期。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (isLoading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+            Button(
+                onClick = onOpenAccountSettings,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("设置学校账号") }
+            Text(
+                text = "保存账号不等于认证通过。第一次进入课表时才会发起学校认证；" +
+                    "验证码或二次验证会转到学校自己的网页登录。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 3.dp),
             )
+        }
+    }
+}
+
+@Composable
+private fun ReadingCard() {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
+            Text(
+                "正在读取学期与当前教学周…",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoTermsCard(onRetry: () -> Unit) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("尚未取得学期列表", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "可能是课程服务暂时不可用或认证需要交互。不会把未知状态当作空课表展示。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = onRetry) { Text("重试") }
         }
     }
 }
@@ -277,23 +363,36 @@ internal fun TermAndWeekHeader(
 ) {
     val term = state.selectedTermOrNull ?: return
     var menuOpen by remember { mutableStateOf(false) }
+    val rangeStart = state.weekDates.minOrNull()
+    val rangeEnd = state.weekDates.maxOrNull()
+    val selectedWeek = state.selectedWeek
+
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     OutlinedButton(onClick = { menuOpen = true }) {
                         Text(term.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(
+                            Icons.Filled.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
-                    androidx.compose.material3.DropdownMenu(
+                    DropdownMenu(
                         expanded = menuOpen,
                         onDismissRequest = { menuOpen = false },
                     ) {
                         state.terms.forEach { item ->
-                            androidx.compose.material3.DropdownMenuItem(
+                            DropdownMenuItem(
                                 text = {
                                     Text(
                                         item.label,
-                                        fontWeight = if (item == term) FontWeight.Bold else FontWeight.Normal,
+                                        fontWeight = if (item == term) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
                                     )
                                 },
                                 onClick = {
@@ -311,9 +410,50 @@ internal fun TermAndWeekHeader(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            androidx.compose.foundation.lazy.LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
+                    enabled = selectedWeek != null && selectedWeek > 1,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        contentDescription = "上一周",
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        "第 ${selectedWeek ?: "–"} 周",
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    if (rangeStart != null && rangeEnd != null) {
+                        Text(
+                            "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
+                                " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = {
+                        selectedWeek?.let {
+                            onSelectWeek((it + 1).coerceAtMost(term.totalWeeks))
+                        }
+                    },
+                    enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = "下一周",
+                    )
+                }
+            }
+
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(term.totalWeeks) { index ->
                     val week = index + 1
                     FilterChip(
@@ -328,6 +468,22 @@ internal fun TermAndWeekHeader(
 }
 
 @Composable
+private fun ConnectedStrip(onOpenWebLogin: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StatusPill(
+            text = "已连接",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = onOpenWebLogin) { Text("使用学校网页登录") }
+    }
+}
+
+@Composable
 internal fun ConnectionBanner(
     state: TimetableUiState,
     onRetry: () -> Unit,
@@ -335,32 +491,24 @@ internal fun ConnectionBanner(
     onOpenLogin: () -> Unit,
     onOpenWebLogin: () -> Unit,
 ) {
+    val tone = connectionTone(state.connection)
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "课表连接",
-                    style = MaterialTheme.typography.labelLarge,
-                )
+                Text("课表连接", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = connectionColor(state.connection).copy(alpha = 0.16f),
-                ) {
-                    Text(
-                        connectionLabel(state.connection),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = connectionColor(state.connection),
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
-                    )
-                }
+                StatusPill(
+                    text = connectionLabel(state.connection),
+                    containerColor = tone.container,
+                    contentColor = tone.content,
+                )
             }
             if (state.message != null) {
                 Text(
                     state.message,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 5.dp),
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
             state.weekFetchedAtEpochMillis?.let { fetched ->
@@ -369,14 +517,14 @@ internal fun ConnectionBanner(
                         if (state.weekState == TimetableWeekState.CACHED) " · 历史缓存" else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 3.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
             if (state.isBusy) {
                 LinearProgressIndicator(
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
+                        .padding(top = 10.dp),
                 )
             }
             Row(
@@ -412,38 +560,43 @@ internal fun WeekPanel(
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(10.dp)) {
+        Column(Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("教学周", style = MaterialTheme.typography.labelLarge)
+                Text("教学周", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
-                if (state.weekState == TimetableWeekState.READY) {
-                    Text(
-                        "在线成功",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
+                when (state.weekState) {
+                    TimetableWeekState.READY -> StatusPill(
+                        text = "在线成功",
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
-                } else if (state.weekState == TimetableWeekState.CACHED) {
-                    Text(
-                        "离线缓存",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
+                    TimetableWeekState.CACHED -> StatusPill(
+                        text = "离线缓存",
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
+                    TimetableWeekState.ERROR -> StatusPill(
+                        text = "未更新",
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                    else -> Unit
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             when (state.weekState) {
-                TimetableWeekState.NOT_QUERIED -> EmptyWeekHint("该教学周尚未查询；切换周会按需查询。")
-                TimetableWeekState.ERROR -> EmptyWeekHint(
-                    state.message ?: "该教学周查询失败；未缓存时不能离线查看。",
-                )
+                TimetableWeekState.NOT_QUERIED ->
+                    EmptyWeekHint("该教学周尚未查询；切换周会按需查询。")
+                TimetableWeekState.ERROR ->
+                    EmptyWeekHint(state.message ?: "该教学周查询失败；未缓存时不能离线查看。")
                 TimetableWeekState.LOADING -> if (state.meetings.isEmpty()) {
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
+                            .height(160.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        CircularProgressIndicator()
+                        CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
                     }
                 } else {
                     WeekGrid(state, onCourseClick)
@@ -451,7 +604,15 @@ internal fun WeekPanel(
                 TimetableWeekState.EMPTY -> EmptyWeekHint("本周无课程")
                 TimetableWeekState.READY,
                 TimetableWeekState.CACHED,
-                -> WeekGrid(state, onCourseClick)
+                -> {
+                    WeekGrid(state, onCourseClick)
+                    Text(
+                        "左右滑动查看周末 · 点课程查看详情",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 2.dp, top = 8.dp),
+                    )
+                }
             }
         }
     }
@@ -459,23 +620,25 @@ internal fun WeekPanel(
 
 @Composable
 private fun EmptyWeekHint(text: String) {
-    Box(
-        Modifier
+    Column(
+        modifier = Modifier
             .fillMaxWidth()
-            .height(96.dp),
-        contentAlignment = Alignment.Center,
+            .heightIn(min = 112.dp)
+            .padding(horizontal = 18.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text,
+            text = text,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 12.dp),
+            textAlign = TextAlign.Center,
         )
     }
 }
 
-private val SLOT_HEIGHT = 44.dp
-private val DAY_WIDTH = 58.dp
+private val SLOT_HEIGHT = 52.dp
+private val DAY_WIDTH = 66.dp
 private const val PERIODS = 14
 
 @Composable
@@ -491,8 +654,8 @@ private fun WeekGrid(
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
     ) {
-        Column(Modifier.width(26.dp)) {
-            Spacer(Modifier.height(38.dp))
+        Column(Modifier.width(28.dp)) {
+            Spacer(Modifier.height(46.dp))
             repeat(PERIODS) { index ->
                 Box(
                     Modifier
@@ -511,6 +674,7 @@ private fun WeekGrid(
         dates.forEach { date ->
             DayColumn(
                 date = date,
+                isToday = date == state.today,
                 meetings = byDate[date].orEmpty(),
                 onCourseClick = onCourseClick,
             )
@@ -521,6 +685,7 @@ private fun WeekGrid(
 @Composable
 private fun DayColumn(
     date: LocalDate,
+    isToday: Boolean,
     meetings: List<TimetableMeeting>,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
@@ -533,13 +698,27 @@ private fun DayColumn(
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(38.dp),
+                .height(46.dp)
+                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .background(
+                    if (isToday) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    } else {
+                        Color.Transparent
+                    },
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                weekdayLabel(date.dayOfWeek.value),
+                text = weekdayLabel(date.dayOfWeek.value),
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Medium,
+                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                color = if (isToday) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
             Text(
                 "${date.monthValue}/${date.dayOfMonth}",
@@ -552,50 +731,75 @@ private fun DayColumn(
             Modifier
                 .fillMaxWidth()
                 .height(SLOT_HEIGHT * PERIODS)
+                .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
                 .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f),
-                    RoundedCornerShape(4.dp),
+                    if (isToday) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
                 ),
         ) {
+            Column(Modifier.fillMaxSize()) {
+                repeat(PERIODS) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(SLOT_HEIGHT)
+                            .border(
+                                0.5.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            ),
+                    )
+                }
+            }
+
             val lanes = laneInfo.second.coerceAtLeast(1)
             val laneWidth = maxWidth / lanes
             meetings.forEachIndexed { index, meeting ->
                 val lane = laneInfo.first.getOrElse(index) { 0 }
                 val top = SLOT_HEIGHT * (meeting.startPeriod - 1)
-                val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 2.dp
-                val color = courseColor(index + date.dayOfWeek.value)
-                Box(
-                    Modifier
-                        .offset(x = laneWidth * lane, y = top)
-                        .width((laneWidth - 2.dp).coerceAtLeast(12.dp))
+                val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 3.dp
+                val tone = courseTone(meeting.courseName)
+                Surface(
+                    modifier = Modifier
+                        .offset(x = laneWidth * lane + 1.dp, y = top + 1.dp)
+                        .width((laneWidth - 3.dp).coerceAtLeast(18.dp))
                         .height(height)
-                        .padding(top = 1.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(color.copy(alpha = 0.78f))
-                        .border(0.5.dp, color, RoundedCornerShape(5.dp))
+                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onCourseClick(meeting) }
                         .semantics {
                             contentDescription =
                                 "课程详情 ${meeting.courseName} ${meeting.sourcePeriodsLabel()}"
-                        }
-                        .padding(2.dp),
+                        },
+                    shape = RoundedCornerShape(8.dp),
+                    color = tone.container,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
                 ) {
-                    Column {
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                    ) {
                         Text(
                             meeting.courseName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontSize = 10.sp,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = tone.content,
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (height > 38.dp) {
+                        if (height > 62.dp) {
                             Text(
-                                periodLabel(meeting),
+                                meeting.location ?: "地点未提供",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                fontSize = 8.sp,
-                                maxLines = 1,
+                                color = tone.content.copy(alpha = 0.8f),
+                                fontSize = 9.sp,
+                                lineHeight = 11.sp,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -613,9 +817,9 @@ internal fun TodayPanel(
 ) {
     val today = state.today
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("今日课程", style = MaterialTheme.typography.labelLarge)
+                Text("今日课程", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
                 if (today != null) {
                     Text(
@@ -645,12 +849,22 @@ internal fun TodayPanel(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable { onCourseClick(meeting) }
-                            .padding(vertical = 4.dp),
+                            .padding(vertical = 5.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        Box(
+                            Modifier
+                                .width(3.dp)
+                                .height(38.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(2.dp),
+                                ),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
                             Text(
                                 meeting.courseName,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -666,6 +880,12 @@ internal fun TodayPanel(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(18.dp),
+                        )
                     }
                 }
             }
@@ -680,13 +900,37 @@ internal fun CourseDetailDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(meeting.courseName) },
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(meeting.courseName)
+                Text(
+                    "${meeting.date} ${weekdayLabel(meeting.weekday)} · ${periodLabel(meeting)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
         text = {
             Column(
-                Modifier
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    StatusPill(
+                        text = "${meeting.weekLabel} 周",
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    StatusPill(
+                        text = "只读",
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+                HorizontalDivider(
+                    Modifier.padding(vertical = 2.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                )
                 DetailLine("日期", "${meeting.date} ${weekdayLabel(meeting.weekday)}")
                 DetailLine("节次", meeting.sourcePeriodsLabel())
                 DetailLine("周次", meeting.weekLabel)
@@ -717,14 +961,71 @@ internal fun CourseDetailDialog(
 
 @Composable
 private fun DetailLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth()) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(82.dp),
+            modifier = Modifier.width(84.dp),
         )
-        Text(value, style = MaterialTheme.typography.bodySmall)
+        Text(value, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ReadOnlyNote() {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                "课表为只读查询；学期、周次、节次与日期均按学校源数据展示。" +
+                    "不自动遍历整学期，不周期轮询，也不提供编辑、提醒或导出。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private data class ToneColors(val container: Color, val content: Color)
+
+@Composable
+private fun courseTone(courseName: String): ToneColors {
+    val scheme = MaterialTheme.colorScheme
+    return when (Math.floorMod(courseName.hashCode(), 4)) {
+        0 -> ToneColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+        1 -> ToneColors(scheme.secondaryContainer, scheme.onSecondaryContainer)
+        2 -> ToneColors(scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        else -> ToneColors(scheme.surfaceVariant, scheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun connectionTone(connection: TimetableConnection): ToneColors {
+    val scheme = MaterialTheme.colorScheme
+    return when (connection) {
+        TimetableConnection.CONNECTED ->
+            ToneColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+        TimetableConnection.CONNECTING,
+        TimetableConnection.LOADING,
+        TimetableConnection.DEGRADED_CACHE,
+        TimetableConnection.NETWORK_UNAVAILABLE,
+        -> ToneColors(scheme.tertiaryContainer, scheme.onTertiaryContainer)
+        TimetableConnection.AUTH_FAILED,
+        TimetableConnection.SESSION_EXPIRED,
+        TimetableConnection.PROTOCOL_ERROR,
+        TimetableConnection.BLOCKED_BY_CLEANUP,
+        -> ToneColors(scheme.errorContainer, scheme.onErrorContainer)
+        else -> ToneColors(scheme.surfaceVariant, scheme.onSurfaceVariant)
     }
 }
 
@@ -775,29 +1076,6 @@ private fun connectionLabel(connection: TimetableConnection): String = when (con
     TimetableConnection.PROTOCOL_ERROR -> "接口异常"
     TimetableConnection.SESSION_EXPIRED -> "会话失效"
     TimetableConnection.DEGRADED_CACHE -> "离线缓存"
-}
-
-private fun connectionColor(connection: TimetableConnection): Color = when (connection) {
-    TimetableConnection.CONNECTED -> Color(0xFF186B3B)
-    TimetableConnection.CONNECTING, TimetableConnection.LOADING -> Color(0xFF6A5B00)
-    TimetableConnection.AUTH_FAILED, TimetableConnection.SESSION_EXPIRED,
-    TimetableConnection.PROTOCOL_ERROR,
-    -> Color(0xFF9B2C2C)
-    TimetableConnection.NETWORK_UNAVAILABLE, TimetableConnection.DEGRADED_CACHE ->
-        Color(0xFF8A5A00)
-    else -> Color(0xFF5D5D5D)
-}
-
-private fun courseColor(seed: Int): Color {
-    val palette = listOf(
-        Color(0xFFD7E7FF),
-        Color(0xFFDCEEE1),
-        Color(0xFFFFE3C2),
-        Color(0xFFEADDFF),
-        Color(0xFFFFD9D9),
-        Color(0xFFD7F0F5),
-    )
-    return palette[Math.floorMod(seed, palette.size)]
 }
 
 private fun formatFetchedAt(epochMillis: Long): String =

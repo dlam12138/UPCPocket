@@ -78,7 +78,6 @@ class TimetableFirstLoginScreenTest {
             MaterialTheme {
                 TimetableScreen(
                     viewModel = viewModel,
-                    onBack = {},
                     onOpenAccountSettings = {},
                 )
             }
@@ -135,7 +134,6 @@ class TimetableFirstLoginScreenTest {
             MaterialTheme {
                 TimetableScreen(
                     viewModel = viewModel,
-                    onBack = {},
                     onOpenAccountSettings = {},
                 )
             }

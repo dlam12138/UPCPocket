@@ -9,14 +9,12 @@ import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.api.capabilityKey
 import com.upcpocket.app.plugin.ui.PluginBottomNav
-import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
-import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.ui.focus.FocusScreen
 import com.upcpocket.app.ui.focus.FocusStatsScreen
 
@@ -99,17 +97,6 @@ class FocusPlugin(
                 route = FOCUS_MAIN_ROUTE,
             ),
         )
-        registry.addEntry(
-            PluginEntry(
-                entryId = UiEntryId.parse("focus.stats"),
-                pluginId = FOCUS_PLUGIN_ID,
-                surface = UiSurface.MORE_LEARNING,
-                order = 0,
-                title = "学习统计",
-                subtitle = "专注时长、热力图、标签分布",
-                icon = UiIcon.INSIGHTS,
-                route = FOCUS_STATS_ROUTE,
-            ),
-        )
+
     }
 }

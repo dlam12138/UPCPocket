@@ -1,5 +1,10 @@
 package com.upcpocket.app.library
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -8,33 +13,34 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 
 /**
- * 「更多 → 学校登录」中的图书馆会话区。
+ * 「设置 → 图书馆登录」中的学校会话区。
  *
- * 文案、开关与退出行为沿用迁移前的设置页；插件只通过 [LibraryService] 读写状态，
- * 不直接拿宿主的 DataStore 或 AppGraph。关闭开关和退出按钮都会清理加密副本、
- * 内存 token 与学校业务 Cookie。
+ * 独立设置页只保留开关、当前会话与退出动作；完整的 token/Keystore/Cookie 说明
+ * 收进可展开的“数据说明”，不因视觉简化删除隐私与数据归属信息。
  */
 @Composable
 internal fun LibraryAccountSection(service: LibraryService) {
     val rememberLogin by service.rememberLogin.collectAsStateWithLifecycle(initialValue = false)
     val scope = rememberCoroutineScope()
     val librarySession by service.repository.session.collectAsStateWithLifecycle()
+    var showDetails by remember { mutableStateOf(false) }
 
     ListItem(
         headlineContent = { Text("记住学校登录") },
         supportingContent = {
             Text(
-                "目前只有图书馆座位会话需要登录：开启后 token 用 Android Keystore 加密保存" +
-                    "（不随系统备份）；关闭或退出会清理持久副本与 UPC 业务 Cookie。" +
-                    "此开关只保存图书馆 token，不是统一学校账号密码的保存/验证，" +
-                    "也不能代替“更多 → 学校账号”中的选择。校园卡余额不需要登录。",
+                "只保存图书馆座位会话；不是学校账号密码。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -48,17 +54,53 @@ internal fun LibraryAccountSection(service: LibraryService) {
             )
         },
     )
-    Text(
-        "图书馆会话：" + (
-            librarySession?.let { "内存中（${it.user.name.ifBlank { "已登录" }}）" }
-                ?: "未登录（未保存时进程结束即需重登）"
-            ),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 16.dp),
-    )
-    TextButton(
-        onClick = { scope.launch { service.setRememberLogin(false) } },
-        modifier = Modifier.padding(horizontal = 8.dp),
-    ) { Text("退出学校登录（清理图书馆会话与学校 Cookie）") }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            "图书馆会话：" + (
+                librarySession?.let { "内存中（${it.user.name.ifBlank { "已登录" }}）" }
+                    ?: "未登录"
+                ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { showDetails = !showDetails }) {
+            Text(if (showDetails) "收起" else "说明")
+        }
+    }
+
+    Column(
+        modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        TextButton(
+            onClick = { scope.launch { service.setRememberLogin(false) } },
+        ) { Text("退出学校登录（清理会话与学校 Cookie）") }
+
+        AnimatedVisibility(visible = showDetails) {
+            Column(
+                modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    "开启后，图书馆座位业务 token 用 Android Keystore 加密保存（不随系统备份）；" +
+                        "关闭或退出会清理持久副本与学校业务 Cookie。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "此开关只保存图书馆会话，不是统一学校账号密码的保存/验证，" +
+                        "也不能代替“设置 → 学校账号”中的选择。校园卡余额不需要登录。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
 }

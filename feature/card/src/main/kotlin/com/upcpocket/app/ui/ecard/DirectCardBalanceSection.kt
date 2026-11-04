@@ -1,15 +1,26 @@
 package com.upcpocket.app.ui.ecard
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -19,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -29,6 +41,7 @@ import com.upcpocket.app.data.ecard.DirectCardSnapshot
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.RefreshInvalidatedException
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.IconBadge
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -36,10 +49,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * 校园卡余额功能区（直接嵌在首页，不是二级页面）。
+ * 校园卡余额功能区（主页上的紧凑卡片）。
  *
- * 查询目标只来自当前统一账号的受控学号，不提供独立输入框，也不从旧快照、组件参数
- * 或草稿里取目标。清除按钮只清余额缓存，不删除学校账号或密码。
+ * 查询目标只来自当前统一账号的受控学号，不提供独立输入框，也不从旧快照、组件
+ * 参数或草稿里取目标。M5 把说明折叠到“数据说明”，但保留脱敏绑定、缓存清除、
+ * 查询失败历史值、Keystore/账号归属等安全语义。
  */
 @Composable
 fun DirectCardBalanceSection(
@@ -56,6 +70,7 @@ fun DirectCardBalanceSection(
     var querying by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var fresh by remember { mutableStateOf(false) }
+    var showDetails by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -118,80 +133,27 @@ fun DirectCardBalanceSection(
             Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                "余额查询目标来自当前统一学校账号；不需要登录，也不提供充值。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            when (status.availability) {
-                CardBindingAvailability.LOADING -> {
-                    Text("正在读取本机账号…", modifier = Modifier.testTag("card_binding_status"))
-                }
-                CardBindingAvailability.NO_ACCOUNT -> {
-                    Text(
-                        "请先设置学校账号。未绑定时不发余额请求，也不显示旧学号或旧余额。",
-                        modifier = Modifier.testTag("card_binding_status"),
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("校园卡余额", style = MaterialTheme.typography.titleMedium)
+                    BindingStatus(
+                        availability = status.availability,
+                        maskedStudentId = status.binding?.studentId?.let(AccountMask::mask).orEmpty(),
                     )
                 }
-                CardBindingAvailability.NEEDS_RECONFIGURATION -> {
-                    Text(
-                        "本机账号凭据无法读取，需要重新保存后才能查询余额。",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("card_binding_status"),
-                    )
-                }
-                CardBindingAvailability.CLEANING -> {
-                    Text(
-                        "正在完成旧账号清理，期间不查询、不显示旧身份数值。",
-                        modifier = Modifier.testTag("card_binding_status"),
-                    )
-                }
-                CardBindingAvailability.STUDENT_ID_UNAVAILABLE -> {
-                    Text(
-                        "当前账号登录名不是 8–16 位数字学号，余额查询明确不可用；" +
-                            "不会猜测或截取其他数字。请在账号设置中使用本人学号。",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("card_binding_status"),
-                    )
-                }
-                CardBindingAvailability.READY -> {
-                    val binding = status.binding
-                    Text(
-                        "当前绑定学号：${binding?.studentId?.let(AccountMask::mask).orEmpty()}",
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.testTag("card_binding_status"),
-                    )
-                    Text(
-                        "学校账号已保存，尚未验证学校密码。余额接口只按学号查询、不接收密码；" +
-                            "余额读取成功不代表 CAS 登录成功。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Spacer(Modifier.width(10.dp))
+                IconBadge(
+                    icon = Icons.Filled.AccountBalanceWallet,
+                    contentDescription = null,
+                    size = 40.dp,
+                )
             }
 
             if (status.availability == CardBindingAvailability.READY) {
-                Button(
-                    onClick = ::query,
-                    enabled = !loading && !querying,
-                    modifier = Modifier.fillMaxWidth().testTag("card_query"),
-                ) {
-                    Text(if (querying) "正在读取…" else "查询 / 刷新余额")
-                }
-            }
-
-            OutlinedButton(
-                onClick = onOpenAccountSettings,
-                modifier = Modifier.fillMaxWidth().testTag("card_open_account"),
-            ) { Text("前往学校账号设置") }
-
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            error?.let {
                 Text(
-                    "本次操作失败：$it",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.testTag("card_error"),
+                    "学校账号已保存，尚未验证学校密码；余额查询成功不代表 CAS 登录成功。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -204,31 +166,136 @@ fun DirectCardBalanceSection(
                 )
             }
 
-            // 只要当前绑定可用就保留清除入口：清理失败后旧值已隐藏，用户仍能重试。
-            if (status.availability == CardBindingAvailability.READY || snapshot != null) {
-                TextButton(
-                    onClick = ::clearCache,
-                    enabled = !loading && !querying,
-                    modifier = Modifier.testTag("card_clear_cache"),
-                ) {
-                    Text("仅清除余额缓存")
-                }
+            if (loading) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
+
+            error?.let {
                 Text(
-                    "清除余额缓存不会删除学校账号或密码；账号失效时仍由账号清理统一处理。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    "本次操作失败：$it",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.testTag("card_error"),
                 )
             }
 
-            Text(
-                "数据来源：学校校园卡余额 getCardInfo，金额按“分”返回、按元显示。" +
-                    "该接口使用 HTTP 明文传输学号与金额；余额缓存位于 App 私有、不参与备份的目录，" +
-                    "带内部账号归属与读取时间，未单独加密。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            if (status.availability == CardBindingAvailability.READY) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = ::query,
+                        enabled = !loading && !querying,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("card_query"),
+                    ) {
+                        if (querying) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(if (querying) "正在读取…" else if (snapshot == null) "查询余额" else "刷新余额")
+                    }
+                    OutlinedButton(
+                        onClick = onOpenAccountSettings,
+                        modifier = Modifier.testTag("card_open_account"),
+                    ) { Text("账号") }
+                }
+            } else {
+                OutlinedButton(
+                    onClick = onOpenAccountSettings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("card_open_account"),
+                ) { Text("前往学校账号设置") }
+            }
+
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
             )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (status.availability == CardBindingAvailability.READY || snapshot != null) {
+                    TextButton(
+                        onClick = ::clearCache,
+                        enabled = !loading && !querying,
+                        modifier = Modifier.testTag("card_clear_cache"),
+                    ) { Text("清除余额缓存") }
+                }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showDetails = !showDetails }) {
+                    Text("数据说明")
+                    Icon(
+                        imageVector = if (showDetails) {
+                            Icons.Filled.KeyboardArrowUp
+                        } else {
+                            Icons.Filled.KeyboardArrowDown
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 2.dp).size(18.dp),
+                    )
+                }
+            }
+
+            AnimatedVisibility(visible = showDetails) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "清除余额缓存不会删除学校账号或密码；账号失效时仍由账号清理统一处理。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "数据来源：学校校园卡余额 getCardInfo，金额按“分”返回、按元显示。" +
+                            "该接口使用 HTTP 明文传输学号与金额；余额缓存位于 App 私有、不参与备份的目录，" +
+                            "带内部账号归属与读取时间，未单独加密。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "不提供充值、转账或绑定；不显示假余额。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun BindingStatus(
+    availability: CardBindingAvailability,
+    maskedStudentId: String,
+) {
+    val text = when (availability) {
+        CardBindingAvailability.LOADING -> "正在读取本机账号…"
+        CardBindingAvailability.NO_ACCOUNT -> "请先设置学校账号。未绑定时不发余额请求，也不显示旧学号或旧余额。"
+        CardBindingAvailability.NEEDS_RECONFIGURATION ->
+            "本机账号凭据无法读取，需要重新保存后才能查询余额。"
+        CardBindingAvailability.CLEANING ->
+            "正在完成旧账号清理，期间不查询、不显示旧身份数值。"
+        CardBindingAvailability.STUDENT_ID_UNAVAILABLE ->
+            "当前账号登录名不是 8–16 位数字学号，余额查询明确不可用；不会猜测或截取其他数字。"
+        CardBindingAvailability.READY ->
+            "查询目标：${maskedStudentId.ifBlank { "学号不可用" }}"
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = if (
+            availability == CardBindingAvailability.NEEDS_RECONFIGURATION ||
+            availability == CardBindingAvailability.STUDENT_ID_UNAVAILABLE
+        ) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = Modifier.testTag("card_binding_status"),
+    )
 }
 
 @Composable
@@ -245,30 +312,45 @@ private fun BalanceSnapshot(
         !currentCredential -> "同号历史余额：账号凭据已更新，尚未重新查询"
         else -> "上次成功读取（未更新）"
     }
-    Card(
-        Modifier.fillMaxWidth().testTag("card_snapshot"),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("card_snapshot"),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column(
             Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
-            Text("学号：${AccountMask.mask(data.studentId)}")
-            Text("校园卡余额", style = MaterialTheme.typography.titleMedium)
             Text(
-                "${data.balanceText} 元",
-                style = MaterialTheme.typography.headlineMedium,
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = "${data.balanceText} 元",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Text(
+                text = "过渡余额：${data.transitionText} 元",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             Text(
-                "过渡余额：${data.transitionText} 元",
-                style = MaterialTheme.typography.titleMedium,
+                text = "学号：${AccountMask.mask(data.studentId)}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
                 .withZone(ZoneId.systemDefault())
             Text(
-                "读取于 ${time.format(Instant.ofEpochMilli(data.fetchedAt))}",
-                style = MaterialTheme.typography.bodySmall,
+                text = "读取于 ${time.format(Instant.ofEpochMilli(data.fetchedAt))}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }

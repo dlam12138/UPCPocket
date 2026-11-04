@@ -34,7 +34,13 @@ value class PluginRouteId private constructor(val value: String) {
     }
 }
 
-/** 宿主决定入口最终出现在哪个栏目；插件只声明稳定归属。 */
+/**
+ * 宿主决定入口最终出现在哪个栏目；插件只声明稳定归属。
+ *
+ * M5 不再挂载“更多”页，因此宿主当前只读取 [HOME_SERVICES]、[HOME_CARD] 和
+ * [MORE_SCHOOL]（设置里的图书馆登录区）。[MORE_LEARNING] 保留枚举值，避免旧插件
+ * 源级编译中断；它不再产生可点入口，课表/专注分别贡献底部 tab。
+ */
 enum class UiSurface {
     HOME_SERVICES,
     HOME_CARD,
@@ -74,7 +80,7 @@ interface PluginSectionHost {
 /**
  * 一个功能入口。
  *
- * `order` 只用于同一栏目内的稳定排序；M0 迁移时沿用现有顺序，M5 再统一调整。
+ * `order` 只用于同一栏目内的稳定排序；M5 由宿主决定首页 2×2 的最终密度和文案换行。
  */
 data class PluginEntry(
     val entryId: UiEntryId,
@@ -108,7 +114,8 @@ interface PluginUiContributor {
  * 插件贡献的底部导航 tab。
  *
  * 宿主只接受“已注册页面 + 稳定图标枚举”的 tab；tab 的显示顺序由 [order]
- * 决定，但宿主保底保留首页/更多，因此插件只能插入中间位置，不能替换宿主壳。
+ * 决定。宿主固定保留首页，插件 tab 只能排在其后；M5 的课表（5）与专注（10）
+ * 都来自插件，未注册时宿主不会留下空 tab。
  */
 class PluginBottomNav(
     val entryId: UiEntryId,
@@ -130,7 +137,7 @@ class PluginPage(
     val content: @Composable (PluginPageHost) -> Unit,
 )
 
-/** 嵌在宿主页面中的区域（首页余额卡、更多里的学校登录区）。 */
+/** 嵌在宿主页面中的区域（首页余额卡、设置里的图书馆登录区）。 */
 class PluginSection(
     val entryId: UiEntryId,
     val pluginId: PluginId,

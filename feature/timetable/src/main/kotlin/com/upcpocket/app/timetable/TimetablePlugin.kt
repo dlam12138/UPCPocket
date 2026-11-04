@@ -7,14 +7,13 @@ import com.upcpocket.app.plugin.api.PluginCapability
 import com.upcpocket.app.plugin.api.PluginDescriptor
 import com.upcpocket.app.plugin.api.PluginId
 import com.upcpocket.app.plugin.api.capabilityKey
-import com.upcpocket.app.plugin.ui.PluginEntry
+import com.upcpocket.app.plugin.ui.PluginBottomNav
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
-import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 
 object TimetableCapabilities {
@@ -69,19 +68,16 @@ internal class TimetableUi(
             PluginPage(TIMETABLE_ROUTE, TIMETABLE_PLUGIN_ID) { host ->
                 TimetableScreen(
                     service = service,
-                    onBack = host::back,
                     onOpenAccountSettings = host::openSchoolAccountSettings,
                 )
             },
         )
-        registry.addEntry(
-            PluginEntry(
-                entryId = UiEntryId.parse("timetable.week"),
+        registry.addBottomNav(
+            PluginBottomNav(
+                entryId = UiEntryId.parse("timetable.tab"),
                 pluginId = TIMETABLE_PLUGIN_ID,
-                surface = UiSurface.MORE_LEARNING,
-                order = 10,
-                title = "课表",
-                subtitle = "学期、教学周、周网格与今日课程（只读）",
+                order = 5,
+                label = "课表",
                 icon = UiIcon.TIMETABLE,
                 route = TIMETABLE_ROUTE,
             ),

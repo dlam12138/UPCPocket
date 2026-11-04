@@ -2,20 +2,22 @@ package com.upcpocket.app.ui.about
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -25,15 +27,17 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.IconBadge
+import com.upcpocket.app.ui.components.SectionHeader
 
 /** 上游项目（本项目的 Android 参考底座，MIT） */
 private const val UPSTREAM_REPO = "https://github.com/3beuml/ZZUPocket"
 
 /**
- * 「关于」页：**这个 App 是什么、数据从哪来、怎么用你的数据、开源与致谢**。
+ * 「关于」页：这个 App 是什么、数据从哪来、怎么用你的数据、开源与边界。
  *
- * 轻量版移除了课表与桌面组件，这里只描述仍在提供的能力，避免把已删除的功能
- * 写成现状。
+ * M5 不再把页面当作功能清单的“第二首页”；只保留用户需要理解数据归属和责任边界
+ * 的事实，避免出现“已接入统一认证”这类超出实际验证的表述。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +45,7 @@ fun AboutScreen(onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
                 title = { Text("关于") },
@@ -57,86 +62,123 @@ fun AboutScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Card(
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer,
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                ),
             ) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("UPC Pocket · 轻量版", style = MaterialTheme.typography.titleMedium)
+                Column(
+                    Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconBadge(
+                        icon = Icons.Outlined.Info,
+                        contentDescription = null,
+                        containerColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        size = 44.dp,
+                    )
                     Text(
-                        text = "中国石油大学（华东）校园查询与专注助手：空闲教室、图书馆座位、" +
-                            "校园卡余额与唐岛湾电费应用内查询、古镇口电费外部页面，加番茄钟与学习统计。" +
-                            "本版不含课表。",
-                        style = MaterialTheme.typography.bodySmall,
+                        "UPC Pocket",
+                        style = MaterialTheme.typography.headlineSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        "面向中国石油大学（华东）的校园日常工具：课表、校园卡、电费、空闲教室、" +
+                            "图书馆座位与专注。非学校官方应用。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）· M5 预览",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                     )
                 }
             }
 
-            AboutCard("当前能力") {
-                Bullet("空闲教室：按校区、日期、上午/下午/晚上或自选节次查询；结果按教学楼分组，" +
-                    "同时展示空闲与占用教室，可只看空闲。无预约功能。")
-                Bullet("图书馆座位：官方 CAS 登录后原生选馆区、日期、房间、座位与时间；提交和取消都由你确认。")
-                Bullet("校园卡余额：按“更多 → 学校账号”当前账号中整串有效的本人学号查询，读取余额与过渡余额并分别展示；无需登录。")
-                Bullet("电费：首页只有一个入口，进入后选校区。唐岛湾在 App 内选楼号＋房间号查询剩余电量（度）；" +
-                    "古镇口仍打开学校页面（证书过期，不绕过 TLS）。")
-                Bullet("输入记忆：唐岛湾的楼号与房间号保存在本机，可随时清除；校园卡余额按账号绑定，不再单独记忆学号。")
-                Bullet("学校账号：在“更多 → 学校账号”主动保存当前一个学校账号；本机 Keystore AES-GCM 加密，" +
-                    "只显示“已保存，尚未验证”，可更新或删除。余额只使用该账号的学号；图书馆或课表认证尚未接入。")
-                Bullet("番茄钟：计时引擎 + 前台服务 + 通知，标签可自定义。")
-                Bullet("学习统计：今日/周/月/年汇总、热力图、标签分布。")
+            AboutCard("现在能用") {
+                Bullet("课表：当前学校账号正常认证后只读查询；学期、教学周、周网格、今日课程和详情。" +
+                    "只在进入课表或切换周时查询，保留已成功周的离线缓存。")
+                Bullet("校园卡余额：按当前账号中完整有效的本人学号查询，展示余额与过渡余额；" +
+                    "查询缓存、2×2 组件和清除入口保持独立。")
+                Bullet("电费：唐岛湾在 App 内选楼号与房间号查询；古镇口打开学校页面。")
+                Bullet("空闲教室：两校区、日期、教学楼与节次筛选，原生只读结果。")
+                Bullet("图书馆座位：学校统一认证后查询、预约与取消；验证码/二次验证走学校网页登录。")
+                Bullet("专注：番茄钟、标签、今日记录、热力图与统计；计时可在前台服务中继续。")
+                Bullet("桌面组件：校园卡余额与唐岛湾电量，2×2，仅点击刷新。")
             }
 
-            AboutCard("数据与隐私") {
-                Bullet("默认不保存账号密码。只有你在“更多 → 学校账号”主动保存时，当前一个账号密码才用" +
-                    "独立 Keystore 密钥的 AES-GCM 加密保存在应用私有、不备份目录；保存/离页会清空输入，" +
-                    "不回显已存密码。保存不等于学校认证通过。")
-                Bullet("开启“记住学校登录”只保存图书馆座位 token，不读取、也不代表同意保存学校账号密码；" +
-                    "校园卡余额按当前账号的本人学号直接查询，不登录。")
-                Bullet("空闲教室只发送查询条件；唐岛湾的楼号与房间号、校园卡余额快照保存在本机私有空间，" +
-                    "可在对应功能区清除，不会随输入自动查询。")
-                Bullet("专注记录与标签只存在本机数据库，没有自建服务器，也不会上传。")
-                Bullet("卸载 App 会一并清掉所有本地数据。")
-                Bullet("App 不提供充值、转账或绑定，也不显示假余额。")
-            }
-
-            AboutCard("数据从哪来（重要）") {
-                Bullet("空闲教室：来自学校公开页面的查询结果，显示查询条件与更新时间。")
-                Bullet("图书馆：来自 libspace.upc.edu.cn 正常登录后的接口；结果和错误按学校返回显示。")
-                Bullet("校园卡：来自学校校园卡余额接口的 getCardInfo，按当前统一账号中的本人学号查询，金额按“分”返回、按元显示。")
-                Bullet("唐岛湾电费：来自 dfcz.upc.edu.cn 的公开查询表单，字段名为“当前剩余电量”。")
-            }
-
-            AboutCard("尚未实现 / 待验证") {
-                Bullet("图书馆的真实账号与预约流程：需要在本机完成一次登录、选座与取消，" +
-                    "模拟器与合成测试不能替代这一步。")
-                Bullet("古镇口电费：学校域名证书已过期，页面也不是唐岛湾那套表单；本版仍交浏览器，不绕过 TLS。")
-                Bullet("微信 SDK 直达：需要正式移动应用 AppID、正确包名/签名和目标页/小程序；当前未配置 AppID。")
-                Bullet("统一账号接入：校园卡余额、课表与图书馆统一认证仍未接入；当前保存的账密没有发送给学校。")
-                Bullet("后台定时同步 —— 应用没有周期性网络任务。")
-            }
-
-            AboutCard("开源与致谢") {
-                Text(
-                    text = "本项目以 MIT 许可证开源。Android 端的番茄钟、统计与原生查询页面参考了" +
-                        "上游 ZZUPocket（MIT）的设计与实现；上游的郑州大学认证、接口、课表与宿舍" +
-                        "房间规则没有被复用。",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                TextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
-                    Text("上游项目 3beuml/ZZUPocket（MIT）")
+            SectionHeader(
+                title = "数据与隐私",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Bullet("账号密码只有你主动保存时才写入本机，使用 Android Keystore 中独立密钥的 AES-GCM 加密；" +
+                        "文件位于应用私有、不参与系统备份的目录。未保存时不回显、不猜测。")
+                    Bullet("课表/图书馆会话使用独立加密与会话代次，绑定当前账号；换号、删号、改密或清理失败时会阻止" +
+                        "旧会话恢复，迟到响应不会覆盖新账号。")
+                    Bullet("学校账号页在可见时设置 FLAG_SECURE，避免密码输入出现在系统截图/录屏中。")
+                    Bullet("课表只按需查询单周，不自动遍历整学期；校园卡、电费与组件都没有周期后台任务。")
+                    Bullet("查询会发送到对应学校系统，App 不经过自建服务器；卸载会清除本机数据。")
                 }
             }
 
+            SectionHeader(
+                title = "数据来源",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Bullet("课表来自 app.upc.edu.cn 的课表接口，由正常 CAS 认证获取。" +
+                        "协议参考 UPC-MCP 固定提交，未嵌入 MCP 运行时。")
+                    Bullet("校园卡余额来自学校 getCardInfo；唐岛湾电量来自 dfcz.upc.edu.cn 的公开查询表单。")
+                    Bullet("空闲教室来自学校公开查询页；图书馆座位来自 libspace 统一认证后的只读与用户主动操作。")
+                    Bullet("古镇口电费仍是学校外部页面；证书或网络异常时不绕过 TLS。")
+                }
+            }
+
+            SectionHeader(
+                title = "验证边界",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Bullet("真实课表/图书馆只读链路有本人账号模拟器验证；验证码真实链路由合成测试与回退代码覆盖，" +
+                        "不等于所有设备、网络或 ROM 均可用。")
+                    Bullet("真机、release/R8、其他 WebView 与长期会话 TTL 未验证；本轮 M5 未重新进行真实学校登录。")
+                    Bullet("图书馆空间预约（nspace）和超星入口仍未原生接入，保留学校官方网页。")
+                    Bullet("不提供课程编辑、提醒、日历导出、课表组件、充值、转账或自动抢座。")
+                }
+            }
+
+            SectionHeader(
+                title = "开源与致谢",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Android 工程以 MIT 许可证开源，参考 MIT 许可的上游 ZZUPocket。" +
+                            "UPC 的认证、接口、课表与宿舍规则按本校系统重新实现，未套用其他学校事实。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
+                        Text("上游项目 3beuml/ZZUPocket（MIT）")
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）· 轻量版",
+                "入口可访问、会话建立、数据读取和业务成功是不同事实；结果以学校系统为准。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 24.dp),
             )
         }
     }
@@ -144,9 +186,12 @@ fun AboutScreen(onBack: () -> Unit) {
 
 @Composable
 private fun AboutCard(title: String, content: @Composable () -> Unit) {
+    SectionHeader(
+        title = title,
+        modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+    )
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
             content()
         }
     }

@@ -23,6 +23,7 @@ feature/focus/schemas/
 # Local-only archives, attachments and generated release artifacts
 /.local/
 /.lody/
+/.superdesign/
 /artifacts/
 /release/
 /官方入口.txt

@@ -13,10 +13,14 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +42,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -79,7 +84,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.data.db.FocusTagEntity
 import com.upcpocket.app.data.prefs.TimerPreset
 import com.upcpocket.app.domain.FocusRecord
-import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.domain.FocusStats
 import com.upcpocket.app.domain.Phase
 import com.upcpocket.app.domain.PomodoroClock
@@ -125,13 +129,26 @@ fun FocusScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
         topBar = {
             TopAppBar(
-                title = { Text("专注") },
+                title = {
+                    Column {
+                        Text("专注")
+                        Text(
+                            "番茄钟与今日记录",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 actions = {
-                    IconButton(onClick = onOpenStats) {
+                    FilledTonalIconButton(onClick = onOpenStats) {
                         Icon(Icons.Filled.Insights, contentDescription = "学习统计")
                     }
+                    Spacer(Modifier.width(4.dp))
                     IconButton(onClick = { showSettings = true }) {
                         Icon(Icons.Filled.Tune, contentDescription = "计时设置")
                     }
@@ -144,9 +161,7 @@ fun FocusScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                // 悬浮 dock 是覆盖层：垫出尾部余量，「今天」统计卡能完整滚出胶囊
-                .padding(bottom = DOCK_CLEARANCE),
+                .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Spacer(Modifier.height(2.dp))
@@ -162,7 +177,7 @@ fun FocusScreen(
                 onManage = { showManageTags = true },
             )
 
-            TodayCard(ui, onManual = { showManual = true })
+            TodayCard(ui, onManual = { showManual = true }, onOpenStats = onOpenStats)
 
             TodayRecords(ui.todayRecords, onDelete = vm::deleteRecord)
 
@@ -504,11 +519,16 @@ private fun TagManageDialog(
 // ── 今日统计 ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun TodayCard(ui: FocusUiState, onManual: () -> Unit) {
+private fun TodayCard(ui: FocusUiState, onManual: () -> Unit, onOpenStats: () -> Unit) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("今天", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                TextButton(onClick = onOpenStats) {
+                    Icon(Icons.Filled.Insights, contentDescription = null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("统计")
+                }
                 TextButton(onClick = onManual) {
                     Icon(Icons.Filled.EditNote, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))

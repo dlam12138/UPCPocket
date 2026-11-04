@@ -54,13 +54,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountController
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
-import com.upcpocket.app.designsystem.DOCK_CLEARANCE
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.launch
 
 /**
- * 「更多 → 学校账号」最小设置页。
+ * 「首页 → 设置 → 学校账号」最小设置页。
  *
  * 这里只做本机凭据的保存、修改与删除，不发起任何学校网络请求，也不把
  * “已保存”表述成“已登录”。密码输入只存在于当前 Compose 组合的 `remember`
@@ -206,7 +205,16 @@ fun SchoolAccountScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("学校账号") },
+                title = {
+                    Column {
+                        Text("学校账号")
+                        Text(
+                            "本机加密 · 保存不等于认证通过",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -224,7 +232,7 @@ fun SchoolAccountScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
-                .padding(bottom = DOCK_CLEARANCE),
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Spacer(Modifier.height(4.dp))
@@ -419,16 +427,18 @@ fun SchoolAccountScreen(
 
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("尚未接入统一认证", style = MaterialTheme.typography.titleSmall)
+                    Text("账号如何使用", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "校园卡余额只按当前账号登录名中完整有效的本人学号查询，不再使用独立输入框；" +
-                            "登录名不是 8–16 位数字时明确不可用。余额接口不接收密码，查询成功也不代表 " +
-                            "CAS 或学校认证成功。图书馆仍使用学校网页登录。",
+                        "校园卡余额只按当前账号登录名中完整有效的本人学号查询，不使用独立输入框；" +
+                            "登录名不是 8–16 位数字时明确不可用。课表与图书馆在进入对应页面、由你主动操作时，" +
+                            "才通过学校正常 CAS 使用这份账号；验证码或二次验证会转到学校自己的网页登录。" +
+                            "保存成功只代表密文写入本机，不代表任何业务已登录或学校身份已验证。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "删除账号不会删除专注历史、主题、公开教室数据或独立寝室配置。",
+                        "删除账号会删除加密账密、关联业务会话与能确认归属的个人缓存，但不会删除专注历史、" +
+                            "主题、公开教室数据或独立寝室配置。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
