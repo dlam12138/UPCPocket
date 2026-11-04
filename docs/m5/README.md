@@ -23,6 +23,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 专注 | 计时、今日记录、学习统计 | `:feature:focus` |
 
 设置不再作为 tab，统一从首页右上角进入。首页/课表/专注之外没有第二套“更多目录”。
+**设置入口全局唯一，但不宣称每项功能只有一个快捷路径**：校园官方网页在首页快捷卡和设置目录
+各有一个入口；学习统计在专注顶栏和今日卡片各有一个入口。两处都打开同一页面/路由，不是两套实现。
 
 设置页固定分组：
 
@@ -49,6 +51,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 首页电费 / 空教室 / 图书馆 | 首页“常用服务”（课表不重复出现在这里） |
 | 桌面组件由长按桌面添加 | 仍由系统桌面添加；新增设置 → 桌面组件说明与可选“添加到桌面” |
 | 古镇口电费学校页面 | 电费页保留；设置 → 校园官方网页也提供入口 |
+| 校园官方网页 | 首页“校园网页”快捷卡 / 设置 → 校园官方网页（同一页面） |
 | 桌面组件点击 | 校园卡回首页；电量直达唐岛湾查询页，稳定路由不变 |
 
 ### 1.3 功能完整性
@@ -62,6 +65,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
+  首页快捷卡与设置目录打开同一个 `OfficialWebScreen` 路由，不重复维护链接。
 - 组件：两个 2×2 RemoteViews 组件、请求路径、身份和点击身份不变；新增设置页说明/可选 pin。
 
 ### 1.4 视觉方向
@@ -102,6 +106,22 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 设置里的学校登录区只在图书馆插件贡献存在时显示。
 - 旧 `MORE_LEARNING` 贡献被静默保留但不可达；现有自动化确认没有把课表/统计再放进“学习”列表。
 
+### 2.1 路由与删除文件审计
+
+- 稳定插件页路由未改：`power.electricity`、`power.tangdaowan`、`classroom.free`、
+  `library.seat`、`library.login`、`focus`、`focus.stats`、`timetable.week` 仍全部注册。
+  `HostPluginUiTest` 现在额外断言所有底部 tab 的目标页确实存在。
+- `CampusScreen` 是旧“更多”宿主页，只承载入口列表，不包含任一官方 URL 或浏览器跳转；
+  其账号/课表/统计/图书馆登录/外观/关于能力已分别迁移到三 tab 与设置。删除的是入口页壳，
+  不是功能实现。
+- `WeChatHandoff` 在删除前的基线中没有任何调用点（`git grep` 只命中文件自身）；它既没有
+  路由，也没有 UI 按钮。删除的是不可达工具代码；没有移除任何可达的微信登录、分享或官方入口能力。
+- 既有学校外链仍保留在原功能内（如古镇口电量页、图书馆学校登录）；新增
+  `OfficialWebScreen` 只是把已核对的公开页面集中列出。没有把外链说成原生查询，也没有
+  新增未实现的校园能力。
+- 桌面组件身份未变：校园卡仍打开 `HOME`，唐岛湾电量仍打开稳定路由
+  `power.tangdaowan`；设置页只是新增组件说明与系统 pin 入口。
+
 ## 3. 截图
 
 截图均来自本会话模拟器 `emulator-5554`（Android 16 / API 36，1080×2400，Pixel 风格），
@@ -110,9 +130,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | 文件 | 内容 |
 | --- | --- |
 | [01-home-light.png](screenshots/01-home-light.png) | 首页浅色；未登录、无历史余额 |
-| [02-settings-light.png](screenshots/02-settings-light.png) | 唯一设置入口；账号、图书馆、组件、官方网页、外观、关于 |
+| [02-settings-light.png](screenshots/02-settings-light.png) | 唯一设置入口；账号、图书馆、组件、官方网页、外观、关于（校园网页另有首页快捷卡） |
 | [03-timetable-first-run-light.png](screenshots/03-timetable-first-run-light.png) | 课表未登录第一屏；说明不会在首页后台认证 |
-| [04-focus-light.png](screenshots/04-focus-light.png) | 专注浅色；无专注记录 |
+| [04-focus-light.png](screenshots/04-focus-light.png) | 专注初始进入浅色；完整计时环、状态、开始按钮，无专注记录 |
 | [05-appearance-light.png](screenshots/05-appearance-light.png) | 配色与深浅色设置 |
 | [06-home-dark.png](screenshots/06-home-dark.png) | 首页深色 |
 | [07-timetable-preview.png](screenshots/07-timetable-preview.png) | **Debug-only 合成预览**：教学周头部 + 今日课程 |
@@ -122,6 +142,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | [12-official-web-light.png](screenshots/12-official-web-light.png) | 学校官方网页目录 |
 | [14-home-large-font.png](screenshots/14-home-large-font.png) | 首页 1.3× 字号 |
 | [19-timetable-font-150.png](screenshots/19-timetable-font-150.png) | **Debug-only 合成预览**：课表 1.5× 字号 |
+| [20-focus-font-130.png](screenshots/20-focus-font-130.png) | 专注初始进入 1.3×；完整计时环、状态、开始按钮 |
+| [21-focus-font-150.png](screenshots/21-focus-font-150.png) | 专注初始进入 1.5×；完整计时环、状态、开始按钮 |
+| [22-home-font-150.png](screenshots/22-home-font-150.png) | 首页 1.5×；标题/服务卡文字完整，可滚动到两组服务与页脚 |
 
 合成预览由 `feature/timetable/src/debug/.../TimetablePreviewActivity.kt` 明确标注
 “本地预览 · 合成内容”，只读取内存中的 `TimetableUiState`，不创建账号/会话/缓存、不发网络请求，
@@ -130,13 +153,22 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 学校账号页因 `FLAG_SECURE` 不提供截图；已通过 `dumpsys window` 确认窗口 flag 含 `SECURE`，
 并只核对空表单 UI 层级。没有截取任何已填账号或密码。
 
+验收修正：此前交付的 `04-focus-light.png` 是验收脚本在专注页已向上滑动后截取的，环顶被
+固定顶栏遮住；它不是初始进入状态。本轮先强制停止并从首页进入专注，再重新截图，未通过删除
+状态文案或裁切视图规避问题。初始进入实测：顶栏副标题底边 y=273/286/293（1.0/1.3/1.5），
+计时环顶 y=338，开始按钮底边 y=1083/1091/1096，环、状态和主按钮均完整。
+
 ## 4. 验证
 - 设备：`emulator-5554` / `upcpocket_api36` / Android 16（API 36）；实际安装 Debug APK。
 - 页面：首页、设置、账号空态、课表未登录、专注、桌面组件、官方网页、外观；底部三 tab 切换。
 - 系统 Insets：宿主底部 `NavigationBar` + 各 tab 内 `Scaffold` 只消费顶部/横向 Insets，
   修正了内层重复底部 inset；手势导航栏/状态栏无遮挡。
 - 深浅色：首页浅色、深色；外观页切换“始终深色/始终浅色”后重启生效。
-- 字号：1.0×、1.3×、1.5× 实测；首页、设置、课表、专注未出现按钮/文字重叠。
+- 字号：1.0×、1.3×、1.5× 实测；首页、设置、课表、专注未出现按钮/文字重叠。专注 1.0/1.3/1.5
+  初始进入的环顶、状态与开始按钮均完整；1.5× 下 360×640dp 视口可滚动到标签/今日记录。
+- 小屏：`wm size 720x1280`、`wm density 320`（360×640dp）+ 1.5× 实测，初始显示计时环与开始按钮，
+  上滑后显示标签和今日区域；已恢复 1080×2400/420dpi。
+- 文案：标签按钮原为图标加号 + “＋ 新建”双加号，现为 Add 图标 + “新建”单加号。
 - 返回：设置 → 账号/外观/组件/官方/关于均能返回；官方网页实际打开 Chrome 后返回应用。
 - 边界：未登录、无数据、合成周网格、空“今天”、离线/失败状态代码路径；没有触发真实学校登录、
   预约、取消、签到、充值或电量查询。
@@ -146,12 +178,12 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 | 检查 | 结果 |
 | --- | --- |
-| `:app:assembleDebug` | 通过 |
-| Android Debug 单元/Compose 测试 | **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped** |
-| JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped** |
-| `:app:lintDebug` | **0 errors / 2 warnings**（`RedundantLabel`、`ObsoleteSdkInt`，均为既有资源提示） |
+| `:app:assembleDebug` | 通过（修正提交后复跑） |
+| Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 `focus` + `app` 用例，仍 0 failures |
+| JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
+| `:app:lintDebug` | **0 errors / 2 warnings**（`RedundantLabel`、`ObsoleteSdkInt`，均为既有资源提示；修正提交后复跑） |
 | 模块边界 | `checkModuleBoundaries` 随构建通过 |
-| 基线 | M4 357 Android + 16 JVM 全部保留；插件 tab 断言更新为课表(5)+专注(10) |
+| 基线 | M4 357 Android + 16 JVM 全部保留；插件 tab 断言更新为课表(5)+专注(10)，并断言 tab 目标页存在 |
 
 `./gradlew test` 还会触发 release unit test；其中 Compose UI 测试依赖 debug-only
 `ui-test-manifest`，release 变体无法启动 instrumentation，属于现有测试基础设施限制，
@@ -162,8 +194,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - 评审副本：`release/UPC-Pocket-M5-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,112,090` bytes
-- SHA-256：`D6F673DADAE63C0E727039F113DADD7FABC11E46F3FD9D279BC79479AE43005B`
+- 大小：`65,718,286` bytes
+- SHA-256：`004A42C3870F6C6FDCC9B7E59B0047D14E9180E406A4C7437C1A28AE571B9687`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 
 ## 6. 未验证 / 限制

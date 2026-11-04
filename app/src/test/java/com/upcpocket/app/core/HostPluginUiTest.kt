@@ -70,6 +70,9 @@ class HostPluginUiTest {
             listOf("timetable.week", "focus"),
             tabs.map { it.route.value },
         )
+        tabs.forEach { tab ->
+            assertNotNull("tab ${tab.entryId} 缺少已注册页面", AppGraph.ui.page(tab.route))
+        }
         assertTrue(AppGraph.ui.entriesFor(UiSurface.MORE_LEARNING).isEmpty())
 
         assertEquals(

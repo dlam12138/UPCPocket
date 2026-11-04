@@ -43,7 +43,7 @@ import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
 
 /**
- * 全应用唯一设置入口。
+ * 全应用唯一设置入口；不是每项功能唯一快捷入口（校园网页、学习统计仍有各自的快捷路径）。
  *
  * 账号、图书馆登录、桌面组件、官方网页、外观和关于都在这里；不再维护“更多”
  * 页的第二套目录。插件只贡献图书馆登录区，宿主不硬编码图书馆实现。

@@ -411,7 +411,7 @@ private fun TagSection(
             FilterChip(
                 selected = false,
                 onClick = onNew,
-                label = { Text("＋ 新建") },
+                label = { Text("新建") },
                 leadingIcon = {
                     Icon(Icons.Filled.Add, contentDescription = null, Modifier.size(16.dp))
                 },
