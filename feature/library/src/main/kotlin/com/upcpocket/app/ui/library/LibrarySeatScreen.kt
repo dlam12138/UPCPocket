@@ -501,6 +501,13 @@ internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                room.maxDurationLabel?.let { label ->
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 room.occupancy?.let { progress ->
                     LinearProgressIndicator(
                         progress = { progress },
@@ -533,7 +540,8 @@ private fun LibrarySeatDetailPage(
     val room = state.room
     val seat = state.seat
     val time = if (state.start != null && state.end != null) {
-        "${state.start.value}–${state.end.value}"
+        "${state.start.value}–${state.end.value}" +
+            (durationText(state.start, state.end)?.let { " · $it" } ?: "")
     } else {
         "选择时间"
     }
@@ -611,7 +619,9 @@ private fun LibrarySeatDetailPage(
                         Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
                         Text(
                             if (state.start != null && state.end != null) {
-                                "已选时段 ${state.start.value}–${state.end.value} · 点底部可改"
+                                "已选时段 ${state.start.value}–${state.end.value}" +
+                                    (durationText(state.start, state.end)?.let { " · $it" } ?: "") +
+                                    "；点底部可改"
                             } else {
                                 "先点选座位，再选择使用时间"
                             },
@@ -678,6 +688,19 @@ private fun LibrarySeatDetailPage(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (room?.maxDurationLabel != null) {
+                    Text(
+                        room.maxDurationLabel.orEmpty() + "；结束时间由学校按座位和开始时间返回。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "结束时间由学校按座位和开始时间返回。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text("开始时间", style = MaterialTheme.typography.labelLarge)
                 if (state.startTimes.isEmpty()) {
                     Text("该座位当天没有可预约的开始时间。", color = MaterialTheme.colorScheme.error)
@@ -692,12 +715,22 @@ private fun LibrarySeatDetailPage(
                         }
                     }
                 }
-                Text("结束时间", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "结束时间" + if (state.endTimes.isNotEmpty()) "（学校返回 ${state.endTimes.size} 项）" else "",
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 if (state.start == null) {
                     Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
                 } else if (state.endTimes.isEmpty()) {
                     Text("该开始时间没有可选的结束时间。", color = MaterialTheme.colorScheme.error)
                 } else {
+                    if (state.endTimes.size == 1) {
+                        Text(
+                            "学校当前只返回 1 个结束时间；不是应用把时长固定为一小时。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         state.endTimes.forEach { option ->
                             FilterChip(
@@ -707,6 +740,14 @@ private fun LibrarySeatDetailPage(
                             )
                         }
                     }
+                }
+                if (state.start != null && state.end != null) {
+                    Text(
+                        "已选 ${state.start.value}–${state.end.value}" +
+                            (durationText(state.start, state.end)?.let { " · $it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 Button(
                     onClick = {
@@ -726,7 +767,8 @@ private fun LibrarySeatDetailPage(
             text = {
                 Text(
                     "${room?.name.orEmpty()} · ${seat.name}\n" +
-                        "${state.date.orEmpty()} ${state.start?.value.orEmpty()}–${state.end?.value.orEmpty()}\n\n" +
+                        "${state.date.orEmpty()} ${state.start?.value.orEmpty()}–${state.end?.value.orEmpty()}" +
+                        (durationText(state.start, state.end)?.let { " · $it" } ?: "") + "\n\n" +
                         "由学校系统处理；应用不会自动重试或抢座。",
                 )
             },
@@ -778,6 +820,28 @@ internal fun CompactNotice(title: String, body: String) {
 internal fun LibrarySeatViewModel.UiState.visibleSeatRooms(): List<LibraryRoom> =
     rooms.filter { selectedFloor == null || it.floor == selectedFloor }
 
+internal fun LibrarySeatViewModel.UiState.withStartOptions(
+    start: LibraryTimeOption,
+    ends: List<LibraryTimeOption>,
+): LibrarySeatViewModel.UiState =
+    copy(
+        start = start,
+        end = null,
+        endTimes = ends,
+        loading = false,
+        error = if (ends.isEmpty()) "该开始时间没有可选的结束时间" else null,
+    )
+
+internal fun LibrarySeatViewModel.UiState.clearTimeSelection(): LibrarySeatViewModel.UiState =
+    copy(
+        startTimes = emptyList(),
+        endTimes = emptyList(),
+        start = null,
+        end = null,
+        showTimeDialog = false,
+        showConfirm = false,
+    )
+
 internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel.UiState =
     copy(
         room = null,
@@ -791,6 +855,30 @@ internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel
         showConfirm = false,
         error = null,
     )
+
+internal fun timeDurationMinutes(start: LibraryTimeOption?, end: LibraryTimeOption?): Int? {
+    if (start == null || end == null) return null
+    fun parse(value: String): Int? {
+        val parts = value.trim().split(':')
+        if (parts.size < 2) return null
+        val hour = parts[0].toIntOrNull() ?: return null
+        val minute = parts[1].toIntOrNull() ?: return null
+        if (hour !in 0..23 || minute !in 0..59) return null
+        return hour * 60 + minute
+    }
+    val startMinute = parse(start.value) ?: return null
+    val endMinute = parse(end.value) ?: return null
+    return (endMinute - startMinute).takeIf { it > 0 }
+}
+
+internal fun durationText(start: LibraryTimeOption?, end: LibraryTimeOption?): String? =
+    timeDurationMinutes(start, end)?.let { minutes ->
+        when {
+            minutes < 60 -> "$minutes 分钟"
+            minutes % 60 == 0 -> "${minutes / 60} 小时"
+            else -> "${minutes / 60} 小时 ${minutes % 60} 分钟"
+        }
+    }
 
 private fun shortDate(value: String): String = value.takeLast(5)
 
@@ -1080,6 +1168,8 @@ internal class LibrarySeatViewModel(
     var state by mutableStateOf(UiState())
         private set
     private var roomRequestGeneration = 0L
+    private var timeRequestGeneration = 0L
+    private var roomDetailRequestGeneration = 0L
 
     fun ensureLoaded() {
         if (state.filters != null || state.loading) return
@@ -1120,7 +1210,7 @@ internal class LibrarySeatViewModel(
             layout = null,
             seat = null,
             error = null,
-        )
+        ).clearTimeSelection()
         queryRooms()
     }
 
@@ -1134,7 +1224,7 @@ internal class LibrarySeatViewModel(
             layout = null,
             seat = null,
             error = null,
-        )
+        ).clearTimeSelection()
         queryRooms()
     }
 
@@ -1145,7 +1235,7 @@ internal class LibrarySeatViewModel(
             room = null,
             layout = null,
             seat = null,
-        )
+        ).clearTimeSelection()
     }
 
     fun queryRooms() {
@@ -1180,12 +1270,24 @@ internal class LibrarySeatViewModel(
     fun openRoom(room: LibraryRoom) {
         val date = state.date ?: return
         val requestToken = repo.session.value?.token
-        state = state.copy(loading = true, error = null, room = room, layout = null, seat = null)
+        val generation = ++roomDetailRequestGeneration
+        timeRequestGeneration++
+        state = state.copy(
+            loading = true,
+            error = null,
+            room = room,
+            layout = null,
+            seat = null,
+        ).clearTimeSelection()
         viewModelScope.launch {
             try {
-                state = state.copy(layout = repo.layout(room.roomId, date), loading = false)
+                val layout = repo.layout(room.roomId, date)
+                if (generation != roomDetailRequestGeneration || state.room?.roomId != room.roomId) {
+                    return@launch
+                }
+                state = state.copy(layout = layout, loading = false)
             } catch (e: Exception) {
-                fail(e, requestToken)
+                if (generation == roomDetailRequestGeneration) fail(e, requestToken)
             }
         }
     }
@@ -1194,6 +1296,7 @@ internal class LibrarySeatViewModel(
         if (!seat.selectable) return
         val date = state.date ?: return
         val requestToken = repo.session.value?.token
+        val generation = ++timeRequestGeneration
         state = state.copy(
             loading = true,
             error = null,
@@ -1207,18 +1310,21 @@ internal class LibrarySeatViewModel(
         viewModelScope.launch {
             try {
                 val starts = repo.startTimes(seat.id, date)
+                if (generation != timeRequestGeneration || state.seat?.id != seat.id) return@launch
                 state = state.copy(
                     startTimes = starts,
                     loading = false,
                     error = if (starts.isEmpty()) "该座位当天没有可预约时间" else null,
                 )
             } catch (e: Exception) {
-                fail(e, requestToken)
+                if (generation == timeRequestGeneration) fail(e, requestToken)
             }
         }
     }
 
     fun closeRoom() {
+        timeRequestGeneration++
+        roomDetailRequestGeneration++
         state = state.afterCloseRoom()
     }
 
@@ -1232,23 +1338,33 @@ internal class LibrarySeatViewModel(
         val date = state.date ?: return
         val seat = state.seat ?: return
         val requestToken = repo.session.value?.token
-        state = state.copy(loading = true, start = option, end = null, endTimes = emptyList(), error = null)
+        val generation = ++timeRequestGeneration
+        state = state.copy(
+            loading = true,
+            start = option,
+            end = null,
+            endTimes = emptyList(),
+            error = null,
+        )
         viewModelScope.launch {
             try {
                 val ends = repo.endTimes(seat.id, date, option.id)
-                state = state.copy(
-                    endTimes = ends,
-                    end = ends.firstOrNull(),
-                    loading = false,
-                    error = if (ends.isEmpty()) "该开始时间没有可选的结束时间" else null,
-                )
+                if (generation != timeRequestGeneration ||
+                    state.seat?.id != seat.id ||
+                    state.start?.id != option.id
+                ) {
+                    return@launch
+                }
+                state = state.withStartOptions(option, ends)
             } catch (e: Exception) {
-                fail(e, requestToken)
+                if (generation == timeRequestGeneration) fail(e, requestToken)
             }
         }
     }
 
     fun chooseEnd(option: LibraryTimeOption) {
+        if (state.start == null) return
+        if (state.endTimes.none { it.id == option.id }) return
         state = state.copy(end = option, error = null)
     }
 
@@ -1257,7 +1373,11 @@ internal class LibrarySeatViewModel(
     }
 
     fun requestReservation() {
-        if (state.start != null && state.end != null) state = state.copy(showConfirm = true)
+        val start = state.start ?: return
+        val end = state.end ?: return
+        if (state.endTimes.none { it.id == end.id }) return
+        if (timeDurationMinutes(start, end) == null) return
+        state = state.copy(showConfirm = true)
     }
 
     fun dismissConfirm() {

@@ -40,6 +40,8 @@ data class LibraryRoom(
     val inUse: Int? = null,
     val away: Int? = null,
     val disabled: Int? = null,
+    /** 学校 stats2 的 maxHour；只在服务端提供时展示，不据此臆造限制。 */
+    val maxHour: Int? = null,
 ) {
     val floorLabel: String
         get() = floorName?.takeIf { it.isNotBlank() } ?: if (floor > 0) "楼层 $floor" else "楼层未提供"
@@ -51,6 +53,9 @@ data class LibraryRoom(
             totalSeats != null -> "共 $totalSeats 座"
             else -> "座位统计待查询"
         }
+
+    val maxDurationLabel: String?
+        get() = maxHour?.takeIf { it > 0 }?.let { "学校单次最长 $it 小时" }
 
     val occupancy: Float?
         get() {

@@ -281,7 +281,7 @@ private fun LibSeatPreview(showTime: Boolean) {
                 )
             }
             if (showTime) {
-                item { PreviewTimeChips(title = "选择使用时间", selected = "08:00") }
+                item { PreviewTimeChips(title = "选择使用时间") }
             }
             item {
                 Text(
@@ -358,7 +358,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("已选 008（仅查看）", fontWeight = FontWeight.SemiBold)
-                        Text("08:00–09:00 · 6 个已用", style = MaterialTheme.typography.labelSmall)
+                        Text("08:00–10:00 · 2 小时 · 6 个已用", style = MaterialTheme.typography.labelSmall)
                     }
                     Button(onClick = {}) { Text("官方预约") }
                 }
@@ -381,7 +381,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text("使用时段", style = MaterialTheme.typography.labelMedium)
-                        Text("08:00–09:00 · 开放 08:00–22:00", style = MaterialTheme.typography.labelSmall)
+                        Text("08:00–10:00 · 2 小时 · 开放 08:00–22:00", style = MaterialTheme.typography.labelSmall)
                     }
                     TextButton(onClick = {}) { Text("更改") }
                 }
@@ -402,7 +402,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                 )
             }
             if (showTime) {
-                item { PreviewTimeChips(title = "选择查看时段", selected = "08:00") }
+                item { PreviewTimeChips(title = "选择查看时段") }
             }
             item {
                 Text(
@@ -417,7 +417,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PreviewTimeChips(title: String, selected: String) {
+private fun PreviewTimeChips(title: String) {
     Column(
         Modifier.fillMaxWidth().background(
             MaterialTheme.colorScheme.surfaceContainerLow,
@@ -426,20 +426,27 @@ private fun PreviewTimeChips(title: String, selected: String) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+        Text("开始时间", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("08:00", "09:00", "10:00").forEach { value ->
                 FilterChip(
-                    selected = value == selected,
+                    selected = value == "08:00",
                     onClick = {},
                     label = { Text(value) },
                 )
             }
         }
+        Text("结束时间", style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf("09:00", "10:00", "11:00").forEach { value ->
-                FilterChip(selected = value == "09:00", onClick = {}, label = { Text(value) })
+                FilterChip(selected = value == "10:00", onClick = {}, label = { Text(value) })
             }
         }
+        Text(
+            "已选 08:00–10:00 · 2 小时",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }
 

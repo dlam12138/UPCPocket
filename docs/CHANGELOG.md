@@ -1,5 +1,14 @@
 # 更新与验证
 
+## M5.4 · 座位预约时长选择回归（开发分支，未发布）
+
+- 用户反馈“预约时间好像只能约一个小时”；排查不是学校接口被写死，而是 libseat 在拿到 `endTimes` 后自动把 `ends.firstOrNull()` 设为结束时间，首个选项通常是 1 小时；Chaoxing 只读查看则固定 `+60` 分钟，且只显示开始时间。
+- libseat：开始时间变化后保留学校返回的全部结束选项，不再自动选第一个；未选结束不能确认；结束时间变化立即更新底栏、时长和确认参数；开始时间变化后清除旧结束并重新请求有效结束；切换座位/日期/楼层/区域清除旧时段。学校 `maxHour` 仅作为真实提示展示，不用它臆造上限，最终以 `endTimesForSeat` 返回为准。
+- Chaoxing：只读查看不再固定 1 小时；按 `timeUnit` 生成开始/结束选项，结束不超过开放结束时间；开始变化重取可用结束和已用座位；结束变化按所选区间重取已用座位；仍只打开官方页，不新增原生写协议。
+- 新增回归：30/60/90/120 分钟与数小时结束选项、超过 1 小时的学校选项、结束到关门时间、无效步长、切换座位/日期清空结束、maxHour 只展示不截断、Chaoxing 开始/结束选项和时长格式。
+- 验证：`feature:library` **96 tests（1 skipped，真实座位回放）**、`app` 32 tests、`core:upc-auth` 18 tests；`checkModuleBoundaries`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 通过；library lint 无问题、app lint 0 errors/2 既有 warnings。
+- APK：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`，`65,489,018` bytes，SHA-256 `4A645214B4E18AC6F68AEE586A113D8C2F94F3CE6C3F3971173B2E87F4EAF8DC`。
+
 ## M5.3 · 图书馆三个座位页重做（开发分支，未发布）
 
 - 只优化唐岛湾 libseat、古镇口 Chaoxing seat、求是 Chaoxing seatengine，不恢复研讨间、不新增认证/预约协议、不执行真实预约。
@@ -9,7 +18,7 @@
 - 增加稳定纯状态测试：楼层筛选、关闭座位页保留馆区/日期/楼层/列表、关闭 Chaoxing 详情保留校区/日期；区域统计解析测试。
 - 新增 Debug-only 座位视觉预览 Activity，明确标注合成内容；用于浅色/深色/1.5× 截图，不进入 release，不创建账号/会话/缓存或网络请求。
 - 验证：`feature:library` **88 tests（1 skipped，真实座位回放）**、`app` 32 tests、`core:upc-auth` 18 tests；`checkModuleBoundaries`、`:app:assembleDebug`、`:app:assembleDebugAndroidTest` 通过；library lint 无问题、app lint 0 errors/2 既有 warnings。
-- APK：`release/UPC-Pocket-M5-library-seat-pages-debug.apk`，`65,474,558` bytes，SHA-256 `543CE18D15D1AB55D08270FAF70AB1DDDBAFAE840B7557E3D8AA9034B693A2CA`。
+- M5.3 的本地 APK 已被 M5.4 替换，不再作为现行交付物。
 
 ## M5.2 · 图书馆研讨间/空间预约撤下（开发分支，未发布）
 

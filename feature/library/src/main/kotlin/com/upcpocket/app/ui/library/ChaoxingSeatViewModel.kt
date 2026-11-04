@@ -28,6 +28,7 @@ data class ChaoxingSeatUiState(
     val detailBusy: Boolean = false,
     val detailError: String? = null,
     val selectedStart: Int? = null,
+    val selectedEnd: Int? = null,
     val usedSeats: Set<String> = emptySet(),
     val officialUrl: String = ChaoxingSeatKind.SEAT.officialUrl,
 )
@@ -43,6 +44,7 @@ class ChaoxingSeatViewModel(
         ),
     )
     val state: StateFlow<ChaoxingSeatUiState> = _state.asStateFlow()
+    private var timeRequestGeneration = 0L
 
     init {
         loadRooms()
@@ -55,6 +57,9 @@ class ChaoxingSeatViewModel(
             officialUrl = kind.officialUrl,
             rooms = emptyList(),
             detail = null,
+            selectedStart = null,
+            selectedEnd = null,
+            usedSeats = emptySet(),
             error = null,
             sessionExpired = false,
         )
@@ -67,6 +72,9 @@ class ChaoxingSeatViewModel(
             selectedDate = date,
             rooms = emptyList(),
             detail = null,
+            selectedStart = null,
+            selectedEnd = null,
+            usedSeats = emptySet(),
             error = null,
         )
         loadRooms()
@@ -80,12 +88,20 @@ class ChaoxingSeatViewModel(
     fun openRoom(room: ChaoxingSeatRoom) {
         val current = _state.value
         if (current.detailBusy) return
-        _state.value = current.copy(detailBusy = true, detailError = null, detail = null)
+        _state.value = current.copy(
+            detailBusy = true,
+            detailError = null,
+            detail = null,
+            selectedStart = null,
+            selectedEnd = null,
+            usedSeats = emptySet(),
+        )
         viewModelScope.launch {
             try {
                 val detail = service.seatRoomDetail(current.kind, room.id, current.selectedDate)
+                val step = detail.timeUnit
                 val start = detail.startMinute
-                val end = minOf(start + 60, detail.endMinute)
+                val end = if (step > 0) minOf(start + step, detail.endMinute) else start
                 val used = if (end > start) {
                     service.usedSeatNums(
                         current.kind,
@@ -101,6 +117,7 @@ class ChaoxingSeatViewModel(
                     detailBusy = false,
                     detail = detail,
                     selectedStart = start.takeIf { end > start },
+                    selectedEnd = end.takeIf { end > start },
                     usedSeats = used,
                 )
             } catch (expired: ChaoxingSessionExpiredException) {
@@ -128,33 +145,70 @@ class ChaoxingSeatViewModel(
     fun selectStart(start: Int) {
         val current = _state.value
         val detail = current.detail ?: return
-        if (start < detail.startMinute || start >= detail.endMinute) return
-        val end = minOf(start + 60, detail.endMinute)
+        val step = detail.timeUnit
+        if (step <= 0 || start < detail.startMinute || start >= detail.endMinute) return
+        val end = minOf(start + step, detail.endMinute)
         if (end <= start) return
-        _state.value = current.copy(selectedStart = start, usedSeats = emptySet())
+        val generation = ++timeRequestGeneration
+        _state.value = current.copy(
+            selectedStart = start,
+            selectedEnd = end,
+            usedSeats = emptySet(),
+            detailError = null,
+        )
+        queryUsedSeats(detail, start, end, generation)
+    }
+
+    fun selectEnd(end: Int) {
+        val current = _state.value
+        val detail = current.detail ?: return
+        val start = current.selectedStart ?: return
+        val step = detail.timeUnit
+        if (step <= 0 || end <= start || end > detail.endMinute || (end - start) % step != 0) return
+        val generation = ++timeRequestGeneration
+        _state.value = current.copy(
+            selectedEnd = end,
+            usedSeats = emptySet(),
+            detailError = null,
+        )
+        queryUsedSeats(detail, start, end, generation)
+    }
+
+    private fun queryUsedSeats(
+        detail: ChaoxingSeatRoomDetail,
+        start: Int,
+        end: Int,
+        generation: Long,
+    ) {
+        val kind = _state.value.kind
+        val date = _state.value.selectedDate
         viewModelScope.launch {
             try {
-                val used = service.usedSeatNums(
-                    current.kind,
-                    detail.roomId,
-                    start,
-                    end,
-                    current.selectedDate,
-                )
-                if (_state.value.detail?.roomId == detail.roomId) {
+                val used = service.usedSeatNums(kind, detail.roomId, start, end, date)
+                if (generation == timeRequestGeneration &&
+                    _state.value.detail?.roomId == detail.roomId &&
+                    _state.value.selectedStart == start &&
+                    _state.value.selectedEnd == end
+                ) {
                     _state.value = _state.value.copy(usedSeats = used)
                 }
             } catch (expired: ChaoxingSessionExpiredException) {
-                _state.value = _state.value.copy(
-                    sessionExpired = true,
-                    detailError = "Chaoxing 会话已失效，请重新网页登录。",
-                )
+                if (generation == timeRequestGeneration) {
+                    _state.value = _state.value.copy(
+                        sessionExpired = true,
+                        detailError = "Chaoxing 会话已失效，请重新网页登录。",
+                    )
+                }
             } catch (failure: ChaoxingException) {
-                _state.value = _state.value.copy(
-                    detailError = "已用座位读取失败：${failure.code}",
-                )
+                if (generation == timeRequestGeneration) {
+                    _state.value = _state.value.copy(
+                        detailError = "已用座位读取失败：${failure.code}",
+                    )
+                }
             } catch (_: Exception) {
-                _state.value = _state.value.copy(detailError = "已用座位读取失败；请重试。")
+                if (generation == timeRequestGeneration) {
+                    _state.value = _state.value.copy(detailError = "已用座位读取失败；请重试。")
+                }
             }
         }
     }
@@ -220,6 +274,7 @@ internal fun ChaoxingSeatUiState.afterCloseRoom(): ChaoxingSeatUiState =
         detailBusy = false,
         detailError = null,
         selectedStart = null,
+        selectedEnd = null,
         usedSeats = emptySet(),
     )
 

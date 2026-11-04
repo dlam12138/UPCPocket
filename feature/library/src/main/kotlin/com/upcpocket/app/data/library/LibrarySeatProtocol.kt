@@ -118,6 +118,7 @@ internal object LibrarySeatProtocol {
                 inUse = intOrNull(obj, "inUse"),
                 away = intOrNull(obj, "away"),
                 disabled = intOrNull(obj, "disableSeat"),
+                maxHour = intOrNull(obj, "maxHour"),
             )
         }.filter { it.roomId.isNotBlank() && it.name.isNotBlank() }
             .distinctBy { it.roomId }

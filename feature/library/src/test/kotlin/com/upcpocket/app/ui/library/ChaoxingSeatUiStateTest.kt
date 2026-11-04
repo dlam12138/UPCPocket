@@ -42,6 +42,7 @@ class ChaoxingSeatUiStateTest {
         assertNull(closed.detail)
         assertNull(closed.selectedStart)
         assertEquals(emptySet<String>(), closed.usedSeats)
+        org.junit.Assert.assertNull(closed.selectedEnd)
         assertEquals(ChaoxingSeatKind.SEATENGINE, closed.kind)
         assertEquals("2026-11-05", closed.selectedDate)
     }

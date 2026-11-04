@@ -111,7 +111,7 @@ class LibrarySeatProtocolTest {
     fun `房间按 floor 和 roomId 解析并去重`() {
         val rooms = LibrarySeatProtocol.parseRooms(
             """{"status":true,"data":[
-              {"roomId":"r1","room":"A101","floor":1,"totalSeats":40,"free":7,"reserved":2,"inUse":1,"away":0,"disableSeat":3},
+              {"roomId":"r1","room":"A101","floor":1,"totalSeats":40,"free":7,"reserved":2,"inUse":1,"away":0,"disableSeat":3,"maxHour":4},
               {"roomId":"r2","room":"A102","floor":1},
               {"roomId":"r1","room":"A101","floor":1}
             ]}""",
@@ -121,6 +121,7 @@ class LibrarySeatProtocolTest {
         assertEquals(1, rooms.first().floor)
         assertEquals(40, rooms.first().totalSeats)
         assertEquals(7, rooms.first().freeSeats)
+        assertEquals(4, rooms.first().maxHour)
         assertEquals(0.175f, rooms.first().occupancy)
         assertEquals("余 7 / 共 40 座", rooms.first().remainingLabel)
     }
@@ -142,6 +143,19 @@ class LibrarySeatProtocolTest {
         assertTrue(layout.seats.first { it.id == "s1" }.selectable)
         assertFalse(layout.seats.first { it.id == "s2" }.selectable)
         assertFalse(layout.seats.first { it.id == "wall" }.selectable)
+    }
+
+    @Test
+    fun `结束时间保留学校返回的 30 分钟到数小时全部选项`() {
+        val ends = LibrarySeatProtocol.parseEndTimes(
+            """{"status":true,"data":{"endTimes":[
+              {"id":510,"value":"08:30"},{"id":540,"value":"09:00"},
+              {"id":570,"value":"09:30"},{"id":600,"value":"10:00"},
+              {"id":720,"value":"12:00"}
+            ]}}""",
+        )
+        assertEquals(listOf("08:30", "09:00", "09:30", "10:00", "12:00"), ends.map { it.value })
+        assertEquals("720", ends.last().id)
     }
 
     @Test

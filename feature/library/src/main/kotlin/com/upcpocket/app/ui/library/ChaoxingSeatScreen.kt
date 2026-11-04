@@ -357,9 +357,11 @@ private fun ChaoxingSeatDetailPage(
     val context = LocalContext.current
     var selectedSeat by rememberSaveable(detail.roomId) { mutableStateOf<String?>(null) }
     var showTimeSheet by rememberSaveable { mutableStateOf(false) }
-    val selectedEnd = state.selectedStart?.let { minOf(it + 60, detail.endMinute) }
-    val timeLabel = if (state.selectedStart != null && selectedEnd != null) {
-        "${formatMinute(state.selectedStart)}–${formatMinute(selectedEnd)}"
+    val selectedStart = state.selectedStart
+    val selectedEnd = state.selectedEnd
+    val timeLabel = if (selectedStart != null && selectedEnd != null) {
+        "${formatMinute(selectedStart)}–${formatMinute(selectedEnd)} · " +
+            formatDuration(selectedEnd - selectedStart)
     } else {
         "尚未选择时段"
     }
@@ -432,6 +434,11 @@ private fun ChaoxingSeatDetailPage(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Text(
+                            "默认显示首个时段，可在“更改”里选择更长时段",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                     TextButton(onClick = { showTimeSheet = true }) { Text("更改") }
                 }
@@ -485,11 +492,12 @@ private fun ChaoxingSeatDetailPage(
             ) {
                 Text("选择查看时段", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "每次查看 60 分钟；只读取该时段已用座位，不提交预约。",
+                    "结束时间由开放时间和时段步长决定；这里只查看所选区间的已用座位，不提交预约。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                val starts = seatStartOptions(detail)
+                Text("开始时间", style = MaterialTheme.typography.labelLarge)
+                val starts = chaoxingStartOptions(detail)
                 if (starts.isEmpty()) {
                     Text("该区域当天没有可选开始时间。", color = MaterialTheme.colorScheme.error)
                 } else {
@@ -502,6 +510,31 @@ private fun ChaoxingSeatDetailPage(
                             )
                         }
                     }
+                }
+                Text("结束时间", style = MaterialTheme.typography.labelLarge)
+                val ends = state.selectedStart?.let { chaoxingEndOptions(detail, it) }.orEmpty()
+                if (state.selectedStart == null) {
+                    Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
+                } else if (ends.isEmpty()) {
+                    Text("该开始时间没有可用结束时间。", color = MaterialTheme.colorScheme.error)
+                } else {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ends.forEach { end ->
+                            FilterChip(
+                                selected = state.selectedEnd == end,
+                                onClick = { vm.selectEnd(end) },
+                                label = { Text(formatMinute(end)) },
+                            )
+                        }
+                    }
+                }
+                if (state.selectedStart != null && state.selectedEnd != null) {
+                    Text(
+                        "已选 ${formatMinute(state.selectedStart)}–${formatMinute(state.selectedEnd)}" +
+                            " · ${formatDuration(state.selectedEnd - state.selectedStart)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
                 }
                 state.detailError?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
@@ -592,7 +625,7 @@ private fun LegendDot(color: Color, label: String) {
     }
 }
 
-private fun seatStartOptions(detail: ChaoxingSeatRoomDetail): List<Int> {
+internal fun chaoxingStartOptions(detail: ChaoxingSeatRoomDetail): List<Int> {
     if (detail.timeUnit <= 0) return emptyList()
     val result = mutableListOf<Int>()
     var start = detail.startMinute
@@ -601,6 +634,24 @@ private fun seatStartOptions(detail: ChaoxingSeatRoomDetail): List<Int> {
         start += detail.timeUnit
     }
     return result
+}
+
+internal fun chaoxingEndOptions(detail: ChaoxingSeatRoomDetail, start: Int): List<Int> {
+    if (detail.timeUnit <= 0 || start < detail.startMinute || start >= detail.endMinute) return emptyList()
+    val result = mutableListOf<Int>()
+    var end = start + detail.timeUnit
+    while (end <= detail.endMinute) {
+        result += end
+        end += detail.timeUnit
+    }
+    return result
+}
+
+internal fun formatDuration(minutes: Int): String = when {
+    minutes <= 0 -> "时长未知"
+    minutes < 60 -> "$minutes 分钟"
+    minutes % 60 == 0 -> "${minutes / 60} 小时"
+    else -> "${minutes / 60} 小时 ${minutes % 60} 分钟"
 }
 
 private fun chaoxingAvailability(room: ChaoxingSeatRoom, selectedDate: String): String? {
