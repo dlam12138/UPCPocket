@@ -65,7 +65,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 空教室：两校区、日期、楼栋、节次筛选和结果页不变。
 - 图书馆：首页统一入口为“图书馆”（libseat 座位 + nspace 东馆研讨间 + 古镇口/求是四个
   Chaoxing 入口）。libseat 保留统一认证、座位查询/预约/取消、记住登录与会话清理；nspace
-  新增独立 CAS/token 与原生只读馆区/类型/日期/房间分页，预约明确引导官方页面；Chaoxing
+  新增独立 CAS/token 与原生只读馆区/类型/日期/房间分页，每个房间可直接打开官方
+  `#/detail?id=...&selectDate=...` 预约页（只带房间/日期，不注入 token）；Chaoxing
   seat/seatengine 只提供官方浏览器入口，reservepc 两租户因缺稳定入口上下文保持“待入口”。
   六入口矩阵见 [图书馆六入口](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
@@ -198,7 +199,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **24 tests，0 failures/errors/skipped**（含 nspace 认证 6 项） |
-| `:feature:library:testDebugUnitTest` | **71 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token） |
+| `:feature:library:testDebugUnitTest` | **74 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token/官方深链） |
 | `:app:testDebugUnitTest` | **0 failures/errors/skipped**；首页入口/页面集合断言更新为 `library.home` |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
@@ -215,8 +216,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - 评审副本：`release/UPC-Pocket-M5-library-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`66,067,349` bytes
-- SHA-256：`63FFC6C8C524BE220C115A6F7EB9A8E8E5795DA82816474D4898892B4CFB9C28`
+- 大小：`66,071,973` bytes
+- SHA-256：`39F8015FFE705A8012499A1F265C569044AA9E462BFB874907FFC7B18C305D37`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 - 上一版 M5 评审 APK `release/UPC-Pocket-M5-preview-debug.apk` 保留为对照；本轮图书馆改动在该新副本中。
 

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.data.nspace.NspaceOfficialLinks
 import com.upcpocket.app.data.nspace.NspaceRoom
 import com.upcpocket.app.library.NspaceService
 import com.upcpocket.app.ui.components.GlassCard
@@ -189,7 +190,14 @@ fun NspaceScreen(
                     onRefresh = vm::refresh,
                 )
                 Filters(state, vm)
-                RoomList(state)
+                RoomList(
+                    state = state,
+                    onOfficial = { room ->
+                        state.selectedDate?.let { date ->
+                            openNspaceRoom(context, room.id, date)
+                        }
+                    },
+                )
                 Pager(state, vm)
             }
             Spacer(Modifier.height(16.dp))
@@ -262,7 +270,10 @@ private fun Filters(state: NspaceUiState, vm: NspaceViewModel) {
 }
 
 @Composable
-private fun RoomList(state: NspaceUiState) {
+private fun RoomList(
+    state: NspaceUiState,
+    onOfficial: (NspaceRoom) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             SectionHeader(
@@ -289,12 +300,12 @@ private fun RoomList(state: NspaceUiState) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        state.rooms.forEach { room -> RoomCard(room) }
+        state.rooms.forEach { room -> RoomCard(room, onOfficial) }
     }
 }
 
 @Composable
-private fun RoomCard(room: NspaceRoom) {
+private fun RoomCard(room: NspaceRoom, onOfficial: (NspaceRoom) -> Unit) {
     GlassCard {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -347,7 +358,23 @@ private fun RoomCard(room: NspaceRoom) {
                     )
                 }
             }
+            TextButton(onClick = { onOfficial(room) }) {
+                Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)
+                Spacer(Modifier.padding(start = 4.dp))
+                Text("在官方页面预约此房间")
+            }
         }
+    }
+}
+
+private fun openNspaceRoom(context: android.content.Context, roomId: String, date: String) {
+    val url = runCatching { NspaceOfficialLinks.roomDetailUrl(roomId, date) }.getOrNull()
+        ?: return
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }
 

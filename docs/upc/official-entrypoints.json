@@ -66,7 +66,7 @@
         "room_detail": "POST /spa/static/api/book/getRoomDtoByRoomIdAndDate"
       },
       "integration": "official_login_native_read_only",
-      "verification": "M5 follow-up: independent nspace CAS entry, app-token exchange and room browsing are implemented. The entry 302 to CAS was checked; protocol/account-isolation tests pass. No real account was available for an end-to-end nspace login/browse, and saveReservation/cancel/check-in remain unimplemented. The 25-entry HAR remains read-only browsing evidence (1 venue, 4 room types, 3 dates, 6/11 rooms on page 1); no live personal record or write is claimed. Booking stays on the official school page."
+      "verification": "M5 follow-up: independent nspace CAS entry, app-token exchange and room browsing are implemented. The entry 302 to CAS was checked; protocol/account-isolation tests pass. Each room also constructs the official public #/detail?id=...&selectDate=... booking route without token/uid/enc. No real account was available for an end-to-end nspace login/browse, and saveReservation/cancel/check-in remain unimplemented. The 25-entry HAR remains read-only browsing evidence (1 venue, 4 room types, 3 dates, 6/11 rooms on page 1); no live personal record or write is claimed. Booking stays on the official school page."
     },
     {
       "id": "chaoxing_seat",

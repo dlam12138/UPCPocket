@@ -4,10 +4,10 @@
 
 - 首页原“图书馆座位”改为统一“图书馆”入口，按唐岛湾/古镇口/求是分组展示六个平台；保留既有 `library.seat` 页面，新增 `library.home` 和 `library.nspace`，不改变三 tab 与设置入口。
 - 新增独立 nspace 认证：libspace 的 nspace SSO 入口 → 正常 CAS → app token（query/fragment）→ `/spa/static/public/api/remoteCasLogin` → `userInfo` 本人核验；入口 302 到 CAS 已实测。nspace token 只存内存，使用独立 `library.nspace` 能力和 `/spa` Repository，绝不与 libseat seat token 混用。
-- 新增 nspace 原生只读：馆区/空间类型/开放日期/房间分页，严格解析 `status/code/data`、区分 401 与空 `pageList`；预约明确引导学校官方页面，未实现/未提交 `saveReservation`、取消、团队或签到。
+- 新增 nspace 原生只读：馆区/空间类型/开放日期/房间分页，严格解析 `status/code/data`、区分 401 与空 `pageList`；每个房间提供官方 `#/detail?id=...&selectDate=...` 预约深链（只带房间/日期，不带 token/uid/enc），未实现/未提交 `saveReservation`、取消、团队或签到。
 - Chaoxing seat/seatengine 仅保留官方浏览器入口；reservepc 两租户因缺稳定入口上下文保持“待入口”。统一页说明“原生/原生只读/官方登录/待入口”，不把入口页或 HTTP 200 当作业务成功。
 - 账号门闩：nspace 登录与 libseat 一样绑定当前 accountId/凭据代次；换号/删号同时清理两面会话，迟到认证结果不发布；新增合成测试覆盖协议分页、401、本人不一致、代次变化和独立 token。
-- 验证：`core:upc-auth` 24 tests、`feature:library` 71 tests、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug`/`app:lintDebug` 通过（app 仍 0 errors / 2 既有 warnings）。模拟器验收统一页、nspace 未登录态、1.5× 滚动和六个入口；未用真实账号完成 nspace 登录/浏览，未执行任何真实预约/取消/签到。详见 [六入口记录](m5/图书馆六入口.md)。
+- 验证：`core:upc-auth` 24 tests、`feature:library` 74 tests、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug`/`app:lintDebug` 通过（app 仍 0 errors / 2 既有 warnings）。模拟器验收统一页、nspace 未登录态、1.5× 滚动和六个入口；未用真实账号完成 nspace 登录/浏览，未执行任何真实预约/取消/签到。详见 [六入口记录](m5/图书馆六入口.md)。
 
 ## M5 · 首页/课表/专注与统一设置入口（开发分支，未发布）
 
