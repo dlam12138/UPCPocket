@@ -14,11 +14,14 @@ import com.upcpocket.app.ui.library.LibrarySeatLoginScreen
 import com.upcpocket.app.ui.library.LibrarySeatScreen
 import com.upcpocket.app.ui.library.NspaceScreen
 import com.upcpocket.app.ui.library.NspaceReservationsScreen
+import com.upcpocket.app.ui.library.NspaceWebLoginScreen
 
 val LIBRARY_HOME_ROUTE: PluginRouteId = PluginRouteId.parse("library.home")
 val LIBRARY_SEAT_ROUTE: PluginRouteId = PluginRouteId.parse("library.seat")
 val LIBRARY_LOGIN_ROUTE: PluginRouteId = PluginRouteId.parse("library.login")
 val LIBRARY_NSPACE_ROUTE: PluginRouteId = PluginRouteId.parse("library.nspace")
+val LIBRARY_NSPACE_LOGIN_ROUTE: PluginRouteId =
+    PluginRouteId.parse("library.nspace.login")
 val LIBRARY_NSPACE_RESERVATIONS_ROUTE: PluginRouteId =
     PluginRouteId.parse("library.nspace.reservations")
 
@@ -73,6 +76,16 @@ internal class LibraryUi(
                     onBack = host::back,
                     onOpenAccount = host::openSchoolAccountSettings,
                     onOpenReservations = { host.open(LIBRARY_NSPACE_RESERVATIONS_ROUTE) },
+                    onOpenWebLogin = { host.open(LIBRARY_NSPACE_LOGIN_ROUTE) },
+                )
+            },
+        )
+        registry.addPage(
+            PluginPage(LIBRARY_NSPACE_LOGIN_ROUTE, LIBRARY_PLUGIN_ID) { host ->
+                NspaceWebLoginScreen(
+                    service = nspaceService,
+                    onBack = host::back,
+                    onLoggedIn = host::back,
                 )
             },
         )

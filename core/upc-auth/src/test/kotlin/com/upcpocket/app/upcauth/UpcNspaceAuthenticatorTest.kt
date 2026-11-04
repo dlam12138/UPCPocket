@@ -117,6 +117,65 @@ class UpcNspaceAuthenticatorTest {
     }
 
     @Test
+    fun `manual web app token exchange verifies the saved account`() = runTest {
+        var requestUrl = ""
+        val transport = NspaceFakeTransport { request ->
+            assertEquals("GET", request.method)
+            requestUrl = request.url
+            response(
+                200,
+                mapOf("Content-Type" to "application/json"),
+                """{"status":true,"code":200,"data":{"token":"business-token",
+                   "userInfo":{"id":"id","username":"synthetic-user","name":"合成用户"}}}""",
+            )
+        }
+        val result = authenticator(transport).exchangeWebToken(
+            appToken = "synthetic-app-token",
+            expectedAccountId = accountId,
+            expectedCredentialGeneration = 7,
+        )
+        assertTrue(requestUrl.startsWith(UpcNspaceAuthEndpoints.REMOTE_CAS_LOGIN_URL))
+        assertTrue(requestUrl.endsWith("token=synthetic-app-token"))
+        assertEquals("business-token", (result as UpcNspaceAuthResult.Success).token)
+    }
+
+    @Test
+    fun `manual web token for another user is rejected`() = runTest {
+        val transport = NspaceFakeTransport {
+            response(
+                200,
+                mapOf("Content-Type" to "application/json"),
+                """{"status":true,"code":200,"data":{"token":"business-token",
+                   "userInfo":{"id":"id","username":"other-user"}}}""",
+            )
+        }
+        val result = authenticator(transport).exchangeWebToken(
+            appToken = "synthetic-app-token",
+            expectedAccountId = accountId,
+            expectedCredentialGeneration = 7,
+        )
+        assertEquals(
+            UpcLibraryAuthFailure.IDENTITY_MISMATCH,
+            (result as UpcNspaceAuthResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun `manual web token with control characters is rejected before any request`() = runTest {
+        val transport = NspaceFakeTransport { error("不得发送非法 token") }
+        val result = authenticator(transport).exchangeWebToken(
+            appToken = "token\ninjected",
+            expectedAccountId = accountId,
+            expectedCredentialGeneration = 7,
+        )
+        assertEquals(
+            UpcLibraryAuthFailure.PROTOCOL_ERROR,
+            (result as UpcNspaceAuthResult.Failure).reason,
+        )
+        assertEquals(0, transport.posts)
+    }
+
+    @Test
     fun `CAS 401 captcha page requests interaction instead of access denied`() = runTest {
         val transport = NspaceFakeTransport { request ->
             when {

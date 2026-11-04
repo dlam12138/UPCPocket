@@ -33,6 +33,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -62,11 +65,13 @@ fun NspaceScreen(
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenReservations: () -> Unit,
+    onOpenWebLogin: () -> Unit,
 ) {
     val context = LocalContext.current
     val vm: NspaceViewModel = viewModel(factory = NspaceViewModel.factory(service))
     val state by vm.state.collectAsStateWithLifecycle()
     val accountState by service.accountState.collectAsStateWithLifecycle()
+    var bookingRoom by remember { mutableStateOf<NspaceRoom?>(null) }
     val hasAccount = accountState.status == SchoolAccountStatus.SAVED_UNVERIFIED
     val accountMessage = when (accountState.status) {
         SchoolAccountStatus.LOADING -> "学校账号正在恢复，完成后再登录；不会跳过账号门闩。"
@@ -76,7 +81,7 @@ fun NspaceScreen(
         SchoolAccountStatus.REMOVING,
         -> "学校账号切换/清理中，暂不可登录。"
         SchoolAccountStatus.SAVED_UNVERIFIED ->
-            "使用已保存学校账号完成 nspace 正常 CAS；验证码或二次验证时请改走官方页面。"
+            "使用已保存学校账号完成 nspace 正常 CAS；验证码或二次验证时请点“网页登录”。"
         SchoolAccountStatus.NOT_CONFIGURED ->
             "尚未保存学校账号。先保存账号，或直接使用学校官方页面登录和预约。"
     }
@@ -123,13 +128,14 @@ fun NspaceScreen(
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            "预约仍走官方页面",
+                            "原生表单 / 官方页面",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     Text(
-                        "这里只读取馆区、空间类型、开放日期和房间容量；不提交预约、不取消、不签到。",
+                        "这里读取馆区、空间类型、开放日期和房间容量，并提供本人预约查询/取消；" +
+                            "新预约仍走官方页面，不提交新预约、不签到。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -166,6 +172,11 @@ fun NspaceScreen(
                                 }
                             }
                         }
+                        if (hasAccount) {
+                            OutlinedButton(onClick = onOpenWebLogin, enabled = !state.busy) {
+                                Text("网页登录（验证码/二次验证）")
+                            }
+                        }
                         if (state.busy) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -199,11 +210,24 @@ fun NspaceScreen(
                             openNspaceRoom(context, room.id, date)
                         }
                     },
+                    onBook = { room -> bookingRoom = room },
                 )
                 Pager(state, vm)
             }
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    val roomToBook = bookingRoom
+    val bookDate = state.selectedDate
+    if (roomToBook != null && bookDate != null) {
+        NspaceBookingDialog(
+            service = service,
+            room = roomToBook,
+            date = bookDate,
+            onDismiss = { bookingRoom = null },
+            onOpenOfficial = { openNspaceRoom(context, roomToBook.id, bookDate) },
+        )
     }
 }
 
@@ -285,6 +309,7 @@ private fun Filters(state: NspaceUiState, vm: NspaceViewModel) {
 private fun RoomList(
     state: NspaceUiState,
     onOfficial: (NspaceRoom) -> Unit,
+    onBook: (NspaceRoom) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -312,12 +337,16 @@ private fun RoomList(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        state.rooms.forEach { room -> RoomCard(room, onOfficial) }
+        state.rooms.forEach { room -> RoomCard(room, onOfficial, onBook) }
     }
 }
 
 @Composable
-private fun RoomCard(room: NspaceRoom, onOfficial: (NspaceRoom) -> Unit) {
+private fun RoomCard(
+    room: NspaceRoom,
+    onOfficial: (NspaceRoom) -> Unit,
+    onBook: (NspaceRoom) -> Unit,
+) {
     GlassCard {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -369,6 +398,9 @@ private fun RoomCard(room: NspaceRoom, onOfficial: (NspaceRoom) -> Unit) {
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
                 }
+            }
+            TextButton(onClick = { onBook(room) }) {
+                Text("原生预约表单")
             }
             TextButton(onClick = { onOfficial(room) }) {
                 Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null)

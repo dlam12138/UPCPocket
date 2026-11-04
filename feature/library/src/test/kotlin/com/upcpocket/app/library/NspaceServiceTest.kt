@@ -12,6 +12,7 @@ import com.upcpocket.app.data.nspace.NspaceRequest
 import com.upcpocket.app.data.nspace.NspaceResponse
 import com.upcpocket.app.data.nspace.NspaceTransport
 import com.upcpocket.app.data.nspace.NspaceUser
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -176,10 +177,139 @@ class NspaceServiceTest {
         assertTrue(failed.exceptionOrNull() is com.upcpocket.app.data.nspace.NspaceSessionExpiredException)
     }
 
+    @Test
+    fun `native booking posts the exact public frontend path and fields`() = runTest {
+        val account = Account()
+        var path: String? = null
+        var body: String? = null
+        val repository = NspaceRepository(
+            NspaceTransport { request ->
+                path = request.path
+                body = request.body
+                NspaceResponse(200, """{"status":true,"code":200,"data":null}""")
+            },
+        )
+        val service = service(account, repository, SchoolAccountIdentityCheck.MATCH)
+        service.loginWithSavedAccount()
+        service.book(
+            com.upcpocket.app.data.nspace.NspaceBookingRequest(
+                begin = 480,
+                end = 540,
+                onDate = "2026-11-05",
+                roomId = "room-1",
+                useType = "1",
+                participants = "",
+                filePath = "",
+                source = "WEB",
+                seatNo = "",
+                teamId = 0,
+                theme = "讨论",
+                phone = null,
+                outline = null,
+                extraField = mapOf("college" to "计算机"),
+            ),
+        )
+
+        assertEquals("/spa/static/api/book/saveReservation", path)
+        assertTrue(body.orEmpty().contains("\"begin\":480"))
+        assertTrue(body.orEmpty().contains("\"end\":540"))
+        assertTrue(body.orEmpty().contains("\"roomId\":\"room-1\""))
+        assertTrue(body.orEmpty().contains("\"theme\":\"讨论\""))
+        assertTrue(body.orEmpty().contains("\"college\":\"计算机\""))
+    }
+
+    @Test
+    fun `manual web token is exchanged and published only for the current account`() = runTest {
+        val account = Account()
+        val service = service(
+            account,
+            NspaceRepository(NspaceTransport { error("不应查询") }),
+            SchoolAccountIdentityCheck.MATCH,
+        ) { _, _, appToken ->
+            assertEquals("synthetic-app-token", appToken)
+            NspaceAccountAuthResult.Success(
+                token = "synthetic-business-token",
+                user = NspaceUser("synthetic-id", "synthetic-user", "合成用户"),
+            )
+        }
+
+        val result = service.loginWithWebToken("synthetic-app-token")
+
+        assertEquals(NspaceLoginResult.Success, result)
+        assertEquals("synthetic-business-token", service.session.value?.token)
+    }
+
+    @Test
+    fun `manual web token identity mismatch never publishes`() = runTest {
+        val account = Account()
+        val service = service(
+            account,
+            NspaceRepository(NspaceTransport { error("不应查询") }),
+            SchoolAccountIdentityCheck.MISMATCH,
+        ) { _, _, _ ->
+            NspaceAccountAuthResult.Success(
+                token = "synthetic-business-token",
+                user = NspaceUser("other", "other-user", "别人"),
+            )
+        }
+
+        val result = service.loginWithWebToken("synthetic-app-token")
+
+        assertEquals(
+            NspaceAuthFailure.IDENTITY_MISMATCH,
+            (result as NspaceLoginResult.Failure).reason,
+        )
+        assertNull(service.session.value)
+    }
+
+    @Test
+    fun `late manual web callback after sign out is not published`() = runTest {
+        val account = Account()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val service = service(
+            account,
+            NspaceRepository(NspaceTransport { error("不应查询") }),
+            SchoolAccountIdentityCheck.MATCH,
+        ) { _, _, _ ->
+            gate.await()
+            NspaceAccountAuthResult.Success(
+                token = "late-token",
+                user = NspaceUser("synthetic-id", "synthetic-user", "合成用户"),
+            )
+        }
+        val login = async {
+            service.loginWithWebToken("synthetic-app-token")
+        }
+        kotlinx.coroutines.yield()
+        service.signOut()
+        gate.complete(Unit)
+
+        assertEquals(
+            NspaceAuthFailure.ACCOUNT_CHANGED,
+            (login.await() as NspaceLoginResult.Failure).reason,
+        )
+        assertNull(service.session.value)
+    }
+
+    @Test
+    fun `manual web login is unavailable without an exchanger`() = runTest {
+        val service = service(
+            Account(),
+            NspaceRepository(NspaceTransport { error("不应查询") }),
+            SchoolAccountIdentityCheck.MATCH,
+        )
+        val result = service.loginWithWebToken("synthetic-app-token")
+        assertEquals(
+            NspaceAuthFailure.PROTOCOL_ERROR,
+            (result as NspaceLoginResult.Failure).reason,
+        )
+    }
+
     private fun service(
         account: Account,
         repository: NspaceRepository,
         identity: SchoolAccountIdentityCheck,
+        webExchanger: NspaceWebTokenExchanger? = null,
     ): NspaceService = NspaceService(
         repository = repository,
         accountGate = account,
@@ -191,6 +321,7 @@ class NspaceServiceTest {
                 user = NspaceUser("synthetic-id", "synthetic-user", "合成用户"),
             )
         },
+        webTokenExchanger = webExchanger,
     )
 
     private class Account : SchoolAccountReferenceReader {

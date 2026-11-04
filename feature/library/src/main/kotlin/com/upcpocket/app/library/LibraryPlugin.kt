@@ -37,6 +37,7 @@ class LibraryPlugin(
     identityVerifier: SchoolAccountIdentityVerifier,
     authenticator: LibraryAccountAuthenticator,
     nspaceAuthenticator: NspaceAccountAuthenticator,
+    nspaceWebTokenExchanger: NspaceWebTokenExchanger? = null,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = LIBRARY_PLUGIN_ID,
@@ -66,6 +67,7 @@ class LibraryPlugin(
         accountReference = account,
         identityVerifier = identityVerifier,
         authenticator = nspaceAuthenticator,
+        webTokenExchanger = nspaceWebTokenExchanger,
     )
 
     override fun capabilities(): List<PluginCapability> = listOf(

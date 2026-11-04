@@ -62,6 +62,15 @@ fun interface NspaceAccountAuthenticator {
     ): NspaceAccountAuthResult
 }
 
+/** 手动官方 CAS 页面完成后，用 nspace app token 兑换独立业务 token。 */
+fun interface NspaceWebTokenExchanger {
+    suspend fun exchange(
+        expectedAccountId: SchoolAccountId,
+        expectedCredentialGeneration: Long,
+        appToken: String,
+    ): NspaceAccountAuthResult
+}
+
 sealed interface NspaceLoginResult {
     data object Success : NspaceLoginResult
     data class Failure(
@@ -91,6 +100,7 @@ class NspaceService(
     private val accountReference: SchoolAccountReferenceReader,
     private val identityVerifier: SchoolAccountIdentityVerifier,
     private val authenticator: NspaceAccountAuthenticator,
+    private val webTokenExchanger: NspaceWebTokenExchanger? = null,
 ) {
     private val _session = MutableStateFlow<NspaceSession?>(null)
     val session: StateFlow<NspaceSession?> = _session.asStateFlow()
@@ -122,6 +132,41 @@ class NspaceService(
                 auth.interactionUrl,
             )
         }
+        return completeLogin(context, success)
+    }
+
+    /**
+     * 手动官方 CAS 页面完成后，用 nspace app token 兑换独立业务 token。
+     *
+     * 仍然要求本机有已保存统一账号；token 的用户名必须与当前账号一致，且发布前
+     * 复核 epoch/revision/凭据代次。旧的 WebView 回调在换号/退出后不能发布。
+     */
+    suspend fun loginWithWebToken(appToken: String): NspaceLoginResult {
+        val exchanger = webTokenExchanger
+            ?: return NspaceLoginResult.Failure(NspaceAuthFailure.PROTOCOL_ERROR)
+        val context = captureContext()
+            ?: return NspaceLoginResult.Failure(NspaceAuthFailure.ACCOUNT_UNAVAILABLE)
+        val auth = try {
+            exchanger.exchange(context.accountId, context.generation.value, appToken)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return NspaceLoginResult.Failure(NspaceAuthFailure.PROTOCOL_ERROR)
+        }
+        val success = when (auth) {
+            is NspaceAccountAuthResult.Success -> auth
+            is NspaceAccountAuthResult.Failure -> return NspaceLoginResult.Failure(
+                auth.reason,
+                auth.interactionUrl,
+            )
+        }
+        return completeLogin(context, success)
+    }
+
+    private suspend fun completeLogin(
+        context: NspaceLoginContext,
+        success: NspaceAccountAuthResult.Success,
+    ): NspaceLoginResult {
         val identity = try {
             identityVerifier.verifyLoginName(
                 context.accountId,

@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EventSeat
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,9 +29,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -41,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.library.NspaceService
 import com.upcpocket.app.ui.components.GlassCard
@@ -85,7 +82,6 @@ fun LibraryHubScreen(
     val accountState by libraryService.accountState.collectAsStateWithLifecycle()
     val seatSession by libraryService.repository.session.collectAsStateWithLifecycle()
     val nspaceSession by nspaceService.session.collectAsStateWithLifecycle()
-    var blocker by remember { mutableStateOf<String?>(null) }
 
     val platforms = listOf(
         LibraryPlatform(
@@ -113,22 +109,21 @@ fun LibraryHubScreen(
             icon = Icons.Filled.EventSeat,
             actionLabel = "在浏览器打开官方登录",
             action = {
-                openOfficial(context, "https://office.chaoxing.com/front/third/apps/seat/index")
+                openOfficial(context, UpcOfficialEntryLinks.SEAT)
             },
-            note = "已观察到入口配置与空 current/near；缺馆区/座位图，未做原生查询。",
+            note = "使用稳定的学校/应用入口；仍需正常登录。未取得馆区/座位图，未做原生查询。",
         ),
         LibraryPlatform(
             title = "东区研讨间",
             subtitle = "古镇口 · reservepc",
-            access = LibraryAccess.BLOCKED,
+            access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看阻碍",
+            actionLabel = "在浏览器打开官方登录",
             action = {
-                blocker = "reservepc 入口需要学校/租户上下文（reserveId、resvAppId、enc 等）。" +
-                    "当前只有已授权页面的只读 HAR，没有可复用的无参数入口；不能把一次性 URL " +
-                    "硬编码成长期功能。请从学校图书馆正式入口进入。"
+                openOfficial(context, UpcOfficialEntryLinks.RESERVEPC_A)
             },
-            note = "已有两租户房间列表/空 user list 证据；登录获取与写接口未验证。",
+            note = "已从 HAR 提取稳定 reserveId/resvAppId/fidEnc/appId/mappId 入口，" +
+                "不含 uid/enc/code/state；需正常登录后查看房间，未做原生查询/预约。",
         ),
         LibraryPlatform(
             title = "求是座位",
@@ -137,25 +132,21 @@ fun LibraryHubScreen(
             icon = Icons.Filled.EventSeat,
             actionLabel = "在浏览器打开官方登录",
             action = {
-                openOfficial(
-                    context,
-                    "https://office.chaoxing.com/front/third/apps/seatengine/index",
-                )
+                openOfficial(context, UpcOfficialEntryLinks.SEATENGINE)
             },
-            note = "已观察到入口配置、index、identity/verify 与空 current/near；缺座位图。",
+            note = "使用稳定的学校/应用/seatId 入口；仍需正常登录。缺座位图，未做原生查询。",
         ),
         LibraryPlatform(
             title = "求是研讨间",
             subtitle = "求是 · reservepc",
-            access = LibraryAccess.BLOCKED,
+            access = LibraryAccess.OFFICIAL_LOGIN,
             icon = Icons.Filled.MeetingRoom,
-            actionLabel = "查看阻碍",
+            actionLabel = "在浏览器打开官方登录",
             action = {
-                blocker = "求是 reservepc 与古镇口一样依赖租户/学校入口上下文；" +
-                    "现有 HAR 只证明已登录页面的 23 个 reserve items 和空 user list，" +
-                    "没有登录获取、预约表单或写接口。未伪造一个可预约入口。"
+                openOfficial(context, UpcOfficialEntryLinks.RESERVEPC_B)
             },
-            note = "已有 23 个 reserve items 只读证据；登录获取与预约/取消仍未原生验证。",
+            note = "已从 HAR 提取稳定的求是租户入口；需正常登录后查看房间，" +
+                "未做原生查询/预约。",
         ),
     )
 
@@ -249,17 +240,6 @@ fun LibraryHubScreen(
             )
             Spacer(Modifier.padding(bottom = 16.dp))
         }
-    }
-
-    blocker?.let { text ->
-        AlertDialog(
-            onDismissRequest = { blocker = null },
-            title = { Text("当前未原生接入") },
-            text = { Text(text) },
-            confirmButton = {
-                TextButton(onClick = { blocker = null }) { Text("知道了") }
-            },
-        )
     }
 }
 

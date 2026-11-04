@@ -4,11 +4,13 @@
 
 - 首页原“图书馆座位”改为统一“图书馆”入口，按唐岛湾/古镇口/求是分组展示六个平台；保留既有 `library.seat` 页面，新增 `library.home` 和 `library.nspace`，不改变三 tab 与设置入口。
 - 新增独立 nspace 认证：libspace 的 nspace SSO 入口 → 正常 CAS → app token（query/fragment）→ `/spa/static/public/api/remoteCasLogin` → `userInfo` 本人核验；入口 302 到 CAS 已实测。nspace token 只存内存，使用独立 `library.nspace` 能力和 `/spa` Repository，绝不与 libseat seat token 混用。
-- 新增 nspace 原生只读：馆区/空间类型/开放日期/房间分页，严格解析 `status/code/data`、区分 401 与空 `pageList`；每个房间提供官方 `#/detail?id=...&selectDate=...` 预约深链（只带房间/日期，不带 token/uid/enc）；新增原生“我的预约”列表与确认式取消（`GET cancelBook/{id}`）。`getRoomDtoByRoomIdAndDate`/`getAllUseType`/`getRequiredOption`/`saveReservation` 的协议与表单规则已有合成测试，但原生新预约 UI 尚未接入；未实现/未提交结束使用、团队或签到。
+- 新增 nspace 原生只读：馆区/空间类型/开放日期/房间分页，严格解析 `status/code/data`、区分 401 与空 `pageList`；每个房间提供官方 `#/detail?id=...&selectDate=...` 预约深链（只带房间/日期，不带 token/uid/enc）；新增原生“我的预约”列表与确认式取消（`GET cancelBook/{id}`）；新增单人预约表单（详情/用途/时段/必填/最终真实确认），对多人、选座、附件或未知字段明确拒绝。未点击真实最终提交；`stopBook`/团队/签到未实现。
+- 新增 nspace 官方 WebView 验证码回退：学校 CAS 401 验证码页转 `INTERACTION_REQUIRED`；应用内加载固定学校入口，只捕获 `/nspace` app token，经 `remoteCasLogin`、本人核验和账号代次/epoch/revision 门闩发布；换号/退出后的迟到回调不发布。token 不持久化、不与 libseat 混用。
+- Chaoxing 四入口改为从 HAR 提取的稳定入口：seat/seatengine 只保留 `fidEnc/mappId[/seatId]`，reservepc 两租户只保留 `reserveId/resvAppId/fidEnc/appId/mappId`，排除 `uid/enc/code/state/wfwEnc`；实测分别到 passport2 登录或 `tyrzfw` → UPC CAS。仍是官方浏览器入口，不是原生查询。
 - 修复 CAS 挑战误判：CAS 以 401/403 返回登录/验证码页时，不再直接报 `ACCESS_DENIED`，而是解析页面并返回 `INTERACTION_REQUIRED` + 学校交互 URL；无表单才拒绝。使用用户提供的真实凭据的一次受控尝试到达该验证码挑战，随即停止，不绕过、不重复失败密码。
-- Chaoxing seat/seatengine 仅保留官方浏览器入口；reservepc 两租户因缺稳定入口上下文保持“待入口”。统一页说明“原生/原生只读/官方登录/待入口”，不把入口页或 HTTP 200 当作业务成功。
+- 统一页标签仍区分“原生/原生只读/官方登录”；reservepc 从“待入口”改为官方登录，但 seat/seatengine/reservepc 四入口都不是原生查询，不把入口页或 HTTP 200 当作业务成功。
 - 账号门闩：nspace 登录与 libseat 一样绑定当前 accountId/凭据代次；换号/删号同时清理两面会话，迟到认证结果不发布；新增合成测试覆盖协议分页、401、本人不一致、代次变化和独立 token。
-- 验证：`core:upc-auth` 25 tests、`feature:library` 88 tests、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug`/`app:lintDebug` 通过（app 仍 0 errors / 2 既有 warnings）。模拟器验收统一页、nspace 未登录态、1.5× 滚动和六个入口；真实凭据到达 CAS 验证码挑战后停止，未完成 nspace 登录/浏览/取消，未执行任何真实预约/取消/签到。详见 [六入口记录](m5/图书馆六入口.md)。
+- 验证：`core:upc-auth` 28 tests、`feature:library` 101 tests、`app:testDebugUnitTest` 与 `assembleDebug` 通过；`feature:library:lintDebug`/`app:lintDebug` 通过（app 仍 0 errors / 2 既有 warnings）。模拟器验收统一页、nspace 未登录态、1.5× 滚动和六个入口；真实凭据到达 CAS 验证码挑战后停止，未完成 nspace 登录/浏览/取消，未执行任何真实预约/取消/签到。详见 [六入口记录](m5/图书馆六入口.md)。
 
 ## M5 · 首页/课表/专注与统一设置入口（开发分支，未发布）
 

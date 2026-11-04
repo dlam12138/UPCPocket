@@ -111,6 +111,80 @@ class UpcNspaceAuthenticator internal constructor(
     }
 
     @OptIn(RestrictedSchoolCredentialUse::class)
+    suspend fun exchangeWebToken(
+        appToken: String,
+        expectedAccountId: SchoolAccountId,
+        expectedCredentialGeneration: Long,
+    ): UpcNspaceAuthResult {
+        if (appToken.isBlank() || appToken.length > 4096 ||
+            appToken.any { it == '\r' || it == '\n' || it == '\u0000' }
+        ) {
+            return UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.PROTOCOL_ERROR)
+        }
+        val result = try {
+            credentials.withLoginCredential { credential ->
+                if (credential.accountId != expectedAccountId ||
+                    credential.credentialGeneration.value != expectedCredentialGeneration
+                ) {
+                    UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.ACCOUNT_CHANGED)
+                } else {
+                    exchangeWebTokenWithCredential(credential, appToken)
+                }
+            }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.PROTOCOL_ERROR)
+        }
+        return when (result) {
+            is SchoolCredentialUseResult.Success -> result.value
+            is SchoolCredentialUseResult.Failure -> when (result.reason) {
+                SchoolCredentialFailure.CHANGED_DURING_USE ->
+                    UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.ACCOUNT_CHANGED)
+                SchoolCredentialFailure.BLOCKED_BY_CLEANUP,
+                SchoolCredentialFailure.NOT_CONFIGURED,
+                SchoolCredentialFailure.UNAVAILABLE,
+                -> UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.ACCOUNT_UNAVAILABLE)
+            }
+        }
+    }
+
+    @OptIn(RestrictedSchoolCredentialUse::class)
+    private fun exchangeWebTokenWithCredential(
+        credential: SchoolLoginCredential,
+        appToken: String,
+    ): UpcNspaceAuthResult {
+        val session = UpcCasHttpSession(
+            transport,
+            UpcAuthCookieJar(setOf(UpcNspaceAuthEndpoints.LIBRARY_HOST)),
+        )
+        val remote = try {
+            session.request(
+                "GET",
+                UpcNspaceAuthEndpoints.REMOTE_CAS_LOGIN_URL + "?token=" + encode(appToken),
+                headers = mapOf("Accept" to "application/json"),
+            )
+        } catch (failure: UpcAuthTransportException) {
+            return UpcNspaceAuthResult.Failure(failure.toNspaceFailure())
+        }
+        if (remote.status in 401..403 || remote.status == 429) {
+            return UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.ACCESS_DENIED)
+        }
+        if (remote.status != 200) {
+            return UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.UPSTREAM_ERROR)
+        }
+        val parsed = try {
+            parseNspaceLogin(remote.text())
+        } catch (failure: NspaceJsonFailure) {
+            return UpcNspaceAuthResult.Failure(failure.reason)
+        }
+        if (parsed.user.username.trim() != credential.loginName.trim()) {
+            return UpcNspaceAuthResult.Failure(UpcLibraryAuthFailure.IDENTITY_MISMATCH)
+        }
+        return UpcNspaceAuthResult.Success(parsed.token, parsed.user)
+    }
+
+    @OptIn(RestrictedSchoolCredentialUse::class)
     private fun performLogin(credential: SchoolLoginCredential): UpcNspaceAuthResult {
         val jar = UpcAuthCookieJar(
             setOf(UpcNspaceAuthEndpoints.CAS_HOST, UpcNspaceAuthEndpoints.LIBRARY_HOST),

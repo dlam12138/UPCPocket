@@ -65,8 +65,8 @@
         "room_list": "POST /spa/static/api/book/getRoomList",
         "room_detail": "POST /spa/static/api/book/getRoomDtoByRoomIdAndDate"
       },
-      "integration": "official_login_native_read_only",
-      "verification": "M5 follow-up: independent nspace CAS entry, app-token exchange, room browsing, my-reservation list and confirm-gated cancel are implemented. The entry 302 to CAS was checked; protocol/account-isolation/cancel-path tests pass. Each room also constructs the official public #/detail?id=...&selectDate=... booking route without token/uid/enc. No real account was available for an end-to-end nspace login/browse/cancel; saveReservation/stop/check-in remain unimplemented. The 25-entry HAR remains read-only browsing evidence (1 venue, 4 room types, 3 dates, 6/11 rooms on page 1); no live personal record or write is claimed. New booking stays on the official school page."
+      "integration": "official_login_native_read_only_with_webview_booking_form",
+      "verification": "M5 follow-up: independent nspace CAS entry, app-token exchange, room browsing, my-reservation list, confirm-gated cancel, single-person booking form and an official CAS WebView fallback are implemented. The entry 302 to CAS was checked; protocol/account-isolation/cancel/form tests pass. The WebView captures only the /nspace app token and re-verifies the saved account before publishing. Each room also constructs the official public #/detail?id=...&selectDate=... booking route without token/uid/enc. A controlled real-credential attempt reached CAS and received a 401 login/captcha page; the client now reports INTERACTION_REQUIRED with the school interaction URL and did not retry or bypass. No nspace identity/read or real booking/cancel/check-in was executed. The 25-entry HAR remains read-only browsing evidence (1 venue, 4 room types, 3 dates, 6/11 rooms on page 1); no live personal record or write is claimed."
     },
     {
       "id": "chaoxing_seat",
@@ -77,8 +77,8 @@
         "https://office.chaoxing.com/front/third/apps/seatengine/index"
       ],
       "authentication": "Unauthenticated entries redirect to passport2.chaoxing.com; the 2026-11-03 captures start from already-authorized pages and contain no passport/CAS login exchange",
-      "integration": "external_official_page_protocol_unverified",
-      "verification": "97-entry seat and 98-entry seatengine HARs captured entrance config, index, identity/verify and empty current/near reservations only. No room/seat/time list, login acquisition, error state or write was captured; one-time page/context values must not be reused. M5 exposes these two stable entry URLs as browser fallbacks only, not native queries."
+      "integration": "official_stable_entry_browser_only",
+      "verification": "97-entry seat and 98-entry seatengine HARs captured entrance config, index, identity/verify and empty current/near reservations only. Stable entry subsets keep only fidEnc/mappId (and seatId for seatengine); they still land on passport2 login. No room/seat/time list, login acquisition, error state or write was captured; uid/enc/code/state/wfw values are excluded. M5 exposes stable browser entries only, not native queries."
     },
     {
       "id": "chaoxing_reserve",
@@ -86,8 +86,8 @@
       "campus": null,
       "url": "https://reserve.chaoxing.com/front/web/apps/reservepc/index",
       "authentication": "Tenant/session-dependent reservepc app; without matching context the entry returns a local 303 error page; the 2026-11-03 captures contain no passport/CAS login exchange and no Cookie/Authorization header",
-      "integration": "blocked_tenant_context",
-      "verification": "Two 93-entry HARs (one per tenant) captured the same read-only API set: reserve/info, user/view/flag, open/team, item/list/time, seat/person/role and dialog; they returned 8 (tenant A) and 23 (tenant B) reserve items, empty reserveUserList and loginStatus=true. No booking detail, cancel/check-in, error state, login acquisition or write was captured. M5 shows both entries as blocked because no stable parameterless/tenant entry is available; the bare URL 303 does not invalidate the live session."
+      "integration": "official_stable_tenant_link_browser_only",
+      "verification": "Two 93-entry HARs (one per tenant) captured reserve/info, user/view/flag, open/team, item/list/time, seat/person/role and dialog; they returned 8 (tenant A) and 23 (tenant B) reserve items, empty reserveUserList and loginStatus=true. The stable entry subsets keep only reserveId/resvAppId/fidEnc/appId/mappId and both land on tyrzfw -> UPC CAS; uid/enc/code/state/wfw values are excluded. M5 exposes both as official browser login entries, not native room/booking APIs. No booking detail, cancel/check-in, error state, login acquisition or write was captured."
     },
     {
       "id": "campus_card_balance",

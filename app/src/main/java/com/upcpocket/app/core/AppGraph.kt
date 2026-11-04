@@ -30,6 +30,7 @@ import com.upcpocket.app.library.LibraryPlugin
 import com.upcpocket.app.library.NspaceAccountAuthResult
 import com.upcpocket.app.library.NspaceAccountAuthenticator
 import com.upcpocket.app.library.NspaceAuthFailure
+import com.upcpocket.app.library.NspaceWebTokenExchanger
 import com.upcpocket.app.library.SchoolWebCookies
 import com.upcpocket.app.plugin.api.PluginAppLifecycle
 import com.upcpocket.app.plugin.runtime.ActivePlugins
@@ -221,14 +222,37 @@ object AppGraph {
             identityVerifier = account,
             authenticator = libraryAuthenticator,
             nspaceAuthenticator = nspaceAuthenticator,
+            nspaceWebTokenExchanger = nspaceWebTokenExchanger,
         )
     }
 
     /** nspace 使用独立 token/接口；只复用受控凭据与账号门闩，不复用 seat token。 */
+    private val nspaceCore: UpcNspaceAuthenticator by lazy {
+        UpcNspaceAuthenticator(account)
+    }
+
     private val nspaceAuthenticator: NspaceAccountAuthenticator by lazy {
-        val core = UpcNspaceAuthenticator(account)
         NspaceAccountAuthenticator { accountId, generation ->
-            when (val result = core.authenticate(accountId, generation)) {
+            when (val result = nspaceCore.authenticate(accountId, generation)) {
+                is UpcNspaceAuthResult.Success -> NspaceAccountAuthResult.Success(
+                    token = result.token,
+                    user = com.upcpocket.app.data.nspace.NspaceUser(
+                        id = result.user.id,
+                        username = result.user.username,
+                        name = result.user.name,
+                    ),
+                )
+                is UpcNspaceAuthResult.Failure -> NspaceAccountAuthResult.Failure(
+                    reason = result.reason.toNspaceFailure(),
+                    interactionUrl = result.interactionUrl,
+                )
+            }
+        }
+    }
+
+    private val nspaceWebTokenExchanger: NspaceWebTokenExchanger by lazy {
+        NspaceWebTokenExchanger { accountId, generation, appToken ->
+            when (val result = nspaceCore.exchangeWebToken(appToken, accountId, generation)) {
                 is UpcNspaceAuthResult.Success -> NspaceAccountAuthResult.Success(
                     token = result.token,
                     user = com.upcpocket.app.data.nspace.NspaceUser(
