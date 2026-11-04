@@ -137,6 +137,45 @@ class NspaceServiceTest {
         assertTrue(body.orEmpty().contains("\"selectDate\":\"2026-11-04\""))
     }
 
+    @Test
+    fun `cancel calls the exact fixed path and requires a success envelope`() = runTest {
+        var requestPath: String? = null
+        var requestMethod: String? = null
+        val repository = NspaceRepository(
+            NspaceTransport { request ->
+                requestPath = request.path
+                requestMethod = request.method
+                NspaceResponse(200, """{"status":true,"code":200,"data":null}""")
+            },
+        )
+
+        repository.cancelReservation("synthetic-token", "id/1")
+
+        assertEquals("GET", requestMethod)
+        assertEquals("/spa/static/api/user/cancelBook/id%2F1", requestPath)
+    }
+
+    @Test
+    fun `cancel requires a live session and sends the exact cancel path`() = runTest {
+        val account = Account()
+        var path: String? = null
+        val repository = NspaceRepository(
+            NspaceTransport { request ->
+                path = request.path
+                NspaceResponse(200, """{"status":true,"code":200,"data":null}""")
+            },
+        )
+        val service = service(account, repository, SchoolAccountIdentityCheck.MATCH)
+        service.loginWithSavedAccount()
+
+        service.cancelReservation("reservation-1")
+        assertEquals("/spa/static/api/user/cancelBook/reservation-1", path)
+
+        service.signOut()
+        val failed = runCatching { service.cancelReservation("reservation-2") }
+        assertTrue(failed.exceptionOrNull() is com.upcpocket.app.data.nspace.NspaceSessionExpiredException)
+    }
+
     private fun service(
         account: Account,
         repository: NspaceRepository,

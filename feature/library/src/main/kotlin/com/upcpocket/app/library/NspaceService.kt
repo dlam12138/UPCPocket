@@ -10,6 +10,7 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.nspace.NspaceException
 import com.upcpocket.app.data.nspace.NspaceRepository
+import com.upcpocket.app.data.nspace.NspaceReservationPage
 import com.upcpocket.app.data.nspace.NspaceRoomPage
 import com.upcpocket.app.data.nspace.NspaceRoomType
 import com.upcpocket.app.data.nspace.NspaceSession
@@ -170,6 +171,26 @@ class NspaceService(
         page: Int,
     ): NspaceRoomPage = callSession { token, guard ->
         repository.rooms(token, venueId, roomTypeId, date, page)
+    }
+
+    suspend fun myReservations(page: Int): NspaceReservationPage = callSession { token, guard ->
+        repository.myReservations(token, page)
+    }
+
+    suspend fun cancelReservation(reservationId: String) {
+        val current = _session.value ?: throw NspaceSessionExpiredException()
+        val context = captureContext() ?: throw NspaceSessionExpiredException()
+        if (_session.value?.token != current.token || !isCurrent(context)) {
+            throw NspaceSessionExpiredException()
+        }
+        try {
+            // 写请求不使用 callSession 的“结果后复核”：请求可能已到达学校，不能因为
+            // 账号代次随后变化就把已提交的取消误报为失败。发送前已复核当前会话。
+            repository.cancelReservation(current.token, reservationId)
+        } catch (expired: NspaceSessionExpiredException) {
+            signOutIfCurrent(current.token)
+            throw expired
+        }
     }
 
     suspend fun signOut() {

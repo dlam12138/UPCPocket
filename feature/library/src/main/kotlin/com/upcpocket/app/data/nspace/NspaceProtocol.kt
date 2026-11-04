@@ -88,6 +88,55 @@ internal object NspaceProtocol {
         )
     }
 
+    fun parseReservations(body: String): NspaceReservationPage {
+        val data = objectData(body)
+        val list = data["pageList"] as? JsonArray ?: fail("预约响应缺少 pageList")
+        val reservations = list.map { item ->
+            val obj = item as? JsonObject ?: fail("预约记录不是对象")
+            NspaceReservation(
+                id = string(obj, "id"),
+                roomName = stringOrNull(obj, "roomName").orEmpty(),
+                onDate = string(obj, "onDate"),
+                begin = int(obj, "begin") ?: fail("预约记录缺少 begin"),
+                end = int(obj, "end") ?: fail("预约记录缺少 end"),
+                status = int(obj, "status") ?: fail("预约记录缺少 status"),
+                statusDescription = stringOrNull(obj, "statusDes"),
+                master = int(obj, "master") == 0,
+            )
+        }.filter { it.id.isNotBlank() }
+        return NspaceReservationPage(
+            reservations = reservations,
+            currentPage = int(data, "currentPage") ?: 1,
+            totalPage = int(data, "totalPage") ?: 1,
+            totalCount = int(data, "totalCount") ?: reservations.size,
+        )
+    }
+
+    fun ensureActionSuccess(body: String) {
+        val root = try {
+            json.parseToJsonElement(body) as? JsonObject
+        } catch (_: Exception) {
+            null
+        } ?: fail("操作响应不是 JSON")
+        val code = (root["code"] as? JsonPrimitive)?.let {
+            it.intOrNull ?: it.contentOrNull?.toIntOrNull()
+        }
+        if (code == 401 || code == 403) throw NspaceSessionExpiredException()
+        if (code != null && code != 0 && code != 200) {
+            throw NspaceException("学校返回业务错误", "nspace_upstream")
+        }
+        val status = root["status"] as? JsonPrimitive
+        if (status?.booleanOrNull == false ||
+            status?.contentOrNull?.lowercase() in setOf("fail", "error")
+        ) {
+            throw NspaceException("学校返回业务失败", "nspace_upstream")
+        }
+        val success = code == 0 || code == 200 ||
+            status?.booleanOrNull == true ||
+            status?.contentOrNull?.lowercase() == "success"
+        if (!success) fail("操作响应缺少成功标记")
+    }
+
     private fun arrayData(body: String): List<JsonElement> {
         val root = envelope(body)
         return (root["data"] as? JsonArray) ?: fail("响应缺少 data 数组")

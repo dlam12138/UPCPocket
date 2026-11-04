@@ -112,6 +112,7 @@ class HostPluginUiTest {
                 "library.seat",
                 "library.login",
                 "library.nspace",
+                "library.nspace.reservations",
                 "focus",
                 "focus.stats",
                 "timetable.week",

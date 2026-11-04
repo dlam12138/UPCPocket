@@ -61,6 +61,7 @@ fun NspaceScreen(
     service: NspaceService,
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
+    onOpenReservations: () -> Unit,
 ) {
     val context = LocalContext.current
     val vm: NspaceViewModel = viewModel(factory = NspaceViewModel.factory(service))
@@ -188,6 +189,7 @@ fun NspaceScreen(
                     name = state.session!!.user.name.ifBlank { state.session!!.user.username },
                     busy = state.busy,
                     onRefresh = vm::refresh,
+                    onOpenReservations = onOpenReservations,
                 )
                 Filters(state, vm)
                 RoomList(
@@ -206,22 +208,32 @@ fun NspaceScreen(
 }
 
 @Composable
-private fun SessionCard(name: String, busy: Boolean, onRefresh: () -> Unit) {
+private fun SessionCard(
+    name: String,
+    busy: Boolean,
+    onRefresh: () -> Unit,
+    onOpenReservations: () -> Unit,
+) {
     GlassCard {
-        Row(
+        Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text("nspace 会话已建立", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "本人：$name · 仅内存，退出/换号即清除",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("nspace 会话已建立", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "本人：$name · 仅内存，退出/换号即清除",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onRefresh, enabled = !busy) {
+                    Text("刷新")
+                }
             }
-            TextButton(onClick = onRefresh, enabled = !busy) {
-                Text("刷新")
+            TextButton(onClick = onOpenReservations, enabled = true) {
+                Text("查看我的预约 / 取消")
             }
         }
     }

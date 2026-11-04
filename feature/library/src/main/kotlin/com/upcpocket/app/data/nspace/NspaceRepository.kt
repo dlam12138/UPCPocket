@@ -79,6 +79,27 @@ class NspaceRepository internal constructor(
         )
     }
 
+    suspend fun myReservations(token: String, page: Int): NspaceReservationPage =
+        withContext(Dispatchers.IO) {
+            val body = buildJsonObject {
+                put("currentPage", page)
+                put("pageSize", 8)
+            }.toString()
+            NspaceProtocol.parseReservations(
+                read(token, "/spa/static/api/user/getUserReservationList", body),
+            )
+        }
+
+    suspend fun cancelReservation(token: String, reservationId: String) {
+        withContext(Dispatchers.IO) {
+            val body = read(
+                token,
+                "/spa/static/api/user/cancelBook/" + enc(reservationId),
+            )
+            NspaceProtocol.ensureActionSuccess(body)
+        }
+    }
+
     private fun read(token: String, path: String, body: String? = null): String {
         val response = transport.execute(
             NspaceRequest(
@@ -106,7 +127,7 @@ class NspaceRepository internal constructor(
 private class UrlConnectionNspaceTransport : NspaceTransport {
     override fun execute(request: NspaceRequest): NspaceResponse {
         val path = request.path
-        require(path.startsWith("/spa/static/api/book/")) { "非法 nspace 路径" }
+        require(path.startsWith("/spa/static/api/")) { "非法 nspace 路径" }
         val url = URI(NspaceProtocol.BASE_URL + path).toURL()
         require(url.protocol == "https" && url.host == "libspace.upc.edu.cn") {
             "非法 nspace 主机"

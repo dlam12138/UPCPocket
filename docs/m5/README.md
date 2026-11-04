@@ -65,10 +65,10 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 空教室：两校区、日期、楼栋、节次筛选和结果页不变。
 - 图书馆：首页统一入口为“图书馆”（libseat 座位 + nspace 东馆研讨间 + 古镇口/求是四个
   Chaoxing 入口）。libseat 保留统一认证、座位查询/预约/取消、记住登录与会话清理；nspace
-  新增独立 CAS/token 与原生只读馆区/类型/日期/房间分页，每个房间可直接打开官方
-  `#/detail?id=...&selectDate=...` 预约页（只带房间/日期，不注入 token）；Chaoxing
-  seat/seatengine 只提供官方浏览器入口，reservepc 两租户因缺稳定入口上下文保持“待入口”。
-  六入口矩阵见 [图书馆六入口](图书馆六入口.md)。
+  新增独立 CAS/token、原生只读馆区/类型/日期/房间分页、原生本人预约列表与取消，每个房间
+  可直接打开官方 `#/detail?id=...&selectDate=...` 预约页（只带房间/日期，不注入 token）；
+  Chaoxing seat/seatengine 只提供官方浏览器入口，reservepc 两租户因缺稳定入口上下文保持
+  “待入口”。六入口矩阵见 [图书馆六入口](图书馆六入口.md)。
 - 课表：正常 CAS、单周按需查询、离线缓存、验证码网页登录回退、账号归属与迟到响应隔离不变。
 - 专注：计时、今日记录、标签、统计、补录与前台服务不变；统计不再从“更多”重复出现。
 - 官方网页：新增宿主只读目录，链接来自 `docs/upc/官方入口.md`；不预填账号、不代理登录。
@@ -190,8 +190,9 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 - 图书馆统一页：首页“图书馆”进入；唐岛湾两卡、古镇口两卡、求是两卡均可达；nspace 未登录态
   与官方页按钮可达；统一页 1.5× 顶部/底部滚动截图已保存。Chaoxing 官方按钮在系统浏览器打开，
   没有把浏览器页面计入原生成功。
-- 图书馆写操作：未触发任何真实 libseat/nspace 预约、取消、签到；nspace 原生只读认证未用真实
-  账号验收（原因与最小协助见 [图书馆六入口](图书馆六入口.md)）。
+- 图书馆写操作：未触发任何真实 libseat/nspace 预约、取消、签到；nspace 原生只读认证与
+  “我的预约/取消”未用真实账号验收；界面取消有二次确认，模拟器未点击确认。原因与最小协助见
+  [图书馆六入口](图书馆六入口.md)。
 
 ## 5. 自动化结果
 
@@ -199,7 +200,7 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 | --- | --- |
 | `:app:assembleDebug` | 通过（图书馆改动后复跑） |
 | `:core:upc-auth:testDebugUnitTest` | **24 tests，0 failures/errors/skipped**（含 nspace 认证 6 项） |
-| `:feature:library:testDebugUnitTest` | **74 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token/官方深链） |
+| `:feature:library:testDebugUnitTest` | **80 tests，0 failures/errors/skipped**（含 nspace 协议/分页/账号隔离/独立 token/官方深链/预约取消） |
 | `:app:testDebugUnitTest` | **0 failures/errors/skipped**；首页入口/页面集合断言更新为 `library.home` |
 | Android Debug 单元/Compose 测试 | M5 首轮全量 **50 套件 / 357 tests，0 failures / 0 errors / 0 skipped**；本轮按影响范围复跑 auth/library/app 用例 |
 | JVM 测试（`:core:plugin-runtime:test`） | **16 tests，0 failures / 0 errors / 0 skipped**（M5 首轮；本轮未改该模块，未无故重跑） |
@@ -216,8 +217,8 @@ M0—M4 的认证、缓存、清理与接口语义，只重新组织入口、页
 
 - 评审副本：`release/UPC-Pocket-M5-library-preview-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`66,071,973` bytes
-- SHA-256：`39F8015FFE705A8012499A1F265C569044AA9E462BFB874907FFC7B18C305D37`
+- 大小：`66,213,345` bytes
+- SHA-256：`C5DBBCD6068F4619BE0379501B4C70C5D4957ACE4E8542C885447C56201E4431`
 - 该 APK 为 debug 构建、含 debug-only 合成课表预览 Activity；release 构建不会合并它。未上传、未发布。
 - 上一版 M5 评审 APK `release/UPC-Pocket-M5-preview-debug.apk` 保留为对照；本轮图书馆改动在该新副本中。
 

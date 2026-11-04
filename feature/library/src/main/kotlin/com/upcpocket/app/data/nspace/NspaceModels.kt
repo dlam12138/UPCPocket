@@ -40,6 +40,25 @@ data class NspaceUser(
     val name: String,
 )
 
+/** 本人预约记录；不解析门禁密码等敏感字段。 */
+data class NspaceReservation(
+    val id: String,
+    val roomName: String,
+    val onDate: String,
+    val begin: Int,
+    val end: Int,
+    val status: Int,
+    val statusDescription: String?,
+    val master: Boolean,
+)
+
+data class NspaceReservationPage(
+    val reservations: List<NspaceReservation>,
+    val currentPage: Int,
+    val totalPage: Int,
+    val totalCount: Int,
+)
+
 data class NspaceSession(
     val token: String,
     val user: NspaceUser,

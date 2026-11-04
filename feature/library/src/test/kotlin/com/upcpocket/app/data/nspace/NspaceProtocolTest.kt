@@ -70,4 +70,46 @@ class NspaceProtocolTest {
             ),
         )
     }
+
+    @Test
+    fun `my reservations parse page fields without door password`() {
+        val page = NspaceProtocol.parseReservations(
+            """
+            {"status":true,"code":200,"data":{
+              "currentPage":1,"totalPage":1,"totalCount":1,
+              "pageList":[{"id":"b1","roomName":"A301","onDate":"2026-11-05 00:00:00",
+                "begin":480,"end":540,"status":0,"statusDes":"待使用","master":0,
+                "password":"do-not-parse"}]}}
+            """.trimIndent(),
+        )
+        assertEquals(1, page.totalCount)
+        assertEquals("A301", page.reservations.single().roomName)
+        assertEquals(480, page.reservations.single().begin)
+        assertEquals("待使用", page.reservations.single().statusDescription)
+    }
+
+    @Test
+    fun `empty reservation page is valid`() {
+        val page = NspaceProtocol.parseReservations(
+            """{"status":true,"code":200,"data":{"currentPage":1,"totalPage":0,
+               "totalCount":0,"pageList":[]}}""",
+        )
+        assertTrue(page.reservations.isEmpty())
+    }
+
+    @Test(expected = NspaceSessionExpiredException::class)
+    fun `reservation list 401 is a session failure`() {
+        NspaceProtocol.parseReservations("""{"status":false,"code":401}""")
+    }
+
+    @Test
+    fun `cancel action requires a success envelope`() {
+        NspaceProtocol.ensureActionSuccess("""{"status":true,"code":200,"data":null}""")
+        try {
+            NspaceProtocol.ensureActionSuccess("""{"status":true,"code":500}""")
+            throw AssertionError("业务失败不应通过")
+        } catch (_: NspaceException) {
+            // expected
+        }
+    }
 }
