@@ -927,13 +927,16 @@ internal fun TodayPanel(
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val today = state.today
+    var todayNow by remember { mutableStateOf(java.time.LocalDate.now(TIMETABLE_ZONE)) }
     var now by remember { mutableStateOf(java.time.LocalTime.now(TIMETABLE_ZONE)) }
     LaunchedEffect(Unit) {
         while (true) {
+            todayNow = java.time.LocalDate.now(TIMETABLE_ZONE)
             now = java.time.LocalTime.now(TIMETABLE_ZONE)
             delay(30_000)
         }
     }
+    val matchesActualToday = today == todayNow
     val ranges = remember(state.todayMeetings) {
         state.todayMeetings.associateWith { UpcTimetableSchedule.range(it) }
     }
@@ -949,13 +952,12 @@ internal fun TodayPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("今日课程", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.width(8.dp))
-                if (today != null) {
-                    Text(
-                        "${today.monthValue}月${today.dayOfMonth}日 ${weekdayLabel(today.dayOfWeek.value)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    "${todayNow.monthValue}月${todayNow.dayOfMonth}日 " +
+                        weekdayLabel(todayNow.dayOfWeek.value),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.weight(1f))
                 if (state.todayLoaded && state.todayFetchedAtEpochMillis != null) {
                     Text(
@@ -966,7 +968,7 @@ internal fun TodayPanel(
                 }
             }
             when {
-                !state.todayLoaded -> Text(
+                !state.todayLoaded || !matchesActualToday -> Text(
                     "今日课程尚未查询。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

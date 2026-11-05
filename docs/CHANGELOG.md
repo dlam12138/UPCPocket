@@ -9,7 +9,7 @@
 - 超星 seat/seatengine：从当前官方选座页脚本核对到 `data/apps/{seat,seatengine}/submit` 与页面级 `submit_enc`；`enc` 按官方 `submitVerify` 的 `[key=value]…[submit_enc]` 小写 MD5 形状生成，seat 含 `deptIdEnc`、seatengine 含 `wfwEngineEnc`。原生 UI 增加时段/座位选择、确认对话框、成功/拒绝/需验证/未知状态；已用未知或已用座位不能确认；只提交一次，超时/无法解析提示核对记录而不重试；验证码/风控只回官方页。取消/签到未实现。
 - 验证：`feature:timetable` **87 tests / 0 failures**（含周日起点、周一边界不重标、跨月/学期、官方 12 节、13–14 待确认、组件状态、今日跨周保留）；`feature:library` **113 tests / 0 failures**（含 5 个原生提交协议合成测试，仅 fake transport，无真实写）；`app` **32 tests / 0 failures**。`checkModuleBoundaries`、`:app:assembleDebug` 通过；timetable/library lint 0 errors/0 warnings，app lint 0 errors/2 个既有 warnings。
 - 模拟器：今日课表 2×2 添加、拖动右边框到 4×2、整卡点击打开课表 tab、刷新启动 Worker；因本机用户 0 的课表 CAS 要求交互，组件保持真实的“未同步”状态，截图 [70-timetable-widget-4x2-unsynced.png](m5/screenshots/70-timetable-widget-4x2-unsynced.png)。未执行真实预约/取消/签到，未恢复研讨间，未 push/merge/publish。
-- APK：`release/UPC-Pocket-M5-timetable-widget-reservation-debug.apk`，`67,465,826` bytes，SHA-256 `060AAF07951FAB8687BE62108E813D10856A4FA3B981C6ADD6C941AC516D4D31`。
+- APK：`release/UPC-Pocket-M5-timetable-widget-reservation-debug.apk`，`67,465,826` bytes，SHA-256 `B6F0D0FECCA03458924F3A6FDEDE138104F88D4BEBEBE9A859A894712E5B6263`。
 
 ## M5.6 · 空闲教室假空闲与超星保存学校账号自动登录（开发分支，未发布）
 
@@ -175,4 +175,5 @@
 - 古镇口未实现原生查询，学校证书、网络与页面变化可能影响访问。
 - Room 中保留旧课表表结构仅用于覆盖升级兼容；M3 课表使用独立 JSON 缓存，不读写这五张旧表，也不把它们当作 UPC 当前账号课表。
 - APK 内部版本 `0.2.7-lightly-preview`（19），沿用此前调试证书；本次以 GitHub Release 形式分发同一已验证包。
+
 

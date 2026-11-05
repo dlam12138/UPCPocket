@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.LocalDate
+import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -66,7 +67,7 @@ class TimetableScreenStateTest {
         meetings = meetings,
         weekState = weekState,
         weekFetchedAtEpochMillis = 1_700_000_000_000,
-        today = LocalDate.parse("2026-10-28"),
+        today = LocalDate.now(ZoneId.of("Asia/Shanghai")),
         todayMeetings = todayMeetings,
         todayLoaded = todayLoaded,
         message = message,
