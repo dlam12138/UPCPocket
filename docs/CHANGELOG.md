@@ -1,5 +1,13 @@
 # 更新与验证
 
+## 2.0.1 · 课表网页登录空白修复（本地构建，未发布）· 2026-11-05
+
+- 真实用户反馈：课表自动登录触发验证码后打开网页登录，WebView 像此前图书馆登录一样没有正常加载。排查确认不是 tab/Insets/遮罩，而是 Compose `AndroidView` 内 WebView 缺显式 `MATCH_PARENT`：修复前 `layoutParams=-2×-2`、CAS `body=0`、移动登录 iframe `0×0`，用户名顶部 `-124`；补齐后 iframe `412×839`、用户名/密码/`LOGIN` 均在视口内。
+- 修复：显式 `MATCH_PARENT`、首次布局后再导航；新增课表专用 HTTPS host/path/端口策略（CAS `/cas/`，课表 `/a_upc/api/cas/login`、`/site/weekschedule/`、`/timetable/wap/default/`，不含 Chaoxing 域）；主框架非法跳转显示可恢复错误，SSL/HTTP/网络错误有明确提示；渲染进程退出可重建，旧代次回调按账号/代次/epoch 丢弃；只保留 4dp 顶部进度条，错误页可“重新加载”。未照搬图书馆的 CAS iframe JS 注入。
+- 合成回归：`feature:timetable` 99 tests（新增 7 URL 策略 + 2 挑战地址服务测试），全仓 463 tests / 0 failures / 1 skipped；`:app:lintDebug` 0 errors / 7 既有 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 成功。
+- API 36 `upcpocket_api36`（`emulator-5556`）`install -r` 覆盖保留数据：CAS 空表单可见（Release 蓝色 `LOGIN` 按钮 `y=1403–1406`）；深色、1.5× 字体、键盘、断网错误→恢复网络重载、返回均实际检查。未故意触发真实验证码，不声称验证码流程成功；真实账号仅完成一次正常 CAS/只读课表加载，未预约/取消/签到。
+- 精简包：`app/build/outputs/apk/release/app-release.apk`，**4,625,777** bytes，SHA-256 `A2BEE3F0AF5A876265D5C2C16C0F23302E9B03EBC792AD8052C06B5B9E263ECB`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
+
 ## 2.0 正式版 · 2026-11-05
 
 - 用户验收通过，合并 M0–M5 到 main；版本 2.0（versionCode 20）。

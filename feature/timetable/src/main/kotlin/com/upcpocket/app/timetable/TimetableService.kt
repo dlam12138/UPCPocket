@@ -359,17 +359,23 @@ class TimetableService(
                 applyAccountStateLocked(account.state.value)
                 return@withLock null
             }
+            // 自动登录返回的挑战页可能带本次 CAS 的 service/执行上下文；只在
+            // 官方 host/path 白名单内沿用，否则回到固定课表入口。不能把
+            // authenticator 返回的任意地址直接交给 WebView。
+            val requested = _state.value.interactionUrl
+                ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
+                ?: UpcTimetableAuthEndpoints.LOGIN_URL
             interactiveContext = InteractiveContext(binding, businessEpoch.get())
             _state.update {
                 it.copy(
                     connection = TimetableConnection.INTERACTION_REQUIRED,
-                    interactionUrl = UpcTimetableAuthEndpoints.LOGIN_URL,
+                    interactionUrl = requested,
                     message = "请在学校网页完成登录。",
                     isBusy = false,
                     canRetry = true,
                 )
             }
-            UpcTimetableAuthEndpoints.LOGIN_URL
+            requested
         }
     }
 
@@ -757,7 +763,9 @@ class TimetableService(
                     UpcAuthFailure.INTERACTION_REQUIRED -> ServiceFailure(
                         TimetableConnection.INTERACTION_REQUIRED,
                         "需要验证码或二次验证，请打开学校网页登录。",
-                        result.interactionUrl ?: UpcTimetableAuthEndpoints.LOGIN_URL,
+                        result.interactionUrl
+                            ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
+                            ?: UpcTimetableAuthEndpoints.LOGIN_URL,
                     )
                     UpcAuthFailure.NETWORK_UNAVAILABLE, UpcAuthFailure.TLS_ERROR ->
                         ServiceFailure(

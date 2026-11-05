@@ -12,6 +12,7 @@ import com.upcpocket.app.upcauth.TimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcAuthCookie
 import com.upcpocket.app.upcauth.UpcAuthFailure
 import com.upcpocket.app.upcauth.UpcAuthResult
+import com.upcpocket.app.upcauth.UpcTimetableAuthEndpoints
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -325,6 +326,28 @@ class TimetableServiceTest {
         assertEquals(1, auth.calls)
         assertNotNull(service.state.value.interactionUrl)
         assertEquals("https://cas.upc.edu.cn/cas/login?service=synthetic", service.state.value.interactionUrl)
+    }
+
+    @Test
+    fun webLoginPreservesOfficialChallengeUrl() = runTest {
+        val challenge = "https://cas.upc.edu.cn/cas/login?service=synthetic&execution=abc"
+        auth.result = UpcAuthResult.Failure(UpcAuthFailure.INTERACTION_REQUIRED, challenge)
+        val service = service(ProgrammedTransport { error("需交互时不得查询课表") })
+        service.open()
+        assertEquals(challenge, service.beginInteractiveLogin())
+        assertEquals(challenge, service.state.value.interactionUrl)
+    }
+
+    @Test
+    fun webLoginRejectsNonOfficialChallengeUrl() = runTest {
+        auth.result = UpcAuthResult.Failure(
+            UpcAuthFailure.INTERACTION_REQUIRED,
+            "https://evil.example/cas/login",
+        )
+        val service = service(ProgrammedTransport { error("需交互时不得查询课表") })
+        service.open()
+        assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, service.state.value.interactionUrl)
+        assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, service.beginInteractiveLogin())
     }
 
     @Test

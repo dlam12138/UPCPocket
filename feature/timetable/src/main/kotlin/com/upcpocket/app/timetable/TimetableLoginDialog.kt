@@ -1,31 +1,49 @@
 package com.upcpocket.app.timetable
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
+import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import java.util.concurrent.atomic.AtomicBoolean
+
+private const val TIMETABLE_APP_HOST = "app.upc.edu.cn"
 
 /**
  * 学校正常网页登录回退。
@@ -43,18 +61,43 @@ fun TimetableLoginDialog(
     onClose: () -> Unit,
 ) {
     val currentOnCookies by rememberUpdatedState(onCookies)
-    val attempted = remember { AtomicBoolean(false) }
     val cookieManager = remember { CookieManager.getInstance() }
-    val targetHost = remember { "app.upc.edu.cn" }
+    val attempted = remember { AtomicBoolean(false) }
+    var webViewAlive by remember { mutableStateOf(true) }
+    var generation by remember { mutableIntStateOf(0) }
+    var pageLoading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var statusHint by remember { mutableStateOf<String?>(null) }
+
+    fun readCookieHeader(): String? = runCatching {
+        cookieManager.getCookie("https://$TIMETABLE_APP_HOST/")
+    }.getOrNull()
+
+    fun submitCookies(auto: Boolean) {
+        val header = readCookieHeader()
+        if (header.isNullOrBlank()) {
+            if (!auto) {
+                statusHint = "还没有检测到登录状态，请完成登录后再试。"
+            }
+            return
+        }
+        if (auto && !attempted.compareAndSet(false, true)) return
+        statusHint = null
+        cookieManager.flush()
+        currentOnCookies(header)
+    }
 
     fun verifyCookies() {
-        val header = runCatching {
-            cookieManager.getCookie("https://app.upc.edu.cn/")
-        }.getOrNull()
-        if (!header.isNullOrBlank()) {
-            attempted.set(true)
-            currentOnCookies(header)
-        }
+        submitCookies(auto = false)
+    }
+
+    fun reload() {
+        attempted.set(false)
+        webViewAlive = true
+        pageLoading = true
+        error = null
+        statusHint = null
+        generation += 1
     }
 
     Dialog(
@@ -67,7 +110,7 @@ fun TimetableLoginDialog(
                     Modifier
                         .fillMaxWidth()
                         .height(52.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
@@ -86,54 +129,200 @@ fun TimetableLoginDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                AndroidView(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    factory = { context ->
-                        WebView(context).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.databaseEnabled = true
-                            settings.allowFileAccess = false
-                            settings.allowContentAccess = false
-                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            settings.setSupportMultipleWindows(false)
-                            cookieManager.setAcceptCookie(true)
-                            cookieManager.setAcceptThirdPartyCookies(this, true)
-                            webViewClient = object : WebViewClient() {
-                                override fun shouldOverrideUrlLoading(
-                                    view: WebView?,
-                                    request: android.webkit.WebResourceRequest?,
-                                ): Boolean {
-                                    val target = request?.url ?: return true
-                                    val host = target.host.orEmpty()
-                                    val allowed = target.scheme == "https" &&
-                                        host in setOf("cas.upc.edu.cn", "app.upc.edu.cn")
-                                    // 只允许本次认证实际需要的两个学校 HTTPS 域；
-                                    // 避免登录页把 WebView 带到其他站点。
-                                    return !allowed
-                                }
+                statusHint?.let { message ->
+                    Text(
+                        message,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    )
+                }
+                Box(Modifier.fillMaxWidth().weight(1f)) {
+                    if (webViewAlive) {
+                        key(generation) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { context ->
+                                    val pageGeneration = generation
+                                    WebView(context).apply {
+                                        // Compose 的 AndroidView 不会替 WebView 设置
+                                        // MATCH_PARENT；缺省 WRAP_CONTENT 会让 CAS 的
+                                        // html/body 高度解析为 0，移动登录 iframe 也变成
+                                        // 0px，表单被顶出屏幕。必须显式补齐。
+                                        layoutParams = ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                        )
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.databaseEnabled = true
+                                        settings.allowFileAccess = false
+                                        settings.allowContentAccess = false
+                                        settings.mixedContentMode =
+                                            android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                                        settings.setSupportMultipleWindows(false)
+                                        cookieManager.setAcceptCookie(true)
+                                        cookieManager.setAcceptThirdPartyCookies(this, true)
+                                        webViewClient = object : WebViewClient() {
+                                            override fun onPageStarted(
+                                                view: WebView,
+                                                url: String,
+                                                favicon: Bitmap?,
+                                            ) {
+                                                if (pageGeneration != generation) return
+                                                // 错误只由 reload() 清除；子框架/迟到页面
+                                                // 的新导航不能让已显示的错误遮罩消失后留下空白。
+                                                pageLoading = true
+                                            }
 
-                                override fun onPageFinished(view: WebView?, currentUrl: String?) {
-                                    super.onPageFinished(view, currentUrl)
-                                    val host = currentUrl?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-                                    if (host != targetHost) return
-                                    val header = runCatching {
-                                        cookieManager.getCookie("https://app.upc.edu.cn/")
-                                    }.getOrNull()
-                                    if (!header.isNullOrBlank()) {
-                                        cookieManager.flush()
-                                        if (attempted.compareAndSet(false, true)) {
-                                            currentOnCookies(header)
+                                            override fun onPageFinished(
+                                                view: WebView,
+                                                currentUrl: String?,
+                                            ) {
+                                                super.onPageFinished(view, currentUrl)
+                                                if (pageGeneration != generation) return
+                                                pageLoading = false
+                                                cookieManager.flush()
+                                                val host = currentUrl?.let {
+                                                    runCatching { Uri.parse(it).host }.getOrNull()
+                                                }
+                                                if (host.equals(TIMETABLE_APP_HOST, ignoreCase = true)) {
+                                                    submitCookies(auto = true)
+                                                }
+                                            }
+
+                                            override fun shouldOverrideUrlLoading(
+                                                view: WebView,
+                                                request: WebResourceRequest,
+                                            ): Boolean {
+                                                if (pageGeneration != generation) return true
+                                                val target = request.url.toString()
+                                                if (target == "about:blank") return false
+                                                val allowed = TimetableLoginPolicy.isAllowed(target)
+                                                if (request.isForMainFrame) {
+                                                    if (!allowed) {
+                                                        error = "登录页跳转到了未允许的地址" +
+                                                            "（${TimetableLoginPolicy.host(target) ?: "未知"}），已停止加载。"
+                                                        pageLoading = false
+                                                        return true
+                                                    }
+                                                } else if (!allowed) {
+                                                    // 不让未允许的 iframe/子框架继续导航；
+                                                    // 子资源仍由 WebView 自己处理。
+                                                    return true
+                                                }
+                                                return false
+                                            }
+
+                                            override fun onReceivedSslError(
+                                                view: WebView,
+                                                handler: SslErrorHandler,
+                                                sslError: SslError?,
+                                            ) {
+                                                handler.cancel()
+                                                if (pageGeneration != generation) return
+                                                pageLoading = false
+                                                error = "登录页证书校验失败，已停止。"
+                                            }
+
+                                            override fun onReceivedHttpError(
+                                                view: WebView,
+                                                request: WebResourceRequest,
+                                                errorResponse: WebResourceResponse,
+                                            ) {
+                                                if (pageGeneration != generation) return
+                                                if (!request.isForMainFrame) return
+                                                pageLoading = false
+                                                error = "登录页暂时不可用，请稍后重试。"
+                                            }
+
+                                            override fun onReceivedError(
+                                                view: WebView,
+                                                request: WebResourceRequest,
+                                                webError: WebResourceError?,
+                                            ) {
+                                                if (pageGeneration != generation) return
+                                                if (!request.isForMainFrame) return
+                                                pageLoading = false
+                                                error = "登录页加载失败；请检查网络后重试。"
+                                            }
+
+                                            override fun onRenderProcessGone(
+                                                view: WebView,
+                                                detail: RenderProcessGoneDetail?,
+                                            ): Boolean {
+                                                if (pageGeneration != generation) return true
+                                                pageLoading = false
+                                                webViewAlive = false
+                                                error = "登录页渲染进程异常退出；请重新加载。"
+                                                return true
+                                            }
                                         }
+
+                                        // 等 WebView 拿到真实宽高后再导航。在 0×0 时抢跑
+                                        // 会让 CAS 的 100% 高度布局固定为 0，即使之后补
+                                        // layoutParams 也来不及恢复。
+                                        var started = false
+                                        fun startInitialLoad() {
+                                            if (started) return
+                                            if (width <= 0 || height <= 0) return
+                                            started = true
+                                            if (!TimetableLoginPolicy.isAllowedEntry(url)) {
+                                                pageLoading = false
+                                                error = "登录入口不是允许的学校地址。"
+                                                return
+                                            }
+                                            loadUrl(url)
+                                        }
+                                        addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                                            startInitialLoad()
+                                        }
+                                        post { startInitialLoad() }
                                     }
-                                }
-                            }
-                            loadUrl(url)
+                                },
+                                onRelease = { view ->
+                                    view.stopLoading()
+                                    view.destroy()
+                                },
+                            )
                         }
-                    },
-                )
+                    }
+                    if (pageLoading && error == null) {
+                        LinearProgressIndicator(
+                            Modifier
+                                .fillMaxWidth()
+                                .align(Alignment.TopCenter),
+                        )
+                    }
+                    error?.let { message ->
+                        Surface(
+                            Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.surface,
+                        ) {
+                            Column(
+                                Modifier.fillMaxSize().padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Text(
+                                    "网页登录未完成",
+                                    style = MaterialTheme.typography.titleMedium,
+                                )
+                                Text(
+                                    message,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp),
+                                )
+                                Button(
+                                    onClick = { reload() },
+                                    modifier = Modifier.padding(top = 12.dp),
+                                ) { Text("重新加载") }
+                                TextButton(onClick = onClose) { Text("关闭") }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

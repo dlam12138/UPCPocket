@@ -255,7 +255,7 @@ internal fun TimetableScreen(
                         loginVisible = false
                         loginHint = null
                     } else {
-                        loginHint = "完成学校登录后点“完成”。"
+                        loginHint = "还没有检测到有效登录，请完成登录后重试。"
                     }
                 }
             },
