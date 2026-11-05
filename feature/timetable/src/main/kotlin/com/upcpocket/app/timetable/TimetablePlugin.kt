@@ -47,6 +47,7 @@ class TimetablePlugin(
         api = TimetableApi(),
         sessionStore = TimetableSessionStore(context.applicationContext),
         cacheStore = TimetableCacheStore(context.applicationContext),
+        colorStore = TimetableColorStore(context.applicationContext),
     )
 
     override val pluginId get() = descriptor.id

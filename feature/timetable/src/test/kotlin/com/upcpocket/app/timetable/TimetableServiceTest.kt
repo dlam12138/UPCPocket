@@ -295,6 +295,30 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun courseColorSlotsSurviveServiceRebuild() = runTest {
+        seedCacheAndSession()
+        val colors = java.nio.file.Files.createTempDirectory("timetable-service-colors").toFile()
+        try {
+            val offline = ProgrammedTransport {
+                throw TimetableTransportException(TimetableTransportFailure.NETWORK)
+            }
+            val first = service(offline, colorStore = TimetableColorStore(colors))
+            first.open()
+            val slots = first.state.value.courseColorSlots
+            assertTrue(slots.isNotEmpty())
+
+            val second = service(offline, colorStore = TimetableColorStore(colors))
+            second.open()
+            assertEquals(slots, second.state.value.courseColorSlots)
+
+            assertTrue(first.invalidateForAccount(AccountDataScope.PERSONAL_DATA))
+            assertFalse(File(colors, TimetableStorage.COLOR_FILE).exists())
+        } finally {
+            colors.deleteRecursively()
+        }
+    }
+
+    @Test
     fun networkFailureWithCacheShowsCachedWeekNotEmpty() = runTest {
         seedCacheAndSession()
         val service = service(
@@ -592,6 +616,7 @@ class TimetableServiceTest {
 
     private fun service(
         transport: ProgrammedTransport,
+        colorStore: TimetableColorStore = TimetableColorStore.inMemory(),
         commitBarrier: suspend (String) -> Unit = {},
     ): TimetableService =
         TimetableService(
@@ -604,6 +629,7 @@ class TimetableServiceTest {
             todayProvider = { today },
             commitBarrier = commitBarrier,
             ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            colorStore = colorStore,
         )
 
     private fun seedCacheAndSession() {

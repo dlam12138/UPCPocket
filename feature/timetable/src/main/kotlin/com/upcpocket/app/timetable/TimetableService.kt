@@ -45,6 +45,7 @@ class TimetableService(
     /** 测试用提交屏障：仅在短提交锁内、最后复核之后调用。 */
     private val commitBarrier: suspend (String) -> Unit = {},
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val colorStore: TimetableColorStore = TimetableColorStore.inMemory(),
 ) {
     private val _state = MutableStateFlow(TimetableUiState())
     val state: StateFlow<TimetableUiState> = _state.asStateFlow()
@@ -377,6 +378,7 @@ class TimetableService(
                     selectedWeek = null,
                     weekDates = emptyList(),
                     meetings = emptyList(),
+                    courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
                     weekFetchedAtEpochMillis = null,
                     todayMeetings = emptyList(),
@@ -394,7 +396,12 @@ class TimetableService(
             } else {
                 true
             }
-            sessionCleared && cacheCleared
+            val colorsCleared = if (scope == AccountDataScope.PERSONAL_DATA) {
+                withContext(ioDispatcher) { colorStore.clear() }
+            } else {
+                true
+            }
+            sessionCleared && cacheCleared && colorsCleared
         }
 
     // ── index / week ──────────────────────────────────────────────────────
@@ -713,6 +720,7 @@ class TimetableService(
 
     private fun publishWeekLocked(week: TimetableWeek) {
         val today = todayProvider()
+        val colorSlots = colorSlotsFor(week)
         val todayMeetings = if (week.dates.contains(today)) {
             week.meetings.filter { it.date == today }.sortedWith(meetingComparator())
         } else {
@@ -726,6 +734,7 @@ class TimetableService(
                 selectedWeek = week.week,
                 weekDates = week.dates,
                 meetings = week.meetings.sortedWith(meetingComparator()),
+                courseColorSlots = colorSlots,
                 weekState = if (week.isEmpty) {
                     TimetableWeekState.EMPTY
                 } else {
@@ -747,6 +756,7 @@ class TimetableService(
 
     private fun publishCachedWeekLocked(week: TimetableWeek) {
         val today = todayProvider()
+        val colorSlots = colorSlotsFor(week)
         val todayMeetings = if (week.dates.contains(today)) {
             week.meetings.filter { it.date == today }.sortedWith(meetingComparator())
         } else {
@@ -759,6 +769,7 @@ class TimetableService(
                 selectedWeek = week.week,
                 weekDates = week.dates,
                 meetings = week.meetings.sortedWith(meetingComparator()),
+                courseColorSlots = colorSlots,
                 weekState = if (week.isEmpty) {
                     TimetableWeekState.EMPTY
                 } else {
@@ -775,6 +786,19 @@ class TimetableService(
                 accountBlocked = false,
             )
         }
+    }
+
+    private fun colorSlotsFor(week: TimetableWeek): Map<String, Int> {
+        val accountId = currentBinding?.accountId?.value ?: return emptyMap()
+        val identities = week.meetings.map(::courseColorKey).distinct()
+        if (identities.isEmpty()) return emptyMap()
+        return runCatching {
+            colorStore.assign(
+                accountId = accountId,
+                termKey = "${week.term.year}|${week.term.term}",
+                identities = identities,
+            )
+        }.getOrDefault(emptyMap())
     }
 
     private fun publishFailure(failure: ServiceFailure) {
@@ -983,6 +1007,7 @@ class TimetableService(
                     selectedWeek = null,
                     weekDates = emptyList(),
                     meetings = emptyList(),
+                    courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
                     weekFetchedAtEpochMillis = null,
                     todayMeetings = emptyList(),

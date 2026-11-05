@@ -182,6 +182,8 @@ data class TimetableUiState(
     val selectedWeek: Int? = null,
     val weekDates: List<LocalDate> = emptyList(),
     val meetings: List<TimetableMeeting> = emptyList(),
+    /** 由账号/学期配色注册表分配；key 是课程号或课程名。 */
+    val courseColorSlots: Map<String, Int> = emptyMap(),
     val weekState: TimetableWeekState = TimetableWeekState.NOT_QUERIED,
     val weekFetchedAtEpochMillis: Long? = null,
     val today: LocalDate? = null,

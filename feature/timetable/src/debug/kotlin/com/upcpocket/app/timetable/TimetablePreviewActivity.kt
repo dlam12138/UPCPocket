@@ -64,6 +64,13 @@ private fun PreviewContent() {
     val dates = (0..6).map { LocalDate.parse("2026-11-01").plusDays(it.toLong()) }
     val today = LocalDate.parse("2026-11-04")
     val meetings = previewMeetings(dates)
+    val colorSlots = remember(meetings) {
+        TimetableColorStore.inMemory().assign(
+            accountId = "preview-01",
+            termKey = "2026-2027|1",
+            identities = meetings.map(::courseColorKey),
+        )
+    }
     val state = TimetableUiState(
         accountStatusLabel = "视觉预览",
         maskedAccount = null,
@@ -75,6 +82,7 @@ private fun PreviewContent() {
         selectedWeek = 10,
         weekDates = dates,
         meetings = meetings,
+        courseColorSlots = colorSlots,
         weekState = TimetableWeekState.READY,
         weekFetchedAtEpochMillis = 1_760_000_000_000,
         today = today,

@@ -710,6 +710,7 @@ private fun WeekGrid(
                     width = dayWidth,
                     isToday = date == state.today,
                     meetings = byDate[date].orEmpty(),
+                    colorSlots = state.courseColorSlots,
                     onCourseClick = onCourseClick,
                 )
             }
@@ -723,6 +724,7 @@ private fun DayColumn(
     width: Dp,
     isToday: Boolean,
     meetings: List<TimetableMeeting>,
+    colorSlots: Map<String, Int>,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val laneInfo = remember(meetings) { assignLanes(meetings) }
@@ -801,7 +803,7 @@ private fun DayColumn(
                 val lane = laneInfo.first.getOrElse(index) { 0 }
                 val top = SLOT_HEIGHT * (meeting.startPeriod - 1)
                 val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 2.dp
-                val tone = courseTone(meeting)
+                val tone = courseTone(meeting, colorSlots[courseColorKey(meeting)])
                 Surface(
                     modifier = Modifier
                         .offset(x = laneWidth * lane + 1.dp, y = top + 1.dp)

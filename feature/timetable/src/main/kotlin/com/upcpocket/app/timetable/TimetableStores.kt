@@ -16,6 +16,7 @@ internal object TimetableStorage {
     const val DIRECTORY = "timetable"
     const val SESSION_FILE = "timetable-session-v1.enc"
     const val CACHE_FILE = "timetable-cache-v1.json"
+    const val COLOR_FILE = "timetable-colors-v1.json"
     const val SESSION_FORMAT = "upcpocket.timetable.session"
     const val CACHE_FORMAT = "upcpocket.timetable.cache"
     const val VERSION = 1
@@ -322,6 +323,7 @@ object TimetableFiles {
         val directory = TimetableStorage.directory(context)
         val session = TimetableStorage.deleteAtomic(directory, TimetableStorage.SESSION_FILE)
         val cache = TimetableStorage.deleteAtomic(directory, TimetableStorage.CACHE_FILE)
-        return session && cache
+        val colors = TimetableStorage.deleteAtomic(directory, TimetableStorage.COLOR_FILE)
+        return session && cache && colors
     }
 }

@@ -5,10 +5,10 @@
 - 超星座位图空白根因是真实 `getdrawseat` 返回浮点 `xleft/ytop/width/height`（如 `166.0/75.0`），旧 Int 解析失败后退化为 0，所有座位叠在左上角；改为 Float、旋转归一化、真实包围盒缩放，并保留可读下限/横滑。已用座位查询与座位图分开，失败时明确“已用未知/已用座位未取得”，不再用 0 个已用掩盖未取得。
 - 超星登录后误拦的实际落点是 `passport2-api.chaoxing.com/api/v2/casreceive` 成功页 → `https://i.chaoxing.com/base`；精确放行 `i.chaoxing.com` 的 `/`、`/base`、`/base/`，仍强制 HTTPS/443/无 userinfo。到达落点且无 office 会话时只回跳一次座位入口，再走本人核验、账号代次/epoch/revision/清理门闩。
 - 课表默认竖屏七天同屏：按可用宽度均分日列（最小 34dp，极窄才横滑），节高 52→34dp、星期头 46→34dp、周次 chips 改为下拉、今日课程移到网格后；保留重叠分栏、非连续节次源语义、课程详情，长名称/1.5× 字体用裁剪与省略避免重叠。
-- 课程颜色由 `String.hashCode()%4` 改为课程号（缺省课程名）的 SHA-256 → 16 色相映射；同课跨日/周稳定，浅/深各 16 组对比度 ≥4.5:1，文字保留。
+- 课程颜色由 `String.hashCode()%4` 改为账号 + 学期归属的持久注册表：20 色手工调色板、首次出现分配未占用槽位、只存身份摘要/槽位；同课跨日/周、冷启动、输入重排、新增课程保持，12 门示例课逐块采样 12 色，两两最小 CIE76 ΔE=18.1，浅/深对比度 ≥4.5:1；超过 20 门如实复用。
 - 首页“校园卡”区块移到“常用服务”之后，余额查询/绑定/历史/清缓存/组件能力不变。
-- 验证：`feature:library` **104 tests（1 skipped，真实回放）**、`feature:timetable` **73 tests**、`app` **32 tests**；`RealChaoxingAuthTest` 在 API 36 模拟器进程内通过（本人核验→seat 6 区域/48 座详情→已用座位→seatengine 21 区域，3.173s，未跳过）；`:app:assembleDebug`、三个模块 `lintDebug` 通过（app 0 errors/2 既有 warnings）。未执行真实预约/取消/签到，未恢复研讨间。
-- APK：`release/UPC-Pocket-M5-five-fixes-debug.apk`，`65,531,778` bytes，SHA-256 `7983E8BE9A0B1AAD1EB139C2206AEFBF25FF048D0801B16B4694E567D39C31EF`。验收与截图见 [2026-11-05 验收记录](m5/2026-11-05-验收.md)。
+- 验证：`feature:library` **104 tests（1 skipped，真实回放）**、`feature:timetable` **77 tests**、`app` **32 tests**；`RealChaoxingAuthTest` 在 **API 36 模拟器进程内**通过（本人核验→seat 6 区域/48 座详情→已用座位→seatengine 21 区域，3.173s，未跳过）；`:app:assembleDebug`、三个模块 `lintDebug` 通过（app 0 errors/2 既有 warnings）。App 内完整 WebView 登录仍未重放，第 2 项按部分验证记录；未执行真实预约/取消/签到，未恢复研讨间。
+- APK：`release/UPC-Pocket-M5-five-fixes-debug.apk`，`65,531,778` bytes，SHA-256 `AA1435165805B1B06840B5E905E8166931E66F245D9C3F1254CC47E57B15F4B3`。验收与截图见 [2026-11-05 验收记录](m5/2026-11-05-验收.md)。
 
 ## M5.4 · 座位预约时长选择回归（开发分支，未发布）
 
