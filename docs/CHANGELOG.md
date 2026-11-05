@@ -8,10 +8,10 @@
 - 余额/课表组件冷启动：`hasTargetNow` 不再在 LOADING 时丢弃点击；Worker 有界等待 `account.restore()`，CARD 冷启动 token 为空时仍由服务内部绑定/代次门闩保护。API 36 模拟器 `emulator-5556` 用户 0 实测：添加余额 2×2 → `am force-stop` → 不打开 Activity 直接点刷新 → 进程重建、Worker `SUCCESS`、组件更新为一次真实查询并显示时间；未使用 `pm clear`/卸载。
 - 超星 seat/seatengine：从当前官方选座页脚本核对到 `data/apps/{seat,seatengine}/submit` 与页面级 `submit_enc`；`enc` 按官方 `submitVerify` 的 `[key=value]…[submit_enc]` 小写 MD5 形状生成，seat 含 `deptIdEnc`、seatengine 含 `wfwEngineEnc`。原生 UI 增加时段/座位选择、确认对话框、成功/拒绝/需验证/未知状态；已用未知或已用座位不能确认；只提交一次，超时/无法解析提示核对记录而不重试；验证码/风控只回官方页。`ChaoxingService` 还会在会话内按用户+房间+日期+时段+座位记住 `Unknown`，关闭/重进详情或重建 ViewModel 后同一请求不再发 GET/POST，退出会话才清空。取消/签到未实现。
 - 今日课表视觉验收使用 **debug-only** `SyntheticTimetableWidgetProvider` / `SyntheticTimetableWideWidgetProvider`（`app/src/debug/`），不读账号/Service/缓存；release manifest 已确认不含 Synthetic 组件。真实 Launcher 已验证 2×2/4×2 的上课中、下一堂、今日已结束、长名称/地点、次课、浅深色和 1.5× 字体；2×2 当前场景同时显示主课和次课，48dp 刷新按钮不挤占标题；窄 2×2 在 1.5× 隐藏日期，4×2 保留日期。截图见验收记录 71–79。
-- 新增本地 `TimetableWidgetTicker` + `TimetableWidgetTickWorker`：只重绘缓存，不联网、不恢复账号；按当前课结束/下一课开始/上海午夜安排唯一一次性 WorkManager。实测 `dumpsys jobscheduler` 有 `TimetableWidgetTickWorker`（无数据时延迟到午夜），`am kill` 后 job 仍在；`am force-stop` 会移除系统任务，Doze/厂商调度也可能延后，因此不承诺分钟级自动刷新。
+- 新增本地 `TimetableWidgetTicker` + `TimetableWidgetTickWorker`：只重绘缓存，不联网；先从本机恢复账号绑定；按当前课结束/下一课开始/上海午夜安排唯一一次性 WorkManager。实测 `dumpsys jobscheduler` 有 `TimetableWidgetTickWorker`（无数据时延迟到午夜），`am kill` 后 job 仍在；`am force-stop` 会移除系统任务，Doze/厂商调度也可能延后，因此不承诺分钟级自动刷新。
 - 验证：`feature:timetable` **87 tests / 0 failures**（含周日起点、周一边界不重标、跨月/学期、官方 12 节、13–14 待确认、组件状态、今日跨周保留）；`feature:library` **114 tests / 0 failures**（含 5 个原生提交协议合成测试 + 1 个服务层 Unknown 防重，均 fake transport，无真实写）；`app` **36 tests / 0 failures**（含 4 个本地边界调度测试）。`checkModuleBoundaries`、`:app:assembleDebug` 通过；timetable/library lint 0 errors/0 warnings，app lint 0 errors/2 个既有 warnings。
 - 模拟器：真实今日课表 2×2 添加、拖动右边框到 4×2、整卡点击打开课表 tab、刷新启动 Worker；因本机用户 0 的课表 CAS 要求交互，真实组件保持“未同步”，另有 debug 合成 Launcher 实例完成 71–79 视觉验收。未执行真实预约/取消/签到，未恢复研讨间，未 push/merge/publish。
-- APK：`release/UPC-Pocket-M5-timetable-widget-reservation-debug.apk`，`67,466,009` bytes，SHA-256 `AB4A2BBADD8D94905EEAED4D77B33DBAAF221C9786346EA3554C56FA4C143D88`。
+- APK：`release/UPC-Pocket-M5-timetable-widget-reservation-debug.apk`，`67,466,009` bytes，SHA-256 `5F923DA1DC17FED0FAD4B65FF7B4B524C3D7421E2EC71DBA40D05B95FF0CB4D8`。
 
 ## M5.6 · 空闲教室假空闲与超星保存学校账号自动登录（开发分支，未发布）
 
@@ -177,6 +177,8 @@
 - 古镇口未实现原生查询，学校证书、网络与页面变化可能影响访问。
 - Room 中保留旧课表表结构仅用于覆盖升级兼容；M3 课表使用独立 JSON 缓存，不读写这五张旧表，也不把它们当作 UPC 当前账号课表。
 - APK 内部版本 `0.2.7-lightly-preview`（19），沿用此前调试证书；本次以 GitHub Release 形式分发同一已验证包。
+
+
 
 
 
