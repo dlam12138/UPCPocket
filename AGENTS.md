@@ -41,6 +41,7 @@
 - 机器专属 SDK 路径放入被 Git 忽略的 `local.properties`；JDK 路径使用本地环境或 IDE 配置，不能硬编码进共享 Gradle 配置。
 - 代码改动运行与影响范围匹配的构建和测试。Android 常规验证：`./gradlew :app:assembleDebug :app:testDebugUnitTest`；Windows 使用 `./gradlew.bat`。
 - 纯规范和文档变更检查路径、引用、来源及差异即可，无需重复构建 APK。
+- 本机诊断只写固定枚举、数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止写入账密、Cookie、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息或自由文本。导出必须由用户主动触发，FileProvider 只开放专用导出子目录并临时授权；诊断失败不得影响业务。
 - 交付说明写清改动、实际验证结果与尚未验证的部分；不能把构建成功当作真机或校园接口验证成功。
 
 ## 精简交付规范

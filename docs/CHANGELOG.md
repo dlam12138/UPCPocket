@@ -4,9 +4,11 @@
 
 - 真实用户反馈：课表自动登录触发验证码后打开网页登录，WebView 像此前图书馆登录一样没有正常加载。排查确认不是 tab/Insets/遮罩，而是 Compose `AndroidView` 内 WebView 缺显式 `MATCH_PARENT`：修复前 `layoutParams=-2×-2`、CAS `body=0`、移动登录 iframe `0×0`，用户名顶部 `-124`；补齐后 iframe `412×839`、用户名/密码/`LOGIN` 均在视口内。
 - 修复：显式 `MATCH_PARENT`、首次布局后再导航；新增课表专用 HTTPS host/path/端口策略（CAS `/cas/`，课表 `/a_upc/api/cas/login`、`/site/weekschedule/`、`/timetable/wap/default/`，不含 Chaoxing 域）；主框架非法跳转显示可恢复错误，SSL/HTTP/网络错误有明确提示；渲染进程退出可重建，旧代次回调按账号/代次/epoch 丢弃；只保留 4dp 顶部进度条，错误页可“重新加载”。未照搬图书馆的 CAS iframe JS 注入。
-- 合成回归：`feature:timetable` 99 tests（新增 7 URL 策略 + 2 挑战地址服务测试），全仓 463 tests / 0 failures / 1 skipped；`:app:lintDebug` 0 errors / 7 既有 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 成功。
+- 合成回归：`feature:timetable` 100 tests（新增 8 URL/目标码策略 + 2 挑战地址服务测试），全仓 482 tests / 0 failures / 1 skipped；`:app:lintDebug` 0 errors / 7 既有 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 成功。
 - API 36 `upcpocket_api36`（`emulator-5556`）`install -r` 覆盖保留数据：CAS 空表单可见（Release 蓝色 `LOGIN` 按钮 `y=1403–1406`）；深色、1.5× 字体、键盘、断网错误→恢复网络重载、返回均实际检查。未故意触发真实验证码，不声称验证码流程成功；真实账号仅完成一次正常 CAS/只读课表加载，未预约/取消/签到。
-- 精简包：`app/build/outputs/apk/release/app-release.apk`，**4,625,777** bytes，SHA-256 `A2BEE3F0AF5A876265D5C2C16C0F23302E9B03EBC792AD8052C06B5B9E263ECB`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
+- 本机诊断：关于页新增“导出诊断报告/清除诊断记录”和记录开关；私有 noBackup 目录滚动 24h/约 1 MiB 的固定枚举事件，用户主动生成 `summary.txt`+`events.jsonl` ZIP 后经系统分享面板发出；FileProvider 仅开放专用导出子目录，临时只读授权，不自动上传。事件不含账密/Cookie/URL/请求响应/课程或房间内容；换号/删号先清空诊断，诊断失败不影响业务。详见 [隐私说明](PRIVACY.md)。
+- 合成回归新增诊断 schema/拒收/编码、TTL/容量/并发清理/坏文件/FileProvider 范围/分享 Intent 与课表目标码测试；`feature:classroom` 实机公开查询、`feature:library` 实机断网 WebView 错误均产生固定码报告。
+- 精简包：`release/UPC-Pocket-2.0.1-diagnostics.apk`（构建产物 `app/build/outputs/apk/release/app-release.apk`），**4,675,365** bytes，SHA-256 `E94DF3AF40721BB0EEFC792F0AEFC9124D4501B2C8A63B3E28ED6A29CAD49022`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
 
 ## 2.0 正式版 · 2026-11-05
 

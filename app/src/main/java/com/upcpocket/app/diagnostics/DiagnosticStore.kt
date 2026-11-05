@@ -422,7 +422,9 @@ class DiagnosticStore(
     private fun parseSummaryError(raw: String): String? = runCatching {
         val value = JSONObject(raw)
         val result = value.optString("result", "UNKNOWN")
-        if (result == DiagnosticResult.OK.name) return@runCatching null
+        if (result == DiagnosticResult.OK.name || result == DiagnosticResult.PENDING.name) {
+            return@runCatching null
+        }
         val module = value.optString("module", "UNKNOWN")
         val action = value.optString("action", "UNKNOWN")
         val reason = value.optString("reason", "UNKNOWN")

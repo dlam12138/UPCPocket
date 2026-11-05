@@ -104,6 +104,16 @@ class DiagnosticStoreTest {
     }
 
     @Test
+    fun summaryDoesNotTreatPendingStartAsAnError() = runBlocking {
+        val store = store()
+        store.record(event(action = DiagnosticAction.QUERY_START))
+        val result = store.export(device()) as DiagnosticExportResult.Success
+        val summary = unzip(result.uri).getValue("summary.txt")
+        assertFalse(summary.contains("QUERY_START PENDING"))
+        assertTrue(summary.contains("recentErrors:\n- none"))
+    }
+
+    @Test
     fun noRecordsProducesNoZip() = runBlocking {
         val result = store().export(device())
         assertEquals(DiagnosticExportResult.NoRecords, result)
