@@ -11,6 +11,11 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.power.PowerSnapshot
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.timetable.TimetableWidgetLayout
 import com.upcpocket.app.timetable.TimetableWidgetRenderer
 import com.upcpocket.app.timetable.TimetableWidgetSnapshot
@@ -236,6 +241,14 @@ object WidgetUpdates {
                 fontScale = context.resources.configuration.fontScale,
             )
             Log.d("UPCWidgetSize", "layout=$layout size=$size")
+            Diagnostics.record(
+                module = DiagnosticModule.WIDGET,
+                action = DiagnosticAction.WIDGET_LAYOUT,
+                result = DiagnosticResult.OK,
+                reason = DiagnosticReason.LAYOUT,
+                widthDp = size.widthDp,
+                heightDp = size.heightDp,
+            )
             manager.updateAppWidget(
                 id,
                 TimetableWidgetRenderer.render(

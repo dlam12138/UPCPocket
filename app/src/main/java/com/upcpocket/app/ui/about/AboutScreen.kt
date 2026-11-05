@@ -1,7 +1,9 @@
 package com.upcpocket.app.ui.about
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,17 +18,30 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.BuildConfig
+import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.diagnostics.DiagnosticExportResult
+import com.upcpocket.app.diagnostics.DiagnosticShare
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
+import kotlin.math.roundToInt
+import kotlinx.coroutines.launch
 
 /** 上游项目（本项目的 Android 参考底座，MIT） */
 private const val UPSTREAM_REPO = "https://github.com/3beuml/ZZUPocket"
@@ -41,6 +56,67 @@ private const val UPSTREAM_REPO = "https://github.com/3beuml/ZZUPocket"
 @Composable
 fun AboutScreen(onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
+    val rootView = LocalView.current
+    val scope = rememberCoroutineScope()
+    var diagnosticsEnabled by remember { mutableStateOf(AppGraph.diagnostics.isEnabled()) }
+    var exporting by remember { mutableStateOf(false) }
+    var clearing by remember { mutableStateOf(false) }
+
+    fun toast(message: String) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
+
+    fun exportDiagnostics() {
+        if (exporting) return
+        exporting = true
+        scope.launch {
+            try {
+                val density = context.resources.displayMetrics.density.coerceAtLeast(1f)
+                val widthDp = if (rootView.width > 0) {
+                    (rootView.width / density).roundToInt()
+                } else {
+                    0
+                }
+                val heightDp = if (rootView.height > 0) {
+                    (rootView.height / density).roundToInt()
+                } else {
+                    0
+                }
+                when (val result = AppGraph.diagnostics.export(
+                    AppGraph.diagnostics.deviceInfo(widthDp, heightDp),
+                )) {
+                    DiagnosticExportResult.NoRecords -> toast("还没有诊断记录。")
+                    is DiagnosticExportResult.Failure -> toast("导出失败，请稍后重试。")
+                    is DiagnosticExportResult.Success -> {
+                        val started = runCatching {
+                            context.startActivity(DiagnosticShare.chooser(context, result.uri))
+                            true
+                        }.getOrDefault(false)
+                        toast(
+                            if (started) "已生成报告，请选择应用分享。"
+                            else "没有可用的分享应用。",
+                        )
+                    }
+                }
+            } finally {
+                exporting = false
+            }
+        }
+    }
+
+    fun clearDiagnostics() {
+        if (clearing) return
+        clearing = true
+        scope.launch {
+            try {
+                val cleared = AppGraph.diagnostics.clearNow()
+                toast(if (cleared) "诊断记录已清除。" else "清除未完成，请稍后重试。")
+            } finally {
+                clearing = false
+            }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -118,6 +194,55 @@ fun AboutScreen(onBack: () -> Unit) {
                     Bullet("账号页禁止截图，避免密码出现在截图或录屏中。")
                     Bullet("课表按需查询单周；校园卡、电费和组件不做周期后台查询。")
                     Bullet("查询直接发往学校系统，不经过本项目服务器；卸载会清除本机数据。")
+                }
+            }
+
+            SectionHeader(
+                title = "诊断",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("本机诊断记录", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                "只记录固定状态码；保存在本机，由你选择是否分享。",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = diagnosticsEnabled,
+                            onCheckedChange = { enabled ->
+                                diagnosticsEnabled = enabled
+                                scope.launch {
+                                    AppGraph.uiPrefsStore.setDiagnosticsEnabled(enabled)
+                                    AppGraph.diagnostics.setEnabled(enabled)
+                                    if (!enabled) {
+                                        AppGraph.diagnostics.clearNow()
+                                    }
+                                }
+                            },
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(
+                            onClick = { exportDiagnostics() },
+                            enabled = !exporting && !clearing,
+                        ) {
+                            Text(if (exporting) "正在生成…" else "导出诊断报告")
+                        }
+                        TextButton(
+                            onClick = { clearDiagnostics() },
+                            enabled = !exporting && !clearing,
+                        ) {
+                            Text(if (clearing) "正在清除…" else "清除诊断记录")
+                        }
+                    }
                 }
             }
 

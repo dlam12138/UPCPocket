@@ -1,5 +1,6 @@
 package com.upcpocket.app.timetable
 
+import com.upcpocket.app.platform.diagnostics.DiagnosticDestination
 import java.net.URI
 
 /**
@@ -40,4 +41,26 @@ internal object TimetableLoginPolicy {
 
     fun host(raw: String): String? =
         runCatching { URI(raw).host?.takeIf { it.isNotBlank() } }.getOrNull()
+
+    /** Coarse fixed destination for diagnostics; never the raw URL. */
+    fun destination(raw: String): DiagnosticDestination {
+        if (raw == "about:blank") return DiagnosticDestination.UNKNOWN
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN
+        if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN
+        val path = uri.path.orEmpty()
+        return when (uri.host?.lowercase()) {
+            CAS_HOST -> if (path.endsWith("login-mobile.html")) {
+                DiagnosticDestination.CAS_MOBILE
+            } else {
+                DiagnosticDestination.CAS_LOGIN
+            }
+            APP_HOST -> when {
+                path == "/a_upc/api/cas/login" -> DiagnosticDestination.APP_CALLBACK
+                path.startsWith("/site/weekschedule/") -> DiagnosticDestination.APP_PAGE
+                path.startsWith("/timetable/wap/default/") -> DiagnosticDestination.APP_API
+                else -> DiagnosticDestination.OTHER
+            }
+            else -> DiagnosticDestination.UNKNOWN
+        }
+    }
 }

@@ -20,6 +20,8 @@ import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
+import com.upcpocket.app.diagnostics.DiagnosticStore
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.library.ChaoxingAccountAuthResult
@@ -83,6 +85,16 @@ object AppGraph {
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }
 
     /**
+     * 本机诊断存储：只在私有 noBackup 目录滚动保存固定码事件，由用户在“关于”
+     * 主动导出。它不参与业务事务，任何失败都必须被吞掉。
+     */
+    val diagnostics: DiagnosticStore by lazy { DiagnosticStore(appContext) }
+
+    fun installDiagnostics() {
+        Diagnostics.install(diagnostics)
+    }
+
+    /**
      * 统一学校账号是共享核心能力，不属于某个业务插件。
      *
      * 账号层只持有密文与代次；换号/删号通过下面的失效器清理图书馆会话、
@@ -101,6 +113,9 @@ object AppGraph {
     private suspend fun invalidateSchoolAccountData(
         request: AccountInvalidationRequest,
     ): AccountInvalidationResult {
+        // 诊断事件不含 PII，但账号前后操作不应串联；先递增清理代次，
+        // 旧队列在写入前被丢弃。清理失败不能阻塞退出。
+        runCatching { diagnostics.clearForAccountChange() }
         var failure: AccountInvalidationFailure? = null
         val library = activePlugins.capability(LibraryCapabilities.seat)
         if (library != null) {

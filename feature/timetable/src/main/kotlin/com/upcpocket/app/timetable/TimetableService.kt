@@ -6,6 +6,11 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcAuthFailure
 import com.upcpocket.app.upcauth.UpcAuthResult
@@ -750,10 +755,71 @@ class TimetableService(
             }
             if (existing != null) return
             val business = businessEpoch.get()
-            val result = authenticator.authenticate(
-                expectedAccountId = binding.accountId,
-                expectedCredentialGeneration = binding.credentialGeneration.value,
+            val started = clock()
+            val operationId = Diagnostics.newOperationId()
+            Diagnostics.record(
+                module = DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.AUTH_START,
+                result = DiagnosticResult.PENDING,
+                operationId = operationId,
             )
+            val result = try {
+                authenticator.authenticate(
+                    expectedAccountId = binding.accountId,
+                    expectedCredentialGeneration = binding.credentialGeneration.value,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                Diagnostics.record(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.CANCELLED,
+                    durationMs = (clock() - started).coerceAtLeast(0),
+                    operationId = operationId,
+                )
+                throw cancelled
+            } catch (failure: Exception) {
+                Diagnostics.recordException(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.FAIL,
+                    reason = DiagnosticReason.UNKNOWN,
+                    failure = failure,
+                    durationMs = (clock() - started).coerceAtLeast(0),
+                    operationId = operationId,
+                )
+                throw failure
+            }
+            val duration = (clock() - started).coerceAtLeast(0)
+            when (result) {
+                is UpcAuthResult.Failure -> {
+                    val reason = diagnosticAuthReason(result.reason)
+                    Diagnostics.record(
+                        module = DiagnosticModule.TIMETABLE,
+                        action = DiagnosticAction.AUTH_COMPLETE,
+                        result = DiagnosticResult.FAIL,
+                        reason = reason,
+                        durationMs = duration,
+                        operationId = operationId,
+                    )
+                    if (result.reason == UpcAuthFailure.INTERACTION_REQUIRED) {
+                        Diagnostics.record(
+                            module = DiagnosticModule.TIMETABLE,
+                            action = DiagnosticAction.AUTH_INTERACTION,
+                            result = DiagnosticResult.BLOCKED,
+                            reason = DiagnosticReason.INTERACTION,
+                            durationMs = duration,
+                            operationId = operationId,
+                        )
+                    }
+                }
+                is UpcAuthResult.Success -> Diagnostics.record(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.OK,
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+            }
             when (result) {
                 is UpcAuthResult.Failure -> throw when (result.reason) {
                     UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
@@ -824,6 +890,20 @@ class TimetableService(
                 }
             }
         }
+    }
+
+    private fun diagnosticAuthReason(reason: UpcAuthFailure): DiagnosticReason = when (reason) {
+        UpcAuthFailure.INVALID_CREDENTIALS,
+        UpcAuthFailure.ACCESS_DENIED,
+        -> DiagnosticReason.AUTH
+        UpcAuthFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
+        UpcAuthFailure.NETWORK_UNAVAILABLE -> DiagnosticReason.NETWORK
+        UpcAuthFailure.TLS_ERROR -> DiagnosticReason.TLS
+        UpcAuthFailure.ACCOUNT_UNAVAILABLE,
+        UpcAuthFailure.ACCOUNT_CHANGED,
+        -> DiagnosticReason.ACCOUNT
+        UpcAuthFailure.UPSTREAM_ERROR -> DiagnosticReason.UNKNOWN
+        UpcAuthFailure.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
     }
 
     private fun mapApiFailure(failure: TimetableApiException): ServiceFailure = when {

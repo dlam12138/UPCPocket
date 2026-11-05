@@ -13,6 +13,11 @@ import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.library.LibrarySeatSession
 import com.upcpocket.app.data.library.LibrarySessionExpiredException
 import com.upcpocket.app.data.prefs.SchoolSessionStore
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -271,19 +276,73 @@ class LibraryService(
         val accountId = context.accountId
             ?: return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE)
 
+        val started = System.currentTimeMillis()
+        val operationId = Diagnostics.newOperationId()
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.AUTH_START,
+            result = DiagnosticResult.PENDING,
+            operationId = operationId,
+        )
         val auth = try {
             authenticator.authenticate(accountId, context.accountGeneration.value)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.AUTH_COMPLETE,
+                result = DiagnosticResult.CANCELLED,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+                operationId = operationId,
+            )
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            Diagnostics.recordException(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.AUTH_COMPLETE,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.UNKNOWN,
+                failure = failure,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+                operationId = operationId,
+            )
             return LibraryAccountLoginResult.Failure(LibraryAccountAuthFailure.PROTOCOL_ERROR)
         }
+        val duration = (System.currentTimeMillis() - started).coerceAtLeast(0)
         val success = when (auth) {
-            is LibraryAccountAuthResult.Success -> auth
-            is LibraryAccountAuthResult.Failure -> return LibraryAccountLoginResult.Failure(
-                auth.reason,
-                auth.interactionUrl,
-            )
+            is LibraryAccountAuthResult.Success -> {
+                Diagnostics.record(
+                    module = DiagnosticModule.LIBRARY,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.OK,
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+                auth
+            }
+            is LibraryAccountAuthResult.Failure -> {
+                Diagnostics.record(
+                    module = DiagnosticModule.LIBRARY,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.FAIL,
+                    reason = libraryDiagnosticReason(auth.reason),
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+                if (auth.reason == LibraryAccountAuthFailure.INTERACTION_REQUIRED) {
+                    Diagnostics.record(
+                        module = DiagnosticModule.LIBRARY,
+                        action = DiagnosticAction.AUTH_INTERACTION,
+                        result = DiagnosticResult.BLOCKED,
+                        reason = DiagnosticReason.INTERACTION,
+                        durationMs = duration,
+                        operationId = operationId,
+                    )
+                }
+                return LibraryAccountLoginResult.Failure(
+                    auth.reason,
+                    auth.interactionUrl,
+                )
+            }
         }
 
         val session = LibrarySeatSession(success.seatToken, success.user)
@@ -406,4 +465,22 @@ class LibraryService(
         if (!persistedCleared) return false
         return clearSchoolCookiesAndAwait()
     }
+
+    private fun libraryDiagnosticReason(reason: LibraryAccountAuthFailure): DiagnosticReason =
+        when (reason) {
+            LibraryAccountAuthFailure.INVALID_CREDENTIALS,
+            LibraryAccountAuthFailure.ACCESS_DENIED,
+            LibraryAccountAuthFailure.IDENTITY_MISMATCH,
+            -> DiagnosticReason.AUTH
+            LibraryAccountAuthFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
+            LibraryAccountAuthFailure.NETWORK_UNAVAILABLE -> DiagnosticReason.NETWORK
+            LibraryAccountAuthFailure.TLS_ERROR -> DiagnosticReason.TLS
+            LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE,
+            LibraryAccountAuthFailure.ACCOUNT_CHANGED,
+            -> DiagnosticReason.ACCOUNT
+            LibraryAccountAuthFailure.PERSISTENCE_FAILED -> DiagnosticReason.STORAGE
+            LibraryAccountAuthFailure.SESSION_EXPIRED -> DiagnosticReason.AUTH
+            LibraryAccountAuthFailure.UPSTREAM_ERROR -> DiagnosticReason.UNKNOWN
+            LibraryAccountAuthFailure.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
+        }
 }

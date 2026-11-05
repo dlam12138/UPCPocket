@@ -13,8 +13,17 @@ import com.upcpocket.app.data.school.LoginPageException
 import com.upcpocket.app.data.school.SchoolLoginRedirects
 import com.upcpocket.app.data.school.fetchLoginPage
 import com.upcpocket.app.data.school.isCasLoginFrame
+import com.upcpocket.app.data.school.isCasLoginPage
 import com.upcpocket.app.data.school.isNativeSchoolAuthUrl
 import com.upcpocket.app.data.school.loginHost
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticDestination
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
+import java.net.URI
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,14 +44,32 @@ internal open class SchoolLoginWebViewClient(
     private var redirectJob: Job? = null
     private var watchdog: Runnable? = null
     private var disposed = false
+    private var pageStartedAt = 0L
+    private var viewportRecorded = false
+    private val operationId = Diagnostics.newOperationId()
 
     fun load(view: WebView, url: String) {
         redirectJob?.cancel()
         if (!allowed(url)) {
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                result = DiagnosticResult.BLOCKED,
+                reason = DiagnosticReason.POLICY,
+                destination = schoolLoginDestination(url),
+                operationId = operationId,
+            )
             onError("学校登录跳转到了未允许的地址，已停止加载")
             onLoading(false)
             return
         }
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.WEBVIEW_START,
+            result = DiagnosticResult.PENDING,
+            destination = schoolLoginDestination(url),
+            operationId = operationId,
+        )
         onError(null)
         onLoading(true)
         // Normal GETs to business auth endpoints work through Android's HTTP stack on this
@@ -71,11 +98,27 @@ internal open class SchoolLoginWebViewClient(
                 }
             } catch (e: CancellationException) {
                 if (e is kotlinx.coroutines.TimeoutCancellationException && !disposed) {
+                    Diagnostics.record(
+                        module = DiagnosticModule.LIBRARY,
+                        action = DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
+                        result = DiagnosticResult.TIMEOUT,
+                        reason = DiagnosticReason.NETWORK,
+                        destination = schoolLoginDestination(url),
+                        operationId = operationId,
+                    )
                     onLoading(false)
                     onError("学校登录连接超时，请重试")
                 } else throw e
             } catch (e: Exception) {
                 if (!disposed) {
+                    Diagnostics.recordException(
+                        module = DiagnosticModule.LIBRARY,
+                        action = DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
+                        result = DiagnosticResult.FAIL,
+                        reason = DiagnosticReason.NETWORK,
+                        failure = e,
+                        operationId = operationId,
+                    )
                     onLoading(false)
                     onError(if (e is LoginPageException) e.message else
                         "无法连接 ${loginHost(url)}，请检查网络后重试")
@@ -87,11 +130,29 @@ internal open class SchoolLoginWebViewClient(
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
         if (!allowed(url)) {
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                result = DiagnosticResult.BLOCKED,
+                reason = DiagnosticReason.POLICY,
+                destination = schoolLoginDestination(url),
+                operationId = operationId,
+            )
             if (request.isForMainFrame || isCasLoginFrame(url)) {
                 onLoading(false)
                 onError("已停止打开未允许的登录地址（${loginHost(url)}）")
             }
             return true
+        }
+        if (request.isForMainFrame) {
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                result = DiagnosticResult.OK,
+                reason = DiagnosticReason.MAIN_FRAME,
+                destination = schoolLoginDestination(url),
+                operationId = operationId,
+            )
         }
         if (request.isForMainFrame && request.method == "GET" && nativeGetUrl(url)) {
             load(view, url)
@@ -102,6 +163,20 @@ internal open class SchoolLoginWebViewClient(
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
         clearWatchdog(view)
+        pageStartedAt = System.currentTimeMillis()
+        if (!viewportRecorded && url != "about:blank") {
+            viewportRecorded = true
+            val density = view.resources.displayMetrics.density.coerceAtLeast(1f)
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_VIEWPORT,
+                result = DiagnosticResult.OK,
+                reason = DiagnosticReason.VIEWPORT,
+                widthDp = (view.width / density).roundToInt(),
+                heightDp = (view.height / density).roundToInt(),
+                operationId = operationId,
+            )
+        }
         onError(null)
         onLoading(true)
         watchdog = Runnable {
@@ -115,6 +190,16 @@ internal open class SchoolLoginWebViewClient(
     override fun onPageFinished(view: WebView, url: String) {
         clearWatchdog(view)
         onLoading(false)
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.WEBVIEW_FINISH,
+            result = DiagnosticResult.OK,
+            destination = schoolLoginDestination(url),
+            durationMs = pageStartedAt.takeIf { it > 0 }?.let {
+                (System.currentTimeMillis() - it).coerceAtLeast(0)
+            },
+            operationId = operationId,
+        )
         CookieManager.getInstance().flush()
         repairCasViewport(view)
     }
@@ -141,6 +226,14 @@ internal open class SchoolLoginWebViewClient(
         if (request.isForMainFrame || isCasLoginFrame(request.url.toString())) {
             clearWatchdog(view)
             onLoading(false)
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.NETWORK,
+                destination = schoolLoginDestination(request.url.toString()),
+                operationId = operationId,
+            )
             onError("${loginHost(request.url.toString())} 加载失败（网络错误 ${error.errorCode}），请重试")
         }
     }
@@ -149,6 +242,15 @@ internal open class SchoolLoginWebViewClient(
         if (request.isForMainFrame || isCasLoginFrame(request.url.toString())) {
             clearWatchdog(view)
             onLoading(false)
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.WEBVIEW_HTTP_ERROR,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.HTTP,
+                destination = schoolLoginDestination(request.url.toString()),
+                httpStatus = response.statusCode,
+                operationId = operationId,
+            )
             onError("学校页面暂时不可用，请重试")
         }
     }
@@ -157,7 +259,31 @@ internal open class SchoolLoginWebViewClient(
         handler.cancel()
         clearWatchdog(view)
         onLoading(false)
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.WEBVIEW_SSL_REJECT,
+            result = DiagnosticResult.FAIL,
+            reason = DiagnosticReason.TLS,
+            operationId = operationId,
+        )
         onError("${loginHost(error.url.orEmpty())} 的安全连接校验失败，未继续登录")
+    }
+
+    override fun onRenderProcessGone(
+        view: WebView,
+        detail: android.webkit.RenderProcessGoneDetail?,
+    ): Boolean {
+        clearWatchdog(view)
+        onLoading(false)
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.WEBVIEW_RENDERER_EXIT,
+            result = DiagnosticResult.FAIL,
+            reason = DiagnosticReason.RENDERER,
+            operationId = operationId,
+        )
+        onError("登录页渲染进程异常退出；请重新加载。")
+        return true
     }
 
     fun dispose(view: WebView?) {
@@ -169,6 +295,16 @@ internal open class SchoolLoginWebViewClient(
     private fun clearWatchdog(view: WebView) {
         watchdog?.let { view.removeCallbacks(it) }
         watchdog = null
+    }
+}
+
+private fun schoolLoginDestination(raw: String): DiagnosticDestination {
+    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN
+    if (isCasLoginFrame(raw) || isCasLoginPage(raw)) return DiagnosticDestination.CAS_LOGIN
+    val host = runCatching { URI(raw).host?.lowercase() }.getOrNull()
+    return when (host) {
+        "libspace.upc.edu.cn", "app.upc.edu.cn" -> DiagnosticDestination.APP_PAGE
+        else -> DiagnosticDestination.OTHER
     }
 }
 

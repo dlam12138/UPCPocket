@@ -41,7 +41,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.roundToInt
 
 private const val TIMETABLE_APP_HOST = "app.upc.edu.cn"
 
@@ -68,6 +74,7 @@ fun TimetableLoginDialog(
     var pageLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var statusHint by remember { mutableStateOf<String?>(null) }
+    val operationId = remember(generation) { Diagnostics.newOperationId() }
 
     fun readCookieHeader(): String? = runCatching {
         cookieManager.getCookie("https://$TIMETABLE_APP_HOST/")
@@ -163,6 +170,7 @@ fun TimetableLoginDialog(
                                         settings.setSupportMultipleWindows(false)
                                         cookieManager.setAcceptCookie(true)
                                         cookieManager.setAcceptThirdPartyCookies(this, true)
+                                        var pageStartedAt = 0L
                                         webViewClient = object : WebViewClient() {
                                             override fun onPageStarted(
                                                 view: WebView,
@@ -173,6 +181,7 @@ fun TimetableLoginDialog(
                                                 // 错误只由 reload() 清除；子框架/迟到页面
                                                 // 的新导航不能让已显示的错误遮罩消失后留下空白。
                                                 pageLoading = true
+                                                pageStartedAt = System.currentTimeMillis()
                                             }
 
                                             override fun onPageFinished(
@@ -183,6 +192,25 @@ fun TimetableLoginDialog(
                                                 if (pageGeneration != generation) return
                                                 pageLoading = false
                                                 cookieManager.flush()
+                                                val destination = currentUrl?.let(
+                                                    TimetableLoginPolicy::destination,
+                                                )
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_FINISH,
+                                                    result = if (error == null) {
+                                                        DiagnosticResult.OK
+                                                    } else {
+                                                        DiagnosticResult.FAIL
+                                                    },
+                                                    destination = destination,
+                                                    durationMs = pageStartedAt.takeIf { it > 0 }
+                                                        ?.let {
+                                                            (System.currentTimeMillis() - it)
+                                                                .coerceAtLeast(0)
+                                                        },
+                                                    operationId = operationId,
+                                                )
                                                 val host = currentUrl?.let {
                                                     runCatching { Uri.parse(it).host }.getOrNull()
                                                 }
@@ -199,17 +227,52 @@ fun TimetableLoginDialog(
                                                 val target = request.url.toString()
                                                 if (target == "about:blank") return false
                                                 val allowed = TimetableLoginPolicy.isAllowed(target)
+                                                val destination =
+                                                    TimetableLoginPolicy.destination(target)
                                                 if (request.isForMainFrame) {
                                                     if (!allowed) {
+                                                        Diagnostics.record(
+                                                            module = DiagnosticModule.TIMETABLE,
+                                                            action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                            result = DiagnosticResult.BLOCKED,
+                                                            reason = DiagnosticReason.POLICY,
+                                                            destination = destination,
+                                                            operationId = operationId,
+                                                        )
                                                         error = "登录页跳转到了未允许的地址" +
                                                             "（${TimetableLoginPolicy.host(target) ?: "未知"}），已停止加载。"
                                                         pageLoading = false
                                                         return true
                                                     }
+                                                    Diagnostics.record(
+                                                        module = DiagnosticModule.TIMETABLE,
+                                                        action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                        result = DiagnosticResult.OK,
+                                                        reason = DiagnosticReason.MAIN_FRAME,
+                                                        destination = destination,
+                                                        operationId = operationId,
+                                                    )
                                                 } else if (!allowed) {
                                                     // 不让未允许的 iframe/子框架继续导航；
                                                     // 子资源仍由 WebView 自己处理。
+                                                    Diagnostics.record(
+                                                        module = DiagnosticModule.TIMETABLE,
+                                                        action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                        result = DiagnosticResult.BLOCKED,
+                                                        reason = DiagnosticReason.SUB_FRAME,
+                                                        destination = destination,
+                                                        operationId = operationId,
+                                                    )
                                                     return true
+                                                } else {
+                                                    Diagnostics.record(
+                                                        module = DiagnosticModule.TIMETABLE,
+                                                        action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                        result = DiagnosticResult.OK,
+                                                        reason = DiagnosticReason.SUB_FRAME,
+                                                        destination = destination,
+                                                        operationId = operationId,
+                                                    )
                                                 }
                                                 return false
                                             }
@@ -223,6 +286,13 @@ fun TimetableLoginDialog(
                                                 if (pageGeneration != generation) return
                                                 pageLoading = false
                                                 error = "登录页证书校验失败，已停止。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_SSL_REJECT,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.TLS,
+                                                    operationId = operationId,
+                                                )
                                             }
 
                                             override fun onReceivedHttpError(
@@ -234,6 +304,17 @@ fun TimetableLoginDialog(
                                                 if (!request.isForMainFrame) return
                                                 pageLoading = false
                                                 error = "登录页暂时不可用，请稍后重试。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_HTTP_ERROR,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.HTTP,
+                                                    destination = TimetableLoginPolicy.destination(
+                                                        request.url.toString(),
+                                                    ),
+                                                    httpStatus = errorResponse.statusCode,
+                                                    operationId = operationId,
+                                                )
                                             }
 
                                             override fun onReceivedError(
@@ -245,6 +326,16 @@ fun TimetableLoginDialog(
                                                 if (!request.isForMainFrame) return
                                                 pageLoading = false
                                                 error = "登录页加载失败；请检查网络后重试。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.NETWORK,
+                                                    destination = TimetableLoginPolicy.destination(
+                                                        request.url.toString(),
+                                                    ),
+                                                    operationId = operationId,
+                                                )
                                             }
 
                                             override fun onRenderProcessGone(
@@ -255,6 +346,13 @@ fun TimetableLoginDialog(
                                                 pageLoading = false
                                                 webViewAlive = false
                                                 error = "登录页渲染进程异常退出；请重新加载。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_RENDERER_EXIT,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.RENDERER,
+                                                    operationId = operationId,
+                                                )
                                                 return true
                                             }
                                         }
@@ -267,11 +365,38 @@ fun TimetableLoginDialog(
                                             if (started) return
                                             if (width <= 0 || height <= 0) return
                                             started = true
+                                            val density = resources.displayMetrics.density
+                                                .coerceAtLeast(1f)
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.TIMETABLE,
+                                                action = DiagnosticAction.WEBVIEW_VIEWPORT,
+                                                result = DiagnosticResult.OK,
+                                                reason = DiagnosticReason.VIEWPORT,
+                                                widthDp = (width / density).roundToInt(),
+                                                heightDp = (height / density).roundToInt(),
+                                                operationId = operationId,
+                                            )
                                             if (!TimetableLoginPolicy.isAllowedEntry(url)) {
                                                 pageLoading = false
                                                 error = "登录入口不是允许的学校地址。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.TIMETABLE,
+                                                    action = DiagnosticAction.WEBVIEW_START,
+                                                    result = DiagnosticResult.BLOCKED,
+                                                    reason = DiagnosticReason.POLICY,
+                                                    destination = TimetableLoginPolicy
+                                                        .destination(url),
+                                                    operationId = operationId,
+                                                )
                                                 return
                                             }
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.TIMETABLE,
+                                                action = DiagnosticAction.WEBVIEW_START,
+                                                result = DiagnosticResult.PENDING,
+                                                destination = TimetableLoginPolicy.destination(url),
+                                                operationId = operationId,
+                                            )
                                             loadUrl(url)
                                         }
                                         addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->

@@ -104,6 +104,20 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_timetable_today_info" />
         </receiver>
+
+        <!--
+            诊断 ZIP 只能通过 FileProvider 的专用 cache 子目录临时授权读取。
+            provider 不导出，不开放 root-path/files-path，也不申请存储权限。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/diagnostic_file_paths" />
+        </provider>
     </application>
 
 </manifest>
