@@ -49,10 +49,18 @@ class WidgetRefreshWorker(
             withTimeout(NETWORK_BUDGET_MS) {
                 when (kind) {
                     WidgetKind.CARD -> {
+                        // 冷启动时点击发生在账号 restore 之前，bindingToken 可能还是 null。
+                        // 先有界等待恢复；null token 只表示“点击时尚未恢复”，服务内部仍会
+                        // 用账号代际校验阻止跨账号发布。
+                        withTimeout(ACCOUNT_RESTORE_BUDGET_MS) {
+                            AppGraph.account.restore()
+                        }
                         val service = AppGraph.cardServiceOrNull
                         if (service == null) {
                             pluginAvailable = false
-                        } else if (!service.isBindingTokenCurrent(expectedBindingToken)) {
+                        } else if (expectedBindingToken != null &&
+                            !service.isBindingTokenCurrent(expectedBindingToken)
+                        ) {
                             // 点击后账号已切换/改密：旧任务退出，不能把新账号当成旧目标。
                             return@withTimeout
                         } else {
@@ -65,6 +73,26 @@ class WidgetRefreshWorker(
                             pluginAvailable = false
                         } else {
                             service.refreshCurrent()
+                        }
+                    }
+                    WidgetKind.TIMETABLE -> {
+                        val service = AppGraph.timetableServiceOrNull
+                        if (service == null) {
+                            pluginAvailable = false
+                        } else {
+                            // 冷启动时 Application.onCreate 只异步恢复账号；这里必须有界
+                            // 等到 restore 完成，否则会误判“没有目标”。restore 本身是幂等的。
+                            withTimeout(ACCOUNT_RESTORE_BUDGET_MS) {
+                                AppGraph.account.restore()
+                            }
+                            service.open()
+                            service.refreshToday()
+                            val snapshot = service.readWidgetSnapshot()
+                            if (!snapshot.hasReliableData) {
+                                val message = service.state.value.message
+                                    ?: "课表未同步，请打开应用完成登录或同步"
+                                state.setError(kind, friendly(Exception(message)))
+                            }
                         }
                     }
                 }
@@ -102,6 +130,7 @@ class WidgetRefreshWorker(
     private companion object {
         /** 现有网络调用自身是 10s 连接 + 20s 读取，这里再兜一层总预算。 */
         const val NETWORK_BUDGET_MS = 45_000L
+        const val ACCOUNT_RESTORE_BUDGET_MS = 10_000L
         const val MAX_MESSAGE_LENGTH = 60
     }
 }

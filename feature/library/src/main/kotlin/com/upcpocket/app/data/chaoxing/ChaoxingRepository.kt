@@ -1,6 +1,7 @@
 package com.upcpocket.app.data.chaoxing
 
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
@@ -116,6 +117,89 @@ class ChaoxingRepository internal constructor(
         ChaoxingProtocol.parseUsedSeatNums(body)
     }
 
+    /**
+     * 原生提交一次预约。只允许由用户明确确认后调用；不重试、不轮询、不取消、不签到。
+     * 先 GET 官方选座页取得页面级 submit_enc，再按官方 submitVerify 规则计算 enc 后 POST。
+     * 网络中断/无法解析响应一律返回 Unknown，绝不把“可能已成功”报成失败再让用户重试。
+     */
+    suspend fun submitReservation(
+        kind: ChaoxingSeatKind,
+        cookieHeader: String,
+        roomId: Int,
+        date: String,
+        startMinute: Int,
+        endMinute: Int,
+        seatNum: String,
+    ): ChaoxingReservationResult = withContext(Dispatchers.IO) {
+        val selectParams = linkedMapOf(
+            "id" to roomId.toString(),
+            "deptIdEnc" to FID_ENC,
+            "day" to date,
+        )
+        if (kind == ChaoxingSeatKind.SEATENGINE) selectParams["seatId"] = SEAT_ID
+        val secrets = try {
+            val html = read(
+                cookieHeader,
+                "https://office.chaoxing.com/front/third/apps/${kind.api}/select?" +
+                    query(selectParams),
+            )
+            ChaoxingReservationProtocol.parseSelectPage(html)
+        } catch (expired: ChaoxingSessionExpiredException) {
+            throw expired
+        } catch (failure: IOException) {
+            return@withContext ChaoxingReservationResult.Unknown(
+                "网络中断，尚未确认是否提交成功；请到官方预约记录核对，勿连续重试。",
+            )
+        }
+        if (secrets.riskCheckRequired) {
+            return@withContext ChaoxingReservationResult.InteractionRequired(
+                "学校要求安全验证；请在官方页完成本次预约。",
+            )
+        }
+        if (kind == ChaoxingSeatKind.SEATENGINE && secrets.wfwEngineEnc.length > 256) {
+            return@withContext ChaoxingReservationResult.Unknown(
+                "选座页校验字段异常；未提交，请打开官方页。",
+            )
+        }
+        val params = ChaoxingReservationProtocol.submitParams(
+            kind = kind,
+            deptIdEnc = FID_ENC,
+            roomId = roomId,
+            day = date,
+            startTime = clock(startMinute),
+            endTime = clock(endMinute),
+            seatNum = seatNum,
+            submitEnc = secrets.submitEnc,
+            wfwEngineEnc = secrets.wfwEngineEnc,
+        )
+        val response = try {
+            fetch(
+                cookieHeader,
+                "https://office.chaoxing.com/data/apps/${kind.api}/submit",
+                formBody = form(params),
+            )
+        } catch (failure: IOException) {
+            return@withContext ChaoxingReservationResult.Unknown(
+                "网络中断，提交结果未知；请到官方预约记录核对，勿连续重试。",
+            )
+        }
+        when {
+            response.status in setOf(401, 403, 302, 303) ->
+                throw ChaoxingSessionExpiredException()
+            response.status == 429 -> ChaoxingReservationResult.Unknown(
+                "请求过于频繁，提交结果未知；请到官方预约记录核对，勿连续重试。",
+            )
+            response.status !in 200..299 -> ChaoxingReservationResult.Unknown(
+                "学校返回 HTTP ${response.status}，提交结果未知；请到官方预约记录核对。",
+            )
+            else -> ChaoxingReservationProtocol.parseSubmitResponse(
+                response.body,
+                seatNum,
+                date,
+            )
+        }
+    }
+
     suspend fun usedTimes(
         kind: ChaoxingSeatKind,
         cookieHeader: String,
@@ -203,7 +287,9 @@ class ChaoxingRepository internal constructor(
                 path.startsWith("/data/apps/seat/") ||
                     path.startsWith("/data/apps/seatengine/") ||
                     path == "/front/third/apps/seat/index" ||
-                    path == "/front/third/apps/seatengine/index"
+                    path == "/front/third/apps/seatengine/index" ||
+                    path == "/front/third/apps/seat/select" ||
+                    path == "/front/third/apps/seatengine/select"
             else -> false
         }
         if (!allowed) throw ChaoxingException("未允许的 Chaoxing 路径", "chaoxing_protocol")

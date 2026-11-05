@@ -137,7 +137,7 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("今日无课程").assertIsDisplayed()
+        rule.onNodeWithText("今天没有排课").assertIsDisplayed()
     }
 
     @Test

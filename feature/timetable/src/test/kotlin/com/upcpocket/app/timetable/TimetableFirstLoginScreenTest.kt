@@ -148,6 +148,8 @@ class TimetableFirstLoginScreenTest {
             .performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
         rule.onNodeWithText("日期").assertExists()
+        rule.onNodeWithText("关闭").performClick()
+        rule.onNodeWithContentDescription("课表说明与作息来源").performClick()
         rule.onNodeWithText("使用学校网页登录").performClick()
         rule.onNodeWithText("学校登录").assertIsDisplayed()
 

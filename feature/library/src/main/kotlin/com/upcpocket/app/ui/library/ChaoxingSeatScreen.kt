@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -420,10 +421,14 @@ private fun ChaoxingSeatDetailPage(
     BackHandler(onBack = onExit)
     val detail = state.detail ?: return
     val context = LocalContext.current
-    var selectedSeat by rememberSaveable(detail.roomId) { mutableStateOf<String?>(null) }
     var showTimeSheet by rememberSaveable { mutableStateOf(false) }
+    var showReserveConfirm by rememberSaveable { mutableStateOf(false) }
+    val selectedSeat = state.selectedSeat
     val selectedStart = state.selectedStart
     val selectedEnd = state.selectedEnd
+    LaunchedEffect(state.selectedDate, state.selectedSeat, selectedStart, selectedEnd) {
+        showReserveConfirm = false
+    }
     val timeLabel = if (selectedStart != null && selectedEnd != null) {
         "${formatMinute(selectedStart)}–${formatMinute(selectedEnd)} · " +
             formatDuration(selectedEnd - selectedStart)
@@ -461,7 +466,7 @@ private fun ChaoxingSeatDetailPage(
                 ) {
                     Column(Modifier.weight(1f)) {
                         Text(
-                            selectedSeat?.let { "已选 $it（仅查看）" } ?: "点选座位查看",
+                            selectedSeat?.let { "已选 $it" } ?: "点选可用座位",
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
@@ -474,10 +479,33 @@ private fun ChaoxingSeatDetailPage(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    if (state.selectedStart == null) {
-                        Button(onClick = { showTimeSheet = true }) { Text("选择时段") }
-                    } else {
-                        Button(onClick = onOpenOfficial) { Text("官方预约") }
+                    when {
+                        state.reserving -> Button(onClick = {}, enabled = false) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text("提交中")
+                        }
+                        state.selectedStart == null -> Button(
+                            onClick = { showTimeSheet = true },
+                        ) { Text("选择时段") }
+                        state.reservationSucceeded -> Button(
+                            onClick = onOpenOfficial,
+                        ) { Text("核对官方记录") }
+                        state.reservationUnknown -> Button(
+                            onClick = onOpenOfficial,
+                        ) { Text("先核对官方记录") }
+                        state.selectedSeat == null -> Button(
+                            onClick = {},
+                            enabled = false,
+                        ) { Text("先选座位") }
+                        else -> Button(
+                            onClick = { showReserveConfirm = true },
+                            enabled = state.usedSeatsLoaded &&
+                                state.selectedSeat !in state.usedSeats,
+                        ) { Text("原生预约") }
                     }
                 }
             }
@@ -515,6 +543,14 @@ private fun ChaoxingSeatDetailPage(
             state.detailError?.let { message ->
                 item { CompactNotice("座位图未完成", message) }
             }
+            state.reservationMessage?.let { message ->
+                item {
+                    CompactNotice(
+                        if (state.reservationUnknown) "提交结果未知" else "预约状态",
+                        message,
+                    )
+                }
+            }
             item {
                 FlowRow(
                     Modifier.fillMaxWidth(),
@@ -539,18 +575,53 @@ private fun ChaoxingSeatDetailPage(
                         usedSeats = state.usedSeats,
                         usedSeatsLoaded = state.usedSeatsLoaded,
                         selectedSeat = selectedSeat,
-                        onSelect = { selectedSeat = it },
+                        onSelect = vm::selectSeat,
                     )
                 }
             }
             item {
                 Text(
-                    "点座位查看编号；区域图可横向、纵向滑动。真实预约在官方页完成。",
+                    "先选时段，再点可用座位；提交前会再次显示座位、日期和时段。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
+    }
+
+    if (showReserveConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!state.reserving) showReserveConfirm = false },
+            title = { Text("确认提交预约") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${detail.name} · ${selectedSeat ?: "未选座"}")
+                    Text("${state.selectedDate} · ${formatMinute(selectedStart ?: 0)}–" +
+                        formatMinute(selectedEnd ?: 0))
+                    Text(
+                        "这是真实提交，会占用该座位。提交后请到官方预约记录核对；" +
+                            "如果超时或提示未知，不要连续重试。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showReserveConfirm = false
+                        vm.reserveSelected()
+                    },
+                    enabled = !state.reserving,
+                ) { Text("确认提交一次") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showReserveConfirm = false },
+                    enabled = !state.reserving,
+                ) { Text("取消") }
+            },
+        )
     }
 
     if (showTimeSheet) {
@@ -566,7 +637,8 @@ private fun ChaoxingSeatDetailPage(
             ) {
                 Text("选择查看时段", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "结束时间由开放时间和时段步长决定；这里只查看所选区间的已用座位，不提交预约。",
+                    "结束时间由开放时间和时段步长决定；先确认所选区间的已用座位，" +
+                        "回到详情页后再单独确认提交。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -687,7 +759,9 @@ internal fun ChaoxingSeatMap(
                                     else -> "当前时段可用"
                                 }
                             }
-                            .clickable { onSelect(place.seatNum) },
+                            .clickable(enabled = usedSeatsLoaded && !used) {
+                                onSelect(place.seatNum)
+                            },
                         shape = RoundedCornerShape(5.dp),
                         color = color,
                         tonalElevation = if (selected) 3.dp else 0.dp,

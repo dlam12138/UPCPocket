@@ -13,10 +13,17 @@ class TimetableViewModel(
     private var operation: Job? = null
 
     init {
-        operation = viewModelScope.launch { service.open() }
+        operation = viewModelScope.launch {
+            service.open()
+            service.refreshToday()
+        }
     }
 
     fun refresh() = run { service.refresh() }
+
+    fun refreshToday() {
+        viewModelScope.launch { service.refreshToday() }
+    }
 
     fun selectTerm(term: TimetableTerm) = run { service.selectTerm(term) }
 

@@ -149,7 +149,10 @@ object AppGraph {
             if (runCatching { cardInputRepository.clear() }.isFailure) {
                 failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
             }
+            WidgetWork.cancel(appContext, WidgetKind.TIMETABLE)
+            WidgetStateStore(appContext).clear(WidgetKind.TIMETABLE)
             WidgetUpdates.requestCard(appContext)
+            WidgetUpdates.requestTimetable(appContext)
         }
         return failure?.let(AccountInvalidationResult::failure)
             ?: AccountInvalidationResult.Success
@@ -362,8 +365,16 @@ object AppGraph {
         WidgetUpdates.requestCard(appContext)
     }
 
+    fun requestTimetableWidgetUpdate() {
+        WidgetUpdates.requestTimetable(appContext)
+    }
+
     val powerServiceOrNull: PowerService?
         get() = activePlugins.capability(PowerCapabilities.tangdaowan)
+
+    /** 课表组件只读本地缓存；插件未激活时返回 null，组件显示未同步而不是伪造空课。 */
+    val timetableServiceOrNull: TimetableService?
+        get() = activePlugins.capability(TimetableCapabilities.week)
 
     /**
      * 启动装配；由 Application 在设置 Context 后调用。

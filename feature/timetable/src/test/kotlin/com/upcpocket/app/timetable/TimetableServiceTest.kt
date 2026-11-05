@@ -75,6 +75,39 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun widgetSnapshotIsCacheOnlyAndHonestAboutMissingWeek() = runTest {
+        seedCacheAndSession()
+        val service = service(ProgrammedTransport { error("widget snapshot must not query") })
+        val snapshot = service.readWidgetSnapshot()
+        assertEquals(TimetableWidgetStatus.OK, snapshot.status)
+        assertEquals(today, snapshot.date)
+        assertEquals(
+            service.state.value.courseColorSlots.isEmpty(),
+            snapshot.courses.all { it.colorSlot == null },
+        )
+
+        cacheStore.clear()
+        val missing = service.readWidgetSnapshot()
+        assertEquals(TimetableWidgetStatus.NEEDS_SYNC, missing.status)
+    }
+
+    @Test
+    fun viewingAnotherWeekKeepsActualToday() = runTest {
+        val transport = ProgrammedTransport(indexAndWeekHandler())
+        val service = service(transport)
+        service.open()
+        val today = service.state.value.today
+        val todayMeetings = service.state.value.todayMeetings
+        assertTrue(service.state.value.todayLoaded)
+
+        service.selectWeek(9)
+        assertEquals(9, service.state.value.selectedWeek)
+        assertEquals(today, service.state.value.today)
+        assertEquals(todayMeetings, service.state.value.todayMeetings)
+        assertTrue(service.state.value.todayLoaded)
+    }
+
+    @Test
     fun selectingTermQueriesExactlyOneDefaultWeekAndKeepsTerm() = runTest {
         val transport = ProgrammedTransport { request ->
             if (request.method == "GET") {

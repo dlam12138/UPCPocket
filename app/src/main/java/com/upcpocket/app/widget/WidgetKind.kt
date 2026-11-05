@@ -29,6 +29,12 @@ enum class WidgetKind(
         providerClass = PowerWidgetProvider::class.java,
         uniqueWorkName = "widget-refresh-power",
     ),
+    TIMETABLE(
+        key = "timetable",
+        refreshAction = "com.upcpocket.app.action.REFRESH_TIMETABLE_WIDGET",
+        providerClass = TimetableWidgetProvider::class.java,
+        uniqueWorkName = "widget-refresh-timetable",
+    ),
     ;
 
     companion object {

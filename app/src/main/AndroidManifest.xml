@@ -63,9 +63,9 @@
         </activity>
 
         <!--
-            桌面小组件：校园卡余额、唐岛湾剩余电量，默认 2×2。
+            桌面小组件：校园卡余额、唐岛湾剩余电量、今日课表，默认 2×2，可扩到 4×2。
 
-            两个接收器都 exported=false：
+            三个接收器都 exported=false：
               · APPWIDGET_UPDATE 由系统以显式广播投递；
               · 刷新广播只来自本应用创建的显式、immutable PendingIntent。
             广播里只有 appWidgetId，不携带学号、楼号、房间号或 URL。
@@ -92,6 +92,17 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_power_balance_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TimetableWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_timetable_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_timetable_today_info" />
         </receiver>
     </application>
 

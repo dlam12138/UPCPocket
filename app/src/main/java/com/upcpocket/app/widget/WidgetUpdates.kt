@@ -10,6 +10,9 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.power.PowerSnapshot
+import com.upcpocket.app.timetable.TimetableWidgetRenderer
+import com.upcpocket.app.timetable.TimetableWidgetSnapshot
+import com.upcpocket.app.timetable.TimetableWidgetStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,12 +56,23 @@ object WidgetUpdates {
         scope.launch { runCatching { updateKind(appContext, WidgetKind.POWER) } }
     }
 
+    fun requestTimetable(context: Context) {
+        val appContext = context.applicationContext
+        scope.launch { runCatching { updateKind(appContext, WidgetKind.TIMETABLE) } }
+    }
+
     /**
      * 是否允许点击刷新。余额看当前绑定而不是旧成功快照；无绑定/清理中不得联网。
+     * 课表在账号仍在恢复时也必须入队，由 Worker 有界等待 restore；否则冷启动点击会被
+     * 这里的同步快照误判为“没有目标”而什么都不做。
      */
     fun hasTargetNow(kind: WidgetKind): Boolean = when (kind) {
-        WidgetKind.CARD -> AppGraph.cardServiceOrNull?.canRefreshNow() == true
+        // 进程冷启动时账号状态还是 LOADING，canRefreshNow() 必然为 false；此时若直接
+        // 丢弃点击，桌面刷新就永远要等用户先打开 Activity。先入队，由 Worker 有界等待
+        // restore；真正的账号/绑定校验仍在服务和 Worker 内。
+        WidgetKind.CARD -> AppGraph.cardServiceOrNull != null
         WidgetKind.POWER -> AppGraph.powerServiceOrNull?.cachedBlocking() != null
+        WidgetKind.TIMETABLE -> AppGraph.timetableServiceOrNull != null
     }
 
     /** 只读缓存，供 BroadcastReceiver 主线程快速渲染；不做网络请求、不迁移旧文件。 */
@@ -81,6 +95,7 @@ object WidgetUpdates {
                     )
                 }
             }
+            WidgetKind.TIMETABLE -> publishTimetable(appContext)
         }
     }
 
@@ -103,6 +118,7 @@ object WidgetUpdates {
                     )
                 }
             }
+            WidgetKind.TIMETABLE -> publishTimetable(appContext)
         }
     }
 
@@ -181,6 +197,47 @@ object WidgetUpdates {
         },
         refresh = { WidgetIntents.refresh(context, WidgetKind.POWER, widgetId) },
     )
+
+    private fun publishTimetable(context: Context) {
+        val ids = widgetIds(context, WidgetKind.TIMETABLE)
+        if (ids.isEmpty()) return
+        val state = WidgetStateStore(context)
+        val snapshot = AppGraph.timetableServiceOrNull?.readWidgetSnapshot()
+            ?: TimetableWidgetSnapshot(
+                status = TimetableWidgetStatus.NEEDS_SYNC,
+                date = null,
+            )
+        // 无账号/清理中本身已是明确状态，不再叠加“刷新失败”误导用户。
+        val canShowRefreshState = snapshot.status == TimetableWidgetStatus.OK ||
+            snapshot.status == TimetableWidgetStatus.NEEDS_SYNC
+        val refreshing = canShowRefreshState && state.isRefreshing(WidgetKind.TIMETABLE)
+        val failed = canShowRefreshState && !refreshing &&
+            state.error(WidgetKind.TIMETABLE) != null
+        val manager = AppWidgetManager.getInstance(context)
+        ids.forEach { id ->
+            // 2×2 也保留一条次课；4×2 只是同一布局获得更多宽度/高度，不另建入口。
+            manager.updateAppWidget(
+                id,
+                TimetableWidgetRenderer.render(
+                    context = context,
+                    snapshot = snapshot,
+                    showSecondary = true,
+                    refreshing = refreshing,
+                    failed = failed,
+                    openIntent = WidgetIntents.openApp(
+                        context,
+                        WidgetLaunchTarget.TIMETABLE,
+                        id,
+                    ),
+                    refreshIntent = WidgetIntents.refresh(
+                        context,
+                        WidgetKind.TIMETABLE,
+                        id,
+                    ),
+                ),
+            )
+        }
+    }
 
     private fun widgetIds(context: Context, kind: WidgetKind): IntArray =
         AppWidgetManager.getInstance(context)

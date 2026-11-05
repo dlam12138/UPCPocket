@@ -10,6 +10,7 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingException
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
+import com.upcpocket.app.data.chaoxing.ChaoxingReservationResult
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomDetail
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomPage
@@ -332,6 +333,44 @@ class ChaoxingService(
         date: String,
     ): List<ChaoxingTimeInterval> = callSession { cookie, _ ->
         repository.usedTimes(kind, cookie, roomId, seatNum, date)
+    }
+
+    /**
+     * 用户确认后的真实预约提交。只在当前会话/账号仍有效时发布结果；提交后账号变化时
+     * 返回 Unknown，不假装成功也不自动重试。调用方必须自行做座位/时段/已用状态校验。
+     */
+    suspend fun submitReservation(
+        kind: ChaoxingSeatKind,
+        roomId: Int,
+        date: String,
+        startMinute: Int,
+        endMinute: Int,
+        seatNum: String,
+    ): ChaoxingReservationResult {
+        val current = _session.value ?: throw ChaoxingSessionExpiredException()
+        val context = captureContext() ?: throw ChaoxingSessionExpiredException()
+        val result = try {
+            repository.submitReservation(
+                kind = kind,
+                cookieHeader = current.cookieHeader,
+                roomId = roomId,
+                date = date,
+                startMinute = startMinute,
+                endMinute = endMinute,
+                seatNum = seatNum,
+            )
+        } catch (expired: ChaoxingSessionExpiredException) {
+            signOutIfCurrent(current.cookieHeader)
+            throw expired
+        }
+        val stillCurrent = isCurrent(context) &&
+            _session.value?.cookieHeader == current.cookieHeader
+        if (!stillCurrent) {
+            return ChaoxingReservationResult.Unknown(
+                "账号或会话在提交期间发生变化，结果未知；请到官方预约记录核对，勿连续重试。",
+            )
+        }
+        return result
     }
 
     suspend fun signOut(): ChaoxingCleanupResult = performCleanup(expectedCookie = null)

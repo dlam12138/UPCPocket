@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_timetable_title">今日课表</string>
+    <string name="widget_refresh_timetable">刷新课表组件</string>
+    <string name="widget_timetable_open">点按打开课表</string>
+    <string name="widget_timetable_no_account">打开应用绑定学校账号</string>
+    <string name="widget_timetable_loading">正在恢复学校账号…</string>
+    <string name="widget_timetable_cleanup">学校账号清理中</string>
+    <string name="widget_timetable_needs_sync">打开应用同步课表</string>
+    <string name="widget_timetable_outside_term">今天不在教学周</string>
+    <string name="widget_timetable_empty">今天没有排课</string>
+    <string name="widget_timetable_unknown">时间待确认</string>
+</resources>

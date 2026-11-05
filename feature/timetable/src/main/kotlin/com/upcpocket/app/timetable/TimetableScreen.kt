@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -78,6 +79,7 @@ import com.upcpocket.app.ui.components.StatusPill
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,6 +112,7 @@ internal fun TimetableScreen(
     var loginUrl by remember { mutableStateOf<String?>(null) }
     var loginHint by remember { mutableStateOf<String?>(null) }
     var loginEpoch by remember { mutableStateOf(0L) }
+    var infoVisible by remember { mutableStateOf(false) }
     val visibleDetail = detail?.takeIf { selected ->
         state.meetings.any { it.instanceId == selected.instanceId }
     }
@@ -152,17 +155,11 @@ internal fun TimetableScreen(
         ),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("课表")
-                        Text(
-                            text = "只读 · 当前学期",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("课表") },
                 actions = {
+                    IconButton(onClick = { infoVisible = true }) {
+                        Icon(Icons.Outlined.Info, contentDescription = "课表说明与作息来源")
+                    }
                     IconButton(onClick = onOpenAccountSettings) {
                         Icon(
                             Icons.Outlined.AccountCircle,
@@ -211,8 +208,6 @@ internal fun TimetableScreen(
                     onOpenLogin = ::beginWebLogin,
                     onOpenWebLogin = ::beginWebLogin,
                 )
-            } else {
-                ConnectedStrip(onOpenWebLogin = ::beginWebLogin)
             }
 
             if (state.terms.isEmpty()) {
@@ -222,15 +217,14 @@ internal fun TimetableScreen(
                     NoTermsCard(onRetry = viewModel::refresh)
                 }
             } else {
+                // 固定页头 → 紧凑选择条 → 今日课程 → 周网格。大段声明收进说明按钮。
                 TermAndWeekHeader(
                     state = state,
                     onSelectTerm = viewModel::selectTerm,
                     onSelectWeek = viewModel::selectWeek,
                 )
-                // 先给整周网格让位；今日课程与只读说明保留，但放到网格之后。
-                WeekPanel(state, onCourseClick = { detail = it })
                 TodayPanel(state, onCourseClick = { detail = it })
-                ReadOnlyNote()
+                WeekPanel(state, onCourseClick = { detail = it })
             }
             Spacer(Modifier.height(2.dp))
         }
@@ -238,6 +232,15 @@ internal fun TimetableScreen(
 
     visibleDetail?.let { meeting ->
         CourseDetailDialog(meeting = meeting, onDismiss = { detail = null })
+    }
+    if (infoVisible) {
+        TimetableInfoDialog(
+            onDismiss = { infoVisible = false },
+            onOpenWebLogin = {
+                infoVisible = false
+                beginWebLogin()
+            },
+        )
     }
     if (loginVisible && loginUrl != null && loginEpoch == state.accountEpoch &&
         state.accountSavedUnverified && !state.accountBlocked
@@ -368,119 +371,126 @@ internal fun TermAndWeekHeader(
     val selectedWeek = state.selectedWeek
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    OutlinedButton(onClick = { menuOpen = true }) {
-                        Text(term.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Icon(
-                            Icons.Filled.ArrowDropDown,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
+        Row(
+            Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.weight(1f, fill = false)) {
+                TextButton(
+                    onClick = { menuOpen = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        term.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Icon(
+                        Icons.Filled.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuOpen,
+                    onDismissRequest = { menuOpen = false },
+                ) {
+                    state.terms.forEach { item ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    item.label,
+                                    fontWeight = if (item == term) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Normal
+                                    },
+                                )
+                            },
+                            onClick = {
+                                menuOpen = false
+                                onSelectTerm(item)
+                            },
                         )
                     }
-                    DropdownMenu(
-                        expanded = menuOpen,
-                        onDismissRequest = { menuOpen = false },
-                    ) {
-                        state.terms.forEach { item ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        item.label,
-                                        fontWeight = if (item == term) {
-                                            FontWeight.Bold
-                                        } else {
-                                            FontWeight.Normal
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    menuOpen = false
-                                    onSelectTerm(item)
-                                },
-                            )
-                        }
-                    }
                 }
-                Spacer(Modifier.weight(1f))
-                Text(
-                    "共 ${term.totalWeeks} 周",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            }
+            Text(
+                "共 ${term.totalWeeks} 周",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Spacer(Modifier.weight(1f))
+            IconButton(
+                onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
+                enabled = selectedWeek != null && selectedWeek > 1,
+                modifier = Modifier.size(34.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = "上一周",
                 )
             }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
-                    enabled = selectedWeek != null && selectedWeek > 1,
-                    modifier = Modifier.size(36.dp),
+            Box {
+                TextButton(
+                    onClick = { weekMenuOpen = true },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        contentDescription = "上一周",
-                    )
-                }
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    TextButton(onClick = { weekMenuOpen = true }) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "第 ${selectedWeek ?: "–"} 周",
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (rangeStart != null && rangeEnd != null) {
                             Text(
-                                "第 ${selectedWeek ?: "–"} 周",
-                                style = MaterialTheme.typography.titleMedium,
-                            )
-                            if (rangeStart != null && rangeEnd != null) {
-                                Text(
-                                    "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
-                                        " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    // 用下拉周选择替代占一整行的周次条，节省的纵向空间留给完整七天网格。
-                    DropdownMenu(
-                        expanded = weekMenuOpen,
-                        onDismissRequest = { weekMenuOpen = false },
-                    ) {
-                        (1..term.totalWeeks).forEach { week ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "第 $week 周",
-                                        fontWeight = if (state.selectedWeek == week) {
-                                            FontWeight.Bold
-                                        } else {
-                                            FontWeight.Normal
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    weekMenuOpen = false
-                                    onSelectWeek(week)
-                                },
+                                "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
+                                    " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
                 }
-                IconButton(
-                    onClick = {
-                        selectedWeek?.let {
-                            onSelectWeek((it + 1).coerceAtMost(term.totalWeeks))
-                        }
-                    },
-                    enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
-                    modifier = Modifier.size(36.dp),
+                // 用下拉周选择替代占一整行的周次条，节省的纵向空间留给完整七天网格。
+                DropdownMenu(
+                    expanded = weekMenuOpen,
+                    onDismissRequest = { weekMenuOpen = false },
                 ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = "下一周",
-                    )
+                    (1..term.totalWeeks).forEach { week ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "第 $week 周",
+                                    fontWeight = if (state.selectedWeek == week) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Normal
+                                    },
+                                )
+                            },
+                            onClick = {
+                                weekMenuOpen = false
+                                onSelectWeek(week)
+                            },
+                        )
+                    }
                 }
+            }
+            IconButton(
+                onClick = {
+                    selectedWeek?.let {
+                        onSelectWeek((it + 1).coerceAtMost(term.totalWeeks))
+                    }
+                },
+                enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
+                modifier = Modifier.size(34.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "下一周",
+                )
             }
         }
     }
@@ -581,7 +591,11 @@ internal fun WeekPanel(
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("教学周", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "周日至周六 · 上海时区",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Spacer(Modifier.weight(1f))
                 when (state.weekState) {
                     TimetableWeekState.READY -> StatusPill(
@@ -623,15 +637,7 @@ internal fun WeekPanel(
                 TimetableWeekState.EMPTY -> EmptyWeekHint("本周无课程")
                 TimetableWeekState.READY,
                 TimetableWeekState.CACHED,
-                -> {
-                    WeekGrid(state, onCourseClick)
-                    Text(
-                        "点课程查看详情 · 周末与晚间节次同表展示",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp, top = 4.dp),
-                    )
-                }
+                -> WeekGrid(state, onCourseClick)
             }
         }
     }
@@ -656,21 +662,23 @@ private fun EmptyWeekHint(text: String) {
     }
 }
 
-// 14 节 × 34dp = 476dp，配合压缩后的页头，常规竖屏可一次看到周一到周日；
-// 单节块仍保留 34dp 高，1.5× 字体下两行课名不会压到相邻节次。
-private val SLOT_HEIGHT = 34.dp
+// 14 节 × 44dp：左轴可读优先，常规竖屏仍保持完整七天；纵向随页面滚动。
+// 13–14 节没有学校官方时刻，显示“待确认”，不按等差推算，也不新增第 15 节。
+private val SLOT_HEIGHT = 44.dp
 private const val PERIODS = 14
-private val PERIOD_COLUMN_WIDTH = 18.dp
-private val MIN_DAY_WIDTH = 34.dp
+private val PERIOD_COLUMN_WIDTH = 48.dp
+private val DAY_HEADER_HEIGHT = 38.dp
+private val MIN_DAY_WIDTH = 38.dp
 
 @Composable
 private fun WeekGrid(
     state: TimetableUiState,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
-    val dates = state.weekDates.sortedBy { it.dayOfWeek.value }
-    if (dates.size != 7) return
-    val byDate = state.meetings.groupBy { it.date }
+    val view = remember(state.weekDates, state.meetings) {
+        runCatching { buildTimetableWeekView(state.weekDates, state.meetings) }.getOrNull()
+    } ?: return
+    val byDate = view.meetings.groupBy { it.date }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val available = maxWidth - PERIOD_COLUMN_WIDTH
         val dayWidth = (available / 7f).coerceAtLeast(MIN_DAY_WIDTH)
@@ -686,29 +694,58 @@ private fun WeekGrid(
             ),
         ) {
             Column(Modifier.width(PERIOD_COLUMN_WIDTH)) {
-                Spacer(Modifier.height(34.dp))
+                Spacer(Modifier.height(DAY_HEADER_HEIGHT))
                 repeat(PERIODS) { index ->
-                    Box(
+                    val period = index + 1
+                    val range = UpcTimetableSchedule.period(period)
+                    Column(
                         Modifier
                             .height(SLOT_HEIGHT)
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.TopCenter,
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
-                            "${index + 1}",
+                            "$period",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 8.sp,
-                            lineHeight = 9.sp,
+                            fontSize = 10.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
                         )
+                        if (range != null) {
+                            Text(
+                                range.startLabel,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 7.sp,
+                                lineHeight = 8.sp,
+                                maxLines = 1,
+                            )
+                            Text(
+                                range.endLabel,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 7.sp,
+                                lineHeight = 8.sp,
+                                maxLines = 1,
+                            )
+                        } else {
+                            Text(
+                                "待确认",
+                                color = MaterialTheme.colorScheme.outline,
+                                fontSize = 7.sp,
+                                lineHeight = 8.sp,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }
-            dates.forEach { date ->
+            view.dates.forEach { date ->
                 DayColumn(
                     date = date,
                     width = dayWidth,
                     isToday = date == state.today,
+                    known = date in view.knownDates,
                     meetings = byDate[date].orEmpty(),
                     colorSlots = state.courseColorSlots,
                     onCourseClick = onCourseClick,
@@ -723,6 +760,7 @@ private fun DayColumn(
     date: LocalDate,
     width: Dp,
     isToday: Boolean,
+    known: Boolean,
     meetings: List<TimetableMeeting>,
     colorSlots: Map<String, Int>,
     onCourseClick: (TimetableMeeting) -> Unit,
@@ -736,7 +774,7 @@ private fun DayColumn(
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(34.dp)
+                .height(DAY_HEADER_HEIGHT)
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(
                     if (isToday) {
@@ -769,6 +807,15 @@ private fun DayColumn(
                 lineHeight = 9.sp,
                 maxLines = 1,
             )
+            if (!known) {
+                Text(
+                    "未同步",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp,
+                    maxLines = 1,
+                )
+            }
         }
         BoxWithConstraints(
             Modifier
@@ -795,6 +842,16 @@ private fun DayColumn(
                             ),
                     )
                 }
+            }
+            if (!known) {
+                Text(
+                    "课程未同步",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp),
+                )
             }
 
             val lanes = laneInfo.second.coerceAtLeast(1)
@@ -829,13 +886,24 @@ private fun DayColumn(
                             meeting.courseName,
                             style = MaterialTheme.typography.labelMedium,
                             color = tone.content,
-                            fontSize = 9.sp,
-                            lineHeight = 10.sp,
+                            fontSize = 11.sp,
+                            lineHeight = 12.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
                         if (height >= 58.dp) {
+                            Text(
+                                UpcTimetableSchedule.label(meeting) ?: "时间待确认",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = tone.content.copy(alpha = 0.9f),
+                                fontSize = 8.sp,
+                                lineHeight = 9.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        if (height >= 76.dp) {
                             Text(
                                 meeting.location ?: "地点未提供",
                                 style = MaterialTheme.typography.labelSmall,
@@ -859,14 +927,39 @@ internal fun TodayPanel(
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val today = state.today
+    var now by remember { mutableStateOf(java.time.LocalTime.now(TIMETABLE_ZONE)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = java.time.LocalTime.now(TIMETABLE_ZONE)
+            delay(30_000)
+        }
+    }
+    val ranges = remember(state.todayMeetings) {
+        state.todayMeetings.associateWith { UpcTimetableSchedule.range(it) }
+    }
+    val nowMinute = now.hour * 60 + now.minute
+    val current = state.todayMeetings.firstOrNull { meeting ->
+        ranges[meeting]?.let { nowMinute in it.startMinute until it.endMinute } == true
+    }
+    val next = state.todayMeetings.firstOrNull { meeting ->
+        ranges[meeting]?.let { it.startMinute > nowMinute } == true
+    }
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("今日课程", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
                 if (today != null) {
                     Text(
                         "${today.monthValue}月${today.dayOfMonth}日 ${weekdayLabel(today.dayOfWeek.value)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (state.todayLoaded && state.todayFetchedAtEpochMillis != null) {
+                    Text(
+                        formatFetchedAt(state.todayFetchedAtEpochMillis),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -878,62 +971,90 @@ internal fun TodayPanel(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                today != null && !state.weekDates.contains(today) -> Text(
-                    "今日不在当前查看的教学周；请切换到本周查看。",
+                today == null -> Text(
+                    "今日日期不可用。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 state.todayMeetings.isEmpty() -> Text(
-                    "今日无课程",
+                    "今天没有排课",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 else -> state.todayMeetings.forEach { meeting ->
+                    val range = ranges[meeting]
+                    val ended = range != null && range.endMinute <= nowMinute
+                    val isCurrent = meeting == current
+                    val isNext = meeting == next
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { onCourseClick(meeting) }
-                            .padding(vertical = 5.dp),
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        val tone = courseTone(meeting, state.courseColorSlots[courseColorKey(meeting)])
                         Box(
                             Modifier
-                                .width(3.dp)
-                                .height(38.dp)
-                                .background(
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(2.dp),
-                                ),
+                                .width(4.dp)
+                                .height(34.dp)
+                                .background(tone.container, RoundedCornerShape(2.dp)),
                         )
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                            Text(
-                                meeting.courseName,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                            )
+                        Spacer(Modifier.width(8.dp))
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    meeting.courseName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                when {
+                                    isCurrent -> TodayTag("上课中", MaterialTheme.colorScheme.primary)
+                                    isNext -> TodayTag("下一堂", MaterialTheme.colorScheme.tertiary)
+                                }
+                            }
                             Text(
                                 listOfNotNull(
-                                    periodLabel(meeting),
+                                    range?.label ?: "时间待确认",
                                     meeting.location ?: "地点未提供",
-                                    meeting.teacher ?: "教师未提供",
+                                    if (range == null) periodLabel(meeting) else null,
                                 ).joinToString(" · "),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        Icon(
-                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(18.dp),
-                        )
+                        if (ended) {
+                            Text(
+                                "已结束",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline,
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun TodayTag(text: String, color: Color) {
+    Text(
+        text,
+        modifier = Modifier.padding(start = 6.dp),
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        fontWeight = FontWeight.SemiBold,
+    )
 }
 
 @Composable
@@ -979,7 +1100,11 @@ internal fun CourseDetailDialog(
                 DetailLine("周次", meeting.weekLabel)
                 DetailLine("教师", meeting.teacher ?: "未提供")
                 DetailLine("地点", meeting.location ?: "未提供")
-                DetailLine("上课时间", meeting.courseTime ?: "未提供")
+                DetailLine(
+                    "上课时间",
+                    UpcTimetableSchedule.label(meeting) ?: "时间待确认",
+                )
+                DetailLine("原始时间字段", meeting.courseTime ?: "未提供")
                 DetailLine("单双周源信息", meeting.weekType ?: "未提供")
                 DetailLine("课程类型", meeting.courseType ?: "未提供")
                 DetailLine("课程编号", meeting.courseId ?: "未提供")
@@ -992,7 +1117,8 @@ internal fun CourseDetailDialog(
                     )
                 }
                 Text(
-                    "以上字段均来自学校课表响应；未提供的钟点、校区或教室不做推测。",
+                    "钟点优先取自学校响应 course_time；缺失时仅查学校官方作息。" +
+                        "13–14 节没有官方时刻时显示“时间待确认”，不按等差推算。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1016,27 +1142,54 @@ private fun DetailLine(label: String, value: String) {
 }
 
 @Composable
-private fun ReadOnlyNote() {
-    GlassCard(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(14.dp),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(
-                Icons.Outlined.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                "课表为只读查询；学期、周次、节次与日期均按学校源数据展示。" +
-                    "不自动遍历整学期，不周期轮询，也不提供编辑、提醒或导出。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+private fun TimetableInfoDialog(
+    onDismiss: () -> Unit,
+    onOpenWebLogin: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("课表说明") },
+        text = {
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    "只读查询。学期、周次、节次、日期和课程时间均按学校响应展示；" +
+                        "不自动遍历整学期，不周期轮询，也不提供编辑、提醒或导出。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "周网格按真实日期连续展示周日至周六；查看其他教学周时，" +
+                        "“今日课程”仍按上海时区的实际今天计算。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "左轴 1–12 节使用学校 2020 年发布的作息；13–14 节没有可靠的" +
+                        "官方时刻，显示“时间待确认”，不按等差推算，也没有第 15 节。",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "作息来源：中国石油大学（华东）《关于调整作息时间的通知》\n" +
+                        UpcTimetableSchedule.SOURCE_URL,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "临时调课、停课或教室变更以学校通知为准；缓存会明确标注，“尚未查询”" +
+                        "不会显示成“没有课”。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = onOpenWebLogin) { Text("使用学校网页登录") }
+                TextButton(onClick = onDismiss) { Text("关闭") }
+            }
+        },
+    )
 }
 
 @Composable

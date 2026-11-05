@@ -36,6 +36,7 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
+import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.official.OfficialWebScreen
@@ -145,6 +146,14 @@ fun AppNav(
                 } else {
                     // 电量插件未激活时，旧组件仍可能带着这个入口；安全回到首页，
                     // 不导航到未注册路由，也不强行启动插件。
+                    navController.navigate(AppRoutes.HOME) { launchSingleTop = true }
+                }
+            }
+            WidgetLaunchTarget.TIMETABLE -> {
+                val timetablePage = pluginUi.page(TIMETABLE_ROUTE)
+                if (timetablePage != null) {
+                    navController.navigate(timetablePage.routeId.value) { launchSingleTop = true }
+                } else {
                     navController.navigate(AppRoutes.HOME) { launchSingleTop = true }
                 }
             }

@@ -2,11 +2,14 @@ package com.upcpocket.app.timetable
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.LocalDate
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -48,10 +51,16 @@ class TimetableWeekLayoutTest {
             }
         }
 
-        listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日").forEach { label ->
+        listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六").forEach { label ->
             rule.onNodeWithText(label).assertIsDisplayed()
         }
+        val sundayLeft = rule.onNodeWithText("周日").fetchSemanticsNode().boundsInRoot.left
+        val mondayLeft = rule.onNodeWithText("周一").fetchSemanticsNode().boundsInRoot.left
+        assertTrue("周日必须排在周一左侧", sundayLeft < mondayLeft)
         rule.onNodeWithText("1").assertExists()
         rule.onNodeWithText("14").assertExists()
+        rule.onNodeWithText("08:00").assertExists()
+        rule.onNodeWithText("08:45").assertExists()
+        rule.onAllNodesWithText("待确认").assertCountEquals(2)
     }
 }

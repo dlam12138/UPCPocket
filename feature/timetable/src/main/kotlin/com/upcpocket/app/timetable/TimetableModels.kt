@@ -189,6 +189,8 @@ data class TimetableUiState(
     val today: LocalDate? = null,
     val todayMeetings: List<TimetableMeeting> = emptyList(),
     val todayLoaded: Boolean = false,
+    /** 今日卡片实际使用的缓存/查询时间；查其他教学周时不会跟着变。 */
+    val todayFetchedAtEpochMillis: Long? = null,
     val message: String? = null,
     val interactionUrl: String? = null,
     val isBusy: Boolean = false,

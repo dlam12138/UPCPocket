@@ -51,6 +51,21 @@ class UpcPocketApp : Application() {
                 }
                 runCatching { AppGraph.prepareCardForAccount() }
                 AppGraph.requestCardWidgetUpdate()
+                AppGraph.requestTimetableWidgetUpdate()
+            }
+        }
+
+        // 课表查询成功/缓存落地后只重绘桌面组件，不额外联网；组件仍然只在点击刷新时
+        // 由 Worker 发起一次受控查询。这里只观察公开的周状态。
+        appScope.launch {
+            val service = AppGraph.timetableServiceOrNull ?: return@launch
+            service.state.collect { state ->
+                if (state.weekState == com.upcpocket.app.timetable.TimetableWeekState.READY ||
+                    state.weekState == com.upcpocket.app.timetable.TimetableWeekState.CACHED ||
+                    state.weekState == com.upcpocket.app.timetable.TimetableWeekState.EMPTY
+                ) {
+                    AppGraph.requestTimetableWidgetUpdate()
+                }
             }
         }
     }

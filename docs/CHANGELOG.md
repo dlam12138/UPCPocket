@@ -1,5 +1,16 @@
 # 更新与验证
 
+## M5.7 · 课表周日起点/官方作息/今日组件、余额冷启动刷新与超星原生提交（开发分支，未发布）
+
+- 课表周网格改为真实日期连续周日至周六；UPC 学期从周日起，源周顺序直接保留，不再按 ISO weekday 把周日排到最右。若源周不是周日起，按真实日期构造视窗并标出未覆盖日期，不旋转/重标课程。今日课程移到网格之前，查看其他教学周不再清空实际今天的快照；今日日期固定 `Asia/Shanghai`。
+- 左轴 48dp，按学校官方 1–12 节显示起止时间（响应 `course_time` 优先）；13–14 节无官方时刻显示“时间待确认”，不推算、不新增第 15 节。页面顺序固定为页头 → 单行学期/周次 → 今日 → 周网格，连接成功条和大段只读说明移除，说明/作息来源/网页登录收进信息按钮。
+- 新增今日课表 RemoteViews：默认 2×2，可拉宽 4×2；复用玻璃底/圆角/内边距/课程色槽；整卡进课表，右上 48dp 刷新独立 PendingIntent；无账号/恢复中/清理中/未同步/非教学周/今天无课/缓存日期不符分别显示，未知不显示成“无课”。只读账号归属的当前周缓存，不新建整份桌面快照。
+- 余额/课表组件冷启动：`hasTargetNow` 不再在 LOADING 时丢弃点击；Worker 有界等待 `account.restore()`，CARD 冷启动 token 为空时仍由服务内部绑定/代次门闩保护。API 36 模拟器 `emulator-5556` 用户 0 实测：添加余额 2×2 → `am force-stop` → 不打开 Activity 直接点刷新 → 进程重建、Worker `SUCCESS`、组件更新为一次真实查询并显示时间；未使用 `pm clear`/卸载。
+- 超星 seat/seatengine：从当前官方选座页脚本核对到 `data/apps/{seat,seatengine}/submit` 与页面级 `submit_enc`；`enc` 按官方 `submitVerify` 的 `[key=value]…[submit_enc]` 小写 MD5 形状生成，seat 含 `deptIdEnc`、seatengine 含 `wfwEngineEnc`。原生 UI 增加时段/座位选择、确认对话框、成功/拒绝/需验证/未知状态；已用未知或已用座位不能确认；只提交一次，超时/无法解析提示核对记录而不重试；验证码/风控只回官方页。取消/签到未实现。
+- 验证：`feature:timetable` **87 tests / 0 failures**（含周日起点、周一边界不重标、跨月/学期、官方 12 节、13–14 待确认、组件状态、今日跨周保留）；`feature:library` **113 tests / 0 failures**（含 5 个原生提交协议合成测试，仅 fake transport，无真实写）；`app` **32 tests / 0 failures**。`checkModuleBoundaries`、`:app:assembleDebug` 通过；timetable/library lint 0 errors/0 warnings，app lint 0 errors/2 个既有 warnings。
+- 模拟器：今日课表 2×2 添加、拖动右边框到 4×2、整卡点击打开课表 tab、刷新启动 Worker；因本机用户 0 的课表 CAS 要求交互，组件保持真实的“未同步”状态，截图 [70-timetable-widget-4x2-unsynced.png](m5/screenshots/70-timetable-widget-4x2-unsynced.png)。未执行真实预约/取消/签到，未恢复研讨间，未 push/merge/publish。
+- APK：`release/UPC-Pocket-M5-timetable-widget-reservation-debug.apk`，`67,465,826` bytes，SHA-256 `060AAF07951FAB8687BE62108E813D10856A4FA3B981C6ADD6C941AC516D4D31`。
+
 ## M5.6 · 空闲教室假空闲与超星保存学校账号自动登录（开发分支，未发布）
 
 - 空闲教室假空闲根因是字段语义反转：学校 `search-all` 的 `d.js` 是**空闲教室列表**（多节为“每一节都空闲”的交集），`d.all` 是全部目录；旧代码把 `d.js` 当占用列表，B328 第 1–2 节有课、第 3–5 节空闲，查询 1–5 节时未命中 `js` 反而显示绿色“空闲”。现改为 `available = code in js`，未命中/空列表/缺字段/未知码/解析失败/网络失败一律不默认空闲；默认日期固定 `Asia/Shanghai`，筛选变化取消在途请求并递增代次，只展示完整查询键相同的缓存与上海时区读取时间。
@@ -164,3 +175,4 @@
 - 古镇口未实现原生查询，学校证书、网络与页面变化可能影响访问。
 - Room 中保留旧课表表结构仅用于覆盖升级兼容；M3 课表使用独立 JSON 缓存，不读写这五张旧表，也不把它们当作 UPC 当前账号课表。
 - APK 内部版本 `0.2.7-lightly-preview`（19），沿用此前调试证书；本次以 GitHub Release 形式分发同一已验证包。
+

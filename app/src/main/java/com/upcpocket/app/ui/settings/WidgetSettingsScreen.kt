@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -40,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.widget.CardBalanceWidgetProvider
 import com.upcpocket.app.widget.PowerWidgetProvider
+import com.upcpocket.app.widget.TimetableWidgetProvider
 
 /**
  * 「设置 → 桌面组件」。
@@ -96,8 +98,8 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "两个组件都是 2×2。它们只读取本机上一次成功查询的快照；点组件刷新时" +
-                    "才发起一次查询，没有周期任务或后台轮询。",
+                text = "三个组件默认都是 2×2；课表组件可拉宽到 4×2。它们只读取本机上一次" +
+                    "成功查询的快照；点组件刷新时才发起一次受控查询，没有周期任务或后台轮询。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -123,6 +125,20 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                     pin(
                         ComponentName(context, PowerWidgetProvider::class.java),
                         "唐岛湾电量组件",
+                    )
+                },
+            )
+            WidgetCard(
+                title = "今日课表",
+                description = "显示下一堂/正在上的课、时间与地点；无账号、未同步和清理中" +
+                    "都有明确状态，不会把未知显示成没有课。",
+                icon = Icons.Outlined.CalendarMonth,
+                supported = supported,
+                sizeLabel = "2×2，可拉到 4×2 · 点击刷新",
+                onPin = {
+                    pin(
+                        ComponentName(context, TimetableWidgetProvider::class.java),
+                        "今日课表组件",
                     )
                 },
             )
@@ -154,6 +170,7 @@ private fun WidgetCard(
     description: String,
     icon: ImageVector,
     supported: Boolean,
+    sizeLabel: String = "2×2 · 点击刷新",
     onPin: () -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
@@ -164,7 +181,7 @@ private fun WidgetCard(
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "2×2 · 点击刷新",
+                        sizeLabel,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary,
                     )
