@@ -46,6 +46,7 @@ class DiagnosticStoreTest {
             file.mkdirs()
             file
         }
+        File(context.cacheDir, "diagnostic_exports").listFiles()?.forEach { it.delete() }
     }
 
     @After
@@ -53,6 +54,7 @@ class DiagnosticStoreTest {
         stores.forEach { it.close() }
         Diagnostics.install(null)
         directory.deleteRecursively()
+        File(context.cacheDir, "diagnostic_exports").listFiles()?.forEach { it.delete() }
     }
 
     @Test
@@ -150,6 +152,42 @@ class DiagnosticStoreTest {
     }
 
     @Test
+    fun eventsPersistAcrossStoreRecreation() = runBlocking {
+        val first = store()
+        first.record(event(action = DiagnosticAction.QUERY_START))
+        // Export acts as a barrier: it is processed after the queued record.
+        assertTrue(first.export(device()) is DiagnosticExportResult.Success)
+        first.close()
+        val second = store()
+        val result = second.export(device()) as DiagnosticExportResult.Success
+        assertEquals(1, result.eventCount)
+    }
+
+    @Test
+    fun accountClearGateDropsQueuedEventsAndKeepsNewOnes() = runBlocking {
+        val store = store()
+        store.record(event(action = DiagnosticAction.AUTH_START))
+        store.clearForAccountChange()
+        store.record(event(action = DiagnosticAction.QUERY_START))
+        val result = store.export(device()) as DiagnosticExportResult.Success
+        assertEquals(1, result.eventCount)
+        assertTrue(unzip(result.uri).getValue("events.jsonl").contains("QUERY_START"))
+    }
+
+    @Test
+    fun exportRetentionKeepsOnlyThreeZips() = runBlocking {
+        val exportDir = File(context.cacheDir, "diagnostic_exports").apply { mkdirs() }
+        repeat(5) { index ->
+            File(exportDir, "old-$index.zip").writeText("x")
+        }
+        val store = store()
+        store.record(event())
+        store.export(device())
+        val count = exportDir.listFiles { file -> file.name.endsWith(".zip") }?.size ?: 0
+        assertTrue(count <= DiagnosticStore.MAX_EXPORTS)
+    }
+
+    @Test
     fun malformedFileIsIgnoredInsteadOfCrashingExport() = runBlocking {
         val store = store()
         val root = File(directory, "root")
@@ -172,23 +210,29 @@ class DiagnosticStoreTest {
         assertFalse(info!!.exported)
         assertTrue(info.grantUriPermissions)
 
-        val exportFile = File(directory, "example.zip").apply { writeText("x") }
-        // Use the real provider path configuration only for the app cache directory.
-        val realExportDir = File(context.cacheDir, "diagnostic_exports").apply { mkdirs() }
-        val realFile = File(realExportDir, "probe.zip").apply { writeText("x") }
-        try {
-            val uri = FileProvider.getUriForFile(context, authority, realFile)
-            assertNotNull(uri)
-            assertFalse(
-                runCatching {
-                    FileProvider.getUriForFile(context, authority, exportFile)
-                }.isSuccess,
-            )
-        } finally {
-            realFile.delete()
-            realExportDir.delete()
-            exportFile.delete()
+        val parser = context.resources.getXml(com.upcpocket.app.R.xml.diagnostic_file_paths)
+        var cachePath: String? = null
+        var tagCount = 0
+        while (parser.next() != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            if (parser.eventType == org.xmlpull.v1.XmlPullParser.START_TAG &&
+                parser.name == "cache-path"
+            ) {
+                tagCount++
+                cachePath = parser.getAttributeValue(null, "path")
+                assertEquals("diagnostic_exports", parser.getAttributeValue(null, "name"))
+            }
         }
+        assertEquals(1, tagCount)
+        assertEquals("diagnostic_exports/", cachePath)
+        assertTrue(
+            runCatching {
+                FileProvider.getUriForFile(
+                    context,
+                    authority,
+                    File(context.filesDir, "outside.txt"),
+                )
+            }.isFailure,
+        )
     }
 
     @Test
@@ -210,9 +254,12 @@ class DiagnosticStoreTest {
             context = context,
             clock = { now },
             rootDirectory = File(directory, "root"),
-            exportDirectory = File(directory, "exports"),
+            // FileProvider only serves cacheDir/diagnostic_exports; use the real
+            // provider path so the test exercises the same URI contract as the app.
+            exportDirectory = File(context.cacheDir, "diagnostic_exports"),
             maxEventBytes = maxEventBytes,
             maxAgeMs = DiagnosticStore.MAX_AGE_MS,
+            uriFactory = { file -> android.net.Uri.fromFile(file) },
         ).also { stores += it }
 
     private fun event(
@@ -241,8 +288,12 @@ class DiagnosticStoreTest {
     )
 
     private fun unzip(uri: android.net.Uri): Map<String, String> {
-        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("cannot open $uri")
+        val bytes = if (uri.scheme == "file") {
+            File(uri.path ?: error("missing path")).readBytes()
+        } else {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: error("cannot open $uri")
+        }
         val result = linkedMapOf<String, String>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             while (true) {

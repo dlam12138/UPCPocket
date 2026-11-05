@@ -84,6 +84,8 @@ class DiagnosticStore(
     private val maxQueue: Int = MAX_QUEUE,
     private val maxExports: Int = MAX_EXPORTS,
     private val maxExportBytes: Long = MAX_EXPORT_BYTES,
+    /** Test seam; production always uses the app's scoped FileProvider. */
+    private val uriFactory: ((File) -> Uri)? = null,
 ) : DiagnosticSink {
 
     private val appContext = context.applicationContext
@@ -98,6 +100,7 @@ class DiagnosticStore(
     }
 
     private val eventsFile = File(rootDirectory, EVENTS_FILE)
+    private var lastCompactionAt = 0L
 
     init {
         runCatching { rootDirectory.mkdirs() }
@@ -211,11 +214,15 @@ class DiagnosticStore(
         val line = encode(event).toByteArray(Charsets.UTF_8)
         if (line.size + 1 > maxEventBytes) return
         val now = clock()
-        if (eventsFile.length() + line.size + 1 > maxEventBytes) {
+        if (now - lastCompactionAt >= COMPACT_INTERVAL_MS ||
+            eventsFile.length() + line.size + 1 > maxEventBytes
+        ) {
             compactLocked(now)
+            lastCompactionAt = now
         }
         if (eventsFile.length() + line.size + 1 > maxEventBytes) {
             compactLocked(now, maxKeepBytes = maxEventBytes - line.size - 1)
+            lastCompactionAt = now
         }
         if (eventsFile.length() + line.size + 1 > maxEventBytes) return
         runCatching {
@@ -287,6 +294,7 @@ class DiagnosticStore(
     }
 
     private fun clearLocked(): Boolean {
+        lastCompactionAt = 0L
         var success = true
         runCatching {
             if (eventsFile.exists() && !eventsFile.delete()) success = false
@@ -333,7 +341,7 @@ class DiagnosticStore(
                 return DiagnosticExportResult.Failure(DiagnosticExportFailure.IO)
             }
             val uri = runCatching {
-                FileProvider.getUriForFile(
+                uriFactory?.invoke(target) ?: FileProvider.getUriForFile(
                     appContext,
                     "${appContext.packageName}$AUTHORITY_SUFFIX",
                     target,
@@ -488,5 +496,6 @@ class DiagnosticStore(
         const val MAX_EXPORT_AGE_MS = 24L * 60L * 60L * 1000L
         private const val CLEAR_TIMEOUT_SECONDS = 10L
         private const val EXPORT_TIMEOUT_SECONDS = 20L
+        private const val COMPACT_INTERVAL_MS = 60_000L
     }
 }

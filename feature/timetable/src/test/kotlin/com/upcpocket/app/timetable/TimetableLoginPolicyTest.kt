@@ -103,6 +103,32 @@ class TimetableLoginPolicyTest {
     }
 
     @Test
+    fun destinationIsACoarseFixedCode() {
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.CAS_LOGIN,
+            TimetableLoginPolicy.destination("https://cas.upc.edu.cn/cas/login?service=synthetic"),
+        )
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.CAS_MOBILE,
+            TimetableLoginPolicy.destination("https://cas.upc.edu.cn/cas/cas/login-mobile.html"),
+        )
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.APP_CALLBACK,
+            TimetableLoginPolicy.destination(
+                "https://app.upc.edu.cn/a_upc/api/cas/login?ticket=secret",
+            ),
+        )
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.APP_PAGE,
+            TimetableLoginPolicy.destination("https://app.upc.edu.cn/site/weekschedule/index"),
+        )
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.UNKNOWN,
+            TimetableLoginPolicy.destination("https://evil.example/cas/login?token=secret"),
+        )
+    }
+
+    @Test
     fun hostForMessageDoesNotExposePathOrQuery() {
         assertEquals(
             "cas.upc.edu.cn",
