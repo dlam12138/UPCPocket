@@ -30,6 +30,8 @@ data class ChaoxingSeatUiState(
     val selectedStart: Int? = null,
     val selectedEnd: Int? = null,
     val usedSeats: Set<String> = emptySet(),
+    /** 只有成功读取过所选时段才为 true；失败时不能用空集合冒充“0 个已用”。 */
+    val usedSeatsLoaded: Boolean = false,
     val officialUrl: String = ChaoxingSeatKind.SEAT.officialUrl,
 )
 
@@ -60,6 +62,7 @@ class ChaoxingSeatViewModel(
             selectedStart = null,
             selectedEnd = null,
             usedSeats = emptySet(),
+            usedSeatsLoaded = false,
             error = null,
             sessionExpired = false,
         )
@@ -75,6 +78,7 @@ class ChaoxingSeatViewModel(
             selectedStart = null,
             selectedEnd = null,
             usedSeats = emptySet(),
+            usedSeatsLoaded = false,
             error = null,
         )
         loadRooms()
@@ -95,31 +99,33 @@ class ChaoxingSeatViewModel(
             selectedStart = null,
             selectedEnd = null,
             usedSeats = emptySet(),
+            usedSeatsLoaded = false,
         )
         viewModelScope.launch {
             try {
                 val detail = service.seatRoomDetail(current.kind, room.id, current.selectedDate)
+                if (_state.value.kind != current.kind ||
+                    _state.value.selectedDate != current.selectedDate
+                ) {
+                    return@launch
+                }
                 val step = detail.timeUnit
                 val start = detail.startMinute
                 val end = if (step > 0) minOf(start + step, detail.endMinute) else start
-                val used = if (end > start) {
-                    service.usedSeatNums(
-                        current.kind,
-                        room.id,
-                        start,
-                        end,
-                        current.selectedDate,
-                    )
-                } else {
-                    emptySet()
-                }
+                val hasInterval = end > start
+                val generation = ++timeRequestGeneration
+                // 座位图先落地；已用座位查询失败只让“已用”状态显示为未知，
+                // 不能把整张图丢掉，也不能用空集合冒充“0 个已用”。
                 _state.value = _state.value.copy(
                     detailBusy = false,
                     detail = detail,
-                    selectedStart = start.takeIf { end > start },
-                    selectedEnd = end.takeIf { end > start },
-                    usedSeats = used,
+                    selectedStart = start.takeIf { hasInterval },
+                    selectedEnd = end.takeIf { hasInterval },
+                    usedSeats = emptySet(),
+                    usedSeatsLoaded = false,
+                    detailError = null,
                 )
+                if (hasInterval) queryUsedSeats(detail, start, end, generation)
             } catch (expired: ChaoxingSessionExpiredException) {
                 _state.value = _state.value.copy(
                     detailBusy = false,
@@ -154,6 +160,7 @@ class ChaoxingSeatViewModel(
             selectedStart = start,
             selectedEnd = end,
             usedSeats = emptySet(),
+            usedSeatsLoaded = false,
             detailError = null,
         )
         queryUsedSeats(detail, start, end, generation)
@@ -169,6 +176,7 @@ class ChaoxingSeatViewModel(
         _state.value = current.copy(
             selectedEnd = end,
             usedSeats = emptySet(),
+            usedSeatsLoaded = false,
             detailError = null,
         )
         queryUsedSeats(detail, start, end, generation)
@@ -190,24 +198,32 @@ class ChaoxingSeatViewModel(
                     _state.value.selectedStart == start &&
                     _state.value.selectedEnd == end
                 ) {
-                    _state.value = _state.value.copy(usedSeats = used)
+                    _state.value = _state.value.copy(
+                        usedSeats = used,
+                        usedSeatsLoaded = true,
+                    )
                 }
             } catch (expired: ChaoxingSessionExpiredException) {
                 if (generation == timeRequestGeneration) {
                     _state.value = _state.value.copy(
                         sessionExpired = true,
+                        usedSeatsLoaded = false,
                         detailError = "Chaoxing 会话已失效，请重新网页登录。",
                     )
                 }
             } catch (failure: ChaoxingException) {
                 if (generation == timeRequestGeneration) {
                     _state.value = _state.value.copy(
+                        usedSeatsLoaded = false,
                         detailError = "已用座位读取失败：${failure.code}",
                     )
                 }
             } catch (_: Exception) {
                 if (generation == timeRequestGeneration) {
-                    _state.value = _state.value.copy(detailError = "已用座位读取失败；请重试。")
+                    _state.value = _state.value.copy(
+                        usedSeatsLoaded = false,
+                        detailError = "已用座位读取失败；请重试。",
+                    )
                 }
             }
         }
@@ -276,6 +292,7 @@ internal fun ChaoxingSeatUiState.afterCloseRoom(): ChaoxingSeatUiState =
         selectedStart = null,
         selectedEnd = null,
         usedSeats = emptySet(),
+        usedSeatsLoaded = false,
     )
 
 internal fun formatMinute(value: Int): String =

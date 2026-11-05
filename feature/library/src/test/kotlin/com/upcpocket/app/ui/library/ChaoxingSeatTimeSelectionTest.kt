@@ -16,7 +16,7 @@ class ChaoxingSeatTimeSelectionTest {
         timeUnit = 30,
         startMinute = 8 * 60,
         endMinute = 22 * 60,
-        places = listOf(ChaoxingSeatPlace("001", 0, 0, 30, 30, 0)),
+        places = listOf(ChaoxingSeatPlace("001", 0f, 0f, 30f, 30f, 0f)),
     )
 
     @Test

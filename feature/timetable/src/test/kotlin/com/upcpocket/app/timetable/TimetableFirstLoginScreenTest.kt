@@ -102,7 +102,8 @@ class TimetableFirstLoginScreenTest {
                 service.state.value.weekState == TimetableWeekState.READY
         }
         rule.onNodeWithText("关闭").performClick()
-        rule.onNodeWithText("第 8 周 / 共 19 周").assertExists()
+        rule.onNodeWithText("第 8 周").assertExists()
+        rule.onNodeWithText("共 19 周").assertExists()
         assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
     }
 

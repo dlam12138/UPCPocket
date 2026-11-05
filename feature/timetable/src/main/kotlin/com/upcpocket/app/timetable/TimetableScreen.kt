@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -41,7 +39,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -68,6 +65,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -186,8 +184,8 @@ internal fun TimetableScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.accountBlocked) {
                 AccountBlockedCard(
@@ -229,8 +227,9 @@ internal fun TimetableScreen(
                     onSelectTerm = viewModel::selectTerm,
                     onSelectWeek = viewModel::selectWeek,
                 )
-                TodayPanel(state, onCourseClick = { detail = it })
+                // 先给整周网格让位；今日课程与只读说明保留，但放到网格之后。
                 WeekPanel(state, onCourseClick = { detail = it })
+                TodayPanel(state, onCourseClick = { detail = it })
                 ReadOnlyNote()
             }
             Spacer(Modifier.height(2.dp))
@@ -363,12 +362,13 @@ internal fun TermAndWeekHeader(
 ) {
     val term = state.selectedTermOrNull ?: return
     var menuOpen by remember { mutableStateOf(false) }
+    var weekMenuOpen by remember { mutableStateOf(false) }
     val rangeStart = state.weekDates.minOrNull()
     val rangeEnd = state.weekDates.maxOrNull()
     val selectedWeek = state.selectedWeek
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     OutlinedButton(onClick = { menuOpen = true }) {
@@ -405,8 +405,8 @@ internal fun TermAndWeekHeader(
                 }
                 Spacer(Modifier.weight(1f))
                 Text(
-                    "第 ${state.selectedWeek ?: "–"} 周 / 共 ${term.totalWeeks} 周",
-                    style = MaterialTheme.typography.bodySmall,
+                    "共 ${term.totalWeeks} 周",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -415,27 +415,56 @@ internal fun TermAndWeekHeader(
                 IconButton(
                     onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
                     enabled = selectedWeek != null && selectedWeek > 1,
+                    modifier = Modifier.size(36.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                         contentDescription = "上一周",
                     )
                 }
-                Column(
+                Box(
                     modifier = Modifier.weight(1f),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        "第 ${selectedWeek ?: "–"} 周",
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    if (rangeStart != null && rangeEnd != null) {
-                        Text(
-                            "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
-                                " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    TextButton(onClick = { weekMenuOpen = true }) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                "第 ${selectedWeek ?: "–"} 周",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            if (rangeStart != null && rangeEnd != null) {
+                                Text(
+                                    "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
+                                        " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    // 用下拉周选择替代占一整行的周次条，节省的纵向空间留给完整七天网格。
+                    DropdownMenu(
+                        expanded = weekMenuOpen,
+                        onDismissRequest = { weekMenuOpen = false },
+                    ) {
+                        (1..term.totalWeeks).forEach { week ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "第 $week 周",
+                                        fontWeight = if (state.selectedWeek == week) {
+                                            FontWeight.Bold
+                                        } else {
+                                            FontWeight.Normal
+                                        },
+                                    )
+                                },
+                                onClick = {
+                                    weekMenuOpen = false
+                                    onSelectWeek(week)
+                                },
+                            )
+                        }
                     }
                 }
                 IconButton(
@@ -445,21 +474,11 @@ internal fun TermAndWeekHeader(
                         }
                     },
                     enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
+                    modifier = Modifier.size(36.dp),
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = "下一周",
-                    )
-                }
-            }
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(term.totalWeeks) { index ->
-                    val week = index + 1
-                    FilterChip(
-                        selected = state.selectedWeek == week,
-                        onClick = { onSelectWeek(week) },
-                        label = { Text("$week", fontSize = 12.sp) },
                     )
                 }
             }
@@ -560,7 +579,7 @@ internal fun WeekPanel(
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("教学周", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
@@ -583,7 +602,7 @@ internal fun WeekPanel(
                     else -> Unit
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             when (state.weekState) {
                 TimetableWeekState.NOT_QUERIED ->
                     EmptyWeekHint("该教学周尚未查询；切换周会按需查询。")
@@ -593,7 +612,7 @@ internal fun WeekPanel(
                     Box(
                         Modifier
                             .fillMaxWidth()
-                            .height(160.dp),
+                            .height(120.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
@@ -607,10 +626,10 @@ internal fun WeekPanel(
                 -> {
                     WeekGrid(state, onCourseClick)
                     Text(
-                        "左右滑动查看周末 · 点课程查看详情",
+                        "点课程查看详情 · 周末与晚间节次同表展示",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 2.dp, top = 8.dp),
+                        modifier = Modifier.padding(start = 2.dp, top = 4.dp),
                     )
                 }
             }
@@ -623,8 +642,8 @@ private fun EmptyWeekHint(text: String) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 112.dp)
-            .padding(horizontal = 18.dp, vertical = 20.dp),
+            .heightIn(min = 88.dp)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -637,9 +656,12 @@ private fun EmptyWeekHint(text: String) {
     }
 }
 
-private val SLOT_HEIGHT = 52.dp
-private val DAY_WIDTH = 66.dp
+// 14 节 × 34dp = 476dp，配合压缩后的页头，常规竖屏可一次看到周一到周日；
+// 单节块仍保留 34dp 高，1.5× 字体下两行课名不会压到相邻节次。
+private val SLOT_HEIGHT = 34.dp
 private const val PERIODS = 14
+private val PERIOD_COLUMN_WIDTH = 18.dp
+private val MIN_DAY_WIDTH = 34.dp
 
 @Composable
 private fun WeekGrid(
@@ -649,35 +671,48 @@ private fun WeekGrid(
     val dates = state.weekDates.sortedBy { it.dayOfWeek.value }
     if (dates.size != 7) return
     val byDate = state.meetings.groupBy { it.date }
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-    ) {
-        Column(Modifier.width(28.dp)) {
-            Spacer(Modifier.height(46.dp))
-            repeat(PERIODS) { index ->
-                Box(
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val available = maxWidth - PERIOD_COLUMN_WIDTH
+        val dayWidth = (available / 7f).coerceAtLeast(MIN_DAY_WIDTH)
+        // 极窄窗口（分屏/超大字体）才退回横滑；常规手机宽度七天直接同屏。
+        val needsScroll = dayWidth * 7 + PERIOD_COLUMN_WIDTH > maxWidth
+        Row(
+            Modifier.then(
+                if (needsScroll) {
+                    Modifier.horizontalScroll(rememberScrollState())
+                } else {
                     Modifier
-                        .height(SLOT_HEIGHT)
-                        .fillMaxWidth(),
-                    contentAlignment = Alignment.TopCenter,
-                ) {
-                    Text(
-                        "${index + 1}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                },
+            ),
+        ) {
+            Column(Modifier.width(PERIOD_COLUMN_WIDTH)) {
+                Spacer(Modifier.height(34.dp))
+                repeat(PERIODS) { index ->
+                    Box(
+                        Modifier
+                            .height(SLOT_HEIGHT)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.TopCenter,
+                    ) {
+                        Text(
+                            "${index + 1}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 8.sp,
+                            lineHeight = 9.sp,
+                        )
+                    }
                 }
             }
-        }
-        dates.forEach { date ->
-            DayColumn(
-                date = date,
-                isToday = date == state.today,
-                meetings = byDate[date].orEmpty(),
-                onCourseClick = onCourseClick,
-            )
+            dates.forEach { date ->
+                DayColumn(
+                    date = date,
+                    width = dayWidth,
+                    isToday = date == state.today,
+                    meetings = byDate[date].orEmpty(),
+                    onCourseClick = onCourseClick,
+                )
+            }
         }
     }
 }
@@ -685,6 +720,7 @@ private fun WeekGrid(
 @Composable
 private fun DayColumn(
     date: LocalDate,
+    width: Dp,
     isToday: Boolean,
     meetings: List<TimetableMeeting>,
     onCourseClick: (TimetableMeeting) -> Unit,
@@ -692,14 +728,14 @@ private fun DayColumn(
     val laneInfo = remember(meetings) { assignLanes(meetings) }
     Column(
         Modifier
-            .width(DAY_WIDTH)
-            .padding(horizontal = 1.dp),
+            .width(width)
+            .padding(horizontal = 0.5.dp),
     ) {
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(46.dp)
-                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .height(34.dp)
+                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(
                     if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
@@ -719,19 +755,24 @@ private fun DayColumn(
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
+                fontSize = 9.sp,
+                lineHeight = 10.sp,
+                maxLines = 1,
             )
             Text(
                 "${date.monthValue}/${date.dayOfMonth}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+                maxLines = 1,
             )
         }
         BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
                 .height(SLOT_HEIGHT * PERIODS)
-                .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
+                .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
                 .background(
                     if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
@@ -759,20 +800,20 @@ private fun DayColumn(
             meetings.forEachIndexed { index, meeting ->
                 val lane = laneInfo.first.getOrElse(index) { 0 }
                 val top = SLOT_HEIGHT * (meeting.startPeriod - 1)
-                val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 3.dp
-                val tone = courseTone(meeting.courseName)
+                val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 2.dp
+                val tone = courseTone(meeting)
                 Surface(
                     modifier = Modifier
                         .offset(x = laneWidth * lane + 1.dp, y = top + 1.dp)
-                        .width((laneWidth - 3.dp).coerceAtLeast(18.dp))
+                        .width((laneWidth - 2.dp).coerceAtLeast(14.dp))
                         .height(height)
-                        .clip(RoundedCornerShape(8.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .clickable { onCourseClick(meeting) }
                         .semantics {
                             contentDescription =
                                 "课程详情 ${meeting.courseName} ${meeting.sourcePeriodsLabel()}"
                         },
-                    shape = RoundedCornerShape(8.dp),
+                    shape = RoundedCornerShape(6.dp),
                     color = tone.container,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
@@ -780,26 +821,26 @@ private fun DayColumn(
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                            .padding(horizontal = 2.dp, vertical = 2.dp),
                     ) {
                         Text(
                             meeting.courseName,
                             style = MaterialTheme.typography.labelMedium,
                             color = tone.content,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp,
+                            fontSize = 9.sp,
+                            lineHeight = 10.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        if (height > 62.dp) {
+                        if (height >= 58.dp) {
                             Text(
                                 meeting.location ?: "地点未提供",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = tone.content.copy(alpha = 0.8f),
-                                fontSize = 9.sp,
-                                lineHeight = 11.sp,
-                                maxLines = 2,
+                                color = tone.content.copy(alpha = 0.85f),
+                                fontSize = 8.sp,
+                                lineHeight = 9.sp,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -993,19 +1034,6 @@ private fun ReadOnlyNote() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-    }
-}
-
-private data class ToneColors(val container: Color, val content: Color)
-
-@Composable
-private fun courseTone(courseName: String): ToneColors {
-    val scheme = MaterialTheme.colorScheme
-    return when (Math.floorMod(courseName.hashCode(), 4)) {
-        0 -> ToneColors(scheme.primaryContainer, scheme.onPrimaryContainer)
-        1 -> ToneColors(scheme.secondaryContainer, scheme.onSecondaryContainer)
-        2 -> ToneColors(scheme.tertiaryContainer, scheme.onTertiaryContainer)
-        else -> ToneColors(scheme.surfaceVariant, scheme.onSurfaceVariant)
     }
 }
 

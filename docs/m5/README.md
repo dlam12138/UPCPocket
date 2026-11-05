@@ -8,8 +8,8 @@ reservepc、求是 reservepc 的页面、路由、协议、Service、表单、�
 Chaoxing seatengine）。研究记录保留为归档，不代表现行产品能力；详见
 [图书馆六入口（历史研究）](图书馆六入口.md)。
 
-- 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）
-- 分支/工作树：`lody/m5-campus-home`；本会话工作树（独立于其他会话）
+- 基线：`93967b1`（`m4-library-unified-auth`，M4 修正）；2026-11-05 的五项修复从 `7265d0b` 续接，见 [验收记录](2026-11-05-验收.md)。
+- 分支/工作树：M5 第一版为 `lody/m5-campus-home`；2026-11-05 修复在 `session/04a980be-m5` 的独立工作树完成（未合并、未推送）。
 - 设计技能：`superdesign` 0.4.0 与本仓库 Android skills（`adaptive`、`edge-to-edge`）；
   外部设计服务没有承载任何学校账号、课程或 HAR。CLI 可用，但第一版使用本机设计上下文
   （`.superdesign/`，按 `.gitignore` 保留本机）和 Compose 原生实现，未把 Web/Tailwind 方案硬套到 Android。

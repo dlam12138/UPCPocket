@@ -4,6 +4,7 @@ import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoom
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomDetail
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -42,6 +43,7 @@ class ChaoxingSeatUiStateTest {
         assertNull(closed.detail)
         assertNull(closed.selectedStart)
         assertEquals(emptySet<String>(), closed.usedSeats)
+        assertFalse(closed.usedSeatsLoaded)
         org.junit.Assert.assertNull(closed.selectedEnd)
         assertEquals(ChaoxingSeatKind.SEATENGINE, closed.kind)
         assertEquals("2026-11-05", closed.selectedDate)

@@ -50,13 +50,21 @@ data class ChaoxingSeatRoomPage(
     val totalPage: Int,
 )
 
+/**
+ * 学校座位图画布上的一块座位。
+ *
+ * 真实 `getdrawseat` 返回的坐标/尺寸是浮点数（例如 `xleft:166.0`、
+ * `width:75.0`），旋转角可能是 630 这类超出 0–359 的值。这里保留画布单位，
+ * 不用像素/密度单位；缩放只发生在 UI 层。
+ */
 data class ChaoxingSeatPlace(
     val seatNum: String,
-    val x: Int,
-    val y: Int,
-    val width: Int,
-    val height: Int,
-    val rotate: Int,
+    val x: Float,
+    val y: Float,
+    val width: Float,
+    val height: Float,
+    /** 已归一化到 [0, 360)。 */
+    val rotate: Float,
 )
 
 data class ChaoxingSeatRoomDetail(

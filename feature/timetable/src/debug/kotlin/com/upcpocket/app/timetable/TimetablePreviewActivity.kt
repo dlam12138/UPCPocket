@@ -38,8 +38,12 @@ import java.time.LocalDate
 class TimetablePreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val dark = intent.getBooleanExtra("dark", false)
         setContent {
-            UpcPocketTheme(darkMode = DarkMode.LIGHT, preset = ThemePreset.BLUE) {
+            UpcPocketTheme(
+                darkMode = if (dark) DarkMode.DARK else DarkMode.LIGHT,
+                preset = ThemePreset.BLUE,
+            ) {
                 PreviewContent()
             }
         }
@@ -117,8 +121,8 @@ private fun PreviewContent() {
                     .padding(12.dp),
             )
             TermAndWeekHeader(state = state, onSelectTerm = {}, onSelectWeek = {})
-            TodayPanel(state = state, onCourseClick = { selected = it })
             WeekPanel(state = state, onCourseClick = { selected = it })
+            TodayPanel(state = state, onCourseClick = { selected = it })
         }
     }
     selected?.let { meeting ->
@@ -128,11 +132,26 @@ private fun PreviewContent() {
 
 private fun previewMeetings(dates: List<LocalDate>): List<TimetableMeeting> = listOf(
     previewMeeting("高等数学 A", 1, 1, 2, dates[1], "李老师", "南教 101", "08:00–09:35"),
+    previewMeeting("概率论与数理统计", 1, 1, 2, dates[1], "周老师", "南教 105", "08:00–09:35"),
     previewMeeting("大学物理", 1, 3, 4, dates[1], "王老师", "南教 203", "09:55–11:30"),
     previewMeeting("程序设计基础", 3, 6, 7, dates[3], "陈老师", "实验楼 302", "14:00–15:35"),
     previewMeeting("学术英语", 3, 9, 10, dates[3], "刘老师", "南教 405", "16:00–17:35"),
     previewMeeting("体育", 4, 3, 4, dates[4], "赵老师", "田径场", "09:55–11:30"),
     previewMeeting("数据结构", 5, 5, 6, dates[5], "孙老师", "南教 206", "14:00–15:35"),
+    previewMeeting(
+        "大学英语视听说（学术交流与跨文化沟通）",
+        2,
+        7,
+        8,
+        dates[2],
+        "杨老师",
+        "南教 512",
+        "14:00–15:35",
+    ),
+    previewMeeting("金工实习", 5, 11, 12, dates[5], "何老师", "工程训练中心", "19:00–20:35"),
+    previewMeeting("创新创业基础", 6, 3, 4, dates[6], "郑老师", "南教 301", "09:55–11:30"),
+    previewMeeting("电路分析", 7, 11, 12, dates[0], "冯老师", "南教 207", "19:00–20:35"),
+    previewMeeting("材料科学导论", 2, 1, 2, dates[2], "许老师", "南教 118", "08:00–09:35"),
 )
 
 private fun previewMeeting(

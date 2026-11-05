@@ -34,6 +34,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -122,16 +126,22 @@ private fun previewLayout(): LibrarySeatLayout {
 
 private fun previewPlaces(): List<ChaoxingSeatPlace> {
     val result = mutableListOf<ChaoxingSeatPlace>()
-    for (row in 0 until 5) {
-        for (col in 0 until 6) {
-            val number = row * 6 + col + 1
+    // 与真实 getdrawseat 相同的浮点坐标/尺寸/旋转形状：48 座长排，x 约 166–2811、
+    // 每排 y 间距 79、座位 75×75，rotate 会出现 630。座位号是合成值。
+    for (row in 0 until 3) {
+        for (col in 0 until 16) {
+            val number = row * 16 + col + 1
             result += ChaoxingSeatPlace(
                 seatNum = "%03d".format(number),
-                x = 70 + col * 100,
-                y = 70 + row * 92,
-                width = 72,
-                height = 58,
-                rotate = 0,
+                x = 166f + col * 160f + (row % 2) * 3f,
+                y = 131f + row * 79f,
+                width = 75f,
+                height = 75f,
+                rotate = when {
+                    row == 1 -> 630f
+                    col % 2 == 0 -> 270f
+                    else -> 90f
+                },
             )
         }
     }
@@ -140,8 +150,8 @@ private fun previewPlaces(): List<ChaoxingSeatPlace> {
 
 private val previewChaoxingDetail = ChaoxingSeatRoomDetail(
     roomId = 12814,
-    name = "求是图书馆-二楼-阶梯学习区",
-    capacity = 30,
+    name = "合成预览 · 长排座位图",
+    capacity = 48,
     timeUnit = 30,
     startMinute = 8 * 60,
     endMinute = 22 * 60,
@@ -359,6 +369,7 @@ private fun ChaoxingAreaPreview() {
 @Composable
 private fun ChaoxingSeatPreview(showTime: Boolean) {
     val detail = previewChaoxingDetail
+    var picked by remember { mutableStateOf("008") }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -384,7 +395,7 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("已选 008（仅查看）", fontWeight = FontWeight.SemiBold)
+                        Text("已选 $picked（仅查看）", fontWeight = FontWeight.SemiBold)
                         Text("08:00–10:00 · 2 小时 · 6 个已用", style = MaterialTheme.typography.labelSmall)
                     }
                     Button(onClick = {}) { Text("官方预约") }
@@ -424,8 +435,9 @@ private fun ChaoxingSeatPreview(showTime: Boolean) {
                 ChaoxingSeatMap(
                     places = detail.places,
                     usedSeats = setOf("003", "004", "011", "022"),
-                    selectedSeat = "008",
-                    onSelect = {},
+                    usedSeatsLoaded = true,
+                    selectedSeat = picked,
+                    onSelect = { picked = it },
                 )
             }
             if (showTime) {

@@ -76,7 +76,7 @@ class ChaoxingProtocolTest {
         """.trimIndent()
         val places = ChaoxingProtocol.parseSeatPlaces(map)
         assertEquals("001", places.single().seatNum)
-        assertEquals(166, places.single().x)
+        assertEquals(166f, places.single().x)
 
         val used = """
             {"success":true,"data":{"seatReserves":[
@@ -84,6 +84,47 @@ class ChaoxingProtocolTest {
             ]}}
         """.trimIndent()
         assertEquals(setOf("001", "002"), ChaoxingProtocol.parseUsedSeatNums(used))
+    }
+
+    @Test
+    fun `real seat map floats keep their canvas geometry and normalize rotation`() {
+        // 响应结构来自真实 getdrawseat（坐标/尺寸/旋转为浮点，rotate 会返回 630）；
+        // 座位号与 id 已替换为合成值，不含任何真实学生或预约数据。
+        val body = checkNotNull(
+            javaClass.classLoader?.getResourceAsStream("chaoxing/getdrawseat-synthetic.json"),
+        ).bufferedReader().use { it.readText() }
+
+        val places = ChaoxingProtocol.parseSeatPlaces(body)
+
+        assertEquals(6, places.size)
+        val first = places.first()
+        assertEquals("A01", first.seatNum)
+        assertEquals(166f, first.x)
+        assertEquals(131f, first.y)
+        assertEquals(75f, first.width)
+        assertEquals(75f, first.height)
+        assertEquals(270f, first.rotate)
+        assertEquals(270f, places.first { it.seatNum == "A04" }.rotate)
+        assertEquals(2736f, places.last().x)
+        assertTrue(places.all { it.width > 0f && it.height > 0f })
+    }
+
+    @Test
+    fun `seat map with only invalid geometry fails instead of rendering a blank map`() {
+        val body = """
+            {"success":true,"data":[
+              {"seatNum":"001","xleft":166.0,"ytop":131.0,"width":0.0,"height":75.0,"rotate":0}
+            ]}
+        """.trimIndent()
+        val failure = runCatching { ChaoxingProtocol.parseSeatPlaces(body) }.exceptionOrNull()
+        assertTrue(failure is ChaoxingException)
+        assertEquals("chaoxing_protocol", (failure as ChaoxingException).code)
+    }
+
+    @Test
+    fun `empty seat map array stays an explicit empty map`() {
+        val places = ChaoxingProtocol.parseSeatPlaces("""{"success":true,"data":[]}""")
+        assertTrue(places.isEmpty())
     }
 
     @Test

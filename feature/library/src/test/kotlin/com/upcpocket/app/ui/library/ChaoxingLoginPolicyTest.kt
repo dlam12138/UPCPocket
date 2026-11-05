@@ -21,6 +21,14 @@ class ChaoxingLoginPolicyTest {
         assertTrue(isAllowedChaoxingLoginUrl("https://tyrzfw.chaoxing.com/auth3/upc/cas/init"))
         assertTrue(isAllowedChaoxingLoginUrl("https://passport2-static.chaoxing.com/css/fanya/login.css"))
         assertTrue(isAllowedChaoxingLoginUrl("https://app.upc.edu.cn/uc/api/oauth/index"))
+        // 真实登录完成后的官方落点：casreceive -> i.chaoxing.com（302 到 /base）。
+        assertTrue(isAllowedChaoxingLoginUrl("https://i.chaoxing.com"))
+        assertTrue(isAllowedChaoxingLoginUrl("https://i.chaoxing.com/"))
+        assertTrue(isAllowedChaoxingLoginUrl("https://i.chaoxing.com/base"))
+        assertTrue(isAllowedChaoxingLoginUrl("https://i.chaoxing.com/base?fid=x"))
+        assertFalse(isAllowedChaoxingLoginUrl("https://i.chaoxing.com.evil.test/base"))
+        assertFalse(isAllowedChaoxingLoginUrl("https://i.chaoxing.com/other"))
+        assertFalse(isAllowedChaoxingLoginUrl("http://i.chaoxing.com/base"))
         assertFalse(isAllowedChaoxingLoginUrl("https://cas.upc.edu.cn/evil"))
         assertFalse(isAllowedChaoxingLoginUrl("https://office.chaoxing.com/data/apps/seat/room/list"))
     }
@@ -43,6 +51,17 @@ class ChaoxingLoginPolicyTest {
                 "https://office.chaoxing.com/front/third/apps/seat/index",
             ),
         )
+    }
+
+    @Test
+    fun `only the official sso landing triggers one seat reload`() {
+        assertTrue(shouldReloadSeatAfterSso("https://i.chaoxing.com/base"))
+        assertTrue(shouldReloadSeatAfterSso("https://i.chaoxing.com/"))
+        assertTrue(shouldReloadSeatAfterSso("https://i.chaoxing.com"))
+        assertFalse(shouldReloadSeatAfterSso("https://i.chaoxing.com/other"))
+        assertFalse(shouldReloadSeatAfterSso("https://passport2-api.chaoxing.com/api/v2/casreceive?x=1"))
+        assertFalse(shouldReloadSeatAfterSso("https://office.chaoxing.com/front/third/apps/seat/index"))
+        assertFalse(shouldReloadSeatAfterSso("http://i.chaoxing.com/base"))
     }
 
     @Test

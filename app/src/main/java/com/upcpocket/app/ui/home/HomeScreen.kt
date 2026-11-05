@@ -121,19 +121,6 @@ fun HomeScreen(
                 onOpenSettings = onOpenSettings,
             )
 
-            if (cardSections.isNotEmpty()) {
-                SectionHeader(
-                    title = "校园卡",
-                    modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
-                )
-                cardSections.forEach { section ->
-                    androidx.compose.runtime.key(section.entryId) {
-                        section.content(sectionHost)
-                    }
-                    Spacer(Modifier.height(4.dp))
-                }
-            }
-
             if (actions.isNotEmpty()) {
                 SectionHeader(
                     title = "常用服务",
@@ -164,6 +151,20 @@ fun HomeScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+            }
+
+            // 校园卡余额保留全部查询/绑定/历史/清缓存能力，只把区块移到首页内容底部。
+            if (cardSections.isNotEmpty()) {
+                SectionHeader(
+                    title = "校园卡",
+                    modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
+                )
+                cardSections.forEach { section ->
+                    androidx.compose.runtime.key(section.entryId) {
+                        section.content(sectionHost)
+                    }
+                    Spacer(Modifier.height(4.dp))
                 }
             }
 

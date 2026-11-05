@@ -10,6 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 /**
@@ -108,18 +109,31 @@ object ChaoxingProtocol {
 
     fun parseSeatPlaces(body: String): List<ChaoxingSeatPlace> {
         val data = dataArray(body)
-        return data.mapNotNull { item ->
+        val places = data.mapNotNull { item ->
             val obj = item as? JsonObject ?: return@mapNotNull null
             val seatNum = stringOrNull(obj, "seatNum") ?: return@mapNotNull null
+            // 真实响应是浮点数（166.0 / 75.0），也可能是字符串数字；不能按 Int 读取后
+            // 静默退化成 0，否则所有座位会叠在画布左上角，看起来像一张空白图。
+            val x = float(obj, "xleft") ?: return@mapNotNull null
+            val y = float(obj, "ytop") ?: return@mapNotNull null
+            val width = float(obj, "width") ?: return@mapNotNull null
+            val height = float(obj, "height") ?: return@mapNotNull null
+            if (width <= 0f || height <= 0f) return@mapNotNull null
+            val rawRotate = float(obj, "rotate") ?: 0f
+            val rotate = ((rawRotate % 360f) + 360f) % 360f
             ChaoxingSeatPlace(
                 seatNum = seatNum,
-                x = int(obj, "xleft") ?: 0,
-                y = int(obj, "ytop") ?: 0,
-                width = int(obj, "width") ?: 0,
-                height = int(obj, "height") ?: 0,
-                rotate = int(obj, "rotate") ?: 0,
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                rotate = rotate,
             )
         }
+        if (data.isNotEmpty() && places.isEmpty()) {
+            throw ChaoxingException("座位图坐标无效", "chaoxing_protocol")
+        }
+        return places
     }
 
     fun parseUsedSeatNums(body: String): Set<String> {
@@ -213,6 +227,12 @@ object ChaoxingProtocol {
     private fun int(obj: JsonObject?, key: String): Int? {
         val value = obj?.get(key) as? JsonPrimitive ?: return null
         return value.intOrNull ?: value.contentOrNull?.toIntOrNull()
+    }
+
+    private fun float(obj: JsonObject?, key: String): Float? {
+        val value = obj?.get(key) as? JsonPrimitive ?: return null
+        val number = value.doubleOrNull ?: value.contentOrNull?.toDoubleOrNull() ?: return null
+        return number.toFloat().takeIf { it.isFinite() }
     }
 
     private fun JsonPrimitive.longOrNull(): Long? =

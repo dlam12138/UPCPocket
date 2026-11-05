@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingWebCookies
+import com.upcpocket.app.data.school.loginHost
 import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
 import com.upcpocket.app.library.ChaoxingAuthFailure
 import com.upcpocket.app.library.ChaoxingCleanupResult
@@ -270,6 +271,7 @@ fun ChaoxingLoginScreen(
                             modifier = Modifier.fillMaxSize(),
                             factory = { context ->
                                 val pageEntryId = entry?.entryId
+                                var seatReloadTriggered = false
                                 @SuppressLint("SetJavaScriptEnabled")
                                 val view = WebView(context).apply {
                                     // Compose 的 AndroidView 容器不会替 WebView 设置
@@ -312,6 +314,19 @@ fun ChaoxingLoginScreen(
 
                                         override fun onPageFinished(view: WebView, url: String) {
                                             if (entry?.entryId != pageEntryId) return
+                                            // SSO 成功后会落在 i.chaoxing.com/base；此时还没有
+                                            // office 应用的 oa_uid/oa_deptid。回到座位入口一次，
+                                            // 让官方前端建立应用 Cookie，再走本人核验与发布门闩。
+                                            val hasOfficeSession = ChaoxingWebCookies.hasSessionCookie(
+                                                collectChaoxingCookies(CookieManager.getInstance()),
+                                            )
+                                            if (!seatReloadTriggered && !hasOfficeSession &&
+                                                shouldReloadSeatAfterSso(url)
+                                            ) {
+                                                seatReloadTriggered = true
+                                                view.loadUrl(UpcOfficialEntryLinks.SEAT)
+                                                return
+                                            }
                                             settlePageLoading(url)
                                             CookieManager.getInstance().flush()
                                             tryFinish()
@@ -327,7 +342,7 @@ fun ChaoxingLoginScreen(
                                                 return false
                                             }
                                             if (!isAllowedChaoxingLoginUrl(url)) {
-                                                error = "登录页跳转到了未允许的地址，已停止加载。"
+                                                error = "登录页跳转到了未允许的地址（${loginHost(url)}），已停止加载。"
                                                 pageLoading = false
                                                 return true
                                             }
@@ -494,6 +509,18 @@ internal fun shouldKeepLoginLoading(raw: String): Boolean {
         uri.host?.lowercase() in setOf("tyrzfw.chaoxing.com", "app.upc.edu.cn")
 }
 
+/**
+ * passport2-api/casreceive 成功后的官方落点。只在这个落点回跳一次座位入口，
+ * 避免用户在 i.chaoxing.com 首页停留、而应用还没拿到 office 应用 Cookie。
+ */
+internal fun shouldReloadSeatAfterSso(raw: String): Boolean {
+    val uri = runCatching { URI(raw) }.getOrNull() ?: return false
+    if (!uri.scheme.equals("https", true)) return false
+    if (!uri.host.equals("i.chaoxing.com", true)) return false
+    return uri.port in setOf(-1, 443) &&
+        (uri.path.isNullOrEmpty() || uri.path == "/" || uri.path == "/base" || uri.path == "/base/")
+}
+
 internal fun isAllowedChaoxingLoginUrl(raw: String): Boolean {
     val uri = runCatching { URI(raw) }.getOrNull() ?: return false
     if (!uri.scheme.equals("https", true) || uri.rawUserInfo != null) return false
@@ -510,6 +537,11 @@ internal fun isAllowedChaoxingLoginUrl(raw: String): Boolean {
         "tyrzfw.chaoxing.com" -> path.startsWith("/auth3/upc/")
         "cas.upc.edu.cn" -> path.startsWith("/cas/")
         "app.upc.edu.cn" -> path.startsWith("/uc/")
+        // passport2-api 的 casreceive 成功页会把主框架送到 i.chaoxing.com 的 /base
+        //（页面 302 到 /base；也可能先落在根路径）。这是官方登录完成后的落点，
+        // 只放行该落点，不放开整个 i.chaoxing.com 站点。
+        "i.chaoxing.com" -> path.isNullOrEmpty() || path == "/" ||
+            path == "/base" || path.startsWith("/base/")
         else -> true
     }
 }
@@ -524,6 +556,7 @@ internal val chaoxingLoginHosts = setOf(
     "tyrzfw.chaoxing.com",
     "cas.upc.edu.cn",
     "app.upc.edu.cn",
+    "i.chaoxing.com",
 )
 
 /**

@@ -400,7 +400,11 @@ private fun ChaoxingSeatDetailPage(
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            "$timeLabel · ${state.usedSeats.size} 个已用",
+                            "$timeLabel · " + if (state.usedSeatsLoaded) {
+                                "${state.usedSeats.size} 个已用"
+                            } else {
+                                "已用座位未取得"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -453,7 +457,11 @@ private fun ChaoxingSeatDetailPage(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     LegendDot(MaterialTheme.colorScheme.primary, "可选")
-                    LegendDot(MaterialTheme.colorScheme.error, "已用")
+                    if (state.usedSeatsLoaded) {
+                        LegendDot(MaterialTheme.colorScheme.error, "已用")
+                    } else {
+                        LegendDot(MaterialTheme.colorScheme.surfaceVariant, "已用未知")
+                    }
                     LegendDot(MaterialTheme.colorScheme.tertiary, "已选")
                 }
             }
@@ -464,6 +472,7 @@ private fun ChaoxingSeatDetailPage(
                     ChaoxingSeatMap(
                         places = detail.places,
                         usedSeats = state.usedSeats,
+                        usedSeatsLoaded = state.usedSeatsLoaded,
                         selectedSeat = selectedSeat,
                         onSelect = { selectedSeat = it },
                     )
@@ -555,16 +564,26 @@ private fun ChaoxingSeatDetailPage(
 internal fun ChaoxingSeatMap(
     places: List<ChaoxingSeatPlace>,
     usedSeats: Set<String>,
+    usedSeatsLoaded: Boolean,
     selectedSeat: String?,
     onSelect: (String) -> Unit,
 ) {
-    val maxX = places.maxOf { (it.x + it.width).coerceAtLeast(1) }.toFloat()
-    val maxY = places.maxOf { (it.y + it.height).coerceAtLeast(1) }.toFloat()
+    if (places.isEmpty()) return
+    val minX = places.minOf { it.x }
+    val minY = places.minOf { it.y }
+    val maxX = places.maxOf { it.x + it.width }
+    val maxY = places.maxOf { it.y + it.height }
+    val contentWidth = (maxX - minX).coerceAtLeast(1f)
+    val contentHeight = (maxY - minY).coerceAtLeast(1f)
+
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val available = (maxWidth - 24.dp).value.coerceAtLeast(280f)
-        val scale = (available / maxX).coerceIn(0.35f, 0.9f)
-        val mapWidth = (maxX * scale + 16f).dp
-        val mapHeight = (maxY * scale + 16f).dp
+        // 画布坐标来自学校，不能假设是 px/dp。优先按宽度完整放下；但长排座位图
+        // 缩到整屏会让座位只有几 dp、无法点选，因此保留一个可读下限并允许横滑。
+        val available = (maxWidth - 24.dp).value.coerceAtLeast(240f)
+        val fitScale = available / contentWidth
+        val scale = fitScale.coerceIn(0.28f, 0.9f)
+        val mapWidth = (contentWidth * scale + 16f).dp
+        val mapHeight = (contentHeight * scale + 16f).dp
         Box(
             Modifier.fillMaxWidth().heightIn(max = 430.dp)
                 .horizontalScroll(rememberScrollState())
@@ -572,49 +591,56 @@ internal fun ChaoxingSeatMap(
         ) {
             Box(Modifier.width(mapWidth).height(mapHeight).padding(8.dp)) {
                 places.forEach { place ->
-                val used = place.seatNum in usedSeats
-                val selected = place.seatNum == selectedSeat
-                val color = when {
-                    selected -> MaterialTheme.colorScheme.tertiaryContainer
-                    used -> MaterialTheme.colorScheme.errorContainer
-                    else -> MaterialTheme.colorScheme.primaryContainer
-                }
-                val textColor = when {
-                    selected -> MaterialTheme.colorScheme.onTertiaryContainer
-                    used -> MaterialTheme.colorScheme.onErrorContainer
-                    else -> MaterialTheme.colorScheme.onPrimaryContainer
-                }
-                Surface(
-                    modifier = Modifier
-                        .offset((place.x * scale).dp, (place.y * scale).dp)
-                        .size(
-                            width = (place.width * scale).dp.coerceAtLeast(28.dp),
-                            height = (place.height * scale).dp.coerceAtLeast(28.dp),
-                        )
-                        .graphicsLayer(rotationZ = place.rotate.toFloat())
-                        .semantics {
-                            contentDescription = "座位 ${place.seatNum}，" +
-                                if (used) "当前时段已用" else "当前时段可用"
+                    val used = place.seatNum in usedSeats
+                    val selected = place.seatNum == selectedSeat
+                    val color = when {
+                        selected -> MaterialTheme.colorScheme.tertiaryContainer
+                        !usedSeatsLoaded -> MaterialTheme.colorScheme.surfaceVariant
+                        used -> MaterialTheme.colorScheme.errorContainer
+                        else -> MaterialTheme.colorScheme.primaryContainer
+                    }
+                    val textColor = when {
+                        selected -> MaterialTheme.colorScheme.onTertiaryContainer
+                        !usedSeatsLoaded -> MaterialTheme.colorScheme.onSurfaceVariant
+                        used -> MaterialTheme.colorScheme.onErrorContainer
+                        else -> MaterialTheme.colorScheme.onPrimaryContainer
+                    }
+                    val seatWidth = (place.width * scale).dp.coerceAtLeast(22.dp)
+                    val seatHeight = (place.height * scale).dp.coerceAtLeast(22.dp)
+                    Surface(
+                        modifier = Modifier
+                            .offset(
+                                x = ((place.x - minX) * scale).dp,
+                                y = ((place.y - minY) * scale).dp,
+                            )
+                            .size(width = seatWidth, height = seatHeight)
+                            .graphicsLayer(rotationZ = place.rotate)
+                            .semantics {
+                                contentDescription = "座位 ${place.seatNum}，" + when {
+                                    !usedSeatsLoaded -> "当前时段已用状态未取得"
+                                    used -> "当前时段已用"
+                                    else -> "当前时段可用"
+                                }
+                            }
+                            .clickable { onSelect(place.seatNum) },
+                        shape = RoundedCornerShape(5.dp),
+                        color = color,
+                        tonalElevation = if (selected) 3.dp else 0.dp,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                place.seatNum,
+                                color = textColor,
+                                fontSize = if (seatWidth >= 26.dp) 9.sp else 8.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                            )
                         }
-                        .clickable { onSelect(place.seatNum) },
-                    shape = RoundedCornerShape(5.dp),
-                    color = color,
-                    tonalElevation = if (selected) 3.dp else 0.dp,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            place.seatNum,
-                            color = textColor,
-                            fontSize = 9.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Clip,
-                        )
                     }
                 }
             }
         }
     }
-}
 }
 
 @Composable
