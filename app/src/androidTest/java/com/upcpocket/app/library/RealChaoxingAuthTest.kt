@@ -81,6 +81,9 @@ class RealChaoxingAuthTest {
             accountGate = repository,
             accountReference = repository,
             identityVerifier = repository,
+            authenticator = ChaoxingAccountAuthenticator { _, _ ->
+                ChaoxingAccountAuthResult.Failure(ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE)
+            },
             clearCookies = { true },
         )
         service = chaoxing

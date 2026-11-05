@@ -36,6 +36,7 @@ class LibraryPlugin(
     account: SchoolAccountReferenceReader,
     identityVerifier: SchoolAccountIdentityVerifier,
     authenticator: LibraryAccountAuthenticator,
+    chaoxingAuthenticator: ChaoxingAccountAuthenticator,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = LIBRARY_PLUGIN_ID,
@@ -60,14 +61,15 @@ class LibraryPlugin(
     )
 
     /**
-     * Chaoxing 是独立 Cookie 会话：只接受应用内受限 WebView 的官方登录，
-     * 与 libseat seat token 不共享。
+     * Chaoxing 是独立 Cookie 会话：优先使用保存的学校账号走公共 CAS 自动登录，
+     * 验证码/二次验证才回退受限 WebView；与 libseat seat token 不共享。
      */
     val chaoxingService: ChaoxingService = ChaoxingService(
         repository = ChaoxingRepository(),
         accountGate = account,
         accountReference = account,
         identityVerifier = identityVerifier,
+        authenticator = chaoxingAuthenticator,
     )
 
     override fun capabilities(): List<PluginCapability> = listOf(

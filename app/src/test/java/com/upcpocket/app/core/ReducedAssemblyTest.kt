@@ -17,6 +17,7 @@ import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.focus.FocusCapabilities
 import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.library.ChaoxingAccountAuthenticator
 import com.upcpocket.app.library.LibraryAccountAuthenticator
 import com.upcpocket.app.library.LibraryAccountSettings
 import com.upcpocket.app.library.LibraryPlugin
@@ -71,6 +72,9 @@ class ReducedAssemblyTest {
                 SchoolAccountIdentityCheck.UNAVAILABLE
             },
             authenticator = LibraryAccountAuthenticator { _, _ ->
+                error("精简装配测试不得自动认证")
+            },
+            chaoxingAuthenticator = ChaoxingAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },
         )
@@ -155,6 +159,9 @@ class ReducedAssemblyTest {
                 SchoolAccountIdentityCheck.UNAVAILABLE
             },
             authenticator = LibraryAccountAuthenticator { _, _ ->
+                error("精简装配测试不得自动认证")
+            },
+            chaoxingAuthenticator = ChaoxingAccountAuthenticator { _, _ ->
                 error("精简装配测试不得自动认证")
             },
         )

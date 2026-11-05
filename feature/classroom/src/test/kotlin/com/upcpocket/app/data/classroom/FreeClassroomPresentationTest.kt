@@ -73,10 +73,10 @@ class FreeClassroomPresentationTest {
     fun `display groups keep free and occupied rooms with exact counts`() {
         val all = sampleResult(
             rooms = listOf(
-                room("A101", "A楼", occupied = false),
-                room("A102", "A楼", occupied = true),
-                room("B201", "B楼", occupied = false),
-                room("B202", "B楼", occupied = false),
+                room("A101", "A楼", available = true),
+                room("A102", "A楼", available = false),
+                room("B201", "B楼", available = true),
+                room("B202", "B楼", available = true),
             ),
         )
         val groups = all.displayGroups(onlyAvailable = false)
@@ -92,9 +92,9 @@ class FreeClassroomPresentationTest {
     fun `only available filters cells but keeps group totals and drops empty groups`() {
         val all = sampleResult(
             rooms = listOf(
-                room("A101", "A楼", occupied = false),
-                room("A102", "A楼", occupied = true),
-                room("B201", "B楼", occupied = true),
+                room("A101", "A楼", available = true),
+                room("A102", "A楼", available = false),
+                room("B201", "B楼", available = false),
             ),
         )
         val groups = all.displayGroups(onlyAvailable = true)
@@ -108,8 +108,8 @@ class FreeClassroomPresentationTest {
     fun `all free keeps every room and zero free is displayed as all occupied`() {
         val allFree = sampleResult(
             rooms = listOf(
-                room("A101", "A楼", occupied = false),
-                room("A102", "A楼", occupied = false),
+                room("A101", "A楼", available = true),
+                room("A102", "A楼", available = true),
             ),
         )
         assertEquals(2, allFree.displayGroups(false).single().freeCount)
@@ -117,8 +117,8 @@ class FreeClassroomPresentationTest {
 
         val allOccupied = sampleResult(
             rooms = listOf(
-                room("B201", "B楼", occupied = true),
-                room("B202", "B楼", occupied = true),
+                room("B201", "B楼", available = false),
+                room("B202", "B楼", available = false),
             ),
         )
         val occupiedGroups = allOccupied.displayGroups(false).single()
@@ -131,7 +131,8 @@ class FreeClassroomPresentationTest {
     fun `empty room directory is not an all free result`() {
         val empty = sampleResult(rooms = emptyList())
         assertTrue(empty.rooms.isEmpty())
-        assertEquals(0, empty.rooms.count { !it.occupied })
+        assertEquals(0, empty.rooms.count { it.available })
+        assertTrue(empty.availableRooms.isEmpty())
         assertTrue(empty.displayGroups(onlyAvailable = false).isEmpty())
     }
 
@@ -145,13 +146,13 @@ class FreeClassroomPresentationTest {
         assertFalse(result.matches(null))
     }
 
-    private fun room(code: String, building: String, occupied: Boolean) = FreeClassroomRoom(
+    private fun room(code: String, building: String, available: Boolean) = FreeClassroomRoom(
         code = code,
         name = code,
         building = building,
         campus = "唐岛湾校区",
         capacity = 60,
-        occupied = occupied,
+        available = available,
     )
 
     private fun sampleResult(rooms: List<FreeClassroomRoom>) = FreeClassroomResult(

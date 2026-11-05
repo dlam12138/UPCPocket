@@ -48,6 +48,9 @@ class LibraryPluginTest {
             authenticator = LibraryAccountAuthenticator { _, _ ->
                 error("插件装配测试不得自动认证")
             },
+            chaoxingAuthenticator = ChaoxingAccountAuthenticator { _, _ ->
+                error("插件装配测试不得自动认证")
+            },
         )
 
         val result = PluginRuntime()

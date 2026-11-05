@@ -63,9 +63,9 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 
 | 项目 | 说明 |
 | --- | --- |
-| 认证 | 受限官方 WebView；`passport2` 要求手机号/超星号 + 学习通密码，不是学校 CAS。应用不预填、不读取、不保存密码，也不把统一学校账号密码自动提交给 Chaoxing |
-| 会话 | 只读取应用 WebView 的 Chaoxing Cookie，保存在 `ChaoxingService` 内存；不写 DataStore/Keystore/文件/日志；退出、换号、删号或会话失效时清理固定 office/passport2 host/path Cookie。WebView 打开时捕获入口 `entryId/epoch/revision`；清理单飞进行中拒绝新登录，清理失败/超时保持失败状态并阻止登录，必须重试成功后才可再登录 |
-| 身份核验 | 服务端 `userLoginInfo.sno` 与当前统一账号比较；发布前复核 accountId/凭据代次/epoch/revision，迟到结果不发布 |
+| 认证 | 优先复用本机加密保存的学校账号，走 `cas.upc.edu.cn` 正常 CAS 表单；密码只提交给精确的 CAS 地址，不提交给 `passport2` 手机号/超星号表单。CAS 证书校验不关闭，逐跳校验 tyrzfw/passport2-api/office 固定 HTTPS 主机与路径。验证码/二次验证时回退受限官方 WebView，不绕过 |
+| 会话 | 自动认证在内存 CookieJar 中完成 CAS → tyrzfw → passport2-api → office 链路，只把 `office.chaoxing.com` 可用的 Cookie 头交给 `ChaoxingService` 内存；不写 DataStore/Keystore/文件/日志。WebView 回退仍只读取应用内官方登录 Cookie。退出、换号、删号或会话失效时清理固定 office/passport2 host/path Cookie；清理单飞进行中拒绝新登录，清理失败/超时保持失败状态并阻止登录，必须重试成功后才可再登录 |
+| 身份核验 | 服务端 `userLoginInfo.sno` 与当前统一账号比较；发布前复核 accountId/凭据代次/epoch/revision，迟到结果不发布；自动登录成功会使旧 WebView 入口失效 |
 | 读取 | seat/seatengine 固定 `/data/apps/{seat,seatengine}/...` 路径：区域、房间信息、座位图、已用座位、已用时段；不访问 reservepc |
 | 写入 | 本轮没有实现预约/取消/签到；seat/seatengine 原生页只读，真实预约走官方页 |
 | 浏览器隔离 | 不读取、不导入系统浏览器/Edge/微信/临时 profile 的 Cookie；受控 UI 验收的测试注入只用于测试，不是产品路径 |
@@ -79,7 +79,7 @@ M2 的校园卡余额只按账号登录名整串符合 8–16 位数字的本人
 | 唐岛湾电量 | 选择的楼号、寝室号 | 输入草稿、最后成功查询的房间、电量与时间 |
 | 空闲教室 | 校区、教学楼、日期、节次 | 页面查询状态 |
 | 图书馆座位 | 学校正常认证所需登录名/密码（仅认证适配）；libseat 接口只接收 seat token 与查询/预约参数 | 运行会话；开启记住登录后保存绑定 accountId/代次的业务令牌 |
-| 超星座位 | 本次应用 WebView 的 Chaoxing Cookie；固定区域/日期/座位/时段参数；不发送账号密码 | 仅内存 Cookie；不保存区域/座位结果；退出/换号即清 |
+| 超星座位 | 学校 CAS 正常登录所需登录名/密码（仅认证适配，只发往 `cas.upc.edu.cn`）；随后只向固定的 tyrzfw/passport2-api/office HTTPS 路径发送认证 Cookie；座位读取只带 office Cookie 与固定区域/日期/时段参数。验证码/二次验证回退 WebView，不把学校密码提交给 Chaoxing 表单 | 仅内存 Cookie；不保存区域/座位结果；退出/换号即清 |
 | 课表 | 学校 CAS 正常登录表单所需的登录名与密码（仅认证适配）；课表接口只接收课表业务 Cookie 与学年/学期/教学周 | 加密课表业务会话；按账号归属的成功教学周缓存、查询时间与完整性 |
 | 学校账号（M1/M2/M3/M4） | 余额只发送当前账号的受控学号；课表/图书馆认证只向核对后的 CAS HTTPS 端点发送账密 | 独立 alias 加密的账号与密码完整版本、代次和清理状态；余额快照/课表缓存/图书馆令牌另存且带账号归属 |
 | 专注 | 不需要校园网络请求 | 标签、计时记录和统计 |

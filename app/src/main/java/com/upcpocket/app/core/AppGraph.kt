@@ -22,6 +22,9 @@ import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.data.library.LibraryUser
+import com.upcpocket.app.library.ChaoxingAccountAuthResult
+import com.upcpocket.app.library.ChaoxingAccountAuthenticator
+import com.upcpocket.app.library.ChaoxingAuthFailure
 import com.upcpocket.app.library.LibraryAccountAuthFailure
 import com.upcpocket.app.library.LibraryAccountAuthResult
 import com.upcpocket.app.library.LibraryAccountAuthenticator
@@ -41,6 +44,9 @@ import com.upcpocket.app.timetable.TimetableCapabilities
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
+import com.upcpocket.app.upcauth.UpcChaoxingAuthResult
+import com.upcpocket.app.upcauth.UpcChaoxingAuthenticator
 import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
 import com.upcpocket.app.upcauth.UpcLibraryAuthResult
 import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
@@ -205,6 +211,25 @@ object AppGraph {
     }
 
     /**
+     * 超星认证适配：只在这里通过 core 的受控凭据和公共 CAS 引擎取得 office Cookie。
+     * 插件只拿到内存 Cookie 头，不依赖 core:account、不读密码。
+     */
+    private val chaoxingAuthenticator: ChaoxingAccountAuthenticator by lazy {
+        val core = UpcChaoxingAuthenticator(account)
+        ChaoxingAccountAuthenticator { accountId, generation ->
+            when (val result = core.authenticate(accountId, generation)) {
+                is UpcChaoxingAuthResult.Success ->
+                    ChaoxingAccountAuthResult.Success(result.cookieHeader)
+                is UpcChaoxingAuthResult.Failure ->
+                    ChaoxingAccountAuthResult.Failure(
+                        reason = result.reason.toFeatureFailure(),
+                        interactionUrl = result.interactionUrl,
+                    )
+            }
+        }
+    }
+
+    /**
      * 图书馆座位插件：内存会话归插件，持久副本用原有 Keystore 加密存储；
      * 宿主只提供“记住登录”偏好、受控认证适配和账号引用。
      */
@@ -215,6 +240,7 @@ object AppGraph {
             account = account,
             identityVerifier = account,
             authenticator = libraryAuthenticator,
+            chaoxingAuthenticator = chaoxingAuthenticator,
         )
     }
 
@@ -233,6 +259,18 @@ object AppGraph {
         UpcLibraryAuthFailure.ACCOUNT_CHANGED -> LibraryAccountAuthFailure.ACCOUNT_CHANGED
         UpcLibraryAuthFailure.ACCESS_DENIED -> LibraryAccountAuthFailure.ACCESS_DENIED
         UpcLibraryAuthFailure.IDENTITY_MISMATCH -> LibraryAccountAuthFailure.IDENTITY_MISMATCH
+    }
+
+    private fun UpcChaoxingAuthFailure.toFeatureFailure(): ChaoxingAuthFailure = when (this) {
+        UpcChaoxingAuthFailure.INVALID_CREDENTIALS -> ChaoxingAuthFailure.INVALID_CREDENTIALS
+        UpcChaoxingAuthFailure.INTERACTION_REQUIRED -> ChaoxingAuthFailure.INTERACTION_REQUIRED
+        UpcChaoxingAuthFailure.NETWORK_UNAVAILABLE -> ChaoxingAuthFailure.NETWORK_UNAVAILABLE
+        UpcChaoxingAuthFailure.TLS_ERROR -> ChaoxingAuthFailure.TLS_ERROR
+        UpcChaoxingAuthFailure.UPSTREAM_ERROR -> ChaoxingAuthFailure.UPSTREAM_ERROR
+        UpcChaoxingAuthFailure.PROTOCOL_ERROR -> ChaoxingAuthFailure.PROTOCOL_ERROR
+        UpcChaoxingAuthFailure.ACCOUNT_UNAVAILABLE -> ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE
+        UpcChaoxingAuthFailure.ACCOUNT_CHANGED -> ChaoxingAuthFailure.ACCOUNT_CHANGED
+        UpcChaoxingAuthFailure.ACCESS_DENIED -> ChaoxingAuthFailure.ACCESS_DENIED
     }
 
     /**

@@ -1,5 +1,13 @@
 # 更新与验证
 
+## M5.6 · 空闲教室假空闲与超星保存学校账号自动登录（开发分支，未发布）
+
+- 空闲教室假空闲根因是字段语义反转：学校 `search-all` 的 `d.js` 是**空闲教室列表**（多节为“每一节都空闲”的交集），`d.all` 是全部目录；旧代码把 `d.js` 当占用列表，B328 第 1–2 节有课、第 3–5 节空闲，查询 1–5 节时未命中 `js` 反而显示绿色“空闲”。现改为 `available = code in js`，未命中/空列表/缺字段/未知码/解析失败/网络失败一律不默认空闲；默认日期固定 `Asia/Shanghai`，筛选变化取消在途请求并递增代次，只展示完整查询键相同的缓存与上海时区读取时间。
+- 交叉核对：2026-11-05 10:54 当前同一天/同校区/同楼/同节次响应 `js=89`、`all=179`、B328 不在 `js`；App UI 显示“空闲 89 / 全部 179”，B328“占用”、B341“空闲”。这是当前响应，不冒充 09:19 历史重现；09:21 官方截图不是同教室对照。合成回归覆盖混合时段、空/缺失 `js`、错误码、日期/校区/楼、1–13 边界、默认时区与迟到响应。
+- 超星自动认证：新增 `UpcChaoxingAuthenticator`，复用保存的学校账密与公共 `UpcCasLogin`，走已确认的 `office → tyrzfw cas/init → cas.upc.edu.cn → tyrzfw cas/index → passport2-api casreceive → office` 链路；密码只提交给精确 CAS 地址，不提交给 passport2 手机号/超星号表单。逐跳校验 HTTPS host/path/端口、无 userinfo/fragment 与允许 query；只取 `office.chaoxing.com` 可用 Cookie 头，不持久化/不写日志；`userLoginInfo.sno` 本人核验后按 accountId/代次/epoch/revision/清理门闩发布，自动成功使旧 WebView entry 失效，失败不清理已有会话；验证码/二次验证回退受限 WebView。旧“必须独立学习通密码”的结论撤回。
+- 验证：`feature:classroom` **26 tests**、`core:upc-auth` **27 tests**、`feature:library` **108 tests（1 skipped）**、`feature:timetable` **77 tests**、`app` **32 tests**，均 0 failures；`RealChaoxingAutoAuthTest` 在 API 36 模拟器独立用户内 **1 test / 5.343s / 0 failures（最终 APK）**（无 Cookie 注入，CAS→office、本人核验、seat/seatengine 只读；测后删除私有凭据/账号并移除临时用户）；App UI 已验证空闲教室 B328 占用与 Chaoxing 自动登录入口/验证码回退；用户 0 的 UI 自动登录成功未复现，不冒充。`checkModuleBoundaries`、`:app:assembleDebug`、classroom/upc-auth/library lint 通过；app lint 0 errors/2 既有 warnings。
+- APK：`release/UPC-Pocket-M5-classroom-chaoxing-debug.apk`，`65,540,522` bytes，SHA-256 `159EFC4A137A50B1D6BDAC69AE64563C2CB91E3B1E8C30D4DFF4CBAA0872A277`。未 push/merge/publish；未执行真实预约/取消/签到；未恢复研讨间。
+
 ## M5.5 · 座位图浮点坐标、登录落点、课表整周/配色与首页顺序（开发分支，未发布）
 
 - 超星座位图空白根因是真实 `getdrawseat` 返回浮点 `xleft/ytop/width/height`（如 `166.0/75.0`），旧 Int 解析失败后退化为 0，所有座位叠在左上角；改为 Float、旋转归一化、真实包围盒缩放，并保留可读下限/横滑。已用座位查询与座位图分开，失败时明确“已用未知/已用座位未取得”，不再用 0 个已用掩盖未取得。

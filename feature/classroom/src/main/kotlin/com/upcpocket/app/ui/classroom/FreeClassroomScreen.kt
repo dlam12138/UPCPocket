@@ -113,11 +113,9 @@ fun FreeClassroomScreen(
     var detail by remember { mutableStateOf<RoomDetail?>(null) }
 
     val currentQuery = model.currentQuery()
-    val currentResult = model.result?.takeIf { it.matches(currentQuery) }
-    val staleResult = model.result?.takeIf { !it.matches(currentQuery) }
-    val displayResult = currentResult
-        ?: staleResult?.takeIf { model.error != null && !model.loading }
-    val isStale = displayResult != null && !displayResult.matches(currentQuery)
+    // 只展示完整查询键相同的缓存；筛选变了就回到“等待查询”，不把旧条件下的
+    // 房间网格当成当前结果。同一键的旧结果可以保留，但必须标出读取时间/失败状态。
+    val displayResult = model.result?.takeIf { it.matches(currentQuery) }
     val buildings = model.result
         ?.takeIf { it.query.campus == model.campus }
         ?.buildings
@@ -244,7 +242,6 @@ fun FreeClassroomScreen(
                         result = displayResult,
                         onlyAvailable = onlyAvailable,
                         onOnlyAvailableChange = { onlyAvailable = it },
-                        isStale = isStale,
                         loading = model.loading,
                         error = model.error != null,
                     )
@@ -257,7 +254,7 @@ fun FreeClassroomScreen(
                     }
                 } else {
                     val groups = displayResult.displayGroups(onlyAvailable)
-                    val freeCount = displayResult.rooms.count { !it.occupied }
+                    val freeCount = displayResult.rooms.count { it.available }
                     if (freeCount == 0 && !onlyAvailable) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "all-occupied") {
                             NoticeCard("所选节次下没有空闲教室，以下为占用教室。")
@@ -305,7 +302,8 @@ fun FreeClassroomScreen(
 
             item(span = { GridItemSpan(maxLineSpan) }, key = "footer") {
                 Text(
-                    "数据来源：学校空闲教室公开页面，只读查询，不提供预约。",
+                    "数据来源：学校空闲教室公开页面，只读查询，不提供预约。" +
+                        "绿色表示所选每一节都无排课；仅反映学校排课，临时占用/调课以现场为准。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -329,7 +327,8 @@ private fun ClassroomFilterPanel(
     onOpenCustomPeriods: () -> Unit,
     onQuery: () -> Unit,
 ) {
-    val enabled = !model.loading
+    // 查询期间筛选仍可改：ViewModel 会取消在途请求并递增代次，旧响应不能写回。
+    val filtersEnabled = true
     val dateLabel = remember(model.date) {
         model.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA))
     }
@@ -346,7 +345,7 @@ private fun ClassroomFilterPanel(
                     FilterChip(
                         selected = model.campus == campus,
                         onClick = { model.chooseCampus(campus) },
-                        enabled = enabled,
+                        enabled = filtersEnabled,
                         label = { Text(campus.label) },
                         modifier = Modifier.heightIn(min = 48.dp),
                     )
@@ -361,22 +360,22 @@ private fun ClassroomFilterPanel(
             ) {
                 OutlinedButton(
                     onClick = onOpenDate,
-                    enabled = enabled,
+                    enabled = filtersEnabled,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) {
                     Text(dateLabel, maxLines = 1, softWrap = false)
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { model.moveDate(-1) }, enabled = enabled) {
+                    IconButton(onClick = { model.moveDate(-1) }, enabled = filtersEnabled) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前一天")
                     }
                     TextButton(
-                        onClick = { model.chooseDate(LocalDate.now()) },
-                        enabled = enabled,
+                        onClick = { model.chooseDate(model.today()) },
+                        enabled = filtersEnabled,
                         contentPadding = PaddingValues(horizontal = 8.dp),
                     ) { Text("今天") }
-                    IconButton(onClick = { model.moveDate(1) }, enabled = enabled) {
+                    IconButton(onClick = { model.moveDate(1) }, enabled = filtersEnabled) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "后一天")
                     }
                 }
@@ -385,12 +384,12 @@ private fun ClassroomFilterPanel(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedButton(
                     onClick = onOpenBuilding,
-                    enabled = enabled,
+                    enabled = filtersEnabled,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                 ) {
                     Text(buildingLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                TextButton(onClick = onOpenCustomPeriods, enabled = enabled) {
+                TextButton(onClick = onOpenCustomPeriods, enabled = filtersEnabled) {
                     Text("自选节次")
                 }
             }
@@ -404,7 +403,7 @@ private fun ClassroomFilterPanel(
                     FilterChip(
                         selected = state == GroupSelectionState.ALL,
                         onClick = { model.toggleGroup(group) },
-                        enabled = enabled,
+                        enabled = filtersEnabled,
                         modifier = Modifier.heightIn(min = 48.dp),
                         label = {
                             Column {
@@ -447,7 +446,7 @@ private fun ClassroomFilterPanel(
 
             Button(
                 onClick = onQuery,
-                enabled = enabled && model.periods.isNotEmpty(),
+                enabled = !model.loading && model.periods.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
                 Text(
@@ -488,19 +487,17 @@ private fun ResultSummaryCard(
     result: FreeClassroomResult,
     onlyAvailable: Boolean,
     onOnlyAvailableChange: (Boolean) -> Unit,
-    isStale: Boolean,
     loading: Boolean,
     error: Boolean,
 ) {
-    val freeCount = result.rooms.count { !it.occupied }
+    val freeCount = result.rooms.count { it.available }
     val total = result.rooms.size
     val status = when {
-        isStale -> "本次查询失败，以下为上次成功结果（旧条件）"
         loading -> "正在更新，以下为上次成功结果"
         error -> "本次未能更新，以下为上次成功结果（同一条件）"
         else -> "查询成功"
     }
-    val statusColor = if (isStale || error) {
+    val statusColor = if (error) {
         MaterialTheme.colorScheme.error
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
@@ -516,7 +513,7 @@ private fun ResultSummaryCard(
         append(" 节")
     }
     val time = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss", Locale.CHINA)
-        .withZone(java.time.ZoneId.systemDefault())
+        .withZone(java.time.ZoneId.of("Asia/Shanghai"))
         .format(result.fetchedAt)
 
     GlassCard(Modifier.fillMaxWidth()) {
@@ -599,8 +596,8 @@ private fun RoomCell(
     room: FreeClassroomRoom,
     onClick: () -> Unit,
 ) {
-    val colors = roomColors(room.occupied)
-    val status = if (room.occupied) "占用" else "空闲"
+    val colors = roomColors(room.available)
+    val status = if (room.available) "空闲" else "占用"
     Surface(
         onClick = onClick,
         modifier = Modifier
@@ -653,19 +650,19 @@ private fun NoticeCard(text: String) {
 }
 
 @Composable
-private fun roomColors(occupied: Boolean): RoomColors {
+private fun roomColors(available: Boolean): RoomColors {
     val dark = isSystemInDarkTheme()
-    return if (occupied) {
-        if (dark) {
-            RoomColors(Color(0xFF4A2424), Color(0xFFFFDAD6))
-        } else {
-            RoomColors(Color(0xFFFBE4E4), Color(0xFF6B1B1B))
-        }
-    } else {
+    return if (available) {
         if (dark) {
             RoomColors(Color(0xFF173B2B), Color(0xFFB7E4C7))
         } else {
             RoomColors(Color(0xFFE1F4E9), Color(0xFF0B5138))
+        }
+    } else {
+        if (dark) {
+            RoomColors(Color(0xFF4A2424), Color(0xFFFFDAD6))
+        } else {
+            RoomColors(Color(0xFFFBE4E4), Color(0xFF6B1B1B))
         }
     }
 }
@@ -799,7 +796,7 @@ private fun RoomDetailDialog(
     onDismiss: () -> Unit,
 ) {
     val room = detail.room
-    val colors = roomColors(room.occupied)
+    val colors = roomColors(room.available)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(room.name) },
@@ -817,7 +814,11 @@ private fun RoomDetailDialog(
                     shape = RoundedCornerShape(8.dp),
                 ) {
                     Text(
-                        if (room.occupied) "占用" else "空闲",
+                        if (room.available) {
+                            "空闲（所选节次均无排课）"
+                        } else {
+                            "占用（至少一节有课）"
+                        },
                         Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,

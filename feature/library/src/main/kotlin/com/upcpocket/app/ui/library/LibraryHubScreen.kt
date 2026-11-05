@@ -183,7 +183,8 @@ fun LibraryHubScreen(
                 Text("打开学校图书馆官网（查找最新入口）")
             }
             Text(
-                "Chaoxing 座位首次需网页登录；真实预约、选座和签到在学校页面完成。",
+                "Chaoxing 座位优先用已保存学校账号自动登录；验证码/二次验证时改用学校网页登录。" +
+                    "真实预约、选座和签到在学校页面完成。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

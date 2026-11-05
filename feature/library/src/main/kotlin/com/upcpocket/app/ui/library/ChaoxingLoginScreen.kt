@@ -579,13 +579,20 @@ internal fun mergeCookieHeaders(first: String, second: String): String {
     return result.entries.joinToString("; ") { (name, value) -> "$name=$value" }
 }
 
-private fun chaoxingLoginMessage(reason: ChaoxingAuthFailure): String = when (reason) {
+internal fun chaoxingLoginMessage(reason: ChaoxingAuthFailure): String = when (reason) {
+    ChaoxingAuthFailure.INVALID_CREDENTIALS ->
+        "学校账号或密码未被接受，请更新学校账号后重试。"
+    ChaoxingAuthFailure.INTERACTION_REQUIRED ->
+        "学校要求验证码或二次验证，请使用网页登录完成。"
     ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE -> "本机学校账号不可用，请先重新保存账号。"
     ChaoxingAuthFailure.ACCOUNT_CHANGED -> "账号已变化；本次登录结果未发布。"
     ChaoxingAuthFailure.IDENTITY_MISMATCH -> "Chaoxing 返回的本人学号与当前账号不一致，已拒绝。"
     ChaoxingAuthFailure.SESSION_EXPIRED -> "Chaoxing 会话未建立或已失效，请重新登录。"
     ChaoxingAuthFailure.INVALID_SESSION -> "登录后没有取得有效 Chaoxing 会话。"
     ChaoxingAuthFailure.NETWORK_UNAVAILABLE -> "网络不可用，登录未完成。"
+    ChaoxingAuthFailure.TLS_ERROR -> "学校认证服务的 TLS 连接失败，未降级。"
+    ChaoxingAuthFailure.UPSTREAM_ERROR -> "学校认证服务暂时不可用，请稍后重试。"
+    ChaoxingAuthFailure.ACCESS_DENIED -> "学校拒绝了本次认证，请稍后重试。"
     ChaoxingAuthFailure.PROTOCOL_ERROR -> "Chaoxing 登录页/身份响应不符合已验证契约。"
     ChaoxingAuthFailure.CLEANUP_IN_PROGRESS ->
         "Chaoxing Cookie 清理进行中；完成前不会发布新会话。"

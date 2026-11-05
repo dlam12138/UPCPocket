@@ -40,8 +40,13 @@ data class FreeClassroomRoom(
     val building: String,
     val campus: String,
     val capacity: Int?,
-    /** 所选节次中有任意一节被学校标为占用，即不列为可用。 */
-    val occupied: Boolean,
+    /**
+     * 只有学校 `js`“空闲教室”列表明确包含该教室时才为 true。
+     *
+     * `js` 是多节查询下**每一节都空闲**的交集，不是占用列表；未命中、空列表、
+     * 缺字段或解析失败都不能当成空闲。
+     */
+    val available: Boolean,
 )
 
 data class FreeClassroomResult(
@@ -50,7 +55,7 @@ data class FreeClassroomResult(
     val rooms: List<FreeClassroomRoom>,
     val fetchedAt: Instant,
 ) {
-    val availableRooms: List<FreeClassroomRoom> get() = rooms.filterNot { it.occupied }
+    val availableRooms: List<FreeClassroomRoom> get() = rooms.filter { it.available }
 }
 
 fun interface FreeClassroomRepository {
@@ -59,7 +64,12 @@ fun interface FreeClassroomRepository {
 
 /**
  * 仅执行学校公开页正常使用的只读查询；不认证、不带账号或 Cookie、不跟随重定向。
- * 端点与字段已在 2026-10-27 匿名核验，详见 docs/空闲教室公开页面核验-2026-10-27.md。
+ *
+ * 2026-11-05 用同一天、同校区、同教学楼、同节次的公开响应复核：
+ * `d.js` 是**空闲教室**列表，多节查询返回“所选每一节都空闲”的交集；`d.all` 才是
+ * 全部教室目录。旧实现把 `d.js` 当占用列表，导致未命中（例如卓越 B328 第 1–2 节
+ * 有课、第 3–5 节空闲，查询第 1–5 节）反而显示为绿色“空闲”。任何未命中都不能
+ * 推断为可用。
  */
 class PublicFreeClassroomRepository : FreeClassroomRepository {
     override suspend fun query(query: FreeClassroomQuery): FreeClassroomResult = withContext(Dispatchers.IO) {
@@ -124,13 +134,15 @@ internal object FreeClassroomProtocol {
             }
             val data = root["d"] as? JsonObject ?: invalid()
             val all = groupedRooms(data["all"])
-            val occupied = groupedRooms(data["js"])
+            // `js` 是空闲教室列表；它是 `all` 的子集，不是占用列表。
+            val free = groupedRooms(data["js"])
+            if (free.keys.any { it !in all.keys }) invalid()
             val choices = data["listLh"] as? JsonArray ?: invalid()
             val buildings = choices.map { choice ->
                 val item = choice as? JsonObject ?: invalid()
                 requiredText(item, "id")
             }.distinct().let { if ("全部" in it) it else listOf("全部") + it }
-            val occupiedCodes = occupied.values.flatten().map { requiredText(it, "code") }.toSet()
+            val freeCodes = free.values.flatten().map { requiredText(it, "code") }.toSet()
             val rooms = all.flatMap { (groupName, groupRooms) ->
                 groupRooms.map { item ->
                     val code = requiredText(item, "code")
@@ -145,12 +157,12 @@ internal object FreeClassroomProtocol {
                         building = building,
                         campus = campus,
                         capacity = (item["num"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()?.takeIf { it > 0 },
-                        occupied = code in occupiedCodes,
+                        available = code in freeCodes,
                     )
                 }
             }
             val codes = rooms.map { it.code }.toSet()
-            if (rooms.size != codes.size || !codes.containsAll(occupiedCodes)) invalid()
+            if (rooms.size != codes.size || !codes.containsAll(freeCodes)) invalid()
             return FreeClassroomResult(query, buildings, rooms, fetchedAt)
         } catch (e: IOException) {
             throw e

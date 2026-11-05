@@ -23,6 +23,8 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 sealed interface ChaoxingLoginResult {
@@ -31,12 +33,17 @@ sealed interface ChaoxingLoginResult {
 }
 
 enum class ChaoxingAuthFailure {
+    INVALID_CREDENTIALS,
+    INTERACTION_REQUIRED,
     ACCOUNT_UNAVAILABLE,
     ACCOUNT_CHANGED,
     IDENTITY_MISMATCH,
     SESSION_EXPIRED,
     INVALID_SESSION,
     NETWORK_UNAVAILABLE,
+    TLS_ERROR,
+    UPSTREAM_ERROR,
+    ACCESS_DENIED,
     PROTOCOL_ERROR,
     CLEANUP_IN_PROGRESS,
     COOKIE_CLEANUP_FAILED,
@@ -89,6 +96,7 @@ class ChaoxingService(
     private val accountGate: SchoolAccountGate,
     private val accountReference: SchoolAccountReferenceReader,
     private val identityVerifier: SchoolAccountIdentityVerifier,
+    private val authenticator: ChaoxingAccountAuthenticator,
     private val clearCookies: suspend () -> Boolean = {
         ChaoxingWebCookies.clearAllAndAwait()
     },
@@ -102,6 +110,7 @@ class ChaoxingService(
     val accountState: StateFlow<SchoolAccountState> get() = accountGate.state
 
     private val stateLock = Any()
+    private val autoLoginMutex = Mutex()
     private var epoch = 0L
     private var revision = 0L
     private var entrySequence = 0L
@@ -206,6 +215,88 @@ class ChaoxingService(
                     ChaoxingLoginResult.Success
                 }
             }
+        }
+    }
+
+    /**
+     * 用本机已保存的学校账号走公共 CAS 引擎取得 Chaoxing 会话。
+     *
+     * 密码、票据、Cookie 只在本次调用内存在；身份核验和发布仍在同一把状态锁内完成。
+     * 自动登录失败不会清理已有会话；账号/代次/epoch/revision 变化时旧结果不能发布。
+     */
+    suspend fun loginWithSavedAccount(): ChaoxingLoginResult = autoLoginMutex.withLock {
+        val context = captureContext()
+            ?: return@withLock ChaoxingLoginResult.Failure(unavailableReason())
+        val auth = try {
+            authenticator.authenticate(context.accountId, context.generation.value)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.PROTOCOL_ERROR)
+        }
+        val cookieHeader = when (auth) {
+            is ChaoxingAccountAuthResult.Success -> auth.cookieHeader
+            is ChaoxingAccountAuthResult.Failure ->
+                return@withLock ChaoxingLoginResult.Failure(auth.reason)
+        }
+        if (!isPlausibleCookieHeader(cookieHeader)) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.INVALID_SESSION)
+        }
+        val user = try {
+            repository.identity(cookieHeader)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: ChaoxingSessionExpiredException) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.SESSION_EXPIRED)
+        } catch (_: ChaoxingException) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.PROTOCOL_ERROR)
+        } catch (_: Exception) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.NETWORK_UNAVAILABLE)
+        }
+        val identity = try {
+            identityVerifier.verifyLoginName(
+                context.accountId,
+                context.generation,
+                user.sno,
+            )
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE)
+        }
+        when (identity) {
+            SchoolAccountIdentityCheck.MISMATCH ->
+                return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.IDENTITY_MISMATCH)
+            SchoolAccountIdentityCheck.CHANGED ->
+                return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_CHANGED)
+            SchoolAccountIdentityCheck.UNAVAILABLE ->
+                return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE)
+            SchoolAccountIdentityCheck.MATCH -> Unit
+        }
+        synchronized(stateLock) {
+            when {
+                cleanupInProgress ->
+                    ChaoxingLoginResult.Failure(ChaoxingAuthFailure.CLEANUP_IN_PROGRESS)
+                cleanupFailed ->
+                    ChaoxingLoginResult.Failure(ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED)
+                !isCurrent(context) ->
+                    ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_CHANGED)
+                else -> {
+                    _session.value = ChaoxingSession(cookieHeader, user)
+                    revision++
+                    // 自动登录成功即让旧的网页登录入口失效。
+                    activeEntryId = null
+                    ChaoxingLoginResult.Success
+                }
+            }
+        }
+    }
+
+    private fun unavailableReason(): ChaoxingAuthFailure = synchronized(stateLock) {
+        when {
+            cleanupInProgress -> ChaoxingAuthFailure.CLEANUP_IN_PROGRESS
+            cleanupFailed -> ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED
+            else -> ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE
         }
     }
 

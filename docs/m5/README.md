@@ -294,10 +294,11 @@ Activity WebView、裸 Compose `AndroidView`、实际登录页三层对比拆开
 
 ### 5.1 本轮 APK
 
-- 评审副本：`release/UPC-Pocket-M5-library-chaoxing-login-fix-debug.apk`
+- 评审副本（2026-11-05 追加两项后）：`release/UPC-Pocket-M5-classroom-chaoxing-debug.apk`
 - 构建产物：`app/build/outputs/apk/debug/app-debug.apk`
-- 大小：`65,526,518` bytes
-- SHA-256：`545394CEBAFEBB0706AA47D8EDA3C10CCE15104164E3B59F57382053C46FA418`
+- 大小：`65,540,522` bytes
+- SHA-256：`159EFC4A137A50B1D6BDAC69AE64563C2CB91E3B1E8C30D4DFF4CBAA0872A277`
+- 更早的 `UPC-Pocket-M5-library-chaoxing-login-fix-debug.apk` 是历史构建，不再作为当前交付物。
 - 该 APK 为 debug 构建，含 debug-only 合成课表预览与座位预览 Activity；release 构建不会合并它们。未上传、未发布。
 - 临时 Chaoxing WebView 探针已从源码和 debug manifest 删除，不进入本 APK。
 
@@ -307,10 +308,11 @@ Activity WebView、裸 Compose `AndroidView`、实际登录页三层对比拆开
   [图书馆六入口（归档）](图书馆六入口.md) 和 `docs/research/`，不代表现行产品能力。
 - 截图 35–44 是 Debug 合成预览，用于评审布局、深色、1.5× 和时长选择，不连接学校、没有账号/真实数据；
   真实 libseat 区域/座位/时段仍需登录后由学校接口返回，本轮没有使用真实账密重验。
-- Chaoxing 空 CAS 登录表单已在本轮实际显示并验证；真实 App 内登录仍未验收：`passport2`
-  要求手机号/超星号 + 学习通密码，不是学校 CAS；不能把统一学校账号密码自动提交。受控 UI
-  验收只在测试进程注入过一次本机已登录会话 Cookie，测试结束只清理私有文件；本轮未再
-  `pm clear`。本轮没有输入真实 Chaoxing/学校密码。
+- 2026-11-05 追加：Chaoxing 已改为优先复用本机保存的学校账号走公共 CAS 引擎自动登录；
+  `passport2` 手机号/超星号表单只作为验证码/二次验证时的 WebView 回退，不再要求独立学习通
+  密码。真实自动认证已在 API 36 模拟器进程内用私有凭据完成（CAS → tyrzfw → passport2-api
+  → office，`userLoginInfo.sno` 本人核验，seat/seatengine 只读）；不属于 Cookie 注入测试。
+  旧的“不能自动提交学校密码”结论只适用于当时代理链路，已撤回。
 - 截图中的合成课表只覆盖视觉状态，不等于真实协议数据；真实数据仍受 M3 的账号、会话、缓存与
   服务端校验约束。
 - 1.5× 下教学周头部计数会自然换行；布局可滚动、不重叠，但还未针对 2.0× 单独适配。

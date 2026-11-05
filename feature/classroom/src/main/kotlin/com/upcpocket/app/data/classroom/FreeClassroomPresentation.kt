@@ -76,15 +76,17 @@ data class BuildingRoomGroup(
 /**
  * 展示用分组。默认展示全部教室（空闲+占用）；“仅看空闲”只过滤格子，
  * 组头的空闲/总数仍按学校返回的整组计算。
+ *
+ * “空闲”只来自 `js` 的明确命中；未命中一律按占用展示，避免把未知当空闲。
  */
 fun FreeClassroomResult.displayGroups(onlyAvailable: Boolean): List<BuildingRoomGroup> =
     rooms.groupBy { it.building }
         .map { (building, groupRooms) ->
-            val shown = if (onlyAvailable) groupRooms.filterNot { it.occupied } else groupRooms
+            val shown = if (onlyAvailable) groupRooms.filter { it.available } else groupRooms
             BuildingRoomGroup(
                 building = building,
                 rooms = shown,
-                freeCount = groupRooms.count { !it.occupied },
+                freeCount = groupRooms.count { it.available },
                 totalCount = groupRooms.size,
             )
         }

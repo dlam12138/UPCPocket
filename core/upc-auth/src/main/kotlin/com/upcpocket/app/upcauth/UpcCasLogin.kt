@@ -299,6 +299,9 @@ internal class UpcCasHttpSession(
     }
 
     fun appCookies(): List<UpcAuthCookie> = jar.appCookies()
+
+    /** 只返回与目标 URL 的 host/path/secure 匹配的 Cookie；调用方不得记录返回值。 */
+    fun cookieHeader(url: String): String? = jar.header(url)
 }
 
 internal fun UpcAuthHttpResponse.text(): String = body.toString(StandardCharsets.UTF_8)

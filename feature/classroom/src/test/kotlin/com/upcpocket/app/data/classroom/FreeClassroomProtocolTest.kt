@@ -31,12 +31,12 @@ class FreeClassroomProtocolTest {
     }
 
     @Test
-    fun `occupied room code is excluded even if array order differs`() {
+    fun `only a room explicitly present in the free list is available`() {
         val result = FreeClassroomProtocol.parse(sample, query, now)
         assertEquals(listOf("全部", "东廊"), result.buildings)
         assertEquals(2, result.rooms.size)
-        assertTrue(result.rooms.single { it.code == "DL102" }.occupied)
-        assertFalse(result.rooms.single { it.code == "DL101" }.occupied)
+        assertTrue(result.rooms.single { it.code == "DL101" }.available)
+        assertFalse(result.rooms.single { it.code == "DL102" }.available)
         assertEquals(listOf("DL101"), result.availableRooms.map { it.code })
         assertEquals(184, result.availableRooms.single().capacity)
         assertEquals(query, result.query)
@@ -44,9 +44,18 @@ class FreeClassroomProtocolTest {
     }
 
     @Test
-    fun `valid empty occupancy array means no occupied rooms`() {
-        val result = FreeClassroomProtocol.parse(sample.replace(occupied, "[]"), query, now)
-        assertEquals(2, result.availableRooms.size)
+    fun `empty free list means no room is available`() {
+        val result = FreeClassroomProtocol.parse(sample.replace(free, "[]"), query, now)
+        assertTrue(result.rooms.isNotEmpty())
+        assertTrue(result.rooms.none { it.available })
+        assertTrue(result.availableRooms.isEmpty())
+    }
+
+    @Test
+    fun `missing free list never turns every room free`() {
+        assertThrowsIo {
+            FreeClassroomProtocol.parse(sample.replace("\"js\":$free,", ""), query, now)
+        }
     }
 
     @Test
@@ -54,32 +63,78 @@ class FreeClassroomProtocolTest {
         val body = """{"e":0,"d":{"all":[],"js":[],"listLh":[]}}"""
         val result = FreeClassroomProtocol.parse(body, query, now)
         assertTrue(result.rooms.isEmpty())
+        assertTrue(result.availableRooms.isEmpty())
         assertEquals(listOf("全部"), result.buildings)
     }
 
-    @Test(expected = IOException::class)
-    fun `missing occupancy never turns every room free`() {
-        FreeClassroomProtocol.parse(sample.replace("\"js\":$occupied,", ""), query, now)
-    }
-
-    @Test(expected = IOException::class)
+    @Test
     fun `school business error never becomes an empty success`() {
-        FreeClassroomProtocol.parse("""{"e":1,"m":"服务暂不可用","d":{}}""", query, now)
+        assertThrowsIo { FreeClassroomProtocol.parse("""{"e":1,"m":"服务暂不可用","d":{}}""", query, now) }
     }
 
-    @Test(expected = IOException::class)
+    @Test
     fun `login HTML or changed response format is a failure`() {
-        FreeClassroomProtocol.parse("<html><title>登录</title></html>", query, now)
+        assertThrowsIo { FreeClassroomProtocol.parse("<html><title>登录</title></html>", query, now) }
     }
 
-    @Test(expected = IOException::class)
+    @Test
     fun `different campus response is rejected`() {
-        FreeClassroomProtocol.parse(sample.replace("唐岛湾校区", "古镇口校区"), query, now)
+        assertThrowsIo {
+            FreeClassroomProtocol.parse(sample.replace("唐岛湾校区", "古镇口校区"), query, now)
+        }
     }
 
-    @Test(expected = IOException::class)
-    fun `unknown occupied room rejects inconsistent response`() {
-        FreeClassroomProtocol.parse(sample.replace("\"code\":\"DL102\",\"name\":\"东廊102\"", "\"code\":\"DL999\",\"name\":\"东廊999\""), query, now)
+    @Test
+    fun `free room outside the directory rejects inconsistent response`() {
+        assertThrowsIo {
+            FreeClassroomProtocol.parse(
+                sample.replace("\"code\":\"DL101\",\"name\":\"东廊101\"", "\"code\":\"DL999\",\"name\":\"东廊999\""),
+                query,
+                now,
+            )
+        }
+    }
+
+    @Test
+    fun `free group outside the directory rejects inconsistent response`() {
+        assertThrowsIo {
+            FreeClassroomProtocol.parse(
+                sample.replace("\"js\":$free,", "\"js\":{\"西廊\":[]},"),
+                query,
+                now,
+            )
+        }
+    }
+
+    /**
+     * 2026-11-05 真实事故回归：卓越 B328 第 1–2 节有课、第 3–5 节空闲。
+     * 学校对 `jc=1..5` 返回的 `js` 是“每一节都空闲”的交集，B328 不会命中；
+     * 未命中必须显示占用，不能显示绿色空闲。
+     */
+    @Test
+    fun `multi-period room missing from free intersection is occupied`() {
+        val multi = query.copy(
+            campus = FreeClassroomCampus.GUZHENKOU,
+            date = LocalDate.of(2026, 11, 5),
+            building = "卓越教学楼",
+            periods = setOf(1, 2, 3, 4, 5),
+        )
+        val body = """{
+            "e":0,"m":"操作成功","d":{
+                "listLh":[{"name":"全部","id":"全部"},{"name":"卓越教学楼","id":"卓越教学楼"}],
+                "js":{"卓越教学楼":[
+                    {"name":"卓越A233","code":"ZY-A233","num":"60","jxlm":"卓越教学楼","xqm":"古镇口校区"}
+                ]},
+                "all":{"卓越教学楼":[
+                    {"name":"卓越A233","code":"ZY-A233","num":"60","jxlm":"卓越教学楼","xqm":"古镇口校区"},
+                    {"name":"卓越B328","code":"ZY-B328","num":"80","jxlm":"卓越教学楼","xqm":"古镇口校区"}
+                ]}
+            }
+        }"""
+        val result = FreeClassroomProtocol.parse(body, multi, now)
+        assertTrue(result.rooms.single { it.code == "ZY-A233" }.available)
+        assertFalse(result.rooms.single { it.code == "ZY-B328" }.available)
+        assertEquals(listOf("ZY-A233"), result.availableRooms.map { it.code })
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -92,13 +147,22 @@ class FreeClassroomProtocolTest {
         FreeClassroomProtocol.formBody(query.copy(periods = setOf(14)))
     }
 
+    private fun assertThrowsIo(block: () -> Unit) {
+        try {
+            block()
+        } catch (_: IOException) {
+            return
+        }
+        error("应抛出 IOException")
+    }
+
     companion object {
         // Public classroom directory fields only; no course, student or credential data.
-        private const val occupied = """{"东廊":[{"code":"DL102","name":"东廊102"}]}"""
+        private const val free = """{"东廊":[{"code":"DL101","name":"东廊101"}]}"""
         private val sample = """{
             "e":0,"m":"操作成功","d":{
                 "listLh":[{"name":"全部","id":"全部"},{"name":"东廊","id":"东廊"}],
-                "js":$occupied,
+                "js":$free,
                 "all":{"东廊":[
                     {"name":"东廊101","code":"DL101","num":"184","jxlm":"东廊","xqm":"唐岛湾校区"},
                     {"name":"东廊102","code":"DL102","num":"","jxlm":"东廊","xqm":"唐岛湾校区"}

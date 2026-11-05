@@ -56,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -77,8 +78,12 @@ import com.upcpocket.app.data.chaoxing.ChaoxingSeatPlace
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoom
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomDetail
 import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
+import com.upcpocket.app.library.ChaoxingAuthFailure
+import com.upcpocket.app.library.ChaoxingLoginResult
 import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.ui.components.GlassCard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,6 +99,11 @@ fun ChaoxingSeatScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val accountState by service.accountState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var autoLoginBusy by remember { mutableStateOf(false) }
+    var autoLoginError by remember { mutableStateOf<String?>(null) }
+    val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
 
     LaunchedEffect(session) {
         if (session != null) vm.refresh()
@@ -156,15 +166,70 @@ fun ChaoxingSeatScreen(
                         ) {
                             Text("登录后查看区域", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "区域、开放时间和已用座位来自学校；真实预约在学校官方页完成。",
+                                if (canAutoLogin) {
+                                    "可以使用本机加密保存的学校账号自动登录；学校要求验证码或二次验证时，" +
+                                        "改走学校官方网页登录。"
+                                } else {
+                                    "区域、开放时间和已用座位来自学校；真实预约在学校官方页完成。" +
+                                        "尚未保存可自动登录的学校账号。"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (canAutoLogin) {
+                                Button(
+                                    onClick = {
+                                        if (autoLoginBusy) return@Button
+                                        autoLoginBusy = true
+                                        autoLoginError = null
+                                        scope.launch {
+                                            try {
+                                                when (val result = service.loginWithSavedAccount()) {
+                                                    ChaoxingLoginResult.Success -> autoLoginBusy = false
+                                                    is ChaoxingLoginResult.Failure -> {
+                                                        autoLoginBusy = false
+                                                        autoLoginError = chaoxingLoginMessage(result.reason)
+                                                        if (result.reason == ChaoxingAuthFailure.INTERACTION_REQUIRED) {
+                                                            onOpenLogin()
+                                                        }
+                                                    }
+                                                }
+                                            } catch (cancelled: CancellationException) {
+                                                throw cancelled
+                                            } catch (_: Exception) {
+                                                autoLoginBusy = false
+                                                autoLoginError = "自动登录失败，请改用学校网页登录"
+                                            }
+                                        }
+                                    },
+                                    enabled = !autoLoginBusy,
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        if (autoLoginBusy) "正在使用学校账号登录…" else "使用已保存学校账号登录",
+                                    )
+                                }
+                            }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = onOpenLogin) { Text("网页登录") }
+                                OutlinedButton(onClick = onOpenLogin, enabled = !autoLoginBusy) {
+                                    Text(
+                                        if (canAutoLogin) {
+                                            "打开学校网页登录（验证码/二次验证）"
+                                        } else {
+                                            "网页登录"
+                                        },
+                                    )
+                                }
                                 OutlinedButton(onClick = { openChaoxingOfficial(context, state.officialUrl) }) {
                                     Text("官方页")
                                 }
+                            }
+                            autoLoginError?.let {
+                                Text(
+                                    it,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
                             }
                         }
                     }

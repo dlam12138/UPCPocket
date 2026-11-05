@@ -32,7 +32,9 @@ data class ChaoxingSession(
     /** WebView 登录后的 Chaoxing Cookie；只保存在内存，不写偏好/账号库。 */
     val cookieHeader: String,
     val user: ChaoxingUser,
-)
+) {
+    override fun toString(): String = "ChaoxingSession(cookieHeader=<redacted>, user=<redacted>)"
+}
 
 data class ChaoxingSeatRoom(
     val id: Int,

@@ -127,6 +127,7 @@ class ChaoxingServiceTest {
             identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
                 SchoolAccountIdentityCheck.MATCH
             },
+            authenticator = noAutoAuth,
             clearCookies = {
                 cleared++
                 true
@@ -155,6 +156,7 @@ class ChaoxingServiceTest {
             identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
                 SchoolAccountIdentityCheck.MATCH
             },
+            authenticator = noAutoAuth,
             clearCookies = {
                 clearCount++
                 clearStarted.complete(Unit)
@@ -203,6 +205,7 @@ class ChaoxingServiceTest {
             identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
                 SchoolAccountIdentityCheck.MATCH
             },
+            authenticator = noAutoAuth,
             clearCookies = {
                 clearCount++
                 clearStarted.complete(Unit)
@@ -240,6 +243,7 @@ class ChaoxingServiceTest {
             identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
                 SchoolAccountIdentityCheck.MATCH
             },
+            authenticator = noAutoAuth,
             clearCookies = {
                 clearCount++
                 clearSucceeds
@@ -278,12 +282,107 @@ class ChaoxingServiceTest {
             identityVerifier = SchoolAccountIdentityVerifier { _, _, _ ->
                 SchoolAccountIdentityCheck.MATCH
             },
+            authenticator = noAutoAuth,
             clearCookies = { false },
         )
         service.loginWithWebCookies(COOKIE)
 
         assertFalse(service.signOutForAccountChange())
         assertEquals(ChaoxingCleanupState.FAILED, service.cleanupState.value)
+        assertNull(service.session.value)
+    }
+
+    @Test
+    fun `saved account auto login publishes and invalidates an old web entry`() = runTest {
+        val account = Account()
+        val service = service(
+            account,
+            repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            SchoolAccountIdentityCheck.MATCH,
+            ChaoxingAccountAuthenticator { _, _ ->
+                ChaoxingAccountAuthResult.Success(COOKIE)
+            },
+        )
+        val oldEntry = requireNotNull(service.beginWebLogin())
+
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithSavedAccount())
+        assertEquals(COOKIE, service.session.value?.cookieHeader)
+        assertEquals(
+            ChaoxingAuthFailure.STALE_WEB_ENTRY,
+            (service.loginWithWebCookies(oldEntry, "oa_uid=old") as ChaoxingLoginResult.Failure).reason,
+        )
+    }
+
+    @Test
+    fun `auto interaction required keeps the existing session`() = runTest {
+        val account = Account()
+        val service = service(
+            account,
+            repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            SchoolAccountIdentityCheck.MATCH,
+            ChaoxingAccountAuthenticator { _, _ ->
+                ChaoxingAccountAuthResult.Failure(
+                    ChaoxingAuthFailure.INTERACTION_REQUIRED,
+                    "https://cas.upc.edu.cn/cas/login?service=synthetic",
+                )
+            },
+        )
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(COOKIE))
+
+        val result = service.loginWithSavedAccount()
+        assertEquals(
+            ChaoxingAuthFailure.INTERACTION_REQUIRED,
+            (result as ChaoxingLoginResult.Failure).reason,
+        )
+        assertEquals(COOKIE, service.session.value?.cookieHeader)
+    }
+
+    @Test
+    fun `late auto result after generation change is not published`() = runTest {
+        val account = Account()
+        val gate = CompletableDeferred<ChaoxingAccountAuthResult>()
+        val service = service(
+            account,
+            repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""")
+            },
+            SchoolAccountIdentityCheck.MATCH,
+            ChaoxingAccountAuthenticator { _, _ -> gate.await() },
+        )
+        val login = async { service.loginWithSavedAccount() }
+        yield()
+        account.state.value = account.state.value.copy(generation = AccountGeneration(4))
+        gate.complete(ChaoxingAccountAuthResult.Success(COOKIE))
+
+        assertEquals(
+            ChaoxingAuthFailure.ACCOUNT_CHANGED,
+            (login.await() as ChaoxingLoginResult.Failure).reason,
+        )
+        assertNull(service.session.value)
+    }
+
+    @Test
+    fun `auto identity mismatch never publishes`() = runTest {
+        val service = service(
+            Account(),
+            repository {
+                html("""var userLoginInfo = {"userInfo":{"sno":"20260002"}}||{}""")
+            },
+            SchoolAccountIdentityCheck.MISMATCH,
+            ChaoxingAccountAuthenticator { _, _ ->
+                ChaoxingAccountAuthResult.Success(COOKIE)
+            },
+        )
+
+        val result = service.loginWithSavedAccount()
+        assertEquals(
+            ChaoxingAuthFailure.IDENTITY_MISMATCH,
+            (result as ChaoxingLoginResult.Failure).reason,
+        )
         assertNull(service.session.value)
     }
 
@@ -333,11 +432,13 @@ class ChaoxingServiceTest {
         account: Account,
         repository: ChaoxingRepository,
         identity: SchoolAccountIdentityCheck,
+        authenticator: ChaoxingAccountAuthenticator = noAutoAuth,
     ): ChaoxingService = ChaoxingService(
         repository = repository,
         accountGate = account,
         accountReference = account,
         identityVerifier = SchoolAccountIdentityVerifier { _, _, _ -> identity },
+        authenticator = authenticator,
         clearCookies = { true },
     )
 
@@ -358,5 +459,8 @@ class ChaoxingServiceTest {
 
     private companion object {
         const val COOKIE = "oa_uid=synthetic; oa_deptid=e32f8fbde51f9dba"
+        val noAutoAuth = ChaoxingAccountAuthenticator { _, _ ->
+            ChaoxingAccountAuthResult.Failure(ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE)
+        }
     }
 }
