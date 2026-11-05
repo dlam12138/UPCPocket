@@ -74,6 +74,24 @@ class WidgetIntentsTest {
     }
 
     @Test
+    fun `card provider action and unique work name remain compatible`() {
+        assertEquals("widget-refresh-card", WidgetKind.CARD.uniqueWorkName)
+        assertEquals(WidgetKind.CARD, WidgetKind.fromKey("card"))
+        assertEquals(
+            CardBalanceWidgetProvider::class.java,
+            WidgetKind.CARD.providerClass,
+        )
+        assertEquals(
+            "com.upcpocket.app.action.REFRESH_CARD_WIDGET",
+            WidgetKind.CARD.refreshAction,
+        )
+        assertEquals(
+            WidgetRefreshWorker::class.java.name,
+            "com.upcpocket.app.widget.WidgetRefreshWorker",
+        )
+    }
+
+    @Test
     fun `provider refresh action is only accepted for positive ids`() {
         assertFalse(WidgetIntents.isOwnedBy(context, WidgetKind.CARD, 0))
         assertFalse(WidgetIntents.isOwnedBy(context, WidgetKind.CARD, -1))

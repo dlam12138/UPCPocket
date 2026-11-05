@@ -5,7 +5,22 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "v0.2.7",
+  "release": "v0.2.7 (published) / M5 development branch (unreleased)",
+  "source_references": [
+    {
+      "id": "upc-mcp",
+      "url": "https://github.com/dlam12138/UPC-MCP",
+      "commit": "948f5f21ad7a12fd94b53403a07ac867209f7700",
+      "license": "MIT",
+      "usage": "read-only protocol, parsing, authentication and test-semantics reference; no Python/MCP/DPAPI runtime embedded"
+    }
+  ],
+  "verification": {
+    "current_scope": "2026-11-04: user decided to remove all discussion-room/space-booking product features. nspace and reservepc pages/routes/protocols/Services/forms/tenant-context bridge are deleted; current product keeps only libseat, Chaoxing seat, and Chaoxing seatengine. The nspace/reservepc entries below are archived research evidence, not current integrations.",
+    "reference_source_facts": "Timetable protocol and CAS service shape reviewed in the pinned UPC-MCP source and synthetic fixtures.",
+    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. Later the same day M4 completed a real self-account libseat CAS login, app-token/seat-token exchange, /rest/v2/user identity check, and read-only filters/current-reservation calls; no seat layout, booking, cancellation or check-in was executed. A post-review correction added controlled manual-WebView identity binding and session-revision cleanup; it was verified with [REDACTED] Android/JVM tests only and the real CAS was not rerun. No course text, account, credentials, tokens or session values are recorded here. Separately, the six-entry library/space study used six user-authorized local HAR captures: libseat read-only APIs; nspace venue/roomType/date/roomList; seat/seatengine entrance config/index/identity and empty current/near reservations; reservepc two tenants with 8 and 23 reserve items respectively and empty user lists. All captures start from already-authorized pages; no CAS/passport login exchange, token acquisition or write request was captured or executed. M5 follow-up: the nspace entry was verified to redirect to CAS and the independent nspace auth/read-only client was implemented with synthetic protocol/account-isolation tests. On 2026-11-04 user-provided local credentials were used once in a debug test; nspace and libseat reached CAS but the POST returned a 401 login/captcha page. The client now maps that page to INTERACTION_REQUIRED with the school interaction URL instead of ACCESS_DENIED, and no retry or bypass was attempted; identity/read calls did not run. Chaoxing seat/seatengine remain browser fallbacks and reservepc remains blocked by missing stable tenant context. No real booking/cancel/check-in was executed and no credential, cookie or token value is recorded.",
+    "formal_authorization": "Not an official client and no official authorization is claimed. The user reports contact with the school; only the user's own account was used for read-only validation."
+  },
   "entries": [
     {
       "id": "free_classroom",
@@ -33,7 +48,47 @@
       "name": "图书馆座位",
       "campus": null,
       "url": "https://libspace.upc.edu.cn/libseat/",
-      "integration": "official_login_native_business"
+      "authentication": "UPC CAS normal form then libspace one-time service callback; app token exchanged for libseat token",
+      "integration": "official_login_native_business",
+      "verification": "M4 unified-account authentication implemented with normal CAS, app-token exchange, seat-token exchange and /rest/v2/user identity verification; a 2026-11-03 emulator test passed real read-only filters and current-reservation calls. The user-authorized 26-entry HAR remains read-only protocol evidence (filters/floors/stats2/settings/announce and an empty current reservation); layout/seat times/history/writes were not captured."
+    },
+    {
+      "id": "library_space",
+      "name": "图书馆空间预约（研讨间）",
+      "campus": "唐岛湾",
+      "campus_source": "user_label_not_independently_verified",
+      "url": "https://libspace.upc.edu.cn/nspace/",
+      "authentication": "Same UPC CAS service shape as libseat, but a separate nspace app token obtained through /spa/static/public/api/remoteCasLogin",
+      "data_protocol": {
+        "venue": "GET /spa/static/api/book/getVenueList?schoolId=<id>",
+        "room_type": "GET /spa/static/api/book/getRoomTypeList?venueId=<id>",
+        "open_dates": "GET /spa/static/api/book/getOpenDateList?venueId=<id>&roomTypeId=<id>",
+        "room_list": "POST /spa/static/api/book/getRoomList",
+        "room_detail": "POST /spa/static/api/book/getRoomDtoByRoomIdAndDate"
+      },
+      "integration": "archived_research_only_product_removed",
+      "verification": "ARCHIVED 2026-11-04: user decided to remove all discussion-room/space-booking product features; nspace pages/routes/protocol/Service/forms are deleted. Retained only as historical research evidence, not a current product capability. Historical note: corrected local parser treats line 1 after the first colon as account and line 2 after the first colon as password (values preserved, no swapping). Dedicated Chrome completed one normal CAS login and redirected to libspace; no captcha/error. In the authenticated session, 1 venue, 4 room types and 3 dates were available; A123 detail/form loaded (3-6 people, 08:00-21:50, 60-120 minutes, phone/theme/outline/participant list; 11/05 and 11/06 had slots, 11/04 had none). No final reservation, member/team add, cancel or check-in was performed. User phone acceptance independently showed the session, browsing and A123 form. No real name, token, cookie or values are recorded."
+    },
+    {
+      "id": "chaoxing_seat",
+      "name": "超星座位预约（古镇口东区/求是图书馆入口）",
+      "campus": null,
+      "urls": [
+        "https://office.chaoxing.com/front/third/apps/seat/index",
+        "https://office.chaoxing.com/front/third/apps/seatengine/index"
+      ],
+      "authentication": "Unauthenticated entries redirect to passport2.chaoxing.com; the 2026-11-03 captures start from already-authorized pages and contain no passport/CAS login exchange",
+      "integration": "native_read_only_seat_and_seatengine_with_restricted_webview_session",
+      "verification": "2026-11-04: native typed repository/service/Compose added. In a real Android process, with an authenticated app-WebView session, seat Guzhenkou East 6 areas (48/44/52/44/66/66 seats, 08:00-21:30, 30-minute slots, 48-seat map for area A) and seatengine Qiushi 21 areas (16-240 seats, 08:00-22:00, 30-minute slots) were read; the emulator native UI loaded real areas and used counts. The restricted WebView login requires a Chaoxing/Learning通 account; passport2 asks for phone/超星号 + Learning通 password, not the unified school CAS, so auto-login with school credentials is not claimed. Cookies stay in memory and are cleared on sign-out/account change; uid/enc/code/state/wfw values are excluded. No real booking/cancel/check-in."
+    },
+    {
+      "id": "chaoxing_reserve",
+      "name": "超星研讨间预约（古镇口东区/求是图书馆入口）",
+      "campus": null,
+      "url": "https://reserve.chaoxing.com/front/web/apps/reservepc/index",
+      "authentication": "Tenant/session-dependent reservepc app; without matching context the entry returns a local 303 error page; the 2026-11-03 captures contain no passport/CAS login exchange and no Cookie/Authorization header",
+      "integration": "archived_research_only_product_removed",
+      "verification": "ARCHIVED 2026-11-04: user decided to remove all discussion-room/space-booking product features; reservepc pages/routes/protocol/Service/tenant-context bridge are deleted. Retained only as historical research evidence, not a current product capability. Historical note: typed reservepc room parser/Compose was added. Browser captures previously showed Guzhenkou East 8 rooms (403, 8 people, 08:00-22:00, 30/60-minute slots) and Qiushi 23 rooms (A301 12, A402 8, A403/A404 6). A real request with only the stable reserveId/resvAppId/fidEnc/mappId URL now returns 302 to /front/third/apps/reserve/item/index and 303 to the local 'application not found' error: the list requires the school-directory/WeChat-generated reserveIdEnc, not a user ticket. A memory-only bridge (ChaoxingReserveContext, bound to tenant/account/generation/epoch/revision/source path) was added; using the two HAR page reserveIdEnc values with current cookies read 8 and 23 rooms directly. The stable URL still cannot generate the context, and no current school/WeChat entrance URL was available, so the WebView capture step is not yet wired. The app reports chaoxing_tenant_context and falls back to the official page; it does not fake rooms or hardcode one-time enc/code/state/wfwEnc. No real booking/cancel/team/attachment."
     },
     {
       "id": "campus_card_balance",
@@ -41,6 +96,19 @@
       "campus": null,
       "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
       "integration": "native_read_only_balance"
+    },
+    {
+      "id": "timetable",
+      "name": "课表",
+      "campus": null,
+      "url": "https://app.upc.edu.cn/site/weekschedule/index",
+      "authentication": "UPC CAS normal form (https://cas.upc.edu.cn/cas/login) then app.upc.edu.cn callback",
+      "data_protocol": {
+        "index": "GET https://app.upc.edu.cn/timetable/wap/default/get-index",
+        "week": "POST https://app.upc.edu.cn/timetable/wap/default/get-datatmp (type=2, year, term, week)"
+      },
+      "integration": "native_read_only_timetable",
+      "source_reference": "upc-mcp@948f5f21ad7a12fd94b53403a07ac867209f7700"
     }
   ]
 }

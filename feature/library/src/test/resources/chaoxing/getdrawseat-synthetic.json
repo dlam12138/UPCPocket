@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "data": [
+    {"id": 1, "roomId": 8548, "seatNum": "A01", "xleft": 166.0, "ytop": 131.0, "width": 75.0, "height": 75.0, "rotate": 270},
+    {"id": 2, "roomId": 8548, "seatNum": "A02", "xleft": 166.0, "ytop": 211.0, "width": 75.0, "height": 75.0, "rotate": 270},
+    {"id": 3, "roomId": 8548, "seatNum": "A03", "xleft": 296.0, "ytop": 291.0, "width": 75.0, "height": 75.0, "rotate": 90},
+    {"id": 4, "roomId": 8548, "seatNum": "A04", "xleft": 166.0, "ytop": 292.0, "width": 75.0, "height": 75.0, "rotate": 630},
+    {"id": 5, "roomId": 8548, "seatNum": "A05", "xleft": 2736.0, "ytop": 131.0, "width": 75.0, "height": 75.0, "rotate": 270},
+    {"id": 6, "roomId": 8548, "seatNum": "A06", "xleft": 2736.0, "ytop": 292.0, "width": 75.0, "height": 75.0, "rotate": 90}
+  ]
+}

@@ -6,12 +6,14 @@
 /.idea/
 .DS_Store
 /build
+**/build/
 /captures
 .externalNativeBuild
 .cxx
 local.properties
 app/build/
 app/schemas/
+feature/focus/schemas/
 *.apk
 *.aab
 *.jks
@@ -21,6 +23,7 @@ app/schemas/
 # Local-only archives, attachments and generated release artifacts
 /.local/
 /.lody/
+/.superdesign/
 /artifacts/
 /release/
 /官方入口.txt

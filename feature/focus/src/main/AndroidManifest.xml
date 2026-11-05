@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 番茄钟的权限随 feature 模块一起装配；移除模块时不会遗留系统入口。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <application>
+        <!--
+            番茄钟前台服务。计时本身不依赖它（时间用墙钟算），
+            它的作用是不让系统回收进程 + 显示常驻倒计时通知。
+            使用 full name，保证模块合并后 FQCN 仍为 com.upcpocket.app.focus.PomodoroService。
+        -->
+        <service
+            android:name="com.upcpocket.app.focus.PomodoroService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="pomodoro_timer" />
+        </service>
+    </application>
+
+</manifest>

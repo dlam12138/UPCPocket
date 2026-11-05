@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import com.upcpocket.app.core.AppGraph
 
 /**
  * 两个组件的共同入口。
@@ -17,7 +18,7 @@ import android.content.Intent
  * 刷新语义：
  *  - onUpdate / onEnabled / resize / 应用启动只渲染缓存；
  *  - 只有点击刷新才入队一次性 WorkManager 任务；
- *  - 无成功快照时按钮引导打开应用，不发空请求。
+ *  - 校园卡已绑定但无成功快照时仍可点击查询；无绑定/清理中只打开应用，不发空请求。
  */
 abstract class BaseWidgetProvider : AppWidgetProvider() {
 
@@ -84,7 +85,12 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
             return
         }
         WidgetUpdates.updateKindNow(context, kind)
-        if (!WidgetWork.enqueue(context, kind)) {
+        val token = if (kind == WidgetKind.CARD) {
+            AppGraph.cardServiceOrNull?.bindingToken()
+        } else {
+            null
+        }
+        if (!WidgetWork.enqueue(context, kind, token)) {
             state.clearRefreshing(kind)
             state.setError(kind, "无法启动刷新任务")
             WidgetUpdates.updateKindNow(context, kind)

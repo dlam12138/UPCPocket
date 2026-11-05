@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_timetable_synthetic_title">今日课表·合成预览</string>
+    <string name="widget_timetable_synthetic_wide_title">今日课表·合成预览 4×2</string>
+</resources>

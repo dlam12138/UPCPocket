@@ -11,6 +11,7 @@ import com.upcpocket.app.MainActivity
 enum class WidgetLaunchTarget(internal val activityRequestBase: Int) {
     CARD_BALANCE(100_000),
     POWER_TANGDAOWAN(200_000),
+    TIMETABLE(300_000),
     ;
 
     companion object {
@@ -39,8 +40,9 @@ object WidgetIntents {
     const val ACTION_OPEN_FROM_WIDGET = "com.upcpocket.app.action.OPEN_FROM_WIDGET"
     const val EXTRA_WIDGET_TARGET = "com.upcpocket.app.extra.WIDGET_TARGET"
 
-    private const val REFRESH_REQUEST_BASE_CARD = 300_000
-    private const val REFRESH_REQUEST_BASE_POWER = 400_000
+    private const val REFRESH_REQUEST_BASE_CARD = 400_000
+    private const val REFRESH_REQUEST_BASE_POWER = 500_000
+    private const val REFRESH_REQUEST_BASE_TIMETABLE = 600_000
 
     internal fun activityRequestCode(target: WidgetLaunchTarget, widgetId: Int): Int =
         target.activityRequestBase + widgetId * 10 + 1
@@ -49,6 +51,7 @@ object WidgetIntents {
         when (kind) {
             WidgetKind.CARD -> REFRESH_REQUEST_BASE_CARD + widgetId
             WidgetKind.POWER -> REFRESH_REQUEST_BASE_POWER + widgetId
+            WidgetKind.TIMETABLE -> REFRESH_REQUEST_BASE_TIMETABLE + widgetId
         }
 
     internal fun activityIntent(

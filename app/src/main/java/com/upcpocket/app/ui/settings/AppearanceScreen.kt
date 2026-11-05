@@ -6,21 +6,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -44,9 +42,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.core.AppGraph
-import com.upcpocket.app.data.prefs.DarkMode
-import com.upcpocket.app.data.prefs.ThemePreset
 import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.ui.theme.MaterialYouScheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +55,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 
 /** 预设的中文名（放 UI 层，偏好存储里只存枚举） */
 private fun ThemePreset.label(): String = when (this) {
-    ThemePreset.DYNAMIC -> "跟随壁纸（动态取色）"
+    ThemePreset.DYNAMIC -> "跟随壁纸"
     ThemePreset.PURPLE -> "紫"
     ThemePreset.BLUE -> "蓝"
     ThemePreset.TEAL -> "青"
@@ -69,8 +67,8 @@ private fun ThemePreset.label(): String = when (this) {
 
 private fun DarkMode.label(): String = when (this) {
     DarkMode.SYSTEM -> "跟随系统"
-    DarkMode.LIGHT -> "始终浅色"
-    DarkMode.DARK -> "始终深色"
+    DarkMode.LIGHT -> "浅色"
+    DarkMode.DARK -> "深色"
 }
 
 class AppearanceViewModel : ViewModel() {
@@ -99,7 +97,7 @@ class AppearanceViewModel : ViewModel() {
  * 点一下**立刻全局生效**（主题在 MainActivity 上，改完整个 App 立刻重绘），
  * 所以每行左边那组色块本身就是预览色，不用再单独做一块预览区。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AppearanceScreen(
     onBack: () -> Unit,
@@ -108,9 +106,10 @@ fun AppearanceScreen(
     val prefs by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
-                title = { Text("配色与深色模式") },
+                title = { Text("外观") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -124,7 +123,7 @@ fun AppearanceScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
@@ -132,7 +131,7 @@ fun AppearanceScreen(
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(top = 4.dp),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DarkMode.entries.forEach { mode ->
                     FilterChip(
                         selected = prefs.darkMode == mode,
@@ -156,23 +155,6 @@ fun AppearanceScreen(
                     }
                 }
             }
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("说明", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        text = "· 「跟随壁纸」用的是系统的动态取色（Material You），取色结果跟你的手机壁纸一致，" +
-                            "这也是安卓原生的默认观感。\n" +
-                            "· 其余每个配色由一个种子色出发，用 Material 3 同一套算法推出浅色与深色两份色板，" +
-                            "所以颜色之间的关系跟原生一致，而不是随手挑的色。\n" +
-                            "· 深浅色可以单独设，不影响配色选择。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(1.dp))
         }
     }
 }

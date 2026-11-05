@@ -5,7 +5,7 @@
 | 项 | 版本 |
 | --- | --- |
 | Android | minSdk 31 / compileSdk 与 targetSdk 36 |
-| JDK | 17 |
+| JDK | 17+（本机 Android Studio JBR 21） |
 | Android Gradle Plugin | 8.7.3 |
 | Kotlin | 2.0.21 |
 | Compose BOM | 2024.12.01 |
@@ -29,6 +29,23 @@ Linux/macOS：
 
 调试包输出到 `app/build/outputs/apk/debug/`。测试成功不能替代本人设备上的校园接口验收；不要在测试中放入真实学号、Cookie、Token 或业务记录。
 
+## 精简 Release
+
+对用户交付默认构建 R8 + 资源收缩的 release，而不是 debug 包：
+
+```powershell
+.\gradlew.bat :app:assembleRelease
+```
+
+当前 `app/build.gradle.kts` 已启用 `isMinifyEnabled=true`、`isShrinkResources=true`，未升级 AGP/R8，也未删除既有 keep 规则。2026-11-05 晚本机同一源码树实测：
+
+| 产物 | 字节数 | SHA-256 |
+| --- | ---: | --- |
+| `app-debug.apk` | 67,465,995 | `39F3A5357368940C45B27A700CF7052C597E72CE66C30A96117D2812CD0B90EC` |
+| `app-release.apk` | 4,642,177 | `FE61368B88127FE092838F7D3A1601B8E8A60A60A10312DD9703DC57C44D3B3B` |
+
+该 release 为 universal APK（arm64-v8a / armeabi-v7a / x86 / x86_64），不是 ABI 多包。`src/debug` 的合成 provider/预览 Activity 不会进入 release；构建后应检查 merged manifest 与 APK 资源，而不是只看源码目录。细节见 [三组件视觉修订](m5/2026-11-05-组件视觉修订.md)。
+
 ## 签名与发布
 
 可在被忽略的 `keystore.properties` 中配置 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`；私钥存放在仓库外。未配置时，当前 Gradle 配置使用本机调试签名，包括 `assembleRelease`，不能仅凭产物名称判断签名性质。
@@ -37,7 +54,7 @@ Linux/macOS：
 .\gradlew.bat :app:assembleRelease
 ```
 
-v0.2.7 下载包沿用已经验证的调试构建与原测试证书，只规范发布文件名，包内版本仍为 `0.2.7-lightly-preview`（versionCode 19）。没有重新构建为混淆生产包。自行构建的调试证书通常与下载版不同，不能保证直接覆盖安装。
+v0.2.7 下载包沿用已经验证的调试构建与原测试证书，只规范发布文件名，包内版本仍为 `0.2.7-lightly-preview`（versionCode 19）。该已发布下载包没有重新构建为混淆生产包；2026-11-05 晚的 `app-release.apk` 是本地开发分支的 R8 精简构建，**未发布**，且因为本机没有 `keystore.properties` 仍使用同一调试证书。它只能标为“压缩 Release 构建、开发签名”，不是生产/商店签名。
 
 发布包 SHA-256：
 

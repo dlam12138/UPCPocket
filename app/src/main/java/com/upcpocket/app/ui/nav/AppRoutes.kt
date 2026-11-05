@@ -1,25 +1,22 @@
 package com.upcpocket.app.ui.nav
 
 /**
- * 导航路由的**唯一来源**。
+ * 宿主自有导航路由。
  *
- * 轻量版移除了课表与桌面组件后，路由表只剩三个 tab 和「更多」下的子页；
- * 不再有组件深链 extra，也没有课表相关页面（网格、总览、显示设置、背景裁剪）。
+ * 业务页面路由由已激活插件通过 `PluginUiSnapshot.pages` 贡献，不在这里重复登记；
+ * 这里只保留宿主固定首页、设置入口与宿主设置页。M5 取消“更多”tab，账号、主题、
+ * 组件与关于统一收进设置。
  */
 object AppRoutes {
 
-    /** 底部导航的 tab */
+    /** 宿主固定 tab；课表/专注 tab 由插件贡献。 */
     const val HOME = "home"
-    const val FOCUS = "focus"
-    const val MORE = "more"
 
-    /** 「更多」里的子页（不是 tab，进去之后底部导航栏会隐藏） */
-    const val FOCUS_STATS = "focus_stats"
-    const val FREE_CLASSROOMS = "free_classrooms"
-    const val LIBRARY_SEAT = "library_seat"
-    const val LIBRARY_LOGIN = "library_login"
-    const val ELECTRICITY = "electricity"
-    const val POWER_TANGDAOWAN = "power_tangdaowan"
+    /** 宿主设置页（不是 tab，进入后底部导航隐藏）。 */
+    const val SETTINGS = "settings"
+    const val ACCOUNT = "account"
     const val APPEARANCE = "appearance"
+    const val WIDGETS = "widgets"
+    const val OFFICIAL_WEB = "official-web"
     const val ABOUT = "about"
 }

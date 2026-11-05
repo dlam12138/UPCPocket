@@ -5,132 +5,271 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.upcpocket.app.plugin.ui.PluginEntry
+import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.GlassCard
-import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
-import com.upcpocket.app.ui.nav.DOCK_CLEARANCE
+import com.upcpocket.app.ui.components.IconBadge
+import com.upcpocket.app.ui.components.SectionHeader
+import com.upcpocket.app.ui.nav.filledIcon
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val CAMPUS_ZONE = ZoneId.of("Asia/Shanghai")
+
+private data class QuickAction(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+    val onClick: () -> Unit,
+)
 
 /**
- * 「首页」= 校园服务 + 校园卡余额功能区。
+ * 「首页」= 今天的入口和校园服务，不再复制课表或“更多”的整套目录。
  *
- * 轻量版第三步把电费收拢成一个入口（进去再选唐岛湾/古镇口），并把校园卡余额从
- * “目录卡片 → 第二页”改成直接嵌在首页的功能区：不再有中间跳转，也没有平台登录、
- * 流水或充值。
+ * 页面只展示已激活插件贡献的服务和校园卡区块；官方网页是宿主提供的只读外链
+ * 目录，不冒充学校 API。首页不会打开课表服务，也不会为了摘要偷偷发起 CAS 或
+ * 校园查询。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onOpenElectricity: () -> Unit,
-    onOpenClassrooms: () -> Unit,
-    onOpenLibrary: () -> Unit,
+    serviceEntries: List<PluginEntry>,
+    cardSections: List<PluginSection>,
+    sectionHost: PluginSectionHost,
+    onOpenRoute: (PluginRouteId) -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenOfficialWeb: () -> Unit,
 ) {
+    val today = LocalDate.now(CAMPUS_ZONE)
+    val dateLabel = today.format(
+        DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
+    )
+    val greeting = greet(LocalTime.now(CAMPUS_ZONE))
+
+    val actions = buildList {
+        serviceEntries.forEach { entry ->
+            add(
+                QuickAction(
+                    title = entry.title,
+                    subtitle = entry.subtitle,
+                    icon = entry.icon.filledIcon(),
+                    onClick = { entry.route?.let(onOpenRoute) },
+                ),
+            )
+        }
+        add(
+            QuickAction(
+                title = "校园网页",
+                subtitle = "课表 · 教室 · 图书馆",
+                icon = Icons.Outlined.Public,
+                onClick = onOpenOfficialWeb,
+            ),
+        )
+    }
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text("校园服务") }) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentWindowInsets = WindowInsets.safeDrawing.only(
+            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = DOCK_CLEARANCE),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
         ) {
-            Spacer(Modifier.height(2.dp))
+            Header(
+                eyebrow = "UPC POCKET",
+                date = dateLabel,
+                greeting = greeting,
+                onOpenSettings = onOpenSettings,
+            )
+
+            if (actions.isNotEmpty()) {
+                SectionHeader(
+                    title = "常用服务",
+                    modifier = Modifier.padding(top = 16.dp, bottom = 2.dp),
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    actions.chunked(2).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            row.forEach { action ->
+                                ServiceTile(
+                                    action = action,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                            if (row.size == 1) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+            } else {
+                GlassCard(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("校园服务暂不可用", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "请检查插件是否启用。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+
+            // 校园卡余额保留全部查询/绑定/历史/清缓存能力，只把区块移到首页内容底部。
+            if (cardSections.isNotEmpty()) {
+                SectionHeader(
+                    title = "校园卡",
+                    modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
+                )
+                cardSections.forEach { section ->
+                    androidx.compose.runtime.key(section.entryId) {
+                        section.content(sectionHost)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Header(
+    eyebrow: String,
+    date: String,
+    greeting: String,
+    onOpenSettings: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
             Text(
-                text = "空闲教室、图书馆座位、唐岛湾电费与校园卡余额都在 App 内查询；" +
-                    "校园卡余额输入本人学号，不需要登录。",
-                style = MaterialTheme.typography.bodySmall,
+                text = eyebrow,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.4.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = date,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = greeting,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-
-            SectionTitle("校园服务")
-            ServiceEntry(
-                title = "电费",
-                subtitle = "唐岛湾 · 古镇口",
-                onClick = onOpenElectricity,
-            )
-            ServiceEntry(
-                title = "空闲教室",
-                subtitle = "按校区、日期、楼宇和节次查询",
-                onClick = onOpenClassrooms,
-            )
-            ServiceEntry(
-                title = "图书馆座位预约",
-                subtitle = "学校统一认证登录后选馆区、座位与时间",
-                onClick = onOpenLibrary,
-            )
-
-            SectionTitle("校园卡余额")
-            DirectCardBalanceSection()
-
-            Text(
-                text = "入口地址与开放条件会随学校调整；以学校官网通知为准。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        }
+        Spacer(Modifier.width(8.dp))
+        FilledTonalIconButton(
+            onClick = onOpenSettings,
+            modifier = Modifier.size(44.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Settings,
+                contentDescription = "设置",
+                modifier = Modifier.size(22.dp),
             )
         }
     }
 }
 
 @Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(start = 4.dp, top = 6.dp),
-    )
-}
-
-@Composable
-private fun ServiceEntry(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
+private fun ServiceTile(
+    action: QuickAction,
+    modifier: Modifier = Modifier,
 ) {
-    GlassCard(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
-        Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    GlassCard(
+        modifier = modifier
+            .heightIn(min = 132.dp)
+            .clickable(onClick = action.onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium,
+            Row(verticalAlignment = Alignment.Top) {
+                IconBadge(
+                    icon = action.icon,
+                    contentDescription = null,
+                    size = 38.dp,
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Spacer(Modifier.weight(1f))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.size(18.dp),
                 )
             }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(20.dp),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = action.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = action.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
+}
+
+private fun greet(time: LocalTime): String = when (time.hour) {
+    in 0..4 -> "夜深了"
+    in 5..10 -> "早上好"
+    in 11..12 -> "中午好"
+    in 13..17 -> "下午好"
+    else -> "晚上好"
 }

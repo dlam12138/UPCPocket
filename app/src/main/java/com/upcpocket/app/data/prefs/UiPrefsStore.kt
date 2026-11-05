@@ -7,28 +7,10 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.ThemePreset
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-
-/** 深浅色：跟随系统 / 始终浅色 / 始终深色 */
-enum class DarkMode { SYSTEM, LIGHT, DARK }
-
-/**
- * 全应用配色预设。
- *
- * [DYNAMIC] = 跟随系统壁纸的动态取色（最接近原生 Android 的默认观感）；
- * 其余每一项都是**一个种子色**，由 Material 3 算法（HCT）算出整套浅/深配色。
- */
-enum class ThemePreset(val seedArgb: Int?) {
-    DYNAMIC(null),
-    PURPLE(0xFF6750A4.toInt()),
-    BLUE(0xFF1A73E8.toInt()),
-    TEAL(0xFF00838F.toInt()),
-    GREEN(0xFF2E7D32.toInt()),
-    AMBER(0xFFE8710A.toInt()),
-    PINK(0xFFD81B60.toInt()),
-    GRAPHITE(0xFF546E7A.toInt()),
-}
 
 /**
  * 全应用偏好。
@@ -43,7 +25,8 @@ data class UiPrefs(
     val darkMode: DarkMode = DarkMode.SYSTEM,
     /**
      * 记住学校登录：把图书馆座位业务签发的 token 用 Keystore 加密保存。
-     * 默认关闭。关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
+     * 默认关闭。这只是图书馆 token 偏好，不是统一学校账号密码的保存同意；
+     * 关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
      */
     val rememberSchoolLogin: Boolean = false,
     /**
@@ -56,10 +39,9 @@ data class UiPrefs(
     val powerBuilding: String = "",
     val powerRoom: String = "",
     /**
-     * 校园卡余额功能区上次输入的本人学号。
+     * 旧版校园卡余额功能区学号草稿。
      *
-     * 与余额快照分开保存：即使从未查询成功，重启后也能恢复输入；
-     * 不查询时只保存这个字段。清除动作会同时删除它。
+     * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
      */
     val cardStudentId: String = "",
 )
@@ -103,7 +85,7 @@ class UiPrefsStore internal constructor(
         p.remove(KEY_POWER_ROOM)
     }
 
-    /** 校园卡学号与余额快照分离，只保存输入本身。 */
+    /** 旧版学号草稿；只服务迁移提示，不再作为余额查询来源。 */
     suspend fun setCardStudentId(v: String) = store.edit { p ->
         if (v.isBlank()) p.remove(KEY_CARD_STUDENT_ID) else p[KEY_CARD_STUDENT_ID] = v
     }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 三个桌面组件共用的空状态与时间行。 -->
+    <string name="widget_empty_value">尚未查询</string>
+    <string name="widget_empty_hint">先在应用查询一次</string>
+    <string name="widget_refreshing">正在更新…</string>
+    <string name="widget_refresh_failed">更新失败</string>
+    <string name="widget_updated">%1$s 更新</string>
+    <string name="widget_failed_with_time">更新失败 · %1$s</string>
+</resources>

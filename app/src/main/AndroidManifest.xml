@@ -2,17 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- 用户主动查询：空闲教室（公开）、图书馆座位（官方 CAS 登录）、校园卡余额（官方登录）、
-         唐岛湾宿舍剩余电量（公开的楼号＋房间号查询）。
-         不接入自建认证代理，不保存账号密码，不做后台轮询；
-         明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
+         课表（当前统一账号的正常 CAS 登录后只读查询）、唐岛湾宿舍剩余电量（公开的楼号＋房间号查询）。
+         不接入自建认证代理；默认不保存凭据。只有用户在“首页 → 设置 → 学校账号”主动保存时，
+         当前一个学校账号密码才用独立 Keystore alias 的 AES-GCM 密文写入 noBackup 目录；
+         课表会话使用另一个独立 alias 加密，页面/组件不读取密码。
+         不做后台轮询；明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- 番茄钟：倒计时通知 + 走完时的提醒。
-         没有 POST_NOTIFICATIONS（Android 13+）时前台服务仍然能跑，但通知不可见。 -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.VIBRATE" />
 
     <!--
         校园服务入口要在系统浏览器里打开，Android 11+ 必须显式声明可查询的 Intent。
@@ -59,6 +54,7 @@
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.UpcPocket">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -67,9 +63,9 @@
         </activity>
 
         <!--
-            桌面小组件：校园卡余额、唐岛湾剩余电量，默认 2×2。
+            桌面小组件：校园卡余额、唐岛湾剩余电量、今日课表，默认 2×2，可扩到 4×2。
 
-            两个接收器都 exported=false：
+            三个接收器都 exported=false：
               · APPWIDGET_UPDATE 由系统以显式广播投递；
               · 刷新广播只来自本应用创建的显式、immutable PendingIntent。
             广播里只有 appWidgetId，不携带学号、楼号、房间号或 URL。
@@ -97,18 +93,17 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_power_balance_info" />
         </receiver>
-
-        <!-- 番茄钟前台服务。计时本身不依赖它（时间用墙钟算），
-             它的作用是不让系统回收进程 + 显示常驻倒计时通知。
-             API 34+ 必须声明类型，番茄钟没有更贴切的类型，用 specialUse 并在下面说明用途。 -->
-        <service
-            android:name=".focus.PomodoroService"
+        <receiver
+            android:name=".widget.TimetableWidgetProvider"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="pomodoro_timer" />
-        </service>
+            android:label="@string/widget_timetable_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_timetable_today_info" />
+        </receiver>
     </application>
 
 </manifest>
