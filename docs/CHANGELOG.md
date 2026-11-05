@@ -8,7 +8,7 @@
 - API 36 `upcpocket_api36`（`emulator-5556`）`install -r` 覆盖保留数据：CAS 空表单可见（Release 蓝色 `LOGIN` 按钮 `y=1403–1406`）；深色、1.5× 字体、键盘、断网错误→恢复网络重载、返回均实际检查。未故意触发真实验证码，不声称验证码流程成功；真实账号仅完成一次正常 CAS/只读课表加载，未预约/取消/签到。
 - 本机诊断：关于页新增“导出诊断报告/清除诊断记录”和记录开关；私有 noBackup 目录滚动 24h/约 1 MiB 的固定枚举事件，用户主动生成 `summary.txt`+`events.jsonl` ZIP 后经系统分享面板发出；FileProvider 仅开放专用导出子目录，临时只读授权，不自动上传。事件不含账密/Cookie/URL/请求响应/课程或房间内容；换号/删号先清空诊断，诊断失败不影响业务。详见 [隐私说明](PRIVACY.md)。
 - 合成回归新增诊断 schema/拒收/编码、TTL/容量/并发清理/坏文件/FileProvider 范围/分享 Intent 与课表目标码测试；`feature:classroom` 实机公开查询、`feature:library` 实机断网 WebView 错误均产生固定码报告。
-- 精简包：`release/UPC-Pocket-2.0.1-diagnostics.apk`（构建产物 `app/build/outputs/apk/release/app-release.apk`），**4,675,365** bytes，SHA-256 `2EDEDFF1D7DC2DE8F3A889BB4A3F8B658778ECE8B1989716E577C6EB0C6B3103`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
+- 精简包：`release/UPC-Pocket-2.0.1-diagnostics.apk`（构建产物 `app/build/outputs/apk/release/app-release.apk`），**4,675,365** bytes，SHA-256 `E0829FB1FA60EB7053F9A1D614E23628CEBF97C7A6DA992E981AB1E7E8092017`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
 
 ## 2.0 正式版 · 2026-11-05
 

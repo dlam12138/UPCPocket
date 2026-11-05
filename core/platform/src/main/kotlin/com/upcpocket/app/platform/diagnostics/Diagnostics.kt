@@ -134,7 +134,9 @@ data class DiagnosticEvent(
         }
         require(timestampEpochMillis > 0) { "timestamp must be positive" }
         require(frames.size <= MAX_FRAMES) { "too many frames" }
-        require(frames.all { FRAME.matches(it) }) { "frame contains non-allowlisted characters" }
+        require(frames.all { it.startsWith("com.upcpocket.app.") && FRAME.matches(it) }) {
+            "frames must be app-owned class/method names"
+        }
     }
 
     companion object {
@@ -246,7 +248,7 @@ object Diagnostics {
      */
     fun appFrames(failure: Throwable): List<String> = failure.stackTrace.asSequence()
         .filter { it.className.startsWith("com.upcpocket.app.") }
-        .map { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+        .map { "${it.className}.${it.methodName}" }
         .filter { it.length <= 120 && it.matches(Regex("[A-Za-z0-9_$.<>-]+")) }
         .take(DiagnosticEvent.MAX_FRAMES)
         .toList()

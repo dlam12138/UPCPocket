@@ -83,7 +83,9 @@ class DiagnosticsTest {
                     DiagnosticModule.TIMETABLE,
                     DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
                     DiagnosticResult.FAIL,
-                    frames = List(DiagnosticEvent.MAX_FRAMES + 1) { "TimetableService.open" },
+                    frames = List(DiagnosticEvent.MAX_FRAMES + 1) {
+                        "com.upcpocket.app.timetable.TimetableService.open"
+                    },
                 )
             }.isSuccess,
         )
@@ -99,7 +101,10 @@ class DiagnosticsTest {
         )
         assertEquals(DiagnosticExceptionType.OTHER, Diagnostics.classify(failure))
         assertEquals(
-            listOf("TimetableService.open", "TimetableService.refresh"),
+            listOf(
+                "com.upcpocket.app.timetable.TimetableService.open",
+                "com.upcpocket.app.timetable.TimetableService.refresh",
+            ),
             Diagnostics.appFrames(failure),
         )
         assertFalse(Diagnostics.appFrames(failure).joinToString().contains("PASSWORD"))

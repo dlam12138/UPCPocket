@@ -93,7 +93,7 @@ class DiagnosticStoreTest {
         assertFalse(all.contains("PASSWORD_canary"))
         assertFalse(all.contains("token=secret"))
         assertFalse(all.contains("DiagnosticsCanary.kt"))
-        assertTrue(all.contains("DiagnosticsCanary.boom"))
+        assertTrue(all.contains("com.upcpocket.app.DiagnosticsCanary.boom"))
         assertTrue(all.contains("\"schemaVersion\":1"))
         assertTrue(all.contains("\"widthDp\":412"))
         assertTrue(all.contains("appVersion="))
