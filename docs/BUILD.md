@@ -54,13 +54,7 @@ Linux/macOS：
 .\gradlew.bat :app:assembleRelease
 ```
 
-v0.2.7 下载包沿用已经验证的调试构建与原测试证书，只规范发布文件名，包内版本仍为 `0.2.7-lightly-preview`（versionCode 19）。该已发布下载包没有重新构建为混淆生产包；2026-11-05 晚的 `app-release.apk` 是本地开发分支的 R8 精简构建，**未发布**，且因为本机没有 `keystore.properties` 仍使用同一调试证书。它只能标为“压缩 Release 构建、开发签名”，不是生产/商店签名。
-
-发布包 SHA-256：
-
-```text
-87d4e1a87a65c6bf1668d1c95408963f03e23d641b9a1d3aaab195cf94acea50
-```
+2.0 正式发布使用 `versionName=2.0`、`versionCode=20`，开启 R8 与资源压缩。为兼容已安装预览版，保留原开发证书；未配置生产密钥时必须如实注明开发签名。安装包和校验值以 [2.0 发布记录](releases/2.0.md) 及 GitHub Release 附件为准，不把 debug 包重新命名冒充精简 Release。
 
 签名证书 SHA-256（公开证书指纹，不是私钥）：
 
