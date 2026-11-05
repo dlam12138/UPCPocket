@@ -24,12 +24,17 @@ object TimetableWidgetRenderer {
         failed: Boolean,
         openIntent: PendingIntent,
         refreshIntent: PendingIntent,
+        showDate: Boolean = true,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_timetable_today)
         views.setOnClickPendingIntent(R.id.widget_timetable_root, openIntent)
         views.setOnClickPendingIntent(R.id.widget_timetable_refresh, refreshIntent)
 
         val today = LocalDate.now(TIMETABLE_ZONE)
+        views.setViewVisibility(
+            R.id.widget_timetable_date,
+            if (showDate) View.VISIBLE else View.GONE,
+        )
         views.setTextViewText(
             R.id.widget_timetable_date,
             "${today.monthValue}月${today.dayOfMonth}日 ${weekday(today.dayOfWeek.value)}",

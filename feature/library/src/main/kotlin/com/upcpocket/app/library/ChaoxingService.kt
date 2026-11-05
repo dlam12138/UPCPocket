@@ -116,6 +116,8 @@ class ChaoxingService(
     private var revision = 0L
     private var entrySequence = 0L
     private var activeEntryId: Long? = null
+    // 会话内记住“提交结果未知”的精确请求；关闭详情页/重建 ViewModel 后仍不能重发。
+    private val unknownSubmissions = mutableSetOf<String>()
     private var cleanupInProgress = false
     private var cleanupFailed = false
     private var cleanupJob: CompletableDeferred<Boolean>? = null
@@ -349,6 +351,21 @@ class ChaoxingService(
     ): ChaoxingReservationResult {
         val current = _session.value ?: throw ChaoxingSessionExpiredException()
         val context = captureContext() ?: throw ChaoxingSessionExpiredException()
+        val submissionKey = submissionKey(
+            current.user.sno,
+            kind,
+            roomId,
+            date,
+            startMinute,
+            endMinute,
+            seatNum,
+        )
+        if (synchronized(stateLock) { submissionKey in unknownSubmissions }) {
+            return ChaoxingReservationResult.Unknown(
+                "上一次提交结果未知；请先到官方预约记录核对，本次会话不会再次发送。" +
+                    "确认未成功后退出并重新登录座位会话再试。",
+            )
+        }
         val result = try {
             repository.submitReservation(
                 kind = kind,
@@ -366,12 +383,34 @@ class ChaoxingService(
         val stillCurrent = isCurrent(context) &&
             _session.value?.cookieHeader == current.cookieHeader
         if (!stillCurrent) {
+            synchronized(stateLock) { unknownSubmissions += submissionKey }
             return ChaoxingReservationResult.Unknown(
                 "账号或会话在提交期间发生变化，结果未知；请到官方预约记录核对，勿连续重试。",
             )
         }
+        if (result is ChaoxingReservationResult.Unknown) {
+            synchronized(stateLock) { unknownSubmissions += submissionKey }
+        }
         return result
     }
+
+    private fun submissionKey(
+        userSno: String,
+        kind: ChaoxingSeatKind,
+        roomId: Int,
+        date: String,
+        startMinute: Int,
+        endMinute: Int,
+        seatNum: String,
+    ): String = listOf(
+        userSno,
+        kind.name,
+        roomId,
+        date,
+        startMinute,
+        endMinute,
+        seatNum,
+    ).joinToString("|")
 
     suspend fun signOut(): ChaoxingCleanupResult = performCleanup(expectedCookie = null)
 
@@ -430,6 +469,7 @@ class ChaoxingService(
             epoch++
             revision++
             _session.value = null
+            unknownSubmissions.clear()
             activeEntryId = null
             cleanupInProgress = true
             cleanupFailed = false

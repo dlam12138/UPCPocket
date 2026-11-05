@@ -75,11 +75,18 @@ object WidgetUpdates {
         WidgetKind.TIMETABLE -> AppGraph.timetableServiceOrNull != null
     }
 
+    /** 只给本地跨日/上下课边界重排使用；只读缓存，不联网。 */
+    fun timetableSnapshotForSchedule(context: Context): TimetableWidgetSnapshot? =
+        AppGraph.timetableServiceOrNull?.readWidgetSnapshot()
+
     /** 只读缓存，供 BroadcastReceiver 主线程快速渲染；不做网络请求、不迁移旧文件。 */
     fun updateKindNow(context: Context, kind: WidgetKind) {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) {
+            if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
+            return
+        }
         when (kind) {
             WidgetKind.CARD -> cardPublisher(appContext).publishLatestNow()
             WidgetKind.POWER -> {
@@ -97,12 +104,16 @@ object WidgetUpdates {
             }
             WidgetKind.TIMETABLE -> publishTimetable(appContext)
         }
+        if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
     }
 
     suspend fun updateKind(context: Context, kind: WidgetKind) {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
-        if (ids.isEmpty()) return
+        if (ids.isEmpty()) {
+            if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
+            return
+        }
         when (kind) {
             WidgetKind.CARD -> cardPublisher(appContext).publishLatest()
             WidgetKind.POWER -> {
@@ -120,6 +131,7 @@ object WidgetUpdates {
             }
             WidgetKind.TIMETABLE -> publishTimetable(appContext)
         }
+        if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
     }
 
     /**
@@ -216,6 +228,10 @@ object WidgetUpdates {
         val manager = AppWidgetManager.getInstance(context)
         ids.forEach { id ->
             // 2×2 也保留一条次课；4×2 只是同一布局获得更多宽度/高度，不另建入口。
+            val minWidth = manager.getAppWidgetOptions(id)
+                .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+            val showDate = minWidth >= 180 ||
+                context.resources.configuration.fontScale < 1.3f
             manager.updateAppWidget(
                 id,
                 TimetableWidgetRenderer.render(
@@ -224,6 +240,7 @@ object WidgetUpdates {
                     showSecondary = true,
                     refreshing = refreshing,
                     failed = failed,
+                    showDate = showDate,
                     openIntent = WidgetIntents.openApp(
                         context,
                         WidgetLaunchTarget.TIMETABLE,

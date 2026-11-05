@@ -10,6 +10,7 @@ import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.data.chaoxing.ChaoxingHttpRequest
 import com.upcpocket.app.data.chaoxing.ChaoxingHttpResponse
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
+import com.upcpocket.app.data.chaoxing.ChaoxingReservationResult
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingTransport
 import java.util.concurrent.CountDownLatch
@@ -384,6 +385,50 @@ class ChaoxingServiceTest {
             (result as ChaoxingLoginResult.Failure).reason,
         )
         assertNull(service.session.value)
+    }
+
+    @Test
+    fun `unknown submit is blocked again in the same service session`() = runTest {
+        var posts = 0
+        val repository = repository { request ->
+            when {
+                request.url.contains("/front/third/apps/seat/index") -> html(
+                    """var userLoginInfo = {"userInfo":{"sno":"20260001"}}||{}""",
+                )
+                request.url.contains("/front/third/apps/seat/select?") -> html(
+                    """<input type="hidden" id="submit_enc" value="synthetic_enc">""",
+                )
+                request.url.contains("/data/apps/seat/submit") -> {
+                    posts++
+                    ChaoxingHttpResponse(500, "gateway timeout")
+                }
+                else -> error("unexpected ${request.url}")
+            }
+        }
+        val service = service(Account(), repository, SchoolAccountIdentityCheck.MATCH)
+        assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies(COOKIE))
+
+        val first = service.submitReservation(
+            kind = ChaoxingSeatKind.SEAT,
+            roomId = 8548,
+            date = "2026-11-05",
+            startMinute = 8 * 60,
+            endMinute = 8 * 60 + 30,
+            seatNum = "A01",
+        )
+        val second = service.submitReservation(
+            kind = ChaoxingSeatKind.SEAT,
+            roomId = 8548,
+            date = "2026-11-05",
+            startMinute = 8 * 60,
+            endMinute = 8 * 60 + 30,
+            seatNum = "A01",
+        )
+
+        assertTrue(first is ChaoxingReservationResult.Unknown)
+        assertTrue(second is ChaoxingReservationResult.Unknown)
+        assertTrue((second as ChaoxingReservationResult.Unknown).message.contains("不会再次发送"))
+        assertEquals(1, posts)
     }
 
     @Test
