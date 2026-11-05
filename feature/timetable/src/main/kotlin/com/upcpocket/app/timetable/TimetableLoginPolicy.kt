@@ -44,9 +44,9 @@ internal object TimetableLoginPolicy {
 
     /** Coarse fixed destination for diagnostics; never the raw URL. */
     fun destination(raw: String): DiagnosticDestination {
-        if (raw == "about:blank") return DiagnosticDestination.UNKNOWN
-        val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN
-        if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN
+        if (raw == "about:blank") return DiagnosticDestination.UNKNOWN_DESTINATION
+        val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN_DESTINATION
+        if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN_DESTINATION
         val path = uri.path.orEmpty()
         return when (uri.host?.lowercase()) {
             CAS_HOST -> if (path.endsWith("login-mobile.html")) {
@@ -60,7 +60,7 @@ internal object TimetableLoginPolicy {
                 path.startsWith("/timetable/wap/default/") -> DiagnosticDestination.APP_API
                 else -> DiagnosticDestination.OTHER
             }
-            else -> DiagnosticDestination.UNKNOWN
+            else -> DiagnosticDestination.UNKNOWN_DESTINATION
         }
     }
 }

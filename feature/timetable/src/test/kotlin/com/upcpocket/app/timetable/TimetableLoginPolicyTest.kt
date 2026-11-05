@@ -123,7 +123,7 @@ class TimetableLoginPolicyTest {
             TimetableLoginPolicy.destination("https://app.upc.edu.cn/site/weekschedule/index"),
         )
         assertEquals(
-            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.UNKNOWN,
+            com.upcpocket.app.platform.diagnostics.DiagnosticDestination.UNKNOWN_DESTINATION,
             TimetableLoginPolicy.destination("https://evil.example/cas/login?token=secret"),
         )
     }

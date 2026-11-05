@@ -91,7 +91,7 @@ enum class DiagnosticDestination {
     APP_PAGE,
     APP_API,
     OTHER,
-    UNKNOWN,
+    UNKNOWN_DESTINATION,
 }
 
 enum class DiagnosticExceptionType {

@@ -299,7 +299,7 @@ internal open class SchoolLoginWebViewClient(
 }
 
 private fun schoolLoginDestination(raw: String): DiagnosticDestination {
-    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN
+    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN_DESTINATION
     if (isCasLoginFrame(raw) || isCasLoginPage(raw)) return DiagnosticDestination.CAS_LOGIN
     val host = runCatching { URI(raw).host?.lowercase() }.getOrNull()
     return when (host) {

@@ -641,16 +641,16 @@ internal fun isAllowedChaoxingLoginUrl(raw: String): Boolean {
 }
 
 internal fun chaoxingLoginDestination(raw: String): DiagnosticDestination {
-    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN
-    val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN
-    if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN
+    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN_DESTINATION
+    val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN_DESTINATION
+    if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN_DESTINATION
     return when (uri.host?.lowercase()) {
         "cas.upc.edu.cn" -> DiagnosticDestination.CAS_LOGIN
         "passport2-api.chaoxing.com" -> DiagnosticDestination.APP_CALLBACK
         "i.chaoxing.com", "office.chaoxing.com", "app.upc.edu.cn" ->
             DiagnosticDestination.APP_PAGE
         "tyrzfw.chaoxing.com" -> DiagnosticDestination.OTHER
-        else -> DiagnosticDestination.UNKNOWN
+        else -> DiagnosticDestination.UNKNOWN_DESTINATION
     }
 }
 
