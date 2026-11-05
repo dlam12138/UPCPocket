@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 半透明深色底让壁纸透出；对比度需结合实际壁纸检查。 -->
-    <color name="widget_card_fill_top">#B3242C3C</color>
-    <color name="widget_card_fill_bottom">#80131924</color>
-    <color name="widget_card_stroke">#66FFFFFF</color>
-    <color name="widget_primary">#F6F2F8</color>
-    <color name="widget_secondary">#E8EDF8</color>
-    <color name="widget_accent">#8FE0BC</color>
-    <color name="widget_error">#FFB4AB</color>
-    <color name="widget_refresh_fill">#28FFFFFF</color>
+    <!-- 深炭近实底；文字仍用系统级高对比，不把“深色”做成灰蒙蒙的玻璃。 -->
+    <color name="widget_surface">#1C1C1E</color>
+    <color name="widget_primary">#F5F5F7</color>
+    <color name="widget_secondary">#A1A1A6</color>
+    <color name="widget_tertiary">#8E8E93</color>
+    <color name="widget_accent">#6FD3A4</color>
+    <color name="widget_error">#FF6961</color>
+    <color name="widget_separator">#38383A</color>
+    <color name="widget_press_ripple">#1FFFFFFF</color>
 </resources>

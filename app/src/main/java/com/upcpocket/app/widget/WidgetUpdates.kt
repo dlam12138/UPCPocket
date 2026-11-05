@@ -3,6 +3,7 @@ package com.upcpocket.app.widget
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
+import android.util.Log
 import com.upcpocket.app.card.CardWidgetRead
 import com.upcpocket.app.card.CardWidgetRevision
 import com.upcpocket.app.card.CardWidgetViewState
@@ -10,6 +11,7 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.power.PowerSnapshot
+import com.upcpocket.app.timetable.TimetableWidgetLayout
 import com.upcpocket.app.timetable.TimetableWidgetRenderer
 import com.upcpocket.app.timetable.TimetableWidgetSnapshot
 import com.upcpocket.app.timetable.TimetableWidgetStatus
@@ -227,20 +229,21 @@ object WidgetUpdates {
             state.error(WidgetKind.TIMETABLE) != null
         val manager = AppWidgetManager.getInstance(context)
         ids.forEach { id ->
-            // 2×2 也保留一条次课；4×2 只是同一布局获得更多宽度/高度，不另建入口。
-            val minWidth = manager.getAppWidgetOptions(id)
-                .getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
-            val showDate = minWidth >= 180 ||
-                context.resources.configuration.fontScale < 1.3f
+            val size = widgetSize(manager, id)
+            val layout = TimetableWidgetLayout.forSize(
+                widthDp = size.widthDp,
+                heightDp = size.heightDp,
+                fontScale = context.resources.configuration.fontScale,
+            )
+            Log.d("UPCWidgetSize", "layout=$layout size=$size")
             manager.updateAppWidget(
                 id,
                 TimetableWidgetRenderer.render(
                     context = context,
                     snapshot = snapshot,
-                    showSecondary = true,
+                    layout = layout,
                     refreshing = refreshing,
                     failed = failed,
-                    showDate = showDate,
                     openIntent = WidgetIntents.openApp(
                         context,
                         WidgetLaunchTarget.TIMETABLE,
@@ -259,4 +262,36 @@ object WidgetUpdates {
     private fun widgetIds(context: Context, kind: WidgetKind): IntArray =
         AppWidgetManager.getInstance(context)
             .getAppWidgetIds(ComponentName(context, kind.providerClass))
+
+    /**
+     * 宿主给出的实际尺寸区间。当前尺寸优先用上限（横向/纵向的当前格宽），
+     * 单元格估算值只作为下限兜底；绝不把 2×2 写死成某个像素高度。
+     */
+    private fun widgetSize(
+        manager: AppWidgetManager,
+        widgetId: Int,
+    ): WidgetSize {
+        val options = manager.getAppWidgetOptions(widgetId)
+        val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+        val maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0)
+        val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+        val maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+        // 竖屏当前尺寸：宽度取下限、高度取上限（宿主预计算横竖两套范围）。
+        val width = minWidth.takeIf { it > 0 } ?: maxWidth
+        val height = maxHeight.takeIf { it > 0 } ?: minHeight
+        Log.d(
+            "UPCWidgetSize",
+            "id=$widgetId min=${minWidth}x${minHeight} max=${maxWidth}x${maxHeight}",
+        )
+        return WidgetSize(width, height)
+    }
+
+    /**
+     * 2×2 的默认密度：完整主课 + 日期/更新时间；4×2 才加次课。
+     * 具体阈值集中在 [TimetableWidgetLayout.forSize]，由单测覆盖尺寸/字体组合。
+     */
+    private data class WidgetSize(
+        val widthDp: Int,
+        val heightDp: Int,
+    )
 }

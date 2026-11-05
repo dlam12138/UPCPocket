@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.upcpocket.app.timetable.TimetableWidgetCourse
+import com.upcpocket.app.timetable.TimetableWidgetLayout
 import com.upcpocket.app.timetable.TimetableWidgetRenderer
 import com.upcpocket.app.timetable.TimetableWidgetSnapshot
 import com.upcpocket.app.timetable.TimetableWidgetStatus
@@ -70,11 +71,17 @@ class SyntheticTimetableWidgetProvider : AppWidgetProvider() {
         ) = TimetableWidgetRenderer.render(
             context = context,
             snapshot = snapshot(context),
-            showSecondary = true,
+            layout = TimetableWidgetLayout.forSize(
+                widthDp = if (providerClass == SyntheticTimetableWideWidgetProvider::class.java) {
+                    360
+                } else {
+                    172
+                },
+                heightDp = 234,
+                fontScale = context.resources.configuration.fontScale,
+            ),
             refreshing = false,
             failed = false,
-            showDate = providerClass == SyntheticTimetableWideWidgetProvider::class.java ||
-                context.resources.configuration.fontScale < 1.3f,
             openIntent = WidgetIntents.openApp(
                 context,
                 WidgetLaunchTarget.TIMETABLE,

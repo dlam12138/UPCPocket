@@ -116,7 +116,6 @@ class DirectCardBalanceSectionTest {
         }
         rule.onNodeWithText("123.45", substring = true).assertExists()
         rule.onNodeWithText("本次成功读取", substring = true).assertExists()
-        rule.onNodeWithText("不代表 CAS 登录成功", substring = true).assertExists()
         assertEquals(listOf(id), requested)
 
         // 换号立即撤下旧数值；新号尚未成功查询，不能先显示旧余额。

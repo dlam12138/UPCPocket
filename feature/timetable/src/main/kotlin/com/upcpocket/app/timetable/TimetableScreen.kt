@@ -591,11 +591,6 @@ internal fun WeekPanel(
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "周日至周六 · 上海时区",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
                 Spacer(Modifier.weight(1f))
                 when (state.weekState) {
                     TimetableWeekState.READY -> StatusPill(

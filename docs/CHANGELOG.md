@@ -1,6 +1,19 @@
 # 更新与验证
 
+## M5.8 · 三组件 Apple 式视觉、自适应与精简 Release（开发分支，未发布）
+
+- 三组件统一为近实底浅白 `#F7F7F9` / 深炭 `#1C1C1E`、24dp 圆角、无 stroke；删除旧玻璃底、渐变描边、可见刷新圆盘和重阴影。刷新改为 20dp 细线 `rotate-cw` + 44×44dp 透明热区 + 轻 ripple；图标不吞整卡点击。
+- 今日课表：标题 13sp、日期/状态 11sp、主课 16–17sp 最多两行、时间/地点 12–12.5sp 各一行、次课 11.5sp、页脚 10sp。色条从主课左侧改为日期行前 2×12dp 课程 tick，并在 dense 时隐藏，160dp 宽、1.0× 时也能完整显示 17 字主课。2×2 高 234dp 显示一条次课（只给开始时间），160–180dp 短卡保持单主课；4×2 显示完整主课/次课/更新时间。删除常驻“点按打开课表”。
+- 校园卡：删除学号/账号常驻行，保留余额大数字 + 小“元” + 一行更新时间；真实空态/换号撤旧/失败保留旧值不变。电量：楼栋次文、房间主文、kWh 大数字；`kWh` 比“元”宽，长数值更早收缩。两组件标题 `paddingEnd=28dp`，header `wrap_content + minHeight=30dp`，1.5× 字体不再上下裁切。
+- 删除课表页整行“周日至周六 · 上海时区”；删除首页“学校账号已保存，尚未验证学校密码；余额查询成功不代表 CAS 登录成功。”。真实“已保存，尚未验证”仍只在设置页展示。
+- `TimetableWidgetLayout.forSize` 统一尺寸决策：dense/compact、日期、地点、次课、页脚各有阈值；160/172/180/234/360dp、1.0/1.5× 已用 `WidgetPreviewActivity`（debug-only）逐项测量行数、省略号、bounds 与上下裁切。完整矩阵见 [组件视觉修订](m5/2026-11-05-组件视觉修订.md)。
+- 精简包：`app-release.apk` **4,642,177** bytes（debug `67,465,995`），SHA-256 `FE61368B88127FE092838F7D3A1601B8E8A60A60A10312DD9703DC57C44D3B3B`。R8 + resource shrink 沿用既有配置；universal ABI；无 `keystore.properties`，使用标准 debug keystore，证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。release manifest 无 synthetic provider/WidgetPreviewActivity；`adb install -r` 覆盖安装保留数据。
+- 验证：`core:designsystem` 6、`feature:card` 53、`feature:power` 27、`feature:timetable` 90、`app` 36，合计 **212 tests / 0 failures**（debug）。Release 模拟器：三组件正常渲染；关网后 `am kill` + 点校园卡刷新，进程重建、`WidgetRefreshWorker` SUCCESS、旧缓存余额保留，页脚 `更新失败 · HH:mm`；整卡点击分别打开首页/课表 tab；设置页仍显示“已保存，尚未验证”。未执行真实学校登录/查询/预约/签到；release 课程数据分支由 debug fixture 覆盖，MIUI 网格未直接复测。
+- 截图：`docs/m5/screenshots/80-85`（合成预览），README 组合图 `docs/images/widgets-light.png`；修订前参考 71/72。未 push/merge/publish。
+
 ## M5.7 · 课表周日起点/官方作息/今日组件、余额冷启动刷新与超星原生提交（开发分支，未发布）
+
+> 历史记录：本节组件“玻璃底/48dp 圆盘刷新/67MB debug 包”已被上方 M5.8 取代，保留用于追溯。
 
 - 课表周网格改为真实日期连续周日至周六；UPC 学期从周日起，源周顺序直接保留，不再按 ISO weekday 把周日排到最右。若源周不是周日起，按真实日期构造视窗并标出未覆盖日期，不旋转/重标课程。今日课程移到网格之前，查看其他教学周不再清空实际今天的快照；今日日期固定 `Asia/Shanghai`。
 - 左轴 48dp，按学校官方 1–12 节显示起止时间（响应 `course_time` 优先）；13–14 节无官方时刻显示“时间待确认”，不推算、不新增第 15 节。页面顺序固定为页头 → 单行学期/周次 → 今日 → 周网格，连接成功条和大段只读说明移除，说明/作息来源/网页登录收进信息按钮。

@@ -14,7 +14,6 @@ import com.upcpocket.app.data.ecard.CardBalanceBinding
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
-import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.designsystem.R as DesignSystemR
 import com.upcpocket.app.feature.card.R
 import org.junit.Assert.assertEquals
@@ -71,7 +70,7 @@ class CardWidgetRenderingTest {
         root.findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `compact card shows masked id main balance and hides secondary transition`() {
+    fun `compact card shows main balance unit and one-line update only`() {
         val root = render(
             snapshot = DirectCardSnapshot(
                 accountId = binding.accountId.value,
@@ -82,37 +81,28 @@ class CardWidgetRenderingTest {
                 fetchedAt = now,
             ),
         )
-        val account = text(root, R.id.widget_card_account)
-        assertTrue(account.contains("20"))
-        assertTrue(account.contains("••••"))
-        assertFalse(account.contains(id))
-
-        assertTrue(text(root, R.id.widget_card_balance).contains("123.45 元"))
-        val transition = text(root, R.id.widget_card_transition)
-        assertTrue(transition.contains("6.78"))
-        assertTrue(transition.contains("不计入"))
-        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_card_transition).visibility)
+        assertEquals("123.45", text(root, R.id.widget_card_balance))
+        assertEquals("元", text(root, R.id.widget_card_unit))
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_card_unit).visibility)
 
         val meta = text(root, R.id.widget_card_updated)
-        assertEquals(WidgetRenderSupport.queryTime(now), meta)
-        assertFalse(meta.contains("刚刚"))
+        assertTrue(meta.endsWith("更新"))
+        assertFalse(meta.contains("\n"))
+        assertFalse(meta.contains("12-"))
 
         val refresh = root.findViewById<View>(R.id.widget_card_refresh)
         assertTrue(refresh.contentDescription.toString().contains("刷新校园卡余额"))
-        assertTrue(refresh.layoutParams.width >= 48 * context.resources.displayMetrics.density)
-        assertTrue(refresh.layoutParams.height >= 48 * context.resources.displayMetrics.density)
+        val minTouch = (44 * context.resources.displayMetrics.density).toInt()
+        assertTrue(refresh.layoutParams.width >= minTouch)
+        assertTrue(refresh.layoutParams.height >= minTouch)
     }
 
     @Test
     fun `bound account without snapshot enables refresh instead of requiring old cache`() {
         var refreshFactory = 0
         val root = render(onRefreshFactory = { refreshFactory++ })
-        val account = text(root, R.id.widget_card_account)
-        assertTrue(account.contains("20••••23"))
-        assertFalse(account.contains(id))
-        assertTrue(text(root, R.id.widget_card_balance).contains("尚未查询"))
-        assertFalse(text(root, R.id.widget_card_balance).contains("0.00"))
-        assertTrue(text(root, R.id.widget_card_updated).contains("点击刷新"))
+        assertEquals("尚未查询", text(root, R.id.widget_card_balance))
+        assertEquals("已绑定 · 点击刷新", text(root, R.id.widget_card_updated))
         assertTrue(
             root.findViewById<View>(R.id.widget_card_refresh)
                 .contentDescription.toString().contains("刷新校园卡余额"),
@@ -129,9 +119,8 @@ class CardWidgetRenderingTest {
             onRefreshFactory = { refreshFactory++ },
             onOpenFactory = { openFactory++ },
         )
-        assertTrue(text(root, R.id.widget_card_account).contains("未绑定"))
-        assertTrue(text(root, R.id.widget_card_balance).contains("尚未查询"))
-        assertTrue(text(root, R.id.widget_card_updated).contains("打开应用设置"))
+        assertEquals("尚未绑定", text(root, R.id.widget_card_balance))
+        assertEquals("打开应用设置学校账号", text(root, R.id.widget_card_updated))
         assertTrue(
             root.findViewById<View>(R.id.widget_card_refresh)
                 .contentDescription.toString().contains("打开应用"),
@@ -154,9 +143,9 @@ class CardWidgetRenderingTest {
             status = CardBindingStatus(CardBindingAvailability.CLEANING),
             snapshot = old,
         )
-        assertFalse(text(root, R.id.widget_card_account).contains("20••••"))
+        assertEquals("清理中", text(root, R.id.widget_card_balance))
+        assertEquals("旧身份数值已隐藏", text(root, R.id.widget_card_updated))
         assertFalse(text(root, R.id.widget_card_balance).contains("123.45"))
-        assertTrue(text(root, R.id.widget_card_updated).contains("隐藏旧身份"))
     }
 
     @Test
@@ -170,14 +159,14 @@ class CardWidgetRenderingTest {
             fetchedAt = now,
         )
         val refreshing = render(snapshot = card, refreshing = true)
-        assertTrue(text(refreshing, R.id.widget_card_balance).contains("123.45 元"))
-        assertTrue(text(refreshing, R.id.widget_card_updated).contains("正在刷新"))
+        assertEquals("123.45", text(refreshing, R.id.widget_card_balance))
+        assertEquals("正在更新…", text(refreshing, R.id.widget_card_updated))
 
         val failed = render(snapshot = card, failed = true)
-        assertTrue(text(failed, R.id.widget_card_balance).contains("123.45 元"))
+        assertEquals("123.45", text(failed, R.id.widget_card_balance))
         val failedMeta = text(failed, R.id.widget_card_updated)
-        assertTrue(failedMeta.contains("刷新失败"))
-        assertTrue(failedMeta.contains(WidgetRenderSupport.queryTime(now)))
+        assertTrue(failedMeta.contains("更新失败"))
+        assertFalse(failedMeta.contains("\n"))
     }
 
     @Test
@@ -191,9 +180,52 @@ class CardWidgetRenderingTest {
             fetchedAt = now,
         )
         val root = render(snapshot = card)
-        val meta = text(root, R.id.widget_card_updated)
-        assertTrue(meta.contains("历史值"))
-        assertTrue(meta.contains(WidgetRenderSupport.queryTime(now)))
+        assertTrue(text(root, R.id.widget_card_updated).contains("历史值"))
+    }
+
+    @Test
+    fun `long balance steps down instead of clipping the number`() {
+        val renderer = CardWidgetRenderer(context)
+        assertEquals(36f, renderer.numberTextSize("6.99"))
+        assertEquals(30f, renderer.numberTextSize("1234.56"))
+        assertEquals(25f, renderer.numberTextSize("123456.78"))
+        assertEquals(16.5f, renderer.numberTextSize("12345.67", fontScale = 1.5f))
+        assertTrue(renderer.unitTextSize(30f) < 30f)
+    }
+
+    @Test
+    fun `160dp at 15x keeps title and balance unclipped`() {
+        val config = Configuration(context.resources.configuration).apply {
+            fontScale = 1.5f
+        }
+        val ctx = context.createConfigurationContext(config)
+        val views = CardWidgetRenderer(ctx).views(
+            status = CardBindingStatus(CardBindingAvailability.READY, binding),
+            snapshot = DirectCardSnapshot(
+                accountId = binding.accountId.value,
+                studentId = id,
+                credentialGeneration = 2,
+                balanceCents = 699,
+                transitionCents = 0,
+                fetchedAt = now,
+            ),
+            refreshing = false,
+            failed = false,
+            openApp = { pending(1) },
+            refresh = { pending(2) },
+        )
+        val root = views.apply(ctx, FrameLayout(ctx))
+        val size = (160 * ctx.resources.displayMetrics.density).toInt()
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
+        )
+        root.layout(0, 0, size, size)
+        val title = root.findViewById<TextView>(R.id.widget_card_title)
+        val balance = root.findViewById<TextView>(R.id.widget_card_balance)
+        assertTrue(title.height >= title.layout.height)
+        assertEquals(0, balance.layout.getEllipsisCount(0))
+        assertEquals("6.99", balance.text.toString())
     }
 
     @Test
@@ -222,7 +254,7 @@ class CardWidgetRenderingTest {
         )
         val root = views.apply(dark, FrameLayout(dark))
         assertEquals(
-            dark.getColor(DesignSystemR.color.widget_secondary),
+            dark.getColor(DesignSystemR.color.widget_tertiary),
             root.findViewById<TextView>(R.id.widget_card_updated).currentTextColor,
         )
     }

@@ -149,14 +149,6 @@ fun DirectCardBalanceSection(
                 )
             }
 
-            if (status.availability == CardBindingAvailability.READY) {
-                Text(
-                    "学校账号已保存，尚未验证学校密码；余额查询成功不代表 CAS 登录成功。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             snapshot?.let { data ->
                 BalanceSnapshot(
                     data = data,

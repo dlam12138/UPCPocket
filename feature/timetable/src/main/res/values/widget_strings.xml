@@ -1,13 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_timetable_title">今日课表</string>
+    <string name="widget_timetable_description">显示今天的主课、时间、地点与更新时间；默认 2×2，可拉宽到 4×2</string>
     <string name="widget_refresh_timetable">刷新课表组件</string>
-    <string name="widget_timetable_open">点按打开课表</string>
-    <string name="widget_timetable_no_account">打开应用绑定学校账号</string>
-    <string name="widget_timetable_loading">正在恢复学校账号…</string>
-    <string name="widget_timetable_cleanup">学校账号清理中</string>
-    <string name="widget_timetable_needs_sync">打开应用同步课表</string>
+
+    <!-- 仅用于系统组件选择器的静态预览；任何真实更新都会覆盖这些占位。 -->
+    <string name="widget_timetable_preview_date">今天</string>
+    <string name="widget_timetable_preview_status">下一堂</string>
+    <string name="widget_timetable_preview_course">课程安排</string>
+    <string name="widget_timetable_preview_time">08:00–09:35</string>
+    <string name="widget_timetable_preview_location">教学楼</string>
+    <string name="widget_timetable_preview_footer">更新后显示</string>
+
+    <string name="widget_timetable_no_account">未绑定学校账号</string>
+    <string name="widget_timetable_no_account_hint">在设置中绑定后显示</string>
+    <string name="widget_timetable_loading">正在恢复账号</string>
+    <string name="widget_timetable_loading_hint">稍后自动显示课表</string>
+    <string name="widget_timetable_cleanup">账号清理中</string>
+    <string name="widget_timetable_cleanup_hint">完成前不显示旧课表</string>
+    <string name="widget_timetable_needs_sync">课表尚未同步</string>
+    <string name="widget_timetable_needs_sync_hint">打开应用同步一次</string>
     <string name="widget_timetable_outside_term">今天不在教学周</string>
-    <string name="widget_timetable_empty">今天没有排课</string>
+    <string name="widget_timetable_outside_term_hint">查看学期安排请打开课表</string>
+    <string name="widget_timetable_empty">今天没有课</string>
+    <string name="widget_timetable_empty_hint">课表已同步</string>
+    <string name="widget_timetable_stale">课表不是今天</string>
+    <string name="widget_timetable_stale_hint">打开应用同步后再看</string>
     <string name="widget_timetable_unknown">时间待确认</string>
+
+    <string name="widget_timetable_status_current">上课中</string>
+    <string name="widget_timetable_status_next">下一堂</string>
+    <string name="widget_timetable_status_ended">已结束</string>
+    <string name="widget_timetable_status_unknown">时间待确认</string>
+    <string name="widget_timetable_status_empty">无课</string>
+    <string name="widget_timetable_status_error">未同步</string>
+    <string name="widget_timetable_status_stale">不是今天</string>
+    <string name="widget_timetable_status_no_account">未绑定</string>
+    <string name="widget_timetable_status_loading">恢复中</string>
+    <string name="widget_timetable_status_cleanup">清理中</string>
+    <string name="widget_timetable_status_outside_term">学期外</string>
+    <string name="widget_timetable_failed_compact">更新失败 · 显示缓存</string>
 </resources>

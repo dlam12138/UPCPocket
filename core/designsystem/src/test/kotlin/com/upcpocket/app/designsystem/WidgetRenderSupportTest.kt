@@ -8,7 +8,7 @@ import org.junit.Test
 class WidgetRenderSupportTest {
 
     @Test
-    fun `query time is absolute local time and includes year across years`() {
+    fun `query time is one line with day context only when needed`() {
         val zone = ZoneId.of("Asia/Shanghai")
         fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
             ZonedDateTime.of(year, month, day, hour, minute, 0, 0, zone)
@@ -16,16 +16,24 @@ class WidgetRenderSupportTest {
                 .toEpochMilli()
 
         assertEquals(
-            "10-29 17:20",
-            WidgetRenderSupport.queryTime(
+            "17:20",
+            WidgetRenderSupport.queryTimeShort(
                 fetchedAt = at(2026, 10, 29, 17, 20),
                 now = at(2026, 10, 29, 20, 0),
                 zone = zone,
             ),
         )
         assertEquals(
+            "10-29 17:20",
+            WidgetRenderSupport.queryTimeShort(
+                fetchedAt = at(2026, 10, 29, 17, 20),
+                now = at(2026, 10, 30, 8, 0),
+                zone = zone,
+            ),
+        )
+        assertEquals(
             "2025-12-31 23:59",
-            WidgetRenderSupport.queryTime(
+            WidgetRenderSupport.queryTimeShort(
                 fetchedAt = at(2025, 12, 31, 23, 59),
                 now = at(2026, 1, 1, 0, 5),
                 zone = zone,

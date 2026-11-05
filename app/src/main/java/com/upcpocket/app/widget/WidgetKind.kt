@@ -6,10 +6,10 @@ import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * 两个桌面组件各自的刷新身份。
+ * 三个桌面组件各自的刷新身份。
  *
  * 组件通知、唯一任务名、状态键和 PendingIntent action 全部按类型隔离：
- * 刷校园卡不会碰电费，反之亦然。
+ * 刷校园卡不会碰电费或课表，反之亦然。
  */
 enum class WidgetKind(
     val key: String,

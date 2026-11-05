@@ -106,7 +106,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
 
             WidgetCard(
                 title = "校园卡余额",
-                description = "显示脱敏学号、余额与上次成功读取时间。换号会立即撤下旧值。",
+                description = "显示校园卡余额与上次成功读取时间，不再常驻学号；换号会立即撤下旧值。",
                 icon = Icons.Filled.CreditCard,
                 supported = supported,
                 onPin = {

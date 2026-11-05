@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 两个桌面组件共用的空状态与查询状态文案。具体业务字段由各 feature 提供。 -->
+    <!-- 三个桌面组件共用的空状态与时间行。 -->
     <string name="widget_empty_value">尚未查询</string>
     <string name="widget_empty_hint">先在应用查询一次</string>
-    <string name="widget_no_record">尚无本地记录</string>
-    <string name="widget_query_label">查询于</string>
-    <string name="widget_refreshing">正在刷新…</string>
-    <string name="widget_refresh_failed">刷新失败</string>
+    <string name="widget_refreshing">正在更新…</string>
+    <string name="widget_refresh_failed">更新失败</string>
+    <string name="widget_updated">%1$s 更新</string>
+    <string name="widget_failed_with_time">更新失败 · %1$s</string>
 </resources>

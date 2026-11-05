@@ -125,7 +125,7 @@ fun SettingsScreen(
                 Column {
                     NavigationRow(
                         title = "桌面组件",
-                        subtitle = "校园卡余额与唐岛湾电量 · 2×2",
+                        subtitle = "校园卡 / 唐岛湾电量 / 今日课表 · 默认 2×2",
                         icon = Icons.Outlined.Widgets,
                         onClick = onOpenWidgets,
                     )

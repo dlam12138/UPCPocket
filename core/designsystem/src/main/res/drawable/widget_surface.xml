@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  近实底圆角。Android 桌面会自行裁切组件外框；24dp 在这个范围内，
+  不额外画描边，避免 MIUI/Pixel 上出现“双层边框”。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/widget_surface" />
+    <corners android:radius="24dp" />
+</shape>

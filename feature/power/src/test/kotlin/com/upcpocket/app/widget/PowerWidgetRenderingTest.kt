@@ -8,7 +8,6 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.data.power.PowerSnapshot
-import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.feature.power.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -48,7 +47,7 @@ class PowerWidgetRenderingTest {
         root.findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `power keeps building and room as separately rendered fields`() {
+    fun `power keeps building and room as separately rendered fields with kWh`() {
         val root = render(
             snapshot = PowerSnapshot("01号楼(1)", "1101", "17.34", now),
         )
@@ -59,22 +58,61 @@ class PowerWidgetRenderingTest {
         assertEquals(1, building.maxLines)
         assertEquals(1, room.maxLines)
 
-        assertTrue(text(root, R.id.widget_power_value).contains("17.34 度"))
-        assertFalse(text(root, R.id.widget_power_value).contains("元"))
+        assertEquals("17.34", text(root, R.id.widget_power_value))
+        assertEquals("kWh", text(root, R.id.widget_power_unit))
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_power_unit).visibility)
         val meta = text(root, R.id.widget_power_updated)
-        assertEquals(WidgetRenderSupport.queryTime(now), meta)
-        assertFalse(meta.contains("刚刚"))
-        assertFalse(meta.contains("分钟前"))
+        assertTrue(meta.endsWith("更新"))
+        assertFalse(meta.contains("\n"))
     }
 
     @Test
     fun `power without snapshot asks for an app query and shows no zero`() {
         val root = render()
-        assertTrue(text(root, R.id.widget_power_building).contains("未设置楼号"))
-        assertTrue(text(root, R.id.widget_power_room).contains("未设置房间"))
-        assertTrue(text(root, R.id.widget_power_value).contains("尚未查询"))
+        assertTrue(text(root, R.id.widget_power_building).contains("未设置房间"))
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_power_room).visibility)
+        assertEquals("尚未查询", text(root, R.id.widget_power_value))
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_power_unit).visibility)
+        assertEquals("先在应用查询一次", text(root, R.id.widget_power_updated))
         assertFalse(text(root, R.id.widget_power_value).contains("0.00"))
-        assertTrue(text(root, R.id.widget_power_updated).contains("先在应用查询一次"))
-        assertTrue(text(root, R.id.widget_power_updated).contains("尚无本地记录"))
+    }
+
+    @Test
+    fun `power long value steps down and keeps a single line`() {
+        val renderer = PowerWidgetRenderer(context)
+        assertEquals(36f, renderer.numberTextSize("6.99"))
+        assertEquals(27f, renderer.numberTextSize("1234.56"))
+        assertEquals(23f, renderer.numberTextSize("123456.78"))
+        assertEquals(23.4f, renderer.numberTextSize("17.34", fontScale = 1.5f))
+        assertTrue(renderer.unitTextSize(23f) < 23f)
+    }
+
+    @Test
+    fun `160dp at 15x keeps power title value and kWh unclipped`() {
+        val config = android.content.res.Configuration(context.resources.configuration).apply {
+            fontScale = 1.5f
+        }
+        val ctx = context.createConfigurationContext(config)
+        val views = PowerWidgetRenderer(ctx).views(
+            snapshot = PowerSnapshot("01号楼(1)", "1101", "17.34", now),
+            refreshing = false,
+            failed = false,
+            openApp = { pending(11) },
+            refresh = { pending(12) },
+        )
+        val root = views.apply(ctx, FrameLayout(ctx))
+        val size = (160 * ctx.resources.displayMetrics.density).toInt()
+        root.measure(
+            View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(size, View.MeasureSpec.EXACTLY),
+        )
+        root.layout(0, 0, size, size)
+        val title = root.findViewById<TextView>(R.id.widget_power_title)
+        val value = root.findViewById<TextView>(R.id.widget_power_value)
+        val unit = root.findViewById<TextView>(R.id.widget_power_unit)
+        assertTrue(title.height >= title.layout.height)
+        assertEquals(0, title.layout.getEllipsisCount(0))
+        assertEquals(0, value.layout.getEllipsisCount(0))
+        assertEquals("kWh", unit.text.toString())
     }
 }
