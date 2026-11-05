@@ -71,17 +71,17 @@ fun TimetableLoginDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Text(
-                        "学校登录",
+                        "网页登录",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(start = 16.dp),
                     )
                     Row {
-                        TextButton(onClick = { verifyCookies() }) { Text("验证当前登录") }
+                        TextButton(onClick = { verifyCookies() }) { Text("完成") }
                         TextButton(onClick = onClose) { Text("关闭") }
                     }
                 }
                 Text(
-                    hint ?: "请在此完成学校正常登录；验证码/二次验证按学校页面操作。登录完成后会自动验证。",
+                    hint ?: "请完成学校登录；验证码按页面提示操作。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),

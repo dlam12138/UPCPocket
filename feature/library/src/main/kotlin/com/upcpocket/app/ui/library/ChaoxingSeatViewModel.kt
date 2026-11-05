@@ -149,12 +149,12 @@ class ChaoxingSeatViewModel(
                 _state.value = _state.value.copy(
                     detailBusy = false,
                     sessionExpired = true,
-                    detailError = "Chaoxing 会话已失效，请重新网页登录。",
+                    detailError = "登录已失效，请重新登录。",
                 )
             } catch (failure: ChaoxingException) {
                 _state.value = _state.value.copy(
                     detailBusy = false,
-                    detailError = "座位图读取失败：${failure.code}",
+                    detailError = "座位图读取失败，请重试。",
                 )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
@@ -235,14 +235,14 @@ class ChaoxingSeatViewModel(
                     _state.value = _state.value.copy(
                         sessionExpired = true,
                         usedSeatsLoaded = false,
-                        detailError = "Chaoxing 会话已失效，请重新网页登录。",
+                        detailError = "登录已失效，请重新登录。",
                     )
                 }
             } catch (failure: ChaoxingException) {
                 if (generation == timeRequestGeneration) {
                     _state.value = _state.value.copy(
                         usedSeatsLoaded = false,
-                        detailError = "已用座位读取失败：${failure.code}",
+                        detailError = "已用座位读取失败，请重试。",
                     )
                 }
             } catch (_: Exception) {
@@ -348,13 +348,13 @@ class ChaoxingSeatViewModel(
                 _state.value = _state.value.copy(
                     reserving = false,
                     sessionExpired = true,
-                    reservationMessage = "会话已失效，未确认提交结果；请重新登录后到官方记录核对。",
+                    reservationMessage = "登录已失效，提交结果未知；请重新登录后到学校记录核对。",
                     reservationUnknown = true,
                 )
             } catch (failure: ChaoxingException) {
                 _state.value = _state.value.copy(
                     reserving = false,
-                    reservationMessage = "提交前校验失败：${failure.message ?: failure.code}；未重试。",
+                    reservationMessage = "提交前检查失败，未提交。",
                     reservationUnknown = false,
                 )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -362,7 +362,7 @@ class ChaoxingSeatViewModel(
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
                     reserving = false,
-                    reservationMessage = "提交结果未知；请到官方预约记录核对，勿连续重试。",
+                    reservationMessage = "提交结果未知；请先到学校记录核对，不要连续重试。",
                     reservationUnknown = true,
                 )
             }
@@ -390,18 +390,18 @@ class ChaoxingSeatViewModel(
                 _state.value = _state.value.copy(
                     busy = false,
                     rooms = page.rooms,
-                    error = if (page.rooms.isEmpty()) "学校返回空区域列表；未当作可预约。" else null,
+                    error = if (page.rooms.isEmpty()) "没有区域数据；这不代表有座。" else null,
                 )
             } catch (expired: ChaoxingSessionExpiredException) {
                 _state.value = _state.value.copy(
                     busy = false,
                     sessionExpired = true,
-                    error = "Chaoxing 会话已失效，请重新网页登录。",
+                    error = "登录已失效，请重新登录。",
                 )
             } catch (failure: ChaoxingException) {
                 _state.value = _state.value.copy(
                     busy = false,
-                    error = "座位区域读取失败：${failure.code}",
+                    error = "座位区域读取失败，请重试。",
                 )
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled

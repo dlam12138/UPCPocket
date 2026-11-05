@@ -40,7 +40,7 @@ internal fun LibraryAccountSection(service: LibraryService) {
         headlineContent = { Text("记住学校登录") },
         supportingContent = {
             Text(
-                "只保存图书馆座位会话；不是学校账号密码。",
+                "只保存图书馆登录，不保存账号密码。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -62,8 +62,8 @@ internal fun LibraryAccountSection(service: LibraryService) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            "图书馆会话：" + (
-                librarySession?.let { "内存中（${it.user.name.ifBlank { "已登录" }}）" }
+            "图书馆：" + (
+                librarySession?.let { "已登录（${it.user.name.ifBlank { "已登录" }}）" }
                     ?: "未登录"
                 ),
             style = MaterialTheme.typography.labelSmall,
@@ -79,9 +79,11 @@ internal fun LibraryAccountSection(service: LibraryService) {
         modifier = Modifier.padding(start = 8.dp, end = 8.dp, bottom = 2.dp),
         verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
-        TextButton(
-            onClick = { scope.launch { service.setRememberLogin(false) } },
-        ) { Text("退出学校登录（清理会话与学校 Cookie）") }
+        if (librarySession != null) {
+            TextButton(
+                onClick = { scope.launch { service.setRememberLogin(false) } },
+            ) { Text("退出图书馆登录") }
+        }
 
         AnimatedVisibility(visible = showDetails) {
             Column(
@@ -89,14 +91,12 @@ internal fun LibraryAccountSection(service: LibraryService) {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Text(
-                    "开启后，图书馆座位业务 token 用 Android Keystore 加密保存（不随系统备份）；" +
-                        "关闭或退出会清理持久副本与学校业务 Cookie。",
+                    "开启后会加密保存登录状态；关闭或退出会清除。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "此开关只保存图书馆会话，不是统一学校账号密码的保存/验证，" +
-                        "也不能代替“设置 → 学校账号”中的选择。校园卡余额不需要登录。",
+                    "此开关只影响图书馆，不影响学校账号或校园卡。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -95,7 +95,7 @@ class DirectCardBalanceSectionTest {
         val service = service(FakeAccountIdentity()) { requests++ }
         render(service)
 
-        rule.onNodeWithTag("card_binding_status").assertTextContains("请先设置学校账号", substring = true)
+        rule.onNodeWithTag("card_binding_status").assertTextContains("先设置学校账号", substring = true)
         rule.onNodeWithTag("card_query").assertDoesNotExist()
         rule.onAllNodes(hasSetTextAction()).assertCountEquals(0)
         assertEquals(0, requests)
@@ -115,7 +115,7 @@ class DirectCardBalanceSectionTest {
             rule.onAllNodesWithTag("card_snapshot").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("123.45", substring = true).assertExists()
-        rule.onNodeWithText("本次成功读取", substring = true).assertExists()
+        rule.onNodeWithText("刚刚更新", substring = true).assertExists()
         assertEquals(listOf(id), requested)
 
         // 换号立即撤下旧数值；新号尚未成功查询，不能先显示旧余额。
@@ -177,7 +177,7 @@ class DirectCardBalanceSectionTest {
         rule.waitUntil(5_000) {
             rule.onAllNodesWithTag("card_error").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("历史缓存：本次查询失败", substring = true).assertExists()
+        rule.onNodeWithText("更新失败", substring = true).assertExists()
         rule.onNodeWithText("123.45", substring = true).assertExists()
         // 失败仍显示同一账号的历史值，且不能把本次失败当成新快照。
         rule.onNodeWithTag("card_binding_status").assertTextContains("20••••99", substring = true)
@@ -209,7 +209,7 @@ class DirectCardBalanceSectionTest {
                 rule.onAllNodesWithTag("card_error").fetchSemanticsNodes().isNotEmpty()
             }
             rule.onNodeWithTag("card_error")
-                .assertTextContains("余额缓存清除未完成", substring = true)
+                .assertTextContains("缓存未清除", substring = true)
             rule.onAllNodesWithTag("card_snapshot").assertCountEquals(0)
             rule.onNodeWithTag("card_binding_status")
                 .assertTextContains("20••••99", substring = true)

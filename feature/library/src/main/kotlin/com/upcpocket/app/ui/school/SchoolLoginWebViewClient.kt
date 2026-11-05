@@ -149,7 +149,7 @@ internal open class SchoolLoginWebViewClient(
         if (request.isForMainFrame || isCasLoginFrame(request.url.toString())) {
             clearWatchdog(view)
             onLoading(false)
-            onError("${loginHost(request.url.toString())} 返回 HTTP ${response.statusCode}，请重试")
+            onError("学校页面暂时不可用，请重试")
         }
     }
 

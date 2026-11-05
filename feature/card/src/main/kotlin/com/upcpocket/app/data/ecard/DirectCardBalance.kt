@@ -701,7 +701,7 @@ internal fun requestDirectCardBalance(form: String, endpoint: String = DirectCar
         val bytes = form.toByteArray(Charsets.UTF_8)
         connection.setFixedLengthStreamingMode(bytes.size)
         connection.outputStream.use { it.write(bytes) }
-        if (connection.responseCode !in 200..299) throw CampusCardException("校园卡余额服务暂不可用（HTTP ${connection.responseCode}）")
+        if (connection.responseCode !in 200..299) throw CampusCardException("校园卡服务暂时不可用，请稍后重试")
         return connection.inputStream.use { input ->
             val output = java.io.ByteArrayOutputStream()
             val buffer = ByteArray(4096)

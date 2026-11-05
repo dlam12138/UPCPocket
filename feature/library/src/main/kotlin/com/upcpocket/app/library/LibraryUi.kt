@@ -113,7 +113,7 @@ internal class LibraryUi(
                 surface = UiSurface.HOME_SERVICES,
                 order = 2,
                 title = "图书馆",
-                subtitle = "唐岛湾 / 古镇口 / 求是座位",
+                subtitle = "三馆座位",
                 icon = UiIcon.LIBRARY,
                 route = LIBRARY_HOME_ROUTE,
             ),

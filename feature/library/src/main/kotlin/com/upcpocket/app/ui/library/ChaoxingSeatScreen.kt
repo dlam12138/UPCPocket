@@ -127,7 +127,7 @@ fun ChaoxingSeatScreen(
                     Column {
                         Text("超星座位")
                         Text(
-                            "座位查看 · ${state.kind.campusLabel}",
+                            state.kind.campusLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -165,14 +165,12 @@ fun ChaoxingSeatScreen(
                             Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text("登录后查看区域", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("登录后查看座位", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             Text(
                                 if (canAutoLogin) {
-                                    "可以使用本机加密保存的学校账号自动登录；学校要求验证码或二次验证时，" +
-                                        "改走学校官方网页登录。"
+                                    "使用已保存的学校账号登录；需要验证码时打开学校网页。"
                                 } else {
-                                    "区域、开放时间和已用座位来自学校；真实预约在学校官方页完成。" +
-                                        "尚未保存可自动登录的学校账号。"
+                                    "登录后可查看区域与座位；预约在学校页面。"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -199,7 +197,7 @@ fun ChaoxingSeatScreen(
                                                 throw cancelled
                                             } catch (_: Exception) {
                                                 autoLoginBusy = false
-                                                autoLoginError = "自动登录失败，请改用学校网页登录"
+                                                autoLoginError = "登录失败，请用网页登录。"
                                             }
                                         }
                                     },
@@ -207,22 +205,16 @@ fun ChaoxingSeatScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                 ) {
                                     Text(
-                                        if (autoLoginBusy) "正在使用学校账号登录…" else "使用已保存学校账号登录",
+                                        if (autoLoginBusy) "正在登录…" else "用已保存账号登录",
                                     )
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 OutlinedButton(onClick = onOpenLogin, enabled = !autoLoginBusy) {
-                                    Text(
-                                        if (canAutoLogin) {
-                                            "打开学校网页登录（验证码/二次验证）"
-                                        } else {
-                                            "网页登录"
-                                        },
-                                    )
+                                    Text("网页登录")
                                 }
                                 OutlinedButton(onClick = { openChaoxingOfficial(context, state.officialUrl) }) {
-                                    Text("官方页")
+                                    Text("学校页面")
                                 }
                             }
                             autoLoginError?.let {
@@ -269,8 +261,8 @@ fun ChaoxingSeatScreen(
                 if (!state.busy && state.error == null && state.rooms.isEmpty()) {
                     item {
                         CompactNotice(
-                            "没有区域数据",
-                            "当前日期没有返回区域；请换日期重试，不能当作“有座”。",
+                            "没有区域",
+                            "换个日期再试；这不代表有座。",
                         )
                     }
                 }
@@ -288,12 +280,12 @@ fun ChaoxingSeatScreen(
                     ) {
                         Icon(Icons.Filled.Public, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.size(4.dp))
-                        Text("打开学校官方预约页")
+                        Text("学校预约页")
                     }
                 }
                 item {
                     Text(
-                        "这里只读展示区域、开放时间和所选时段已用座位；不提交预约、不签到。",
+                        "可提交预约；签到在学校页面完成。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -454,7 +446,7 @@ private fun ChaoxingSeatDetailPage(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回区域")
                     }
                 },
-                actions = { TextButton(onClick = onOpenOfficial) { Text("官方页") } },
+                actions = { TextButton(onClick = onOpenOfficial) { Text("学校页面") } },
             )
         },
         bottomBar = {
@@ -473,7 +465,7 @@ private fun ChaoxingSeatDetailPage(
                             "$timeLabel · " + if (state.usedSeatsLoaded) {
                                 "${state.usedSeats.size} 个已用"
                             } else {
-                                "已用座位未取得"
+                                "已用座位未知"
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -493,10 +485,10 @@ private fun ChaoxingSeatDetailPage(
                         ) { Text("选择时段") }
                         state.reservationSucceeded -> Button(
                             onClick = onOpenOfficial,
-                        ) { Text("核对官方记录") }
+                        ) { Text("查看学校记录") }
                         state.reservationUnknown -> Button(
                             onClick = onOpenOfficial,
-                        ) { Text("先核对官方记录") }
+                        ) { Text("先查看学校记录") }
                         state.selectedSeat == null -> Button(
                             onClick = {},
                             enabled = false,
@@ -505,7 +497,7 @@ private fun ChaoxingSeatDetailPage(
                             onClick = { showReserveConfirm = true },
                             enabled = state.usedSeatsLoaded &&
                                 state.selectedSeat !in state.usedSeats,
-                        ) { Text("原生预约") }
+                        ) { Text("预约") }
                     }
                 }
             }
@@ -532,7 +524,7 @@ private fun ChaoxingSeatDetailPage(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            "默认显示首个时段，可在“更改”里选择更长时段",
+                            "默认首个时段，可更改",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -541,7 +533,7 @@ private fun ChaoxingSeatDetailPage(
                 }
             }
             state.detailError?.let { message ->
-                item { CompactNotice("座位图未完成", message) }
+                item { CompactNotice("座位图加载失败", message) }
             }
             state.reservationMessage?.let { message ->
                 item {
@@ -579,28 +571,20 @@ private fun ChaoxingSeatDetailPage(
                     )
                 }
             }
-            item {
-                Text(
-                    "先选时段，再点可用座位；提交前会再次显示座位、日期和时段。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
         }
     }
 
     if (showReserveConfirm) {
         AlertDialog(
             onDismissRequest = { if (!state.reserving) showReserveConfirm = false },
-            title = { Text("确认提交预约") },
+            title = { Text("确认预约") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${detail.name} · ${selectedSeat ?: "未选座"}")
                     Text("${state.selectedDate} · ${formatMinute(selectedStart ?: 0)}–" +
                         formatMinute(selectedEnd ?: 0))
                     Text(
-                        "这是真实提交，会占用该座位。提交后请到官方预约记录核对；" +
-                            "如果超时或提示未知，不要连续重试。",
+                        "提交后会占用座位。若超时或结果未知，请先到学校记录核对，不要连续重试。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -613,7 +597,7 @@ private fun ChaoxingSeatDetailPage(
                         vm.reserveSelected()
                     },
                     enabled = !state.reserving,
-                ) { Text("确认提交一次") }
+                ) { Text("确认预约") }
             },
             dismissButton = {
                 TextButton(
@@ -635,17 +619,16 @@ private fun ChaoxingSeatDetailPage(
                     .padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("选择查看时段", style = MaterialTheme.typography.titleMedium)
+                Text("选择时段", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "结束时间由开放时间和时段步长决定；先确认所选区间的已用座位，" +
-                        "回到详情页后再单独确认提交。",
+                    "结束时间由开放时间决定；回到详情页再确认预约。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text("开始时间", style = MaterialTheme.typography.labelLarge)
                 val starts = chaoxingStartOptions(detail)
                 if (starts.isEmpty()) {
-                    Text("该区域当天没有可选开始时间。", color = MaterialTheme.colorScheme.error)
+                    Text("当天没有可选时间。", color = MaterialTheme.colorScheme.error)
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         starts.forEach { start ->
@@ -662,7 +645,7 @@ private fun ChaoxingSeatDetailPage(
                 if (state.selectedStart == null) {
                     Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
                 } else if (ends.isEmpty()) {
-                    Text("该开始时间没有可用结束时间。", color = MaterialTheme.colorScheme.error)
+                    Text("没有可用结束时间。", color = MaterialTheme.colorScheme.error)
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         ends.forEach { end ->
@@ -689,7 +672,7 @@ private fun ChaoxingSeatDetailPage(
                     Button(onClick = { showTimeSheet = false }, enabled = state.selectedStart != null) {
                         Text("完成")
                     }
-                    OutlinedButton(onClick = onOpenOfficial) { Text("打开官方页") }
+                    OutlinedButton(onClick = onOpenOfficial) { Text("学校页面") }
                 }
             }
         }

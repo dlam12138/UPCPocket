@@ -291,8 +291,8 @@ class LibrarySeatRepository(
             when (status) {
                 in 200..299 -> Unit
                 401, 403 -> throw LibrarySessionExpiredException()
-                in 300..399 -> throw LibrarySeatException("学校服务要求跳转，登录可能已失效")
-                else -> throw LibrarySeatException("学校服务暂时不可用（HTTP $status）")
+                in 300..399 -> throw LibrarySeatException("登录可能已失效，请重试")
+                else -> throw LibrarySeatException("学校服务暂时不可用，请稍后重试")
             }
             val bytes = ByteArrayOutputStream()
             connection.inputStream.use { input ->

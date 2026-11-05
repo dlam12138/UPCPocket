@@ -51,7 +51,7 @@ internal class PowerUi(
                 surface = UiSurface.HOME_SERVICES,
                 order = 0,
                 title = "电费",
-                subtitle = "唐岛湾查询 · 古镇口网页",
+                subtitle = "唐岛湾 / 古镇口",
                 icon = UiIcon.ELECTRICITY,
                 route = POWER_ELECTRICITY_ROUTE,
             ),

@@ -45,7 +45,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -158,7 +157,7 @@ internal fun TimetableScreen(
                 title = { Text("课表") },
                 actions = {
                     IconButton(onClick = { infoVisible = true }) {
-                        Icon(Icons.Outlined.Info, contentDescription = "课表说明与作息来源")
+                        Icon(Icons.Outlined.Info, contentDescription = "课表说明")
                     }
                     IconButton(onClick = onOpenAccountSettings) {
                         Icon(
@@ -200,7 +199,9 @@ internal fun TimetableScreen(
                 return@Column
             }
 
-            if (state.connection != TimetableConnection.CONNECTED || state.message != null) {
+            if (state.connection != TimetableConnection.CONNECTED || state.message != null ||
+                (!state.isBusy && state.terms.isEmpty())
+            ) {
                 ConnectionBanner(
                     state = state,
                     onRetry = viewModel::refresh,
@@ -214,7 +215,7 @@ internal fun TimetableScreen(
                 if (state.isBusy) {
                     ReadingCard()
                 } else {
-                    NoTermsCard(onRetry = viewModel::refresh)
+                    NoTermsCard()
                 }
             } else {
                 // 固定页头 → 紧凑选择条 → 今日课程 → 周网格。大段声明收进说明按钮。
@@ -254,7 +255,7 @@ internal fun TimetableScreen(
                         loginVisible = false
                         loginHint = null
                     } else {
-                        loginHint = "尚未验证到有效课表会话；完成登录后点“验证当前登录”。"
+                        loginHint = "完成学校登录后点“完成”。"
                     }
                 }
             },
@@ -277,13 +278,13 @@ private fun AccountBlockedCard(message: String, onOpenAccountSettings: () -> Uni
                 containerColor = MaterialTheme.colorScheme.errorContainer,
                 contentColor = MaterialTheme.colorScheme.onErrorContainer,
             )
-            Text("学校账号需要处理", style = MaterialTheme.typography.titleLarge)
+            Text("学校账号需要更新", style = MaterialTheme.typography.titleLarge)
             Text(
                 message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onOpenAccountSettings) { Text("前往学校账号") }
+            Button(onClick = onOpenAccountSettings) { Text("更新账号") }
         }
     }
 }
@@ -300,10 +301,9 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
                 contentDescription = null,
                 size = 48.dp,
             )
-            Text("连接你的课表", style = MaterialTheme.typography.headlineSmall)
+            Text("连接课表", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "课表使用当前学校账号，通过正常学校认证只读查询当前教学周。" +
-                    "它不会在首页后台自动登录，也不会遍历整个学期。",
+                text = "使用学校账号查询当前教学周。仅在进入课表时查询。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -315,8 +315,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("设置学校账号") }
             Text(
-                text = "保存账号不等于认证通过。第一次进入课表时才会发起学校认证；" +
-                    "验证码或二次验证会转到学校自己的网页登录。",
+                text = "保存账号不等于验证通过；验证码或二次验证会打开学校网页。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -334,7 +333,7 @@ private fun ReadingCard() {
         ) {
             CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
             Text(
-                "正在读取学期与当前教学周…",
+                "正在读取课表…",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -343,16 +342,15 @@ private fun ReadingCard() {
 }
 
 @Composable
-private fun NoTermsCard(onRetry: () -> Unit) {
+private fun NoTermsCard() {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("尚未取得学期列表", style = MaterialTheme.typography.titleMedium)
+            Text("尚未取得学期", style = MaterialTheme.typography.titleMedium)
             Text(
-                "可能是课程服务暂时不可用或认证需要交互。不会把未知状态当作空课表展示。",
+                "课程服务暂时不可用，或需要重新登录。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedButton(onClick = onRetry) { Text("重试") }
         }
     }
 }
@@ -497,22 +495,6 @@ internal fun TermAndWeekHeader(
 }
 
 @Composable
-private fun ConnectedStrip(onOpenWebLogin: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        StatusPill(
-            text = "已连接",
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-        Spacer(Modifier.weight(1f))
-        TextButton(onClick = onOpenWebLogin) { Text("使用学校网页登录") }
-    }
-}
-
-@Composable
 internal fun ConnectionBanner(
     state: TimetableUiState,
     onRetry: () -> Unit,
@@ -524,7 +506,7 @@ internal fun ConnectionBanner(
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("课表连接", style = MaterialTheme.typography.titleSmall)
+                Text("课表状态", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.weight(1f))
                 StatusPill(
                     text = connectionLabel(state.connection),
@@ -542,8 +524,8 @@ internal fun ConnectionBanner(
             }
             state.weekFetchedAtEpochMillis?.let { fetched ->
                 Text(
-                    "数据时间：${formatFetchedAt(fetched)}" +
-                        if (state.weekState == TimetableWeekState.CACHED) " · 历史缓存" else "",
+                    "更新于 ${formatFetchedAt(fetched)}" +
+                        if (state.weekState == TimetableWeekState.CACHED) " · 缓存" else "",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -561,7 +543,7 @@ internal fun ConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
-                    Button(onClick = onOpenLogin) { Text("打开学校登录页") }
+                    Button(onClick = onOpenLogin) { Text("学校登录") }
                 }
                 if (state.canRetry && !state.isBusy) {
                     TextButton(onClick = onRetry) { Text("重试") }
@@ -576,7 +558,7 @@ internal fun ConnectionBanner(
                     state.connection != TimetableConnection.NOT_CONFIGURED &&
                     !state.accountBlocked
                 ) {
-                    TextButton(onClick = onOpenWebLogin) { Text("使用学校网页登录") }
+                    TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
                 }
             }
         }
@@ -594,12 +576,12 @@ internal fun WeekPanel(
                 Spacer(Modifier.weight(1f))
                 when (state.weekState) {
                     TimetableWeekState.READY -> StatusPill(
-                        text = "在线成功",
+                        text = "已更新",
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     TimetableWeekState.CACHED -> StatusPill(
-                        text = "离线缓存",
+                        text = "缓存",
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
@@ -614,9 +596,9 @@ internal fun WeekPanel(
             Spacer(Modifier.height(4.dp))
             when (state.weekState) {
                 TimetableWeekState.NOT_QUERIED ->
-                    EmptyWeekHint("该教学周尚未查询；切换周会按需查询。")
+                    EmptyWeekHint("这一周还没有查询。")
                 TimetableWeekState.ERROR ->
-                    EmptyWeekHint(state.message ?: "该教学周查询失败；未缓存时不能离线查看。")
+                    EmptyWeekHint("查询失败，且没有缓存。")
                 TimetableWeekState.LOADING -> if (state.meetings.isEmpty()) {
                     Box(
                         Modifier
@@ -964,12 +946,7 @@ internal fun TodayPanel(
             }
             when {
                 !state.todayLoaded || !matchesActualToday -> Text(
-                    "今日课程尚未查询。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                today == null -> Text(
-                    "今日日期不可用。",
+                    "今天还没有查询。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1082,11 +1059,6 @@ internal fun CourseDetailDialog(
                         containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
-                    StatusPill(
-                        text = "只读",
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
                 }
                 HorizontalDivider(
                     Modifier.padding(vertical = 2.dp),
@@ -1101,21 +1073,18 @@ internal fun CourseDetailDialog(
                     "上课时间",
                     UpcTimetableSchedule.label(meeting) ?: "时间待确认",
                 )
-                DetailLine("原始时间字段", meeting.courseTime ?: "未提供")
-                DetailLine("单双周源信息", meeting.weekType ?: "未提供")
                 DetailLine("课程类型", meeting.courseType ?: "未提供")
                 DetailLine("课程编号", meeting.courseId ?: "未提供")
                 if (meeting.sourcePeriods.size != meeting.periods.size) {
                     Text(
-                        "源节次非连续，网格按源协议拆成连续片段展示；详情保留完整原始节次。",
+                        "原始节次不连续，网格分段显示。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
                 Text(
-                    "钟点优先取自学校响应 course_time；缺失时仅查学校官方作息。" +
-                        "13–14 节没有官方时刻时显示“时间待确认”，不按等差推算。",
+                    "时间以学校作息为准；13–14 节暂无官方时刻时显示“时间待确认”。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1152,18 +1121,15 @@ private fun TimetableInfoDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    "只读查询。学期、周次、节次、日期和课程时间均按学校响应展示；" +
-                        "不自动遍历整学期，不周期轮询，也不提供编辑、提醒或导出。",
+                    "课表按学校数据展示，不提供编辑或提醒。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "周网格按真实日期连续展示周日至周六；查看其他教学周时，" +
-                        "“今日课程”仍按上海时区的实际今天计算。",
+                    "周网格按日期连续显示；切换周不影响今日课程。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
-                    "左轴 1–12 节使用学校 2020 年发布的作息；13–14 节没有可靠的" +
-                        "官方时刻，显示“时间待确认”，不按等差推算，也没有第 15 节。",
+                    "1–12 节按学校作息；13–14 节暂无官方时刻，显示“时间待确认”。",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
@@ -1173,8 +1139,7 @@ private fun TimetableInfoDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "临时调课、停课或教室变更以学校通知为准；缓存会明确标注，“尚未查询”" +
-                        "不会显示成“没有课”。",
+                    "临时调课或教室变更以学校通知为准；缓存会标明。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1182,7 +1147,7 @@ private fun TimetableInfoDialog(
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onOpenWebLogin) { Text("使用学校网页登录") }
+                TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
                 TextButton(onClick = onDismiss) { Text("关闭") }
             }
         },
@@ -1244,18 +1209,18 @@ private fun weekdayLabel(iso: Int): String = when (iso) {
 }
 
 private fun connectionLabel(connection: TimetableConnection): String = when (connection) {
-    TimetableConnection.LOADING -> "账号恢复中"
+    TimetableConnection.LOADING -> "读取账号中"
     TimetableConnection.NOT_CONFIGURED -> "未设置账号"
     TimetableConnection.BLOCKED_BY_CLEANUP -> "清理中"
     TimetableConnection.IDLE -> "未连接"
     TimetableConnection.CONNECTING -> "连接中"
     TimetableConnection.CONNECTED -> "已连接"
-    TimetableConnection.INTERACTION_REQUIRED -> "需交互登录"
-    TimetableConnection.AUTH_FAILED -> "认证失败"
+    TimetableConnection.INTERACTION_REQUIRED -> "需要登录"
+    TimetableConnection.AUTH_FAILED -> "登录失败"
     TimetableConnection.NETWORK_UNAVAILABLE -> "网络不可用"
-    TimetableConnection.PROTOCOL_ERROR -> "接口异常"
-    TimetableConnection.SESSION_EXPIRED -> "会话失效"
-    TimetableConnection.DEGRADED_CACHE -> "离线缓存"
+    TimetableConnection.PROTOCOL_ERROR -> "服务异常"
+    TimetableConnection.SESSION_EXPIRED -> "登录失效"
+    TimetableConnection.DEGRADED_CACHE -> "缓存"
 }
 
 private fun formatFetchedAt(epochMillis: Long): String =

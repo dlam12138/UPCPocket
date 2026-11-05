@@ -94,7 +94,7 @@ fun HomeScreen(
         add(
             QuickAction(
                 title = "校园网页",
-                subtitle = "课表、教室与图书馆的学校页面",
+                subtitle = "课表 · 教室 · 图书馆",
                 icon = Icons.Outlined.Public,
                 onClick = onOpenOfficialWeb,
             ),
@@ -146,7 +146,7 @@ fun HomeScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("校园服务暂不可用", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "对应插件未启用。已安装的其他页面仍可从底部导航或设置进入。",
+                            "请检查插件是否启用。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -167,16 +167,6 @@ fun HomeScreen(
                     Spacer(Modifier.height(4.dp))
                 }
             }
-
-            Spacer(Modifier.height(22.dp))
-            Text(
-                text = "非学校官方应用。账号、个人查询缓存与设置保存在本机；" +
-                    "结果以学校系统返回为准。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 2.dp),
-            )
-            Spacer(Modifier.height(20.dp))
         }
     }
 }
@@ -209,7 +199,7 @@ private fun Header(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = "$greeting，今天也按自己的节奏来。",
+                text = greeting,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

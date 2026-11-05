@@ -107,7 +107,7 @@ fun SettingsScreen(
                             Column(Modifier.weight(1f)) {
                                 Text("图书馆登录", style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "使用学校统一认证；可记住座位会话",
+                                    "使用学校账号；可记住登录",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -125,14 +125,14 @@ fun SettingsScreen(
                 Column {
                     NavigationRow(
                         title = "桌面组件",
-                        subtitle = "校园卡 / 唐岛湾电量 / 今日课表 · 默认 2×2",
+                        subtitle = "校园卡 / 电量 / 课表",
                         icon = Icons.Outlined.Widgets,
                         onClick = onOpenWidgets,
                     )
                     SettingsDivider()
                     NavigationRow(
                         title = "校园官方网页",
-                        subtitle = "课表、空闲教室、图书馆、电费",
+                        subtitle = "课表、教室、图书馆",
                         icon = Icons.Outlined.Public,
                         onClick = onOpenOfficialWeb,
                     )
@@ -147,27 +147,19 @@ fun SettingsScreen(
                 Column {
                     NavigationRow(
                         title = "配色与深色模式",
-                        subtitle = "跟随壁纸动态取色，或选一套内置配色",
+                        subtitle = "跟随壁纸或内置配色",
                         icon = Icons.Filled.Palette,
                         onClick = onOpenAppearance,
                     )
                     SettingsDivider()
                     NavigationRow(
                         title = "关于 UPC Pocket",
-                        subtitle = "能力边界、数据来源、开源与致谢",
+                        subtitle = "版本、来源与致谢",
                         icon = Icons.Filled.Info,
                         onClick = onOpenAbout,
                     )
                 }
             }
-
-            Text(
-                text = "账号密码只在本机用 Android Keystore 加密保存；保存不等于学校认证通过。" +
-                    "查询只在你主动操作时发起，不做后台轮询。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 14.dp, start = 2.dp, end = 2.dp),
-            )
         }
     }
 }

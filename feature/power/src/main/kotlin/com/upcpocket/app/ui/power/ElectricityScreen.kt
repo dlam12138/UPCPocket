@@ -74,28 +74,22 @@ fun ElectricityScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "两个校区的宿舍电费是不同系统。唐岛湾在 App 内查询；古镇口仍打开学校页面。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("唐岛湾校区", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "应用内查询 · 选择楼号并填写房间号，查询剩余电量（度）。",
+                        "楼号 + 房间号查询",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text(
-                        "不需要登录；只读、不充值。",
+                        "无需登录",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
                         onClick = onOpenTangdaowan,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    ) { Text("进入唐岛湾查询") }
+                    ) { Text("查询电量") }
                 }
             }
 
@@ -103,13 +97,8 @@ fun ElectricityScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("古镇口校区", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        PowerCampusEntries.GUZHENKOU_SCOPE,
+                        "在学校页面查询",
                         style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        PowerCampusEntries.GUZHENKOU_NOTE,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedButton(
                         onClick = { openInBrowser(PowerCampusEntries.GUZHENKOU_URL) },
@@ -117,12 +106,6 @@ fun ElectricityScreen(
                     ) { Text("打开学校页面") }
                 }
             }
-
-            Text(
-                text = "唐岛湾为 App 内查询；古镇口为学校外部页面，未做原生接入。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

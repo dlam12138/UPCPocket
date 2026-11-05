@@ -85,11 +85,11 @@ class TimetableFirstLoginScreenTest {
         rule.waitUntil(5_000) {
             service.state.value.connection == TimetableConnection.INTERACTION_REQUIRED
         }
-        rule.onNodeWithText("打开学校登录页").assertIsDisplayed().performClick()
+        rule.onNodeWithText("学校登录").assertIsDisplayed().performClick()
         rule.waitUntil(5_000) {
             service.state.value.interactionUrl != null
         }
-        rule.onNodeWithText("学校登录").assertIsDisplayed()
+        rule.onNodeWithText("网页登录").assertIsDisplayed()
 
         // 模拟学校网页正常完成登录后，业务层用页面 Cookie 再验证 index，
         // 然后主动刷新取得当前周；不依赖 WebView 注入表单。
@@ -149,9 +149,9 @@ class TimetableFirstLoginScreenTest {
         rule.waitForIdle()
         rule.onNodeWithText("日期").assertExists()
         rule.onNodeWithText("关闭").performClick()
-        rule.onNodeWithContentDescription("课表说明与作息来源").performClick()
-        rule.onNodeWithText("使用学校网页登录").performClick()
-        rule.onNodeWithText("学校登录").assertIsDisplayed()
+        rule.onNodeWithContentDescription("课表说明").performClick()
+        rule.onNodeWithText("网页登录").performClick()
+        rule.onNodeWithText("网页登录").assertIsDisplayed()
 
         account.publishOther()
         rule.waitUntil(5_000) {

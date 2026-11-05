@@ -114,11 +114,11 @@ data class LibraryReservation(
 /** 学校返回的 token 或业务错误；调用方必须把失败显示出来，不能当成空数据。 */
 open class LibrarySeatException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
-class LibrarySessionExpiredException(message: String = "登录已失效，请重新通过学校统一认证登录") :
+class LibrarySessionExpiredException(message: String = "登录已失效，请重新登录") :
     LibrarySeatException(message)
 
 class LibraryCaptchaRequiredException :
-    LibrarySeatException("学校当前启用了图形验证码，暂不能在原生界面提交；请先在官方页面完成预约")
+    LibrarySeatException("需要图形验证码，请在学校页面预约。")
 
 object LibrarySeatStatus {
     fun label(status: String): String = when (status) {

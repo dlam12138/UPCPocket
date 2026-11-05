@@ -39,7 +39,7 @@ class SchoolLoginWebViewClientTest {
         client.onReceivedHttpError(view, request(CAS, true), response(503))
         client.onPageFinished(view, CAS)
         assertFalse(loading)
-        assertTrue(error.orEmpty().contains("503"))
+        assertTrue(error.orEmpty().contains("暂时不可用"))
         assertFalse(error.orEmpty().contains("fixture-ticket"))
     }
 
@@ -47,7 +47,7 @@ class SchoolLoginWebViewClientTest {
         client.onReceivedHttpError(view, request("https://cas.upc.edu.cn/cas/logo.png", false), response(404))
         assertNull(error)
         client.onReceivedHttpError(view, request("https://cas.upc.edu.cn/cas/cas/login-mobile.html", false), response(404))
-        assertTrue(error.orEmpty().contains("404"))
+        assertTrue(error.orEmpty().contains("暂时不可用"))
     }
 
     @Test fun `blocked main navigation reports failure instead of silently leaving a blank page`() {

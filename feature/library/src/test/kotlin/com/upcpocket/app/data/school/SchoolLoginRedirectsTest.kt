@@ -75,7 +75,7 @@ class SchoolLoginRedirectsTest {
             SchoolLoginRedirects(::allowed, ::isNativeSchoolAuthUrl) { LoginHttpPage(503) }
                 .resolve("$entry?token=fixture-secret#private")
         }.exceptionOrNull()!!
-        assertTrue(error.message.orEmpty().contains("503"))
+        assertTrue(error.message.orEmpty().contains("暂时不可用"))
         assertFalse(error.message.orEmpty().contains("fixture-secret"))
         assertFalse(error.message.orEmpty().contains("private"))
     }

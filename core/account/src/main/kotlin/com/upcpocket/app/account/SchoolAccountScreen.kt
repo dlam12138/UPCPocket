@@ -170,7 +170,7 @@ fun SchoolAccountScreen(
             busy = false
             when (result) {
                 SchoolAccountWriteResult.Success -> {
-                    message = "本机学校账号与关联个人会话/缓存已删除。"
+                    message = "账号已删除。"
                     messageIsError = false
                 }
                 is SchoolAccountWriteResult.Failure -> {
@@ -191,7 +191,7 @@ fun SchoolAccountScreen(
             busy = false
             when (result) {
                 SchoolAccountWriteResult.Success -> {
-                    message = "旧账号数据清理已完成。"
+                    message = "清理完成。"
                     messageIsError = false
                 }
                 is SchoolAccountWriteResult.Failure -> {
@@ -205,16 +205,7 @@ fun SchoolAccountScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("学校账号")
-                        Text(
-                            "本机加密 · 保存不等于认证通过",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("学校账号") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -240,7 +231,7 @@ fun SchoolAccountScreen(
             GlassCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "本机凭据",
+                        text = "账号状态",
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
@@ -255,18 +246,10 @@ fun SchoolAccountScreen(
                     )
                     if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED) {
                         Text(
-                            text = "凭据版本：第 ${state.generation.value} 版。保存只代表密文已写入本机，" +
-                                "不代表学校认证通过。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
                             text = if (state.studentIdAvailable) {
-                                "余额查询学号：${state.maskedStudentId.orEmpty()}。仅由登录名整串识别，" +
-                                    "尚未经过学校身份验证。"
+                                "余额学号：${state.maskedStudentId.orEmpty()}"
                             } else {
-                                "当前账号登录名不是 8–16 位数字学号，余额查询不可用；" +
-                                    "不会猜测或截取其他数字。"
+                                "当前账号不能查询余额。"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -286,11 +269,10 @@ fun SchoolAccountScreen(
             if (!legacyStudentIdHint.isNullOrBlank()) {
                 GlassCard(modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("旧版余额学号提示", style = MaterialTheme.typography.titleSmall)
+                        Text("旧版余额学号", style = MaterialTheme.typography.titleSmall)
                         Text(
                             text = "检测到旧版余额学号 ${AccountMask.mask(legacyStudentIdHint.trim())}。" +
-                                "它只用于提示，不会自动创建账号或绑定余额；保存账号后，余额只按" +
-                                "账号登录名中完整有效的本人学号查询。",
+                                "保存账号后，余额只按当前账号查询。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.testTag("legacy_student_hint"),
@@ -304,7 +286,7 @@ fun SchoolAccountScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("旧账号清理未完成", style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "完成前不会启用新账号，也不会写入新的凭据版本。清理动作可重复执行。",
+                            "完成前不能保存新账号。",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -320,20 +302,13 @@ fun SchoolAccountScreen(
                 }
             }
 
-            Text(
-                text = "输入学校账号与密码",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-            )
-
             OutlinedTextField(
                 value = accountInput,
                 onValueChange = { accountInput = it },
                 label = {
                     Text(
                         if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED) {
-                            "学校账号（留空则只更新当前账号密码）"
+                            "学校账号（可留空）"
                         } else {
                             "学校账号"
                         },
@@ -355,7 +330,7 @@ fun SchoolAccountScreen(
                     keyboardType = KeyboardType.Password,
                     autoCorrectEnabled = false,
                 ),
-                supportingText = { Text("仅用于本机加密保存，不会在本页发起登录。") },
+                supportingText = { Text("加密保存在本机。") },
                 modifier = Modifier.fillMaxWidth().testTag("password_input"),
             )
 
@@ -400,14 +375,13 @@ fun SchoolAccountScreen(
                     Icon(Icons.Filled.Lock, contentDescription = null)
                 }
                 Text(
-                    text = if (state.isCredentialSaved) "保存新密码" else "加密保存到本机",
+                    text = "保存",
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
 
             Text(
-                text = "密码使用 Android Keystore 中独立密钥的 AES-GCM 加密，密文写入应用私有目录；" +
-                    "不写明文、不进入系统备份。保存成功后输入框会清空，不显示已保存密码。",
+                text = "密码加密保存在本机，不进入系统备份。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -421,7 +395,7 @@ fun SchoolAccountScreen(
                     modifier = Modifier.fillMaxWidth().testTag("delete_account"),
                 ) {
                     Icon(Icons.Filled.DeleteOutline, contentDescription = null)
-                    Text("删除本机学校账号", modifier = Modifier.padding(start = 8.dp))
+                    Text("删除账号", modifier = Modifier.padding(start = 8.dp))
                 }
             }
 
@@ -429,16 +403,13 @@ fun SchoolAccountScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("账号如何使用", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "校园卡余额只按当前账号登录名中完整有效的本人学号查询，不使用独立输入框；" +
-                            "登录名不是 8–16 位数字时明确不可用。课表与图书馆在进入对应页面、由你主动操作时，" +
-                            "才通过学校正常 CAS 使用这份账号；验证码或二次验证会转到学校自己的网页登录。" +
-                            "保存成功只代表密文写入本机，不代表任何业务已登录或学校身份已验证。",
+                        "校园卡余额使用当前账号的学号。课表与图书馆在使用时登录学校；" +
+                            "验证码会打开学校网页。保存账号不代表已验证。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "删除账号会删除加密账密、关联业务会话与能确认归属的个人缓存，但不会删除专注历史、" +
-                            "主题、公开教室数据或独立寝室配置。",
+                        "删除账号会移除登录信息与关联缓存；专注记录和主题保留。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -450,11 +421,10 @@ fun SchoolAccountScreen(
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
-            title = { Text("删除本机学校账号？") },
+            title = { Text("删除账号？") },
             text = {
                 Text(
-                    "将删除加密账密、关联业务会话与能确认归属的个人缓存，并刷新组件。" +
-                        "不会删除专注历史、主题、公开教室或寝室配置。删除后不可恢复。",
+                    "登录信息、关联缓存和组件数据会删除；专注记录与主题保留。删除后不可恢复。",
                 )
             },
             confirmButton = {

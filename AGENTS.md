@@ -45,6 +45,7 @@
 
 ## 精简交付规范
 
+- **面向用户文案少且具体**：标题、按钮、空态优先短句；不写协议名、实现名、开发者自证、重复作用说明或长期免责声明；技术约束收进现有“数据说明/关于”，不新增入口。失败、离线、缓存、未验证、验证码、清理未完成、结果未知和带后果的确认必须保留。
 - 面向用户的默认最终产物是 **R8 + resource shrink 的已签名 Release APK**；debug APK 只用于开发、视觉夹具和定向测试，不把 60MB+ debug 包当交付。若用户明确要调试包，再单独说明。
 - 保留现有全部功能，优先用 R8/资源收缩减小体积；默认 universal APK，不擅自改 ABI 多包或删功能。用实际 `assembleRelease` 产物报告字节数、SHA-256、签名证书指纹和 ABI；不凭经验承诺“几 MB”。
 - 签名优先复用仓库外合法 keystore。没有 `keystore.properties`/release key 时，release 使用 Android debug keystore，只能标注“**压缩 Release 构建、开发签名**”，不得称为生产/商店包。不得为了换签名而卸载、`pm clear` 或清除用户数据；覆盖安装前比对包名、versionCode 与证书指纹。

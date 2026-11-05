@@ -100,9 +100,9 @@ fun ChaoxingLoginScreen(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("需要已保存的学校账号", style = MaterialTheme.typography.titleMedium)
+            Text("先保存学校账号", style = MaterialTheme.typography.titleMedium)
             Text(
-                "网页登录只把本次 Chaoxing 会话绑定到本机已保存账号；请先在设置中保存账号。",
+                "登录会绑定到本机保存的学校账号；请先在设置中保存。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -116,15 +116,15 @@ fun ChaoxingLoginScreen(
             modifier = Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text("Chaoxing 登录暂不可用", style = MaterialTheme.typography.titleMedium)
+            Text("登录暂不可用", style = MaterialTheme.typography.titleMedium)
             Text(
                 when (cleanupState) {
                     ChaoxingCleanupState.CLEARING ->
-                        "上一次退出/换号仍在清理 Chaoxing Cookie；完成前不会发布新会话。"
+                        "正在清理上次登录，完成前不能重新登录。"
                     ChaoxingCleanupState.FAILED ->
-                        "上一次 Chaoxing Cookie 清理失败或超时；已阻止新登录，避免旧会话残留。"
+                        "上次登录清理失败，已暂停新登录。"
                     ChaoxingCleanupState.IDLE ->
-                        "当前账号或会话状态不可用；请先在设置中确认学校账号。"
+                        "账号状态不可用，请先在设置中确认。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
@@ -136,7 +136,7 @@ fun ChaoxingLoginScreen(
                             entry = service.beginWebLogin()
                             error = null
                         } else {
-                            error = "Cookie 清理仍未成功；不会发布 Chaoxing 会话。"
+                            error = "清理仍未完成，请重试。"
                         }
                     }
                 }) { Text("重试清理") }
@@ -150,7 +150,7 @@ fun ChaoxingLoginScreen(
         if (busy || finished) return
         val activeEntry = entry
         if (activeEntry == null) {
-            error = "网页登录入口已失效或 Cookie 清理尚未完成；请返回后重新打开。"
+            error = "登录入口已失效，请返回重试。"
             return
         }
         val cookie = collectChaoxingCookies(CookieManager.getInstance())
@@ -183,11 +183,11 @@ fun ChaoxingLoginScreen(
         if (next == null) {
             error = when (cleanupState) {
                 ChaoxingCleanupState.CLEARING ->
-                    "上一次 Chaoxing Cookie 仍在清理；完成前不会重新打开登录页。"
+                    "正在清理上次登录，完成前不能重新打开。"
                 ChaoxingCleanupState.FAILED ->
-                    "上一次 Chaoxing Cookie 清理失败；请先重试清理，不能直接重新登录。"
+                    "上次登录清理失败，请先重试清理。"
                 ChaoxingCleanupState.IDLE ->
-                    "当前账号状态不可用；请返回并确认学校账号后重试。"
+                    "账号状态不可用，请返回确认学校账号。"
             }
             pageLoading = false
             return false
@@ -219,7 +219,7 @@ fun ChaoxingLoginScreen(
                     beginFreshLoginPage()
                 }
                 is ChaoxingCleanupResult.Failed -> {
-                    error = "Cookie 清理未完成；未重新加载登录页，避免绕过清理门闩。"
+                    error = "清理未完成，请重试。"
                     pageLoading = false
                 }
             }
@@ -241,16 +241,7 @@ fun ChaoxingLoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("Chaoxing 网页登录")
-                        Text(
-                            "座位 · 官方会话",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("学校网页登录") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -359,7 +350,7 @@ fun ChaoxingLoginScreen(
                                                 return
                                             }
                                             handler.cancel()
-                                            error = "登录页证书校验失败，已停止；不会绕过 TLS。"
+                                            error = "登录页证书校验失败，已停止。"
                                             pageLoading = false
                                         }
 
@@ -372,8 +363,7 @@ fun ChaoxingLoginScreen(
                                             if (request.isForMainFrame &&
                                                 request.url.toString() != "about:blank"
                                             ) {
-                                                error =
-                                                    "登录页返回 HTTP ${errorResponse.statusCode}；请稍后重试。"
+                                                error = "登录页暂时不可用，请稍后重试。"
                                                 pageLoading = false
                                             }
                                         }
@@ -449,11 +439,11 @@ fun ChaoxingLoginScreen(
                             )
                             Column {
                                 Text(
-                                    "正在打开学校统一认证…",
+                                    "正在打开学校登录…",
                                     style = MaterialTheme.typography.bodySmall,
                                 )
                                 Text(
-                                    "跳转由学校与超星官方页面完成",
+                                    "请在学校页面完成登录",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -488,7 +478,7 @@ fun ChaoxingLoginScreen(
                                 onClick = { reload() },
                                 modifier = Modifier.padding(top = 12.dp),
                             ) { Text("重新加载") }
-                            TextButton(onClick = { clearOldSession() }) { Text("清除旧会话") }
+                            TextButton(onClick = { clearOldSession() }) { Text("清除登录") }
                             TextButton(onClick = onBack) { Text("返回") }
                         }
                     }
@@ -581,23 +571,23 @@ internal fun mergeCookieHeaders(first: String, second: String): String {
 
 internal fun chaoxingLoginMessage(reason: ChaoxingAuthFailure): String = when (reason) {
     ChaoxingAuthFailure.INVALID_CREDENTIALS ->
-        "学校账号或密码未被接受，请更新学校账号后重试。"
+        "账号或密码不正确，请更新后重试。"
     ChaoxingAuthFailure.INTERACTION_REQUIRED ->
-        "学校要求验证码或二次验证，请使用网页登录完成。"
-    ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE -> "本机学校账号不可用，请先重新保存账号。"
-    ChaoxingAuthFailure.ACCOUNT_CHANGED -> "账号已变化；本次登录结果未发布。"
-    ChaoxingAuthFailure.IDENTITY_MISMATCH -> "Chaoxing 返回的本人学号与当前账号不一致，已拒绝。"
-    ChaoxingAuthFailure.SESSION_EXPIRED -> "Chaoxing 会话未建立或已失效，请重新登录。"
-    ChaoxingAuthFailure.INVALID_SESSION -> "登录后没有取得有效 Chaoxing 会话。"
+        "需要验证码或二次验证，请用网页登录。"
+    ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE -> "没有可用的已保存账号。"
+    ChaoxingAuthFailure.ACCOUNT_CHANGED -> "账号已更换，请重新登录。"
+    ChaoxingAuthFailure.IDENTITY_MISMATCH -> "登录账号与已保存账号不一致，已拒绝。"
+    ChaoxingAuthFailure.SESSION_EXPIRED -> "登录已失效，请重新登录。"
+    ChaoxingAuthFailure.INVALID_SESSION -> "登录后没有取得有效会话。"
     ChaoxingAuthFailure.NETWORK_UNAVAILABLE -> "网络不可用，登录未完成。"
-    ChaoxingAuthFailure.TLS_ERROR -> "学校认证服务的 TLS 连接失败，未降级。"
-    ChaoxingAuthFailure.UPSTREAM_ERROR -> "学校认证服务暂时不可用，请稍后重试。"
-    ChaoxingAuthFailure.ACCESS_DENIED -> "学校拒绝了本次认证，请稍后重试。"
-    ChaoxingAuthFailure.PROTOCOL_ERROR -> "Chaoxing 登录页/身份响应不符合已验证契约。"
+    ChaoxingAuthFailure.TLS_ERROR -> "无法安全连接学校服务，请稍后重试。"
+    ChaoxingAuthFailure.UPSTREAM_ERROR -> "学校服务暂时不可用，请稍后重试。"
+    ChaoxingAuthFailure.ACCESS_DENIED -> "学校未允许本次登录，请稍后重试。"
+    ChaoxingAuthFailure.PROTOCOL_ERROR -> "登录返回异常，请用网页登录。"
     ChaoxingAuthFailure.CLEANUP_IN_PROGRESS ->
-        "Chaoxing Cookie 清理进行中；完成前不会发布新会话。"
+        "正在清理上次登录，完成前不能重新登录。"
     ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED ->
-        "上次 Cookie 清理失败/超时；已阻止新登录，请先重试清理。"
+        "上次登录清理失败，请先重试清理。"
     ChaoxingAuthFailure.STALE_WEB_ENTRY ->
-        "该网页登录页已过期（之后打开过新的登录/清理）；请重新打开登录页。"
+        "登录页已过期，请重新打开。"
 }

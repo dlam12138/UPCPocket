@@ -92,7 +92,7 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("该教学周尚未查询；切换周会按需查询。").assertIsDisplayed()
+        rule.onNodeWithText("这一周还没有查询。").assertIsDisplayed()
         rule.onNodeWithText("本周无课程").assertDoesNotExist()
     }
 
@@ -112,7 +112,7 @@ class TimetableScreenStateTest {
             }
         }
         rule.onNodeWithText("示例课程A").assertExists()
-        rule.onNodeWithText("离线缓存").assertExists()
+        rule.onNodeWithText("缓存").assertExists()
     }
 
     @Test
@@ -125,7 +125,7 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("今日课程尚未查询。").assertIsDisplayed()
+        rule.onNodeWithText("今天还没有查询。").assertIsDisplayed()
     }
 
     @Test
@@ -159,7 +159,7 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("打开学校登录页").performClick()
+        rule.onNodeWithText("学校登录").performClick()
         assertEquals(true, opened)
     }
 
@@ -179,7 +179,7 @@ class TimetableScreenStateTest {
         rule.onNodeWithText("第1节、第3节").assertIsDisplayed()
         rule.onNodeWithText("教师").assertExists()
         rule.onNodeWithText("地点").assertExists()
-        rule.onAllNodesWithText("未提供").assertCountEquals(6)
+        rule.onAllNodesWithText("未提供").assertCountEquals(4)
     }
 
     @Test

@@ -88,10 +88,10 @@ class PublicFreeClassroomRepository : FreeClassroomRepository {
             connection.setFixedLengthStreamingMode(body.size)
             connection.outputStream.use { it.write(body) }
             when (val status = connection.responseCode) {
-                in 300..399 -> throw IOException("学校服务要求跳转，当前无法直接查询")
-                401, 403 -> throw IOException("学校服务限制访问，当前无法直接查询")
+                in 300..399 -> throw IOException("学校服务暂时不可用，请稍后重试")
+                401, 403 -> throw IOException("学校服务暂时不可用，请稍后重试")
                 200 -> Unit
-                else -> throw IOException("学校服务暂时不可用（HTTP $status）")
+                else -> throw IOException("学校服务暂时不可用，请稍后重试")
             }
             val bytes = ByteArrayOutputStream()
             connection.inputStream.use { input ->

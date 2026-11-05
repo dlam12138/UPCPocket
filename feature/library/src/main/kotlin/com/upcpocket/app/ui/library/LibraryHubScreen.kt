@@ -42,7 +42,6 @@ import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.SectionHeader
-import com.upcpocket.app.ui.components.StatusPill
 
 private data class LibraryPlatform(
     val title: String,
@@ -50,7 +49,6 @@ private data class LibraryPlatform(
     val icon: ImageVector,
     val actionLabel: String,
     val action: () -> Unit,
-    val note: String,
 )
 
 /**
@@ -78,43 +76,31 @@ fun LibraryHubScreen(
     val platforms = listOf(
         LibraryPlatform(
             title = "座位",
-            subtitle = "唐岛湾 · libseat",
+            subtitle = "查询、预约与取消",
             icon = Icons.Filled.EventSeat,
             actionLabel = if (seatSession == null) "登录并查询" else "查询/预约",
             action = onOpenSeat,
-            note = "查询、选座与取消；使用统一认证。",
         ),
         LibraryPlatform(
             title = "东区座位",
-            subtitle = "古镇口 · Chaoxing seat",
+            subtitle = "查看区域与座位",
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
-            note = "查看区域、座位与已用时段；预约在官方页。",
         ),
         LibraryPlatform(
             title = "求是座位",
-            subtitle = "求是 · Chaoxing seatengine",
+            subtitle = "查看区域与座位",
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },
-            note = "查看区域、座位与已用时段；预约在官方页。",
         ),
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("图书馆")
-                        Text(
-                            "座位 · 统一入口",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("图书馆") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -137,20 +123,16 @@ fun LibraryHubScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Text(
-                        "三个座位入口；各平台使用独立登录。",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
                         "账号：" + accountStatusLabel(accountState.status),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "libseat：" + (seatSession?.user?.name?.ifBlank { "已登录" } ?: "未登录") +
-                            " · Chaoxing：" + when {
-                                chaoxingCleanup == ChaoxingCleanupState.FAILED -> "Cookie 清理失败"
-                                chaoxingCleanup == ChaoxingCleanupState.CLEARING -> "Cookie 清理中"
-                                chaoxingSession != null -> "已连接"
+                        "唐岛湾：" + (if (seatSession != null) "已登录" else "未登录") +
+                            " · 古镇口/求是：" + when {
+                                chaoxingCleanup == ChaoxingCleanupState.FAILED -> "清理失败"
+                                chaoxingCleanup == ChaoxingCleanupState.CLEARING -> "清理中"
+                                chaoxingSession != null -> "已登录"
                                 else -> "未登录"
                             },
                         style = MaterialTheme.typography.labelSmall,
@@ -158,7 +140,7 @@ fun LibraryHubScreen(
                     )
                     if (accountState.status != SchoolAccountStatus.SAVED_UNVERIFIED) {
                         TextButton(onClick = onOpenAccount) {
-                            Text("设置统一学校账号")
+                            Text("设置学校账号")
                         }
                     }
                 }
@@ -180,11 +162,10 @@ fun LibraryHubScreen(
             }) {
                 Icon(Icons.Filled.Public, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.padding(start = 4.dp))
-                Text("打开学校图书馆官网（查找最新入口）")
+                Text("打开图书馆官网")
             }
             Text(
-                "Chaoxing 座位优先用已保存学校账号自动登录；验证码/二次验证时改用学校网页登录。" +
-                    "真实预约、选座和签到在学校页面完成。",
+                "唐岛湾可预约和取消；古镇口与求是查看座位，预约和签到在学校页面。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -194,13 +175,13 @@ fun LibraryHubScreen(
 }
 
 private fun accountStatusLabel(status: SchoolAccountStatus): String = when (status) {
-    SchoolAccountStatus.LOADING -> "恢复中"
+    SchoolAccountStatus.LOADING -> "读取中"
     SchoolAccountStatus.NOT_CONFIGURED -> "未设置"
     SchoolAccountStatus.SAVED_UNVERIFIED -> "已保存，尚未验证"
     SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存"
-    SchoolAccountStatus.SWITCHING -> "切换中，暂不可登录"
-    SchoolAccountStatus.UPDATING -> "更新中，暂不可登录"
-    SchoolAccountStatus.REMOVING -> "清理中，暂不可登录"
+    SchoolAccountStatus.SWITCHING -> "切换中"
+    SchoolAccountStatus.UPDATING -> "更新中"
+    SchoolAccountStatus.REMOVING -> "清理中"
 }
 
 @Composable
@@ -224,27 +205,14 @@ private fun PlatformCard(platform: LibraryPlatform) {
                 modifier = Modifier.size(28.dp),
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        platform.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Spacer(Modifier.padding(start = 6.dp))
-                    StatusPill(
-                        "原生",
-                        MaterialTheme.colorScheme.primaryContainer,
-                        MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
+                Text(
+                    platform.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Text(
                     platform.subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    platform.note,
-                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(

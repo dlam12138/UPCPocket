@@ -2,10 +2,8 @@ package com.upcpocket.app.ui.about
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -87,13 +85,12 @@ fun AboutScreen(onBack: () -> Unit) {
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        "面向中国石油大学（华东）的校园日常工具：课表、校园卡、电费、空闲教室、" +
-                            "图书馆座位与专注。非学校官方应用。",
+                        "中国石油大学（华东）的校园日常工具。非学校官方应用。",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                     Text(
-                        "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）· M5 预览",
+                        "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                     )
@@ -101,15 +98,13 @@ fun AboutScreen(onBack: () -> Unit) {
             }
 
             AboutCard("现在能用") {
-                Bullet("课表：当前学校账号正常认证后只读查询；学期、教学周、周网格、今日课程和详情。" +
-                    "只在进入课表或切换周时查询，保留已成功周的离线缓存。")
-                Bullet("校园卡余额：按当前账号中完整有效的本人学号查询，展示余额与过渡余额；" +
-                    "查询缓存、2×2 组件和清除入口保持独立。")
-                Bullet("电费：唐岛湾在 App 内选楼号与房间号查询；古镇口打开学校页面。")
-                Bullet("空闲教室：两校区、日期、教学楼与节次筛选，原生只读结果。")
-                Bullet("图书馆座位：学校统一认证后查询、预约与取消；验证码/二次验证走学校网页登录。")
-                Bullet("专注：番茄钟、标签、今日记录、热力图与统计；计时可在前台服务中继续。")
-                Bullet("桌面组件：校园卡余额、唐岛湾电量与今日课表，默认 2×2；课表可拉到 4×2，仅点击刷新。")
+                Bullet("课表：查看学期、教学周、周网格与今日课程；已查询的周可离线查看。")
+                Bullet("校园卡：查看余额与过渡余额；组件显示上次成功读取。")
+                Bullet("电费：唐岛湾在 App 内查询；古镇口打开学校页面。")
+                Bullet("空闲教室：按校区、日期、教学楼与节次筛选。")
+                Bullet("图书馆：查询、预约和取消座位；验证码时打开学校网页。")
+                Bullet("专注：番茄钟、记录、热力图与统计。")
+                Bullet("桌面组件：校园卡、电量、课表；默认 2×2，课表可拉到 4×2。")
             }
 
             SectionHeader(
@@ -118,13 +113,11 @@ fun AboutScreen(onBack: () -> Unit) {
             )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Bullet("账号密码只有你主动保存时才写入本机，使用 Android Keystore 中独立密钥的 AES-GCM 加密；" +
-                        "文件位于应用私有、不参与系统备份的目录。未保存时不回显、不猜测。")
-                    Bullet("课表/图书馆会话使用独立加密与会话代次，绑定当前账号；换号、删号、改密或清理失败时会阻止" +
-                        "旧会话恢复，迟到响应不会覆盖新账号。")
-                    Bullet("学校账号页在可见时设置 FLAG_SECURE，避免密码输入出现在系统截图/录屏中。")
-                    Bullet("课表只按需查询单周，不自动遍历整学期；校园卡、电费与组件都没有周期后台任务。")
-                    Bullet("查询会发送到对应学校系统，App 不经过自建服务器；卸载会清除本机数据。")
+                    Bullet("账号密码只在你保存时加密存放在本机，不参与系统备份。")
+                    Bullet("换号、删号或改密后，旧登录会失效。")
+                    Bullet("账号页禁止截图，避免密码出现在截图或录屏中。")
+                    Bullet("课表按需查询单周；校园卡、电费和组件不做周期后台查询。")
+                    Bullet("查询直接发往学校系统，不经过本项目服务器；卸载会清除本机数据。")
                 }
             }
 
@@ -134,26 +127,21 @@ fun AboutScreen(onBack: () -> Unit) {
             )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Bullet("课表来自 app.upc.edu.cn 的课表接口，由正常 CAS 认证获取。" +
-                        "协议参考 UPC-MCP 固定提交，未嵌入 MCP 运行时。")
-                    Bullet("校园卡余额来自学校 getCardInfo；唐岛湾电量来自 dfcz.upc.edu.cn 的公开查询表单。")
-                    Bullet("空闲教室来自学校公开查询页；图书馆座位来自 libspace 统一认证后的只读与用户主动操作。")
-                    Bullet("古镇口电费仍是学校外部页面；证书或网络异常时不绕过 TLS。")
+                    Bullet("课表：学校课表服务，使用学校登录。")
+                    Bullet("校园卡：学校余额服务；电量：唐岛湾查询页。")
+                    Bullet("空闲教室：学校公开查询页；图书馆：学校座位服务。")
+                    Bullet("古镇口电费仍使用学校页面；页面不可用时请稍后再试。")
                 }
             }
 
             SectionHeader(
-                title = "验证边界",
+                title = "使用边界",
                 modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
             )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Bullet("真实课表/图书馆只读链路有本人账号模拟器验证；验证码真实链路由合成测试与回退代码覆盖，" +
-                        "不等于所有设备、网络或 ROM 均可用。")
-                    Bullet("真机、release/R8、其他 WebView 与长期会话 TTL 未验证；本轮 M5 未重新进行真实学校登录。")
-                    Bullet("研讨间/空间预约已按用户决定撤下，图书馆只保留三个座位入口；" +
-                        "相关研究记录归档备查。")
-                    Bullet("不提供课程编辑、提醒、日历导出、课表组件、充值、转账或自动抢座。")
+                    Bullet("验证码、网络或设备限制可能导致学校页面不可用。")
+                    Bullet("校园服务只提供查看与预约，不提供编辑、提醒、充值或自动抢座。")
                 }
             }
 
@@ -164,8 +152,7 @@ fun AboutScreen(onBack: () -> Unit) {
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        "Android 工程以 MIT 许可证开源，参考 MIT 许可的上游 ZZUPocket。" +
-                            "UPC 的认证、接口、课表与宿舍规则按本校系统重新实现，未套用其他学校事实。",
+                        "Android 工程以 MIT 许可证开源，参考 MIT 许可的上游 ZZUPocket。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -174,13 +161,6 @@ fun AboutScreen(onBack: () -> Unit) {
                     }
                 }
             }
-
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "入口可访问、会话建立、数据读取和业务成功是不同事实；结果以学校系统为准。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

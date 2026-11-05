@@ -151,7 +151,7 @@ private fun OverviewCard(summary: FocusSummary, streak: Int) {
                 )
             }
             Text(
-                text = "一天从凌晨 4 点算起：学到凌晨 1 点记在前一天晚上。",
+                text = "每天从 04:00 起算。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -174,7 +174,7 @@ private fun BigStat(label: String, value: String, modifier: Modifier = Modifier)
 @Composable
 private fun SelectedDayLine(day: LocalDate?, secondsByDay: Map<LocalDate, Int>) {
     val text = if (day == null) {
-        "点一下格子看那天的详情"
+        "点格子查看当天。"
     } else {
         val weekday = day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.CHINA)
         val fmt = DateTimeFormatter.ofPattern("M月d日")
@@ -194,7 +194,7 @@ private fun PeriodCard(summary: FocusSummary) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
-                text = "周 · 月 · 年",
+                text = "统计",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -235,7 +235,7 @@ private fun TagCard(perTag: List<TagTotal>) {
             )
             if (perTag.isEmpty()) {
                 Text(
-                    text = "还没有记录。去专注页开一个番茄试试。",
+                    text = "还没有记录。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

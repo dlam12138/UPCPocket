@@ -36,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.widget.CardBalanceWidgetProvider
@@ -57,11 +56,11 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
     val manager = remember { AppWidgetManager.getInstance(context) }
     val supported = remember(manager) { manager.isRequestPinAppWidgetSupported }
 
-    fun pin(provider: ComponentName, label: String) {
+    fun pin(provider: ComponentName) {
         if (!supported) {
             Toast.makeText(
                 context,
-                "当前桌面不支持应用内添加；请长按桌面空白处，从小组件列表添加。",
+                "请长按桌面添加组件。",
                 Toast.LENGTH_LONG,
             ).show()
             return
@@ -71,7 +70,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
         }.getOrDefault(false)
         Toast.makeText(
             context,
-            if (requested) "请在系统面板中确认添加$label" else "未能发起添加，请从桌面小组件列表添加",
+            if (requested) "请在系统面板确认" else "请长按桌面添加。",
             Toast.LENGTH_LONG,
         ).show()
     }
@@ -98,67 +97,55 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "三个组件默认都是 2×2；课表组件可拉宽到 4×2。它们只读取本机上一次" +
-                    "成功查询的快照；点组件刷新时才发起一次受控查询，没有周期任务或后台轮询。",
+                text = "三个组件默认 2×2，课表可拉到 4×2；点击组件刷新。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             WidgetCard(
                 title = "校园卡余额",
-                description = "显示校园卡余额与上次成功读取时间，不再常驻学号；换号会立即撤下旧值。",
+                description = "余额与更新时间；换号后旧值会清除。",
                 icon = Icons.Filled.CreditCard,
                 supported = supported,
                 onPin = {
                     pin(
                         ComponentName(context, CardBalanceWidgetProvider::class.java),
-                        "校园卡余额组件",
                     )
                 },
             )
             WidgetCard(
                 title = "唐岛湾电量",
-                description = "显示上次成功查询的楼号、房间号与剩余电量；不显示密码或学号。",
+                description = "楼号、房间与剩余电量。",
                 icon = Icons.Filled.Bolt,
                 supported = supported,
                 onPin = {
                     pin(
                         ComponentName(context, PowerWidgetProvider::class.java),
-                        "唐岛湾电量组件",
                     )
                 },
             )
             WidgetCard(
                 title = "今日课表",
-                description = "显示下一堂/正在上的课、时间与地点；无账号、未同步和清理中" +
-                    "都有明确状态，不会把未知显示成没有课。",
+                description = "下一堂或正在上的课；未同步时明确提示。",
                 icon = Icons.Outlined.CalendarMonth,
                 supported = supported,
-                sizeLabel = "2×2，可拉到 4×2 · 点击刷新",
+                sizeLabel = "2×2 · 可拉到 4×2",
                 onPin = {
                     pin(
                         ComponentName(context, TimetableWidgetProvider::class.java),
-                        "今日课表组件",
                     )
                 },
             )
 
             Text(
                 text = if (supported) {
-                    "如果桌面没有弹出添加面板，也可以长按桌面空白处，在“小组件”里找到 UPC Pocket。"
+                    "没有弹出面板时，可长按桌面添加。"
                 } else {
-                    "当前桌面启动器不支持应用内固定组件。请长按桌面空白处，在“小组件”里添加；" +
-                        "组件仍可正常点击刷新。"
+                    "请长按桌面，在小组件中添加。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
-            )
-            Text(
-                text = "组件中的旧值、失败与待查询状态沿用 M2 的真实快照语义；" +
-                    "不会为了预览填入合成余额或电量。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -170,7 +157,7 @@ private fun WidgetCard(
     description: String,
     icon: ImageVector,
     supported: Boolean,
-    sizeLabel: String = "2×2 · 点击刷新",
+    sizeLabel: String = "2×2",
     onPin: () -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
@@ -213,19 +200,11 @@ private fun WidgetPreview(icon: ImageVector) {
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.size(24.dp),
-            )
-            Text(
-                text = "2×2",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            modifier = Modifier.size(28.dp),
+        )
     }
 }

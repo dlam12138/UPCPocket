@@ -187,10 +187,10 @@ class ChaoxingRepository internal constructor(
             response.status in setOf(401, 403, 302, 303) ->
                 throw ChaoxingSessionExpiredException()
             response.status == 429 -> ChaoxingReservationResult.Unknown(
-                "请求过于频繁，提交结果未知；请到官方预约记录核对，勿连续重试。",
+                "请求过于频繁，提交结果未知；请到学校记录核对，不要连续重试。",
             )
             response.status !in 200..299 -> ChaoxingReservationResult.Unknown(
-                "学校返回 HTTP ${response.status}，提交结果未知；请到官方预约记录核对。",
+                "学校服务暂时不可用，提交结果未知；请到学校记录核对。",
             )
             else -> ChaoxingReservationProtocol.parseSubmitResponse(
                 response.body,

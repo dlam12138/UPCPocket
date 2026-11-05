@@ -9,12 +9,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -57,7 +55,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 
 /** 预设的中文名（放 UI 层，偏好存储里只存枚举） */
 private fun ThemePreset.label(): String = when (this) {
-    ThemePreset.DYNAMIC -> "跟随壁纸（动态取色）"
+    ThemePreset.DYNAMIC -> "跟随壁纸"
     ThemePreset.PURPLE -> "紫"
     ThemePreset.BLUE -> "蓝"
     ThemePreset.TEAL -> "青"
@@ -69,8 +67,8 @@ private fun ThemePreset.label(): String = when (this) {
 
 private fun DarkMode.label(): String = when (this) {
     DarkMode.SYSTEM -> "跟随系统"
-    DarkMode.LIGHT -> "始终浅色"
-    DarkMode.DARK -> "始终深色"
+    DarkMode.LIGHT -> "浅色"
+    DarkMode.DARK -> "深色"
 }
 
 class AppearanceViewModel : ViewModel() {
@@ -111,16 +109,7 @@ fun AppearanceScreen(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("外观")
-                        Text(
-                            "配色与深色模式",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("外观") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -137,12 +126,6 @@ fun AppearanceScreen(
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "外观只改变颜色与字体层级，不影响账号、课表、缓存或计时。点选后立即生效。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             Text(
                 text = "深浅色",
                 style = MaterialTheme.typography.titleSmall,
@@ -172,23 +155,6 @@ fun AppearanceScreen(
                     }
                 }
             }
-
-            GlassCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("说明", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        text = "· 「跟随壁纸」用的是系统的动态取色（Material You），取色结果跟你的手机壁纸一致，" +
-                            "这也是安卓原生的默认观感。\n" +
-                            "· 其余每个配色由一个种子色出发，用 Material 3 同一套算法推出浅色与深色两份色板，" +
-                            "所以颜色之间的关系跟原生一致，而不是随手挑的色。\n" +
-                            "· 深浅色可以单独设，不影响配色选择。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Spacer(Modifier.width(1.dp))
         }
     }
 }

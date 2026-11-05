@@ -84,7 +84,6 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
 
     var loading by remember { mutableStateOf(false) }
-    var systemNo by remember { mutableStateOf("") }
     var candidates by remember { mutableStateOf<List<ElectricityProtocol.Candidate>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var requestId by remember { mutableIntStateOf(0) }
@@ -96,7 +95,6 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     /** 输入一变就作废旧结果，避免旧房间的电量被当成新输入的结果。 */
     fun invalidateResult() {
         requestId++
-        systemNo = ""
         candidates = emptyList()
         error = null
     }
@@ -139,7 +137,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                buildingsError = failure.message ?: "无法加载学校楼号列表，请重试"
+                buildingsError = failure.message?.takeIf { it.isNotBlank() } ?: "无法加载楼号，请重试"
             } finally {
                 buildingsLoading = false
             }
@@ -186,15 +184,12 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
         loading = true
         error = null
         candidates = emptyList()
-        systemNo = ""
         scope.launch {
             try {
                 val result = service.query(selected, target)
                 if (id != requestId || building != selected || room.trim() != target) return@launch
                 when (result) {
-                    is ElectricityResult.Success -> {
-                        systemNo = result.reading.systemNo
-                    }
+                    is ElectricityResult.Success -> Unit
                     is ElectricityResult.Ambiguous -> {
                         candidates = result.candidates
                     }
@@ -226,18 +221,18 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             CircularProgressIndicator(Modifier.padding(end = 12.dp))
-                            Text("正在加载学校楼号列表…")
+                            Text("正在加载楼号…")
                         }
                         buildingsError != null -> Column {
                             Text(
-                                buildingsError.orEmpty(),
+                                "楼号加载失败，请重试。",
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                            TextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         buildings.isEmpty() -> Column {
-                            Text("学校页面没有返回楼号列表。")
-                            TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                            Text("没有返回楼号列表。")
+                            TextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         else -> LazyColumn {
                             items(buildings) { option ->
@@ -268,7 +263,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("电费 · 唐岛湾") },
+                title = { Text("唐岛湾电费") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -285,12 +280,6 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = "选择楼号并填写房间号，查询学校返回的剩余电量。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             Column {
                 OutlinedButton(
                     onClick = { showPicker = true },
@@ -299,7 +288,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 ) {
                     Text(
                         when {
-                            building.isNotBlank() -> "楼号：$building"
+                            building.isNotBlank() -> "楼号 $building"
                             buildingsLoading -> "正在加载楼号…"
                             else -> "选择楼号"
                         },
@@ -308,28 +297,28 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 }
                 when {
                     buildingsLoading -> Text(
-                        "正在加载学校楼号列表…",
+                        "正在加载楼号…",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                     )
                     buildingsError != null -> {
                         Text(
-                            "楼号加载失败：${buildingsError.orEmpty()}",
+                            "楼号加载失败，请重试。",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                        TextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     buildings.isEmpty() -> {
                         Text(
-                            "尚未获取学校楼号列表。",
+                            "尚未加载楼号。",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重新加载楼号") }
+                        TextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     else -> Unit
                 }
@@ -351,7 +340,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
-                    Text("会记住这台设备的楼号与房间号；查询失败不会清空。清除会同时移除桌面组件的上次电量。")
+                    Text("会记住楼号与房间号；清除会同时移除组件的上次电量。")
                 },
             )
 
@@ -360,13 +349,13 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 enabled = !loading && building.isNotBlank() && room.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
-                Text(if (loading) "正在查询…" else "查询剩余电量")
+                Text(if (loading) "正在查询…" else "查询")
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             if (building.isNotBlank() || room.isNotBlank()) {
                 TextButton(onClick = ::clearInput, enabled = !loading) {
-                    Text("清除楼号、房间号与查询记录")
+                    Text("清除记录")
                 }
             }
 
@@ -374,7 +363,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 Text(it, color = MaterialTheme.colorScheme.error)
                 if (it.contains("微信")) {
                     Text(
-                        text = "学校页面要求微信授权时，App 不会绕过；请稍后重试或改用学校官方入口。",
+                        text = "学校要求微信授权时，请稍后重试或使用学校官方入口。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -402,15 +391,8 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
-                        if (systemNo.isNotBlank()) {
-                            Text(
-                                text = "系统编号 $systemNo",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            )
-                        }
                         Text(
-                            text = "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm:ss")
+                            text = "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
                                 .withZone(ZoneId.systemDefault())
                                 .format(Instant.ofEpochMilli(value.fetchedAt)),
                             style = MaterialTheme.typography.labelSmall,
@@ -422,7 +404,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
 
             if (candidates.isNotEmpty()) {
                 Text(
-                    text = "该房间号对应多个系统编号，请确认是哪一个（学校页面也是先选后查）：",
+                    text = "该房间号对应多个房间，请选择：",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 candidates.forEach { candidate ->
@@ -430,24 +412,18 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(candidate.room, style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "${candidate.building} · 系统编号 ${candidate.systemNo}",
+                                "${candidate.building} · 编号 ${candidate.systemNo}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             TextButton(onClick = {
                                 changeRoom(candidate.room)
                                 candidates = emptyList()
-                            }) { Text("用这个房间号再查") }
+                            }) { Text("选择") }
                         }
                     }
                 }
             }
-
-            Text(
-                text = "只查询剩余电量，不提供充值。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

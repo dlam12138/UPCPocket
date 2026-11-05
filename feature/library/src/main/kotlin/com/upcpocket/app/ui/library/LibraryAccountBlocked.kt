@@ -35,16 +35,15 @@ internal fun LibraryAccountBlocked(
     ) {
         if (loading) {
             CircularProgressIndicator()
-            Text("正在读取学校账号状态…", style = MaterialTheme.typography.titleMedium)
+            Text("正在读取账号…", style = MaterialTheme.typography.titleMedium)
         } else {
-            Text("学校账号正在清理", style = MaterialTheme.typography.titleMedium)
+            Text("正在清理账号", style = MaterialTheme.typography.titleMedium)
         }
         Text(
             text = if (loading) {
-                "账号状态完成读取前，图书馆不会恢复旧会话或发起新登录。"
+                "读取完成前不能登录。"
             } else {
-                "换号或删号的会话与 Cookie 清理尚未完成。完成前不会恢复旧图书馆会话，" +
-                    "也不会接受新的学校登录；清理失败可回到“学校账号”重试。"
+                "旧账号的登录信息尚未清理完成；请回到学校账号重试。"
             },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

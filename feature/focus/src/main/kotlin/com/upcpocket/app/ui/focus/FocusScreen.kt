@@ -134,16 +134,7 @@ fun FocusScreen(
         ),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text("专注")
-                        Text(
-                            "番茄钟与今日记录",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = { Text("专注") },
                 actions = {
                     FilledTonalIconButton(onClick = onOpenStats) {
                         Icon(Icons.Filled.Insights, contentDescription = "学习统计")
@@ -298,8 +289,8 @@ private fun TimerDial(ui: FocusUiState) {
             if (ui.timer.snapshot.focusRound > 0 && ui.prefs.longBreakEvery > 0) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "长休息前已专注 ${ui.timer.snapshot.focusRound % ui.prefs.longBreakEvery}" +
-                        "/${ui.prefs.longBreakEvery} 个",
+                    text = "本轮 ${ui.timer.snapshot.focusRound % ui.prefs.longBreakEvery}" +
+                        "/${ui.prefs.longBreakEvery}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -419,7 +410,7 @@ private fun TagSection(
         }
         if (ui.tagName.isNotBlank()) {
             Text(
-                text = "本次记录会记到「${ui.tagName}」",
+                text = "记到「${ui.tagName}」",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -448,7 +439,7 @@ private fun TagManageDialog(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (tags.isEmpty()) {
-                    Text("还没有标签，先新建一个。", style = MaterialTheme.typography.bodyMedium)
+                    Text("还没有标签。", style = MaterialTheme.typography.bodyMedium)
                 }
                 tags.forEach { tag ->
                     if (editingId == tag.id) {
@@ -498,8 +489,7 @@ private fun TagManageDialog(
             title = { Text("删除标签「${tag.name}」？") },
             text = {
                 Text(
-                    text = "以后不再出现在选择列表里。已经记下的专注记录不受影响，" +
-                        "那些记录里还会显示这个名字。",
+                    text = "已记录的专注保留；仅从选择列表移除。",
                     style = MaterialTheme.typography.bodyMedium,
                 )
             },
@@ -540,17 +530,6 @@ private fun TodayCard(ui: FocusUiState, onManual: () -> Unit, onOpenStats: () ->
                 StatCell("番茄", "${ui.summary.today.sessions} 个", Modifier.weight(1f))
                 StatCell("本周", FocusStats.humanDuration(ui.summary.week.seconds), Modifier.weight(1f))
             }
-            Text(
-                text = "本月 ${FocusStats.humanDuration(ui.summary.month.seconds)} · " +
-                    "本月番茄 ${ui.summary.month.sessions} 个",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "统计按凌晨 4 点划分一天：学到凌晨 1 点算前一天晚上。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -574,7 +553,7 @@ private fun TodayRecords(records: List<FocusRecord>, onDelete: (Long) -> Unit) {
     val focusRecords = records.filter { it.phase == Phase.FOCUS }
     if (focusRecords.isEmpty()) {
         Text(
-            text = "今天还没有专注记录。",
+            text = "今天还没有记录。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -668,13 +647,8 @@ private fun TimerSettingsDialog(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField("长休", long, Modifier.weight(1f)) { long = it }
-                    NumberField("长休间隔", every, Modifier.weight(1f)) { every = it }
+                    NumberField("长休间隔（个）", every, Modifier.weight(1f)) { every = it }
                 }
-                Text(
-                    text = "单位：分钟。长休间隔 = 每完成几个番茄进一次长休息。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
 
                 SwitchRow("专注结束自动开始休息", autoBreak) { autoBreak = it }
                 SwitchRow("休息结束自动开始专注", autoFocus) { autoFocus = it }
@@ -745,7 +719,7 @@ private fun NewTagDialog(
                 )
                 if (duplicate) {
                     Text(
-                        text = "已经有同名标签了，直接在上面选它就行。",
+                        text = "已有同名标签。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -808,7 +782,7 @@ private fun ManualRecordDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    text = "会记成一条已完成的专注，时长按你填的算。标签用当前选中的那个。",
+                    text = "记为已完成，使用当前标签。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

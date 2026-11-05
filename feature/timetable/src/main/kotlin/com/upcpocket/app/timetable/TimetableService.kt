@@ -364,7 +364,7 @@ class TimetableService(
                 it.copy(
                     connection = TimetableConnection.INTERACTION_REQUIRED,
                     interactionUrl = UpcTimetableAuthEndpoints.LOGIN_URL,
-                    message = "请在学校登录页完成正常登录；本应用不会读取你输入的密码。",
+                    message = "请在学校网页完成登录。",
                     isBusy = false,
                     canRetry = true,
                 )
@@ -407,7 +407,7 @@ class TimetableService(
                             _state.update {
                                 it.copy(
                                     connection = mapped.connection,
-                                    message = "尚未检测到有效的课表会话；如已登录请回到课表页重试。",
+                                    message = "还没有检测到登录状态，请回到课表重试。",
                                     isBusy = false,
                                 )
                             }
@@ -439,7 +439,7 @@ class TimetableService(
                         _state.update {
                             it.copy(
                                 connection = TimetableConnection.PROTOCOL_ERROR,
-                                message = "课表会话已建立，但本机加密保存失败；请稍后重试。",
+                                message = "登录成功，但本机保存失败；请重试。",
                                 isBusy = false,
                             )
                         }
@@ -701,7 +701,7 @@ class TimetableService(
                         if (retriedAfterAuth) {
                             throw ServiceFailure(
                                 TimetableConnection.SESSION_EXPIRED,
-                                "课表会话已失效，自动恢复一次仍未成功。请稍后主动刷新。",
+                                "登录已失效，请重新登录。",
                             )
                         }
                         // 旧会话明确失效：清掉后最多按当前凭据认证一次。
@@ -713,13 +713,13 @@ class TimetableService(
             } else if (retriedAfterAuth) {
                 throw ServiceFailure(
                     TimetableConnection.SESSION_EXPIRED,
-                    "课表会话已失效，自动恢复一次仍未成功。请稍后主动刷新。",
+                    "登录已失效，请重新登录。",
                 )
             }
             if (authAttempted) {
                 throw ServiceFailure(
                     TimetableConnection.SESSION_EXPIRED,
-                    "课表会话已失效，自动恢复一次仍未成功。请稍后主动刷新。",
+                    "登录已失效，请重新登录。",
                 )
             }
             authenticate(binding)
@@ -752,31 +752,31 @@ class TimetableService(
                 is UpcAuthResult.Failure -> throw when (result.reason) {
                     UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
                         TimetableConnection.AUTH_FAILED,
-                        "学校认证未通过。请核对“首页 → 设置 → 学校账号”中的账号密码；本轮不会自动重试。",
+                        "账号或密码不正确，请重新保存。",
                     )
                     UpcAuthFailure.INTERACTION_REQUIRED -> ServiceFailure(
                         TimetableConnection.INTERACTION_REQUIRED,
-                        "学校要求验证码或二次验证。请打开学校登录页完成正常登录。",
+                        "需要验证码或二次验证，请打开学校网页登录。",
                         result.interactionUrl ?: UpcTimetableAuthEndpoints.LOGIN_URL,
                     )
                     UpcAuthFailure.NETWORK_UNAVAILABLE, UpcAuthFailure.TLS_ERROR ->
                         ServiceFailure(
                             TimetableConnection.NETWORK_UNAVAILABLE,
-                            "网络不可用，无法完成学校认证。",
+                            "网络不可用，请稍后重试。",
                         )
                     UpcAuthFailure.ACCOUNT_UNAVAILABLE -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
-                        "当前学校账号不可用，请先在“首页 → 设置 → 学校账号”重新保存。",
+                        "账号不可用，请重新保存。",
                     )
                     UpcAuthFailure.ACCOUNT_CHANGED -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
-                        "学校账号已变化，本次登录结果已丢弃。",
+                        "账号已更换，请重新登录。",
                     )
                     UpcAuthFailure.ACCESS_DENIED, UpcAuthFailure.UPSTREAM_ERROR,
                     UpcAuthFailure.PROTOCOL_ERROR,
                     -> ServiceFailure(
                         TimetableConnection.PROTOCOL_ERROR,
-                        "学校认证返回了无法确认的结果；未保存会话，请稍后重试。",
+                        "登录没有完成，请稍后重试。",
                     )
                 }
                 is UpcAuthResult.Success -> {
@@ -784,7 +784,7 @@ class TimetableService(
                         if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
                             throw ServiceFailure(
                                 TimetableConnection.NOT_CONFIGURED,
-                                "登录期间学校账号已变化，本次结果已丢弃。",
+                                "账号已更换，请重新登录。",
                             )
                         }
                         val cookies = result.cookies.map {
@@ -809,7 +809,7 @@ class TimetableService(
                         if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
                             throw ServiceFailure(
                                 TimetableConnection.PROTOCOL_ERROR,
-                                "课表会话已建立，但本机加密保存失败；请稍后重试。",
+                                "登录成功，但本机保存失败；请重试。",
                             )
                         }
                     }
@@ -821,20 +821,20 @@ class TimetableService(
     private fun mapApiFailure(failure: TimetableApiException): ServiceFailure = when {
         failure.code == TimetableErrorCode.AUTH_REQUIRED -> ServiceFailure(
             TimetableConnection.SESSION_EXPIRED,
-            "课表会话已失效，自动恢复一次仍未成功。请稍后主动刷新。",
+            "登录已失效，请重新登录。",
         )
         failure.network -> ServiceFailure(
             TimetableConnection.NETWORK_UNAVAILABLE,
-            "网络不可用，无法连接学校课表。",
+            "网络不可用，请稍后重试。",
         )
         failure.code == TimetableErrorCode.SCHEMA_CHANGED ||
             failure.code == TimetableErrorCode.RESPONSE_TOO_LARGE -> ServiceFailure(
             TimetableConnection.PROTOCOL_ERROR,
-            "课表接口返回了无法确认的数据；已保留上次成功缓存，未覆盖。",
+            "学校返回了无法识别的数据；已保留上次缓存。",
         )
         else -> ServiceFailure(
             TimetableConnection.PROTOCOL_ERROR,
-            "学校课表接口暂时不可用；已保留上次成功缓存。",
+            "学校服务暂时不可用；已保留上次缓存。",
         )
     }
 

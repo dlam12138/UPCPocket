@@ -29,7 +29,7 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `home service entries keep M5 copy and stable routes`() {
+    fun `home service entries keep concise copy and stable routes`() {
         val entries = AppGraph.ui.entriesFor(UiSurface.HOME_SERVICES)
 
         assertEquals(
@@ -42,9 +42,9 @@ class HostPluginUiTest {
         )
         assertEquals(
             listOf(
-                "唐岛湾查询 · 古镇口网页",
-                "两校区 · 按日期与节次查询",
-                "唐岛湾 / 古镇口 / 求是座位",
+                "唐岛湾 / 古镇口",
+                "按日期与节次",
+                "三馆座位",
             ),
             entries.map { it.subtitle },
         )

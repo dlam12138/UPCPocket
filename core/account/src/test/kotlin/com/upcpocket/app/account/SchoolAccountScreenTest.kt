@@ -89,7 +89,7 @@ class SchoolAccountScreenTest {
             rule.onAllNodesWithTag("account_message").fetchSemanticsNodes().isNotEmpty()
         }
 
-        rule.onNodeWithTag("account_message").assertTextContains("本机写入未完成", substring = true)
+        rule.onNodeWithTag("account_message").assertTextContains("保存失败", substring = true)
         assertPasswordCleared("password_input")
         assertPasswordCleared("confirm_input")
         assertFalse(controller.lastPassword?.concatToString().orEmpty().contains("Exception"))
@@ -136,7 +136,7 @@ class SchoolAccountScreenTest {
         rule.onNodeWithTag("legacy_student_hint")
             .assertTextContains("20••••23", substring = true)
         rule.onNodeWithTag("legacy_student_hint")
-            .assertTextContains("不会自动创建账号或绑定余额", substring = true)
+            .assertTextContains("余额只按当前账号查询", substring = true)
         // 页面没有把旧草稿填进账号输入框，也没有触发保存。
         assertEquals(null, controller.lastAccount)
         assertTrue(

@@ -6,10 +6,8 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -70,19 +68,19 @@ fun OfficialWebScreen(onBack: () -> Unit) {
     val learning = listOf(
         OfficialLink(
             title = "课表",
-            subtitle = "学校课表页面 · 只读",
+            subtitle = "周课表",
             url = "https://app.upc.edu.cn/site/weekschedule/index",
             icon = Icons.Filled.CalendarMonth,
         ),
         OfficialLink(
             title = "空闲教室",
-            subtitle = "学校公开查询页面 · 两校区",
+            subtitle = "两校区",
             url = "https://app.upc.edu.cn/freeclass/wap/default/all",
             icon = Icons.Filled.MeetingRoom,
         ),
         OfficialLink(
             title = "图书馆座位系统",
-            subtitle = "libspace · 学校统一认证",
+            subtitle = "学校登录",
             url = "https://libspace.upc.edu.cn/libseat/",
             icon = Icons.AutoMirrored.Outlined.MenuBook,
         ),
@@ -90,13 +88,13 @@ fun OfficialWebScreen(onBack: () -> Unit) {
     val life = listOf(
         OfficialLink(
             title = "唐岛湾剩余电量",
-            subtitle = "学校电量页 · App 内已有原生查询",
+            subtitle = "查询页",
             url = "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
             icon = Icons.Filled.Bolt,
         ),
         OfficialLink(
             title = "古镇口电费",
-            subtitle = "学校外部页面 · 证书异常时不绕过校验",
+            subtitle = "查询页",
             url = "https://gzkdf.upc.edu.cn/acmswx/index.aspx",
             icon = Icons.Filled.Bolt,
         ),
@@ -122,16 +120,9 @@ fun OfficialWebScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
         ) {
-            Text(
-                text = "以下地址来自学校现有服务。点击后在浏览器打开；应用不预填账号，" +
-                    "也不代理这些页面的登录。页面可用性、证书和登录规则以学校为准。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
             SectionHeader(
                 title = "学习",
-                modifier = Modifier.padding(top = 20.dp, bottom = 6.dp),
+                modifier = Modifier.padding(top = 8.dp, bottom = 6.dp),
             )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
@@ -164,13 +155,6 @@ fun OfficialWebScreen(onBack: () -> Unit) {
                     }
                 }
             }
-
-            Spacer(Modifier.height(18.dp))
-            Text(
-                text = "这些页面是学校现有入口，不代表本应用已获得校方客户端身份或全部接口授权。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

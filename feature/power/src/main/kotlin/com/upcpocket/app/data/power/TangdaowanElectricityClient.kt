@@ -101,7 +101,7 @@ class TangdaowanElectricityClient(
             when (val status = connection.responseCode) {
                 in 200..299 -> Unit
                 in 300..399 -> throw ElectricityException("学校电费页面要求先完成微信授权，当前无法直接查询")
-                else -> throw ElectricityException("电费查询暂时不可用（HTTP $status）")
+                else -> throw ElectricityException("电费查询暂时不可用，请稍后重试")
             }
             return connection.inputStream.use { read(it) }
         } catch (e: ElectricityException) {
@@ -130,7 +130,7 @@ class TangdaowanElectricityClient(
             when (val status = connection.responseCode) {
                 in 200..299 -> Unit
                 in 300..399 -> throw ElectricityException("电费查询被要求跳转，请稍后重试")
-                else -> throw ElectricityException("电费查询暂时不可用（HTTP $status）")
+                else -> throw ElectricityException("电费查询暂时不可用，请稍后重试")
             }
             return connection.inputStream.use { read(it) }
         } catch (e: ElectricityProtocol.PageException) {

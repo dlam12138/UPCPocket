@@ -249,7 +249,7 @@ fun FreeClassroomScreen(
                 if (displayResult.rooms.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "empty-directory") {
                         NoticeCard(
-                            "学校未返回该条件下的教室目录，不能判断为全部空闲。请调整日期或教学楼后重试。",
+                            "未返回教室目录，不代表全部空闲。请调整日期或教学楼。",
                         )
                     }
                 } else {
@@ -257,13 +257,13 @@ fun FreeClassroomScreen(
                     val freeCount = displayResult.rooms.count { it.available }
                     if (freeCount == 0 && !onlyAvailable) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "all-occupied") {
-                            NoticeCard("所选节次下没有空闲教室，以下为占用教室。")
+                            NoticeCard("所选节次无空闲教室，以下为占用。")
                         }
                     }
                     if (groups.isEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "no-free") {
                             Text(
-                                "当前筛选下没有空闲教室。关闭「仅看空闲」可查看占用教室。",
+                                "没有空闲教室。关闭「仅看空闲」查看占用。",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -290,9 +290,9 @@ fun FreeClassroomScreen(
                 item(span = { GridItemSpan(maxLineSpan) }, key = "prompt") {
                     Text(
                         when {
-                            model.periods.isEmpty() -> "请至少选择一节，再查询空闲教室。"
-                            model.result != null -> "筛选条件已变更，点击「查询空闲教室」查看新结果。"
-                            else -> "选择校区、日期和节次后，点击「查询空闲教室」。"
+                            model.periods.isEmpty() -> "至少选择一节。"
+                            model.result != null -> "条件已更改，请重新查询。"
+                            else -> "选择校区、日期和节次后查询。"
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -302,8 +302,7 @@ fun FreeClassroomScreen(
 
             item(span = { GridItemSpan(maxLineSpan) }, key = "footer") {
                 Text(
-                    "数据来源：学校空闲教室公开页面，只读查询，不提供预约。" +
-                        "绿色表示所选每一节都无排课；仅反映学校排课，临时占用/调课以现场为准。",
+                    "绿色：所选节次均空闲。仅反映学校排课；临时占用或调课以现场为准。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -432,9 +431,9 @@ private fun ClassroomFilterPanel(
 
             Text(
                 if (selectedText.isEmpty()) {
-                    "未选择节次；至少选择一节才能查询。"
+                    "至少选择一节。"
                 } else {
-                    "已选节次：第 $selectedText 节（共 ${model.periods.size} 节）"
+                    "第 $selectedText 节 · 共 ${model.periods.size} 节"
                 },
                 style = MaterialTheme.typography.labelMedium,
                 color = if (selectedText.isEmpty()) {
@@ -452,8 +451,7 @@ private fun ClassroomFilterPanel(
                 Text(
                     when {
                         model.loading -> "正在查询…"
-                        model.error != null -> "重试查询"
-                        else -> "查询空闲教室"
+                        else -> "查询"
                     },
                 )
             }
@@ -493,9 +491,9 @@ private fun ResultSummaryCard(
     val freeCount = result.rooms.count { it.available }
     val total = result.rooms.size
     val status = when {
-        loading -> "正在更新，以下为上次成功结果"
-        error -> "本次未能更新，以下为上次成功结果（同一条件）"
-        else -> "查询成功"
+        loading -> "更新中 · 上次结果"
+        error -> "更新失败 · 上次结果"
+        else -> "已更新"
     }
     val statusColor = if (error) {
         MaterialTheme.colorScheme.error
@@ -692,18 +690,18 @@ private fun BuildingPickerDialog(
                     ) {
                         LinearProgressIndicator(Modifier.width(24.dp))
                         Spacer(Modifier.width(12.dp))
-                        Text("教学楼列表加载中…")
+                        Text("教学楼加载中…")
                     }
                     buildings.size <= 1 -> Column {
                         Text(
                             if (hasResult) {
-                                "学校没有返回可选教学楼，可先用“全部教学楼”查看。"
+                                "没有可选教学楼，先用“全部教学楼”查看。"
                             } else {
-                                "教学楼列表随查询结果返回。先用“全部教学楼”查询一次。"
+                                "先查询“全部教学楼”，再选择。"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        TextButton(onClick = onQueryAll) { Text("查询全部教学楼") }
+                        TextButton(onClick = onQueryAll) { Text("查询全部") }
                     }
                     else -> LazyColumn {
                         items(buildings) { option ->
@@ -742,7 +740,7 @@ private fun CustomPeriodDialog(
         text = {
             Column(Modifier.heightIn(max = 420.dp)) {
                 Text(
-                    "学校公开页使用 1–13 节，可多选。",
+                    "可多选，最多 13 节。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -773,7 +771,7 @@ private fun CustomPeriodDialog(
                 }
                 if (draft.isEmpty()) {
                     Text(
-                        "至少选择一节才能应用。",
+                        "至少选择一节。",
                         color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -802,23 +800,19 @@ private fun RoomDetailDialog(
         title = { Text(room.name) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("教学楼：${room.building}")
-                Text("校区：${room.campus}")
+                Text("教学楼 ${room.building}")
+                Text("校区 ${room.campus}")
                 Text(
-                    room.capacity?.let { "容量：$it 人" } ?: "容量：未提供",
+                    room.capacity?.let { "$it 人" } ?: "容量未知",
                 )
-                Text("所选节次：第 ${formatPeriods(detail.periods)} 节")
+                Text("第 ${formatPeriods(detail.periods)} 节")
                 Surface(
                     color = colors.container,
                     contentColor = colors.content,
                     shape = RoundedCornerShape(8.dp),
                 ) {
                     Text(
-                        if (room.available) {
-                            "空闲（所选节次均无排课）"
-                        } else {
-                            "占用（至少一节有课）"
-                        },
+                        if (room.available) "空闲" else "占用",
                         Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Medium,

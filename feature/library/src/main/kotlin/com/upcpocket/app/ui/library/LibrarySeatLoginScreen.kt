@@ -111,7 +111,7 @@ fun LibrarySeatLoginScreen(
                 }
             } catch (e: Exception) {
                 busy = false
-                error = e.message ?: "登录信息交换失败，请重新登录"
+                error = e.message?.takeIf { it.isNotBlank() } ?: "登录失败，请重试"
             }
         }
     }
@@ -152,7 +152,7 @@ fun LibrarySeatLoginScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("图书馆统一认证") },
+                title = { Text("学校登录") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -167,8 +167,7 @@ fun LibrarySeatLoginScreen(
         ) {
             if (busy || pageLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(
-                text = "这是自动登录的验证码/二次验证回退页面。登录后即可在应用内查看和预约座位；" +
-                    "已保存统一账号时会话绑定到该账号，未保存时只在本次运行内有效。",
+                text = "完成学校登录后即可查看和预约座位。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -182,7 +181,7 @@ fun LibrarySeatLoginScreen(
                 )
                 TextButton(onClick = {
                     webView?.let { view -> loginClient?.load(view, LibrarySeatProtocol.LOGIN_URL) }
-                }) { Text("重新加载登录页") }
+                }) { Text("重新加载") }
             }
             AndroidView(
                 modifier = Modifier.fillMaxWidth().weight(1f),

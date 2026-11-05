@@ -156,7 +156,7 @@ fun LibrarySeatScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 CircularProgressIndicator()
-                Text("正在验证已保存的图书馆会话…")
+                Text("正在恢复登录…")
             }
         } else {
             LibraryLoginGate(service = service, onBack = onBack, onLogin = onLogin)
@@ -184,7 +184,7 @@ fun LibrarySeatScreen(
                     Column {
                         Text("图书馆座位")
                         Text(
-                            "唐岛湾 · libseat",
+                            "唐岛湾",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -319,19 +319,12 @@ private fun LibrarySeatAreaContent(
                 item {
                     CompactNotice(
                         "没有可预约区域",
-                        "当前馆区、日期和楼层没有返回区域；可以换日期或楼层再查。",
+                        "没有可预约区域，请换日期或楼层。",
                     )
                 }
             }
             items(visible, key = { it.roomId }) { room ->
                 SeatRoomRow(room = room, onClick = { onRoom(room) })
-            }
-            item {
-                Text(
-                    "余座与总数来自学校当前查询。",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
     }
@@ -444,15 +437,15 @@ private fun LibrarySeatReservationContent(
         state.reservationsError?.let { message ->
             item {
                 CompactNotice("预约状态读取失败", message)
-                TextButton(onClick = onRetry, enabled = !state.loading) { Text("重新核对") }
+                TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
             }
         }
         if (state.reservations.isEmpty()) {
             item {
                 CompactNotice(
                     "当前没有预约记录",
-                    if (state.reservationsUpdatedAt != null) "已成功读取，当前账号没有进行中的预约。"
-                    else "还没有成功读取，不能判断是否有预约。",
+                    if (state.reservationsUpdatedAt != null) "当前没有进行中的预约。"
+                    else "还没有读取成功，无法判断。",
                 )
             }
         } else {
@@ -467,7 +460,7 @@ private fun LibrarySeatReservationContent(
         }
         item {
             Text(
-                "取消前会二次确认；真实结果以学校返回和刷新后的记录为准。",
+                "取消后以学校记录为准。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -564,7 +557,7 @@ private fun LibrarySeatDetailPage(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { openSeatOfficial(context) }) { Text("官方页") }
+                    TextButton(onClick = { openSeatOfficial(context) }) { Text("学校页面") }
                 },
             )
         },
@@ -648,7 +641,7 @@ private fun LibrarySeatDetailPage(
                 if (state.loading && state.layout == null) {
                     Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator()
-                        Text("正在读取座位布局…", style = MaterialTheme.typography.bodySmall)
+                        Text("正在读取座位…", style = MaterialTheme.typography.bodySmall)
                     }
                 } else {
                     state.layout?.let { layout ->
@@ -686,7 +679,7 @@ private fun LibrarySeatDetailPage(
                     .padding(horizontal = 20.dp).padding(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text("选择使用时间", style = MaterialTheme.typography.titleMedium)
+                Text("选择时间", style = MaterialTheme.typography.titleMedium)
                 Text(
                     "${room?.name.orEmpty()} · ${seat.name} · ${state.date.orEmpty()}",
                     style = MaterialTheme.typography.bodySmall,
@@ -694,20 +687,20 @@ private fun LibrarySeatDetailPage(
                 )
                 if (room?.maxDurationLabel != null) {
                     Text(
-                        room.maxDurationLabel.orEmpty() + "；结束时间由学校按座位和开始时间返回。",
+                        room.maxDurationLabel.orEmpty() + "；结束时间由学校返回。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
                     Text(
-                        "结束时间由学校按座位和开始时间返回。",
+                        "结束时间由学校返回。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text("开始时间", style = MaterialTheme.typography.labelLarge)
                 if (state.startTimes.isEmpty()) {
-                    Text("该座位当天没有可预约的开始时间。", color = MaterialTheme.colorScheme.error)
+                    Text("当天没有可预约时间。", color = MaterialTheme.colorScheme.error)
                 } else {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         state.startTimes.forEach { option ->
@@ -720,21 +713,14 @@ private fun LibrarySeatDetailPage(
                     }
                 }
                 Text(
-                    "结束时间" + if (state.endTimes.isNotEmpty()) "（学校返回 ${state.endTimes.size} 项）" else "",
+                    "结束时间",
                     style = MaterialTheme.typography.labelLarge,
                 )
                 if (state.start == null) {
                     Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
                 } else if (state.endTimes.isEmpty()) {
-                    Text("该开始时间没有可选的结束时间。", color = MaterialTheme.colorScheme.error)
+                    Text("没有可选结束时间。", color = MaterialTheme.colorScheme.error)
                 } else {
-                    if (state.endTimes.size == 1) {
-                        Text(
-                            "学校当前只返回 1 个结束时间；不是应用把时长固定为一小时。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         state.endTimes.forEach { option ->
                             FilterChip(
@@ -773,15 +759,15 @@ private fun LibrarySeatDetailPage(
                     "${room?.name.orEmpty()} · ${seat.name}\n" +
                         "${state.date.orEmpty()} ${state.start?.value.orEmpty()}–${state.end?.value.orEmpty()}" +
                         (durationText(state.start, state.end)?.let { " · $it" } ?: "") + "\n\n" +
-                        "由学校系统处理；应用不会自动重试或抢座。",
+                        "提交后以学校结果为准。",
                 )
             },
             confirmButton = {
                 TextButton(enabled = state.canConfirmReservation(), onClick = vm::confirmReservation) {
-                    Text("确认提交")
+                    Text("确认预约")
                 }
             },
-            dismissButton = { TextButton(onClick = vm::dismissConfirm) { Text("返回") } },
+            dismissButton = { TextButton(onClick = vm::dismissConfirm) { Text("取消") } },
         )
     }
 }
@@ -937,13 +923,12 @@ private fun LibraryLoginGate(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Spacer(Modifier.height(24.dp))
-            Text("需要学校统一认证", style = MaterialTheme.typography.titleLarge)
+            Text("登录学校账号", style = MaterialTheme.typography.titleLarge)
             Text(
                 if (canAutoLogin) {
-                    "可以使用本机加密保存的学校账号自动登录；学校要求验证码或二次验证时，" +
-                        "改走学校官方网页登录。"
+                    "使用已保存的学校账号登录；需要验证码时打开学校网页。"
                 } else {
-                    "尚未保存可用的学校账号。请使用学校官方网页登录；登录后仍可查询馆区、选座和取消预约。"
+                    "使用学校网页登录后即可查询、预约和取消。"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -967,14 +952,14 @@ private fun LibraryLoginGate(
                                 throw cancelled
                             } catch (_: Exception) {
                                 busy = false
-                                error = "自动登录失败，请改用学校网页登录"
+                                error = "登录失败，请用网页登录。"
                             }
                         }
                     },
                     enabled = !busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (busy) "正在使用学校账号登录…" else "使用已保存学校账号登录")
+                    Text(if (busy) "正在登录…" else "用已保存账号登录")
                 }
             }
             OutlinedButton(
@@ -982,7 +967,7 @@ private fun LibraryLoginGate(
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (canAutoLogin) "打开学校网页登录（验证码/二次验证）" else "使用学校统一认证登录")
+                Text("网页登录")
             }
             error?.let {
                 Text(
@@ -991,32 +976,26 @@ private fun LibraryLoginGate(
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
-            Text(
-                "自动登录只使用本机受控保存的学校账号；密码不会进入本插件。学校返回的本人账号" +
-                    "与已保存账号不一致时，不会保存会话。",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
 
 internal fun libraryAuthMessage(reason: LibraryAccountAuthFailure): String = when (reason) {
-    LibraryAccountAuthFailure.INVALID_CREDENTIALS -> "学校账号或密码未被接受，请更新学校账号后重试"
-    LibraryAccountAuthFailure.INTERACTION_REQUIRED -> "学校要求验证码或二次验证，请使用网页登录完成"
-    LibraryAccountAuthFailure.NETWORK_UNAVAILABLE -> "无法连接学校认证服务，请检查网络"
-    LibraryAccountAuthFailure.TLS_ERROR -> "学校认证服务的 TLS 连接失败，未降级"
-    LibraryAccountAuthFailure.UPSTREAM_ERROR -> "学校认证服务暂时不可用，请稍后重试"
-    LibraryAccountAuthFailure.PROTOCOL_ERROR -> "学校登录返回了无法识别的结果，请改用网页登录"
-    LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE -> "当前没有可自动登录的已保存学校账号"
-    LibraryAccountAuthFailure.ACCOUNT_CHANGED -> "账号状态已变化，请重新打开图书馆"
-    LibraryAccountAuthFailure.ACCESS_DENIED -> "学校拒绝了本次认证，请检查账号或稍后重试"
+    LibraryAccountAuthFailure.INVALID_CREDENTIALS -> "账号或密码不正确，请更新后重试。"
+    LibraryAccountAuthFailure.INTERACTION_REQUIRED -> "需要验证码或二次验证，请用网页登录。"
+    LibraryAccountAuthFailure.NETWORK_UNAVAILABLE -> "网络不可用，请稍后重试。"
+    LibraryAccountAuthFailure.TLS_ERROR -> "无法安全连接学校服务，请稍后重试。"
+    LibraryAccountAuthFailure.UPSTREAM_ERROR -> "学校服务暂时不可用，请稍后重试。"
+    LibraryAccountAuthFailure.PROTOCOL_ERROR -> "登录返回异常，请用网页登录。"
+    LibraryAccountAuthFailure.ACCOUNT_UNAVAILABLE -> "没有可用的已保存账号。"
+    LibraryAccountAuthFailure.ACCOUNT_CHANGED -> "账号已更换，请重新打开。"
+    LibraryAccountAuthFailure.ACCESS_DENIED -> "学校未允许本次登录，请稍后重试。"
     LibraryAccountAuthFailure.IDENTITY_MISMATCH ->
-        "学校返回的本人账号与已保存账号不一致，未保存会话"
+        "登录账号与已保存账号不一致，未保存。"
     LibraryAccountAuthFailure.PERSISTENCE_FAILED ->
-        "登录成功，但本机加密保存失败，未保留会话"
+        "登录成功，但本机保存失败，请重试。"
     LibraryAccountAuthFailure.SESSION_EXPIRED ->
-        "学校登录会话已失效，请重新通过学校统一认证登录"
+        "登录已失效，请重新登录。"
 }
 
 @Composable

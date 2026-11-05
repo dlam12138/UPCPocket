@@ -36,7 +36,7 @@ internal class ClassroomUi(
                 surface = UiSurface.HOME_SERVICES,
                 order = 1,
                 title = "空闲教室",
-                subtitle = "两校区 · 按日期与节次查询",
+                subtitle = "按日期与节次",
                 icon = UiIcon.CLASSROOM,
                 route = CLASSROOM_ROUTE,
             ),

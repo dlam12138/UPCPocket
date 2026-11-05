@@ -310,7 +310,7 @@ class TimetableServiceTest {
         assertEquals(TimetableConnection.AUTH_FAILED, service.state.value.connection)
         assertEquals(1, auth.calls)
         assertEquals(0, transport.count("POST"))
-        assertTrue(service.state.value.message!!.contains("不会自动重试"))
+        assertTrue(service.state.value.message!!.contains("密码不正确"))
     }
 
     @Test

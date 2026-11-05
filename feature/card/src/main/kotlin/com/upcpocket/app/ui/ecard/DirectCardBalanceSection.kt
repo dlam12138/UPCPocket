@@ -121,7 +121,7 @@ fun DirectCardBalanceSection(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                error = "余额缓存清除未完成，请重试；学校账号未被删除。"
+                error = "缓存未清除，请重试；学校账号不受影响。"
             } finally {
                 loading = false
             }
@@ -135,7 +135,7 @@ fun DirectCardBalanceSection(
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("校园卡余额", style = MaterialTheme.typography.titleMedium)
+                    Text("余额", style = MaterialTheme.typography.titleMedium)
                     BindingStatus(
                         availability = status.availability,
                         maskedStudentId = status.binding?.studentId?.let(AccountMask::mask).orEmpty(),
@@ -164,7 +164,7 @@ fun DirectCardBalanceSection(
 
             error?.let {
                 Text(
-                    "本次操作失败：$it",
+                    "操作失败：$it",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.testTag("card_error"),
@@ -203,7 +203,7 @@ fun DirectCardBalanceSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("card_open_account"),
-                ) { Text("前往学校账号设置") }
+                ) { Text("设置学校账号") }
             }
 
             HorizontalDivider(
@@ -216,7 +216,7 @@ fun DirectCardBalanceSection(
                         onClick = ::clearCache,
                         enabled = !loading && !querying,
                         modifier = Modifier.testTag("card_clear_cache"),
-                    ) { Text("清除余额缓存") }
+                    ) { Text("清除缓存") }
                 }
                 Spacer(Modifier.weight(1f))
                 TextButton(onClick = { showDetails = !showDetails }) {
@@ -236,19 +236,13 @@ fun DirectCardBalanceSection(
             AnimatedVisibility(visible = showDetails) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "清除余额缓存不会删除学校账号或密码；账号失效时仍由账号清理统一处理。",
+                        "清除缓存不会删除学校账号。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "数据来源：学校校园卡余额 getCardInfo，金额按“分”返回、按元显示。" +
-                            "该接口使用 HTTP 明文传输学号与金额；余额缓存位于 App 私有、不参与备份的目录，" +
-                            "带内部账号归属与读取时间，未单独加密。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        "不提供充值、转账或绑定；不显示假余额。",
+                        "余额来自学校校园卡接口；接口使用 HTTP 明文传输，学号和金额可能被同网段看到。" +
+                            "缓存保存在本机应用私有目录，不参与备份，未单独加密。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -264,16 +258,16 @@ private fun BindingStatus(
     maskedStudentId: String,
 ) {
     val text = when (availability) {
-        CardBindingAvailability.LOADING -> "正在读取本机账号…"
-        CardBindingAvailability.NO_ACCOUNT -> "请先设置学校账号。未绑定时不发余额请求，也不显示旧学号或旧余额。"
+        CardBindingAvailability.LOADING -> "正在读取账号…"
+        CardBindingAvailability.NO_ACCOUNT -> "先设置学校账号。"
         CardBindingAvailability.NEEDS_RECONFIGURATION ->
-            "本机账号凭据无法读取，需要重新保存后才能查询余额。"
+            "请重新保存学校账号。"
         CardBindingAvailability.CLEANING ->
-            "正在完成旧账号清理，期间不查询、不显示旧身份数值。"
+            "正在清理旧账号。"
         CardBindingAvailability.STUDENT_ID_UNAVAILABLE ->
-            "当前账号登录名不是 8–16 位数字学号，余额查询明确不可用；不会猜测或截取其他数字。"
+            "当前账号不是有效学号，无法查询余额。"
         CardBindingAvailability.READY ->
-            "查询目标：${maskedStudentId.ifBlank { "学号不可用" }}"
+            "已绑定 ${maskedStudentId.ifBlank { "账号" }}"
     }
     Text(
         text = text,
@@ -299,10 +293,10 @@ private fun BalanceSnapshot(
 ) {
     val currentCredential = bindingGeneration == data.credentialGeneration
     val label = when {
-        failed -> "历史缓存：本次查询失败，显示上次成功读取值"
-        fresh && currentCredential -> "本次成功读取"
-        !currentCredential -> "同号历史余额：账号凭据已更新，尚未重新查询"
-        else -> "上次成功读取（未更新）"
+        failed -> "更新失败 · 上次余额"
+        fresh && currentCredential -> "刚刚更新"
+        !currentCredential -> "账号已更新，余额待刷新"
+        else -> "上次读取"
     }
     Surface(
         modifier = Modifier
@@ -328,19 +322,14 @@ private fun BalanceSnapshot(
                 )
             }
             Text(
-                text = "过渡余额：${data.transitionText} 元",
+                text = "过渡余额 ${data.transitionText} 元",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
-            Text(
-                text = "学号：${AccountMask.mask(data.studentId)}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .withZone(ZoneId.systemDefault())
             Text(
-                text = "读取于 ${time.format(Instant.ofEpochMilli(data.fetchedAt))}",
+                text = time.format(Instant.ofEpochMilli(data.fetchedAt)),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )

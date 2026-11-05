@@ -362,8 +362,8 @@ class ChaoxingService(
         )
         if (synchronized(stateLock) { submissionKey in unknownSubmissions }) {
             return ChaoxingReservationResult.Unknown(
-                "上一次提交结果未知；请先到官方预约记录核对，本次会话不会再次发送。" +
-                    "确认未成功后退出并重新登录座位会话再试。",
+                "上次提交结果未知；请先到学校记录核对，本次不会再次发送。" +
+                    "确认未成功后重新登录再试。",
             )
         }
         val result = try {
@@ -385,7 +385,7 @@ class ChaoxingService(
         if (!stillCurrent) {
             synchronized(stateLock) { unknownSubmissions += submissionKey }
             return ChaoxingReservationResult.Unknown(
-                "账号或会话在提交期间发生变化，结果未知；请到官方预约记录核对，勿连续重试。",
+                "账号或登录在提交期间变化，结果未知；请到学校记录核对，不要连续重试。",
             )
         }
         if (result is ChaoxingReservationResult.Unknown) {

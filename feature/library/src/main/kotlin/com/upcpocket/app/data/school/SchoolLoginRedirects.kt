@@ -28,7 +28,7 @@ internal class SchoolLoginRedirects(
             } else if (page.status in 200..299) {
                 return LoginDestination(current, page.html)
             } else {
-                throw LoginPageException("${loginHost(current)} 返回 HTTP ${page.status}，请重试")
+                throw LoginPageException("学校页面暂时不可用，请重试")
             }
         }
         throw LoginPageException("学校登录跳转次数过多，请重试")
