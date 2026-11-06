@@ -7,8 +7,10 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
@@ -108,6 +110,8 @@ class TimetableService(
         val httpStatus: Int? = null,
         val responseBytes: Int? = null,
         val exceptionType: DiagnosticExceptionType? = null,
+        val mediaType: DiagnosticMediaType? = null,
+        val bodyType: DiagnosticBodyType? = null,
         val phase: DiagnosticPhase = DiagnosticPhase.INDEX,
     ) : Exception(null, null, false, false)
 
@@ -456,7 +460,7 @@ class TimetableService(
                 recordQueryStart(DiagnosticPhase.INDEX, DiagnosticDetail.INDEX_REQUEST, op)
                 val indexStarted = clock()
                 val index = try {
-                    api.getIndex(cookies)
+                    api.getIndex(cookies, op)
                 } catch (failure: TimetableApiException) {
                     commitMutex.withLock {
                         if (isBindingCurrent(context.binding) &&
@@ -695,7 +699,7 @@ class TimetableService(
                 hasCache = currentHasCache(),
                 operationId = operationId,
                 phase = DiagnosticPhase.INDEX,
-            ) { cookies -> api.getIndex(cookies) }
+            ) { cookies -> api.getIndex(cookies, operationId) }
             recordCompatibility(index.compatibility, operationId)
             recordQueryComplete(
                 phase = DiagnosticPhase.INDEX,
@@ -823,7 +827,7 @@ class TimetableService(
                 hasCache = currentHasCache(),
                 operationId = operationId,
                 phase = DiagnosticPhase.WEEK,
-            ) { cookies -> api.getWeek(cookies, term, week) }
+            ) { cookies -> api.getWeek(cookies, term, week, operationId) }
             recordCompatibility(result.compatibility, operationId)
             recordQueryComplete(
                 phase = DiagnosticPhase.WEEK,
@@ -1172,6 +1176,8 @@ class TimetableService(
             httpStatus = failure.httpStatus,
             responseBytes = failure.responseBytes,
             exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
             phase = phase,
         )
         failure.code == TimetableErrorCode.LOGIN_PAGE -> ServiceFailure(
@@ -1181,6 +1187,8 @@ class TimetableService(
             httpStatus = failure.httpStatus,
             responseBytes = failure.responseBytes,
             exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
             phase = phase,
         )
         failure.exceptionType == DiagnosticExceptionType.TLS -> ServiceFailure(
@@ -1213,11 +1221,13 @@ class TimetableService(
         failure.code == TimetableErrorCode.SCHEMA_CHANGED ||
             failure.code == TimetableErrorCode.RESPONSE_TOO_LARGE -> ServiceFailure(
             TimetableConnection.PROTOCOL_ERROR,
-            unreadableDataMessage(hasCache),
+            responseMessage(failure, hasCache),
             detail = failure.detail,
             httpStatus = failure.httpStatus,
             responseBytes = failure.responseBytes,
             exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
             phase = phase,
         )
         else -> ServiceFailure(
@@ -1227,15 +1237,30 @@ class TimetableService(
             httpStatus = failure.httpStatus,
             responseBytes = failure.responseBytes,
             exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
             phase = phase,
         )
     }
 
+    private fun responseMessage(failure: TimetableApiException, hasCache: Boolean): String {
+        val cache = if (hasCache) {
+            "已保留上次缓存。"
+        } else {
+            "暂无可用的旧缓存。"
+        }
+        return when (failure.detail) {
+            DiagnosticDetail.RESPONSE_HTML -> "课表返回了网页内容；$cache"
+            DiagnosticDetail.RESPONSE_TOO_LARGE -> "课表响应过大；$cache"
+            else -> "课表响应格式异常；$cache"
+        }
+    }
+
     private fun unreadableDataMessage(hasCache: Boolean): String =
         if (hasCache) {
-            "学校返回了无法识别的数据；已保留上次缓存。"
+            "课表响应格式异常；已保留上次缓存。"
         } else {
-            "学校返回了无法识别的数据；暂无可用的旧缓存。"
+            "课表响应格式异常；暂无可用的旧缓存。"
         }
 
     private fun upstreamMessage(hasCache: Boolean): String =
@@ -1304,6 +1329,8 @@ class TimetableService(
         httpStatus: Int? = null,
         responseBytes: Int? = null,
         exceptionType: DiagnosticExceptionType? = null,
+        mediaType: DiagnosticMediaType? = null,
+        bodyType: DiagnosticBodyType? = null,
         durationMs: Long? = null,
     ) {
         Diagnostics.record(
@@ -1316,6 +1343,8 @@ class TimetableService(
             httpStatus = httpStatus,
             responseBytes = responseBytes,
             exceptionType = exceptionType,
+            mediaType = mediaType,
+            bodyType = bodyType,
             durationMs = durationMs,
             operationId = operationId,
         )
@@ -1502,7 +1531,11 @@ class TimetableService(
         failure.connection == TimetableConnection.NETWORK_UNAVAILABLE ->
             DiagnosticReason.NETWORK
         failure.detail == DiagnosticDetail.RESPONSE_LOGIN_PAGE -> DiagnosticReason.AUTH
+        failure.detail == DiagnosticDetail.RESPONSE_MIME_MISMATCH -> DiagnosticReason.MIME
+        failure.detail == DiagnosticDetail.RESPONSE_BUSINESS -> DiagnosticReason.HTTP
         failure.detail == DiagnosticDetail.RESPONSE_NON_JSON ||
+            failure.detail == DiagnosticDetail.RESPONSE_HTML ||
+            failure.detail == DiagnosticDetail.RESPONSE_MALFORMED_JSON ||
             failure.detail == DiagnosticDetail.RESPONSE_EMPTY ||
             failure.detail == DiagnosticDetail.INDEX_PARSE_TERM_INFO ||
             failure.detail == DiagnosticDetail.INDEX_PARSE_TERM_DATE ||
@@ -1538,6 +1571,8 @@ class TimetableService(
             httpStatus = failure.httpStatus,
             responseBytes = failure.responseBytes,
             exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
         )
         _state.update {
             it.copy(

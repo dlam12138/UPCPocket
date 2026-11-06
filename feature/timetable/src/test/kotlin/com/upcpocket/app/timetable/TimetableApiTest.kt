@@ -1,6 +1,8 @@
 package com.upcpocket.app.timetable
 
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -156,7 +158,9 @@ class TimetableApiTest {
             fail("expected schema error")
         } catch (failure: TimetableApiException) {
             assertEquals(TimetableErrorCode.SCHEMA_CHANGED, failure.code)
-            assertEquals(DiagnosticDetail.RESPONSE_NON_JSON, failure.detail)
+            assertEquals(DiagnosticDetail.RESPONSE_HTML, failure.detail)
+            assertEquals(DiagnosticMediaType.HTML, failure.mediaType)
+            assertEquals(DiagnosticBodyType.HTML, failure.bodyType)
         }
 
         val expired = TimetableApi(
@@ -167,6 +171,134 @@ class TimetableApiTest {
             fail("expected auth required")
         } catch (failure: TimetableApiException) {
             assertEquals(TimetableErrorCode.AUTH_REQUIRED, failure.code)
+        }
+    }
+
+    @Test
+    fun validJsonWithWrongOrMissingMediaTypeIsAccepted() = runTest {
+        listOf(
+            mapOf("content-type" to listOf("text/html; charset=UTF-8")),
+            mapOf("content-type" to listOf("text/plain")),
+            emptyMap(),
+        ).forEach { headers ->
+            val api = TimetableApi(
+                FakeTransport { request ->
+                    TimetableHttpResponse(
+                        200,
+                        headers,
+                        if (request.method == "GET") {
+                            fixture("timetable_index.json").toByteArray()
+                        } else {
+                            fixture("timetable_week_08.json").toByteArray()
+                        },
+                    )
+                },
+            )
+            val index = api.getIndex(cookies)
+            assertEquals(2, index.terms.size)
+            val week = api.getWeek(cookies, index.find("2026-2027", "1")!!, 8)
+            assertEquals(6, week.meetings.size)
+            assertTrue(week.complete)
+        }
+    }
+
+    @Test
+    fun jsonSuffixMediaTypeIsAccepted() = runTest {
+        val api = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("application/vnd.upc.timetable+json")),
+                    fixture("timetable_index.json").toByteArray(),
+                )
+            },
+        )
+        assertEquals(2, api.getIndex(cookies).terms.size)
+    }
+
+    @Test
+    fun htmlContainingJsonLookingTextIsStillRejected() = runTest {
+        val api = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("text/html")),
+                    "<html><body>{\"e\":0,\"d\":{}}</body></html>".toByteArray(),
+                )
+            },
+        )
+        try {
+            api.getIndex(cookies)
+            fail("expected html rejection")
+        } catch (failure: TimetableApiException) {
+            assertEquals(TimetableErrorCode.SCHEMA_CHANGED, failure.code)
+            assertEquals(DiagnosticDetail.RESPONSE_HTML, failure.detail)
+            assertEquals(DiagnosticBodyType.HTML, failure.bodyType)
+        }
+    }
+
+    @Test
+    fun malformedJsonIsDistinguishedFromNonJson() = runTest {
+        val api = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("application/json")),
+                    "{\"e\":0".toByteArray(),
+                )
+            },
+        )
+        try {
+            api.getIndex(cookies)
+            fail("expected malformed json")
+        } catch (failure: TimetableApiException) {
+            assertEquals(TimetableErrorCode.SCHEMA_CHANGED, failure.code)
+            assertEquals(DiagnosticDetail.RESPONSE_MALFORMED_JSON, failure.detail)
+            assertEquals(DiagnosticMediaType.JSON, failure.mediaType)
+            assertEquals(DiagnosticBodyType.MALFORMED, failure.bodyType)
+        }
+    }
+
+    @Test
+    fun jsonAuthErrorWithWrongMimeStillMapsToAuth() = runTest {
+        val api = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("text/html")),
+                    "{\"e\":10013,\"d\":{}}".toByteArray(),
+                )
+            },
+        )
+        try {
+            api.getIndex(cookies)
+            fail("expected auth required")
+        } catch (failure: TimetableApiException) {
+            assertEquals(TimetableErrorCode.AUTH_REQUIRED, failure.code)
+            assertEquals(DiagnosticDetail.AUTH_REQUIRED, failure.detail)
+            assertEquals(DiagnosticMediaType.HTML, failure.mediaType)
+            assertEquals(DiagnosticBodyType.JSON_OBJECT, failure.bodyType)
+        }
+    }
+
+    @Test
+    fun oversizedBodyIsRejectedBeforeParsing() = runTest {
+        val api = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("application/json")),
+                    ByteArray(2 * 1024 * 1024 + 1) { ' '.code.toByte() },
+                )
+            },
+        )
+        try {
+            api.getIndex(cookies)
+            fail("expected too large")
+        } catch (failure: TimetableApiException) {
+            assertEquals(TimetableErrorCode.RESPONSE_TOO_LARGE, failure.code)
+            assertEquals(DiagnosticDetail.RESPONSE_TOO_LARGE, failure.detail)
+            assertEquals(2 * 1024 * 1024 + 1, failure.responseBytes)
         }
     }
 

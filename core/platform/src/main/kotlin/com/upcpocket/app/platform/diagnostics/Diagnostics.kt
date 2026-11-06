@@ -64,6 +64,7 @@ enum class DiagnosticReason {
     NETWORK,
     TLS,
     HTTP,
+    MIME,
     SCHEMA,
     AUTH,
     INTERACTION,
@@ -102,6 +103,33 @@ enum class DiagnosticExceptionType {
     PARSE,
     SECURITY,
     CANCELLED,
+    OTHER,
+}
+
+/**
+ * Classification of the HTTP Content-Type header. Values are fixed and never
+ * include the original header text, parameters or charset.
+ */
+enum class DiagnosticMediaType {
+    JSON,
+    JSON_SUFFIX,
+    TEXT,
+    HTML,
+    OTHER,
+    MISSING,
+}
+
+/**
+ * Classification of the response body after bounded local inspection. This is
+ * a category only; raw bodies, prefixes and field values are never exported.
+ */
+enum class DiagnosticBodyType {
+    JSON_OBJECT,
+    JSON_ARRAY,
+    HTML,
+    LOGIN_LIKE,
+    EMPTY,
+    MALFORMED,
     OTHER,
 }
 
@@ -156,7 +184,11 @@ enum class DiagnosticDetail {
     WEEK_PARSE_DAY_TYPE,
     RESPONSE_JSON,
     RESPONSE_NON_JSON,
+    RESPONSE_HTML,
+    RESPONSE_MALFORMED_JSON,
+    RESPONSE_MIME_MISMATCH,
     RESPONSE_LOGIN_PAGE,
+    RESPONSE_BUSINESS,
     RESPONSE_HTTP,
     RESPONSE_TOO_LARGE,
     RESPONSE_EMPTY,
@@ -205,6 +237,8 @@ data class DiagnosticEvent(
     val operationId: String? = null,
     val phase: DiagnosticPhase? = null,
     val detail: DiagnosticDetail? = null,
+    val mediaType: DiagnosticMediaType? = null,
+    val bodyType: DiagnosticBodyType? = null,
     val responseBytes: Int? = null,
     val itemCount: Int? = null,
     val timestampEpochMillis: Long = System.currentTimeMillis(),
@@ -229,8 +263,11 @@ data class DiagnosticEvent(
     }
 
     companion object {
-        /** Additive schema: phase/detail/responseBytes/itemCount are optional. */
-        const val SCHEMA_VERSION = 2
+        /**
+         * Additive schema: schema 2 added phase/detail/responseBytes/itemCount;
+         * schema 3 adds fixed media/body categories for response diagnosis.
+         */
+        const val SCHEMA_VERSION = 3
         const val MAX_FRAMES = 8
         const val MAX_DURATION_MS = 3_600_000L
         const val MAX_DIMENSION_DP = 20_000
@@ -280,6 +317,8 @@ object Diagnostics {
         operationId: String? = null,
         phase: DiagnosticPhase? = null,
         detail: DiagnosticDetail? = null,
+        mediaType: DiagnosticMediaType? = null,
+        bodyType: DiagnosticBodyType? = null,
         responseBytes: Int? = null,
         itemCount: Int? = null,
     ): Boolean {
@@ -300,6 +339,8 @@ object Diagnostics {
                 operationId = operationId,
                 phase = phase,
                 detail = detail,
+                mediaType = mediaType,
+                bodyType = bodyType,
                 responseBytes = responseBytes,
                 itemCount = itemCount,
             )

@@ -9,8 +9,10 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.platform.crypto.ByteCrypto
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticSink
 import com.upcpocket.app.platform.diagnostics.Diagnostics
@@ -503,6 +505,97 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun validWeekJsonWithHtmlMimeIsPublished() = runTest {
+        val service = service(
+            ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json(weekFixture(), "text/html; charset=UTF-8")
+                }
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
+        assertEquals(TimetableWeekState.READY, service.state.value.weekState)
+        assertEquals(6, service.state.value.meetings.size)
+        assertNull(service.state.value.message)
+    }
+
+    @Test
+    fun nonLoginHtmlWeekKeepsCompleteCacheAndNamesTheRealCategory() = runTest {
+        seedCacheAndSession()
+        val service = service(
+            ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json("<html><body>maintenance</body></html>", "text/html")
+                }
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertTrue(service.state.value.message!!.contains("网页内容"))
+        assertTrue(service.state.value.message!!.contains("已保留上次缓存"))
+        assertEquals("示例课程A", service.state.value.meetings.first().courseName)
+    }
+
+    @Test
+    fun malformedWeekJsonIsFormatErrorNotEmptyOrLogin() = runTest {
+        val service = service(
+            ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json("{\"e\":0", "application/json")
+                }
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(TimetableWeekState.ERROR, service.state.value.weekState)
+        assertTrue(service.state.value.message!!.contains("格式异常"))
+        assertFalse(service.state.value.message!!.contains("登录"))
+    }
+
+    @Test
+    fun acceptedMimeMismatchIsRecordedOnTheSameOperation() = runTest {
+        val events = mutableListOf<DiagnosticEvent>()
+        Diagnostics.install(object : DiagnosticSink {
+            override fun record(event: DiagnosticEvent) {
+                events += event
+            }
+        })
+        try {
+            val service = service(
+                ProgrammedTransport { request ->
+                    if (request.method == "GET") {
+                        json(indexFixture())
+                    } else {
+                        json(weekFixture(), "text/html")
+                    }
+                },
+            )
+            service.open()
+            val mismatch = events.single {
+                it.detail == DiagnosticDetail.RESPONSE_MIME_MISMATCH
+            }
+            assertNotNull(mismatch.operationId)
+            assertEquals(DiagnosticPhase.RESPONSE, mismatch.phase)
+            assertEquals(DiagnosticMediaType.HTML, mismatch.mediaType)
+            assertEquals(DiagnosticBodyType.JSON_OBJECT, mismatch.bodyType)
+            assertTrue(
+                events.filter { it.operationId == mismatch.operationId }
+                    .any { it.detail == DiagnosticDetail.WEEK_OK },
+            )
+        } finally {
+            Diagnostics.install(null)
+        }
+    }
+
+    @Test
     fun accountSwitchDuringWeekRequestDiscardsOldResult() = runTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
@@ -889,9 +982,12 @@ class TimetableServiceTest {
     private fun weekFixture(): String =
         javaClass.getResource("/timetable_week_08.json")!!.readText()
 
-    private fun json(body: String): TimetableHttpResponse = TimetableHttpResponse(
+    private fun json(
+        body: String,
+        mime: String = "application/json",
+    ): TimetableHttpResponse = TimetableHttpResponse(
         200,
-        mapOf("content-type" to listOf("application/json")),
+        mapOf("content-type" to listOf(mime)),
         body.toByteArray(),
     )
 

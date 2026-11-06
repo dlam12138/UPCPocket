@@ -1,5 +1,17 @@
 # 更新与验证
 
+## 2.0.1 续修 r3 · 周响应 MIME/正文分类与有效 JSON 误标修复（本地构建，未发布）· 2026-11-06
+
+- 新报告（schema 2，39 事件）实际显示：两次网页登录均完成 CAS→APP_CALLBACK→APP_PAGE，Cookie 解析 2 项并保存，`get-index` 成功 27 个学期；四次 `WEEK_REQUEST` 都在 HTTP 200 / 5081 bytes 后 `QUERY_FAIL reason=SCHEMA phase=WEEK detail=RESPONSE_NON_JSON`。该 detail 在旧代码同时表示“MIME 非 JSON”和“JSON decode 失败”，无法据此认定 WAF/登录页/错误 MIME。
+- 同账号/同协议本机只读对照：索引 2493 bytes、`application/json`、27 学期；当前周 2827 bytes、`application/json`、`e=0`、7 天/7 日；官方页面 JS 的 `scheduleLists` 同样调用 `/timetable/wap/default/get-datatmp`，body 同为 `year/term/week/type=2`。端点/账号/协议形状有效，用户 5081 未在本机复现，不能据此声称用户已修复。
+- 诊断 schema 3 新增固定 `mediaType`（JSON/JSON_SUFFIX/TEXT/HTML/OTHER/MISSING）与 `bodyType`（JSON_OBJECT/JSON_ARRAY/HTML/LOGIN_LIKE/EMPTY/MALFORMED/OTHER）；失败事件同时带 `responseBytes`，导出仍不含 URL/query/头原文/正文/HTML 片段/字段值/课程或账号数据。
+- 固定受信 endpoint 的 200 响应先做有界正文分类：有效 JSON（含 UTF-8/UTF-16 BOM）即使 Content-Type 为缺失/`text/html`/`text/plain`/其它误标也接受，并记录同 `operationId` 的 `RESPONSE_MIME_MISMATCH`；随后仍执行完整 envelope/业务 schema。HTML/登录页、JSONP/文本、malformed 一律拒绝；普通 HTML 为 `RESPONSE_HTML`，以 `{`/`[` 开头的 malformed 为 `RESPONSE_MALFORMED_JSON`；2 MiB 上限、TLS/域名/固定路径/禁重定向/单次认证恢复未改。
+- UI 按真实类别：登录页、普通网页、格式异常、响应过大、网络/TLS/超时分别提示，并保留“已保留上次缓存/暂无可用的旧缓存”的真实差别，不再把所有格式错误归为一句“无法识别的数据”。
+- 验证：`feature:timetable` **133 tests / 0 failures**；全仓 **516 tests / 75 suites / 0 failures / 0 errors / 1 skipped**；`:app:lintDebug` 0 errors / 7 warnings；`:feature:timetable:lintDebug` 0 errors / 4 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 通过（R8 + resource shrink，通用 ABI）。新增覆盖有效 JSON 误标接受、`+json`、HTML 含 JSON 片段拒绝、malformed 区分、错误 MIME 下 10013 仍走认证、超限、BOM、错误 MIME 的周仍发布、普通 HTML 保留完整缓存、格式文案、同 operationId 的 MIME_MISMATCH 事件。
+- 模拟器 `emulator-5554`（`upcpocket_api36`，Android 36）`adb install -r` 覆盖保留数据，课表已有缓存正常显示，点刷新后显示“已更新”，今日时间更新到 10:42，无崩溃。该次为正常 JSON，不产生 MIME_MISMATCH；不是用户 vivo 真机复测。
+- 交付：`E:\UPCpocket\.local\artifacts\UPC-Pocket-2.0.1-timetable-response-classify-r3.apk`，**4,708,133** bytes，SHA-256 `4A759EA8E7251E8A21966788DDCE44D23A6A9927318B8DC7568C7341BE774177`；`2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，仅“压缩 Release 构建、开发签名”。未 push/merge/publish，未改 v2.0 tag/附件；r2 APK 保留为中间证据。
+- 仍未确认用户 5081 的正文类别；下一次报告会给出 `mime=` 与 `body=`。若 `body=JSON_OBJECT/ARRAY` 且 MIME 误标，本版接受并记录 MIME_MISMATCH；若 `body=HTML/LOGIN_LIKE/MALFORMED`，本版不会假成功，按新类别继续处理。
+
 ## 2.0.1 续修 · 课表返回原生“无法识别的数据”诊断与兼容（本地构建，未发布）· 2026-11-06
 
 - 用户录屏：网页登录里学校课表已完整显示彩色课程，返回原生先短暂“连接中”后提示“学校返回了无法识别的数据；已保留上次缓存”，同时下面又说“查询失败，且没有缓存”。20:15 诊断 ZIP 是另一次操作，只有 7 条 WebView 事件；`WEBVIEW_FINISH OK` 仅是 `onPageFinished`，无 `QUERY_*`，因此**没有该用户原始响应，具体根因未确认**，不能把“用户数据不兼容”写成已证实。

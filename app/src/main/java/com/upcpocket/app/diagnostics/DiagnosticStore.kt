@@ -431,6 +431,8 @@ class DiagnosticStore(
         val exception = value.optString("exceptionType", "")
         val phase = value.optString("phase", "")
         val detail = value.optString("detail", "")
+        val mediaType = value.optString("mediaType", "")
+        val bodyType = value.optString("bodyType", "")
         buildString {
             append(module)
             append(' ')
@@ -446,6 +448,14 @@ class DiagnosticStore(
             if (detail.isNotBlank()) {
                 append(" detail=")
                 append(detail)
+            }
+            if (mediaType.isNotBlank()) {
+                append(" mime=")
+                append(mediaType)
+            }
+            if (bodyType.isNotBlank()) {
+                append(" body=")
+                append(bodyType)
             }
             if (exception.isNotBlank()) {
                 append(" exception=")
@@ -471,6 +481,8 @@ class DiagnosticStore(
         event.operationId?.let { value.put("operationId", it) }
         event.phase?.let { value.put("phase", it.name) }
         event.detail?.let { value.put("detail", it.name) }
+        event.mediaType?.let { value.put("mediaType", it.name) }
+        event.bodyType?.let { value.put("bodyType", it.name) }
         event.responseBytes?.let { value.put("responseBytes", it) }
         event.itemCount?.let { value.put("itemCount", it) }
         if (event.frames.isNotEmpty()) {

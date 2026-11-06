@@ -5,8 +5,10 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
@@ -95,6 +97,8 @@ class DiagnosticStoreTest {
                 reason = DiagnosticReason.SCHEMA,
                 phase = DiagnosticPhase.PARSE,
                 detail = DiagnosticDetail.WEEK_PARSE_ORDER,
+                mediaType = DiagnosticMediaType.JSON,
+                bodyType = DiagnosticBodyType.JSON_OBJECT,
                 itemCount = 7,
             ),
         )
@@ -107,9 +111,11 @@ class DiagnosticStoreTest {
         assertFalse(all.contains("token=secret"))
         assertFalse(all.contains("DiagnosticsCanary.kt"))
         assertTrue(all.contains("com.upcpocket.app.DiagnosticsCanary.boom"))
-        assertTrue(all.contains("\"schemaVersion\":2"))
+        assertTrue(all.contains("\"schemaVersion\":3"))
         assertTrue(all.contains("\"phase\":\"PARSE\""))
         assertTrue(all.contains("\"detail\":\"WEEK_PARSE_ORDER\""))
+        assertTrue(all.contains("\"mediaType\":\"JSON\""))
+        assertTrue(all.contains("\"bodyType\":\"JSON_OBJECT\""))
         assertTrue(all.contains("\"itemCount\":7"))
         assertTrue(all.contains("\"widthDp\":412"))
         assertTrue(all.contains("appVersion="))

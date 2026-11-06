@@ -1,7 +1,15 @@
 package com.upcpocket.app.timetable
 
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.IOException
 import java.net.SocketTimeoutException
 import javax.net.ssl.SSLException
@@ -158,6 +166,8 @@ class TimetableApiException(
     val httpStatus: Int? = null,
     val responseBytes: Int? = null,
     val exceptionType: DiagnosticExceptionType? = null,
+    val mediaType: DiagnosticMediaType? = null,
+    val bodyType: DiagnosticBodyType? = null,
 ) : Exception(null, null, false, false)
 
 /** 固定主机、固定路径的只读课表客户端；不做整学期遍历或自动轮询。 */
@@ -167,28 +177,29 @@ class TimetableApi internal constructor(
 ) {
     constructor() : this(OkHttpTimetableTransport())
 
-    suspend fun getIndex(cookies: List<TimetableCookie>): TimetableIndex {
+    suspend fun getIndex(
+        cookies: List<TimetableCookie>,
+        operationId: String? = null,
+    ): TimetableIndex {
         val response = request(
             method = "GET",
             url = UpcTimetableHost.INDEX_URL,
             cookies = cookies,
         )
-        return try {
+        val parsed = try {
             TimetableProtocol.parseIndex(response.text)
         } catch (failure: TimetableParseException) {
-            throw TimetableApiException(
-                code = failure.code,
-                detail = failure.detail,
-                httpStatus = response.status,
-                responseBytes = response.bytes,
-            )
+            throw response.failure(failure.code, failure.detail)
         }
+        recordMimeMismatch(response, operationId)
+        return parsed
     }
 
     suspend fun getWeek(
         cookies: List<TimetableCookie>,
         term: TimetableTerm,
         week: Int,
+        operationId: String? = null,
     ): TimetableWeek {
         val body = listOf(
             "year" to term.year,
@@ -203,19 +214,52 @@ class TimetableApi internal constructor(
             body = body,
             contentType = true,
         )
-        return try {
+        val parsed = try {
             TimetableProtocol.parseWeek(response.text, term, week)
         } catch (failure: TimetableParseException) {
-            throw TimetableApiException(
-                code = failure.code,
-                detail = failure.detail,
-                httpStatus = response.status,
-                responseBytes = response.bytes,
-            )
+            throw response.failure(failure.code, failure.detail)
         }
+        recordMimeMismatch(response, operationId)
+        return parsed
     }
 
-    private data class Payload(val status: Int, val bytes: Int, val text: String)
+    private data class Payload(
+        val status: Int,
+        val bytes: Int,
+        val text: String,
+        val mediaType: DiagnosticMediaType,
+        val bodyType: DiagnosticBodyType,
+        val mimeMismatch: Boolean,
+    ) {
+        fun failure(
+            code: TimetableErrorCode,
+            detail: DiagnosticDetail?,
+        ): TimetableApiException = TimetableApiException(
+            code = code,
+            detail = detail,
+            httpStatus = status,
+            responseBytes = bytes,
+            mediaType = mediaType,
+            bodyType = bodyType,
+        )
+    }
+
+    private fun recordMimeMismatch(response: Payload, operationId: String?) {
+        if (!response.mimeMismatch) return
+        Diagnostics.record(
+            module = DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.QUERY_CHANGED,
+            result = DiagnosticResult.OK,
+            reason = DiagnosticReason.MIME,
+            phase = DiagnosticPhase.RESPONSE,
+            detail = DiagnosticDetail.RESPONSE_MIME_MISMATCH,
+            httpStatus = response.status,
+            mediaType = response.mediaType,
+            bodyType = response.bodyType,
+            responseBytes = response.bytes,
+            operationId = operationId,
+        )
+    }
 
     private suspend fun request(
         method: String,
@@ -316,39 +360,66 @@ class TimetableApi internal constructor(
                 detail = DiagnosticDetail.RESPONSE_EMPTY,
                 httpStatus = response.status,
                 responseBytes = 0,
+                mediaType = TimetableResponseClassifier.mediaType(
+                    response.headers["content-type"],
+                ),
+                bodyType = DiagnosticBodyType.EMPTY,
             )
         }
-        val mediaType = response.header("Content-Type").orEmpty().lowercase()
-        if (!mediaType.contains("application/json")) {
-            val prefix = response.body.copyOf(minOf(response.body.size, 4096))
-                .toString(Charsets.UTF_8)
-                .lowercase()
-            val looksLikeLoginPage = prefix.contains("<html") &&
-                (
-                    prefix.contains("cas") ||
-                        prefix.contains("login") ||
-                        prefix.contains("统一身份认证") ||
-                        prefix.contains("登录")
-                    )
-            throw TimetableApiException(
-                code = if (looksLikeLoginPage) {
-                    TimetableErrorCode.LOGIN_PAGE
-                } else {
-                    TimetableErrorCode.SCHEMA_CHANGED
-                },
-                detail = if (looksLikeLoginPage) {
-                    DiagnosticDetail.RESPONSE_LOGIN_PAGE
-                } else {
-                    DiagnosticDetail.RESPONSE_NON_JSON
-                },
+        val mediaType = TimetableResponseClassifier.mediaType(response.headers["content-type"])
+        val bodyShape = TimetableResponseClassifier.body(response.body)
+        val bodyType = bodyShape.bodyType
+        val reject = { code: TimetableErrorCode, detail: DiagnosticDetail ->
+            TimetableApiException(
+                code = code,
+                detail = detail,
                 httpStatus = response.status,
                 responseBytes = response.body.size,
+                mediaType = mediaType,
+                bodyType = bodyType,
             )
         }
+        when (bodyType) {
+            DiagnosticBodyType.EMPTY -> throw reject(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.RESPONSE_EMPTY,
+            )
+            DiagnosticBodyType.LOGIN_LIKE -> throw reject(
+                TimetableErrorCode.LOGIN_PAGE,
+                DiagnosticDetail.RESPONSE_LOGIN_PAGE,
+            )
+            DiagnosticBodyType.HTML -> throw reject(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.RESPONSE_HTML,
+            )
+            DiagnosticBodyType.MALFORMED -> throw reject(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.RESPONSE_MALFORMED_JSON,
+            )
+            DiagnosticBodyType.JSON_OBJECT,
+            DiagnosticBodyType.JSON_ARRAY,
+            DiagnosticBodyType.OTHER -> Unit
+        }
+
+        if (!bodyShape.validJson) {
+            throw reject(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.RESPONSE_NON_JSON,
+            )
+        }
+        // A fixed-host JSON body is authoritative over a missing or wrong
+        // Content-Type, but only after the bounded body parse above. HTML,
+        // scripts, JSONP and malformed bodies are still rejected; the full
+        // envelope/business schema is applied later by TimetableProtocol.
+        val mimeMismatch = mediaType != DiagnosticMediaType.JSON &&
+            mediaType != DiagnosticMediaType.JSON_SUFFIX
         return Payload(
             status = response.status,
             bytes = response.body.size,
-            text = response.body.toString(Charsets.UTF_8),
+            text = bodyShape.text,
+            mediaType = mediaType,
+            bodyType = bodyType,
+            mimeMismatch = mimeMismatch,
         )
     }
 

@@ -51,8 +51,18 @@ object TimetableProtocol {
     internal fun parseIndex(root: JsonElement): TimetableIndex {
         val obj = root.obj("get-index 响应", DiagnosticDetail.INDEX_PARSE_TERM_INFO)
         val code = int(obj["e"], "get-index.e", DiagnosticDetail.INDEX_PARSE_TERM_INFO)
-        if (code == 10013) throw TimetableParseException(TimetableErrorCode.AUTH_REQUIRED)
-        if (code != 0) throw TimetableParseException(TimetableErrorCode.UPSTREAM_ERROR)
+        if (code == 10013) {
+            throw TimetableParseException(
+                TimetableErrorCode.AUTH_REQUIRED,
+                DiagnosticDetail.AUTH_REQUIRED,
+            )
+        }
+        if (code != 0) {
+            throw TimetableParseException(
+                TimetableErrorCode.UPSTREAM_ERROR,
+                DiagnosticDetail.RESPONSE_BUSINESS,
+            )
+        }
 
         val data = obj["d"].obj("get-index.d", DiagnosticDetail.INDEX_PARSE_TERM_INFO)
         val rawTerms = data["termInfo"].array(
@@ -184,8 +194,18 @@ object TimetableProtocol {
         val compatibility = linkedSetOf<TimetableCompatibility>()
         val obj = root.obj("get-datatmp 响应", DiagnosticDetail.WEEK_PARSE_CLASSES)
         val code = int(obj["e"], "get-datatmp.e", DiagnosticDetail.WEEK_PARSE_CLASSES)
-        if (code == 10013) throw TimetableParseException(TimetableErrorCode.AUTH_REQUIRED)
-        if (code != 0) throw TimetableParseException(TimetableErrorCode.UPSTREAM_ERROR)
+        if (code == 10013) {
+            throw TimetableParseException(
+                TimetableErrorCode.AUTH_REQUIRED,
+                DiagnosticDetail.AUTH_REQUIRED,
+            )
+        }
+        if (code != 0) {
+            throw TimetableParseException(
+                TimetableErrorCode.UPSTREAM_ERROR,
+                DiagnosticDetail.RESPONSE_BUSINESS,
+            )
+        }
 
         val data = obj["d"].obj("get-datatmp.d", DiagnosticDetail.WEEK_PARSE_CLASSES)
         val classes = data["classes"].array(
@@ -388,12 +408,23 @@ object TimetableProtocol {
                 DiagnosticDetail.RESPONSE_TOO_LARGE,
             )
         }
+        val text = raw.trimStart('\uFEFF', '\u200B').trim()
+        if (text.isEmpty()) {
+            throw TimetableParseException(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.RESPONSE_EMPTY,
+            )
+        }
         return try {
-            Json.parseToJsonElement(raw)
+            Json.parseToJsonElement(text)
         } catch (_: Exception) {
             throw TimetableParseException(
                 TimetableErrorCode.SCHEMA_CHANGED,
-                DiagnosticDetail.RESPONSE_NON_JSON,
+                if (text.first() == '{' || text.first() == '[') {
+                    DiagnosticDetail.RESPONSE_MALFORMED_JSON
+                } else {
+                    DiagnosticDetail.RESPONSE_NON_JSON
+                },
             )
         }
     }
@@ -502,8 +533,8 @@ object TimetableProtocol {
     /**
      * Tolerant week label: comma/Chinese comma/space separated numbers and
      * ranges such as `1-16`, `1~16`. Returns null when the label cannot be
-     * interpreted; the caller then falls back to the requested week because
-     * `get-datatmp` itself is already week-scoped.
+     * interpreted. The caller fails the week; it never appends the requested
+     * week to source facts.
      */
     private fun weekNumbers(raw: String, totalWeeks: Int): List<Int>? {
         val tokens = raw.trim()
