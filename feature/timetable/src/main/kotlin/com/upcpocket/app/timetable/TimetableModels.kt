@@ -50,6 +50,7 @@ data class TimetableIndex(
     val currentWeek: Int? = null,
     val currentWeekdays: List<@Serializable(with = LocalDateIsoSerializer::class) LocalDate>? = null,
     val currentWeekday: Int? = null,
+    val compatibility: List<TimetableCompatibility> = emptyList(),
 ) {
     fun find(year: String, term: String): TimetableTerm? =
         terms.firstOrNull { it.year == year && it.term == term }
@@ -124,6 +125,28 @@ data class TimetableMeeting(
     fun sourcePeriodsLabel(): String = sourcePeriods.joinToString("、") { "第${it}节" }
 }
 
+/**
+ * 已接受的源数据兼容差异。只记录规则，不保存课程字段值。
+ *
+ * 这些差异都不改变课程归属：日期取自源 `weekdays`，节次取自 `lessArr`。
+ */
+@Serializable
+enum class TimetableCompatibility {
+    WEEKDAY_IGNORED,
+    ORDER_IGNORED,
+    TOTAL_LENGTH_IGNORED,
+    CELL_START_IGNORED,
+    WEEK_LABEL_FALLBACK,
+    WEEK_LABEL_MISMATCH,
+    DATE_OFFSET_ACCEPTED,
+    NULL_DAY_ACCEPTED,
+    INTEGRAL_FLOAT_ACCEPTED,
+    DUPLICATE_PERIODS_DEDUPED,
+    ENTRY_SKIPPED,
+    INDEX_TERM_SKIPPED,
+    INDEX_CURRENT_IGNORED,
+}
+
 @Serializable
 data class TimetableWeek(
     val term: TimetableTerm,
@@ -132,6 +155,7 @@ data class TimetableWeek(
     val meetings: List<TimetableMeeting>,
     val fetchedAtEpochMillis: Long,
     val complete: Boolean = true,
+    val compatibility: List<TimetableCompatibility> = emptyList(),
 ) {
     init {
         require(week in 1..term.totalWeeks) { "教学周超出学期范围" }
@@ -142,7 +166,9 @@ data class TimetableWeek(
         }
     }
 
-    val isEmpty: Boolean get() = complete && meetings.isEmpty()
+    val isEmpty: Boolean
+        get() = complete && meetings.isEmpty() &&
+            !compatibility.contains(TimetableCompatibility.ENTRY_SKIPPED)
 }
 
 /** UI 需要区分的真实状态；不能把未查询或失败显示成空课表。 */
@@ -185,6 +211,8 @@ data class TimetableUiState(
     /** 由账号/学期配色注册表分配；key 是课程号或课程名。 */
     val courseColorSlots: Map<String, Int> = emptyMap(),
     val weekState: TimetableWeekState = TimetableWeekState.NOT_QUERIED,
+    /** 源数据有可跳过条目时的短提示；不显示技术细节。 */
+    val weekNotice: String? = null,
     val weekFetchedAtEpochMillis: Long? = null,
     val today: LocalDate? = null,
     val todayMeetings: List<TimetableMeeting> = emptyList(),

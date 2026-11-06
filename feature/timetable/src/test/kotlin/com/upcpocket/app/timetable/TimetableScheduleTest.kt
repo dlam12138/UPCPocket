@@ -76,18 +76,18 @@ class TimetableScheduleTest {
     }
 
     @Test
-    fun `monday first source never rotates columns or relabels a course`() {
+    fun `monday first source keeps all seven days and the sunday course`() {
         val mondayWeek = listOf(
             "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10",
             "2026-09-11", "2026-09-12", "2026-09-13",
         ).map(LocalDate::parse)
         val sundayMeeting = base.copy(date = mondayWeek.last(), weekday = 7)
         val view = buildTimetableWeekView(mondayWeek, listOf(sundayMeeting))
-        // 视窗从 9/6 周日开始；源周未覆盖 9/6，必须标为未知，不能把 9/13 的课挪到首列。
-        assertEquals(LocalDate.parse("2026-09-06"), view.dates.first())
-        assertEquals(LocalDate.parse("2026-09-12"), view.dates.last())
-        assertEquals(setOf(LocalDate.parse("2026-09-06")), view.unknownDates)
-        assertTrue(view.meetings.isEmpty())
+        // 非周日起的源周直接保留真实 7 天，不能把 9/13 的课挤出视窗。
+        assertEquals(mondayWeek, view.dates)
+        assertEquals(mondayWeek.toSet(), view.knownDates)
+        assertTrue(view.unknownDates.isEmpty())
+        assertEquals(listOf(mondayWeek.last()), view.meetings.map { it.date })
     }
 
     @Test

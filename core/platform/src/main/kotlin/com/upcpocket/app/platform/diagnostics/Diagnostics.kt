@@ -106,6 +106,92 @@ enum class DiagnosticExceptionType {
 }
 
 /**
+ * Coarse stage of a timetable operation. A single operation id can then be
+ * followed from web login through cookie adoption, index and week loading.
+ */
+enum class DiagnosticPhase {
+    COOKIE,
+    INDEX,
+    WEEK,
+    PARSE,
+    RESPONSE,
+    PUBLISH,
+    CACHE,
+    SESSION,
+    AUTH,
+}
+
+/**
+ * Fixed rule/diagnosis code. These values describe only the expected schema
+ * path or a local rule; they never contain a URL, field value, course name,
+ * teacher/location, account identifier or exception message.
+ */
+enum class DiagnosticDetail {
+    COOKIE_EMPTY,
+    COOKIE_CONTEXT_STALE,
+    COOKIE_PARSED,
+    COOKIE_SAVED,
+    COOKIE_SAVE_FAILED,
+    INDEX_REQUEST,
+    INDEX_OK,
+    INDEX_PARSE_TERM_INFO,
+    INDEX_PARSE_TERM_DATE,
+    INDEX_PARSE_TERM_WEEKS,
+    INDEX_PARSE_CURRENT,
+    WEEK_REQUEST,
+    WEEK_OK,
+    WEEK_EMPTY,
+    WEEK_PARSE_CLASSES,
+    WEEK_PARSE_DATES,
+    WEEK_PARSE_DATE_ALIGN,
+    WEEK_PARSE_CELL_KEY,
+    WEEK_PARSE_LESS_ARR,
+    WEEK_PARSE_NAME,
+    WEEK_PARSE_WEEK_LABEL,
+    WEEK_PARSE_WEEKDAY,
+    WEEK_PARSE_ORDER,
+    WEEK_PARSE_TOTAL_LENGTH,
+    WEEK_PARSE_PERIOD_RANGE,
+    WEEK_PARSE_ENTRY_TYPE,
+    WEEK_PARSE_DAY_TYPE,
+    RESPONSE_JSON,
+    RESPONSE_NON_JSON,
+    RESPONSE_LOGIN_PAGE,
+    RESPONSE_HTTP,
+    RESPONSE_TOO_LARGE,
+    RESPONSE_EMPTY,
+    TRANSPORT_NETWORK,
+    TRANSPORT_TIMEOUT,
+    TRANSPORT_TLS,
+    TRANSPORT_TOO_LARGE,
+    AUTH_REQUIRED,
+    AUTH_INVALID,
+    AUTH_INTERACTION,
+    AUTH_OK,
+    CACHE_SAVED,
+    CACHE_SAVE_FAILED,
+    CACHE_HIT,
+    CACHE_MISS,
+    PUBLISH_OK,
+    PUBLISH_EMPTY,
+    PUBLISH_FAIL,
+    STALE_DISCARDED,
+    COMPAT_WEEKDAY_IGNORED,
+    COMPAT_ORDER_IGNORED,
+    COMPAT_TOTAL_LENGTH_IGNORED,
+    COMPAT_CELL_START_IGNORED,
+    COMPAT_WEEK_LABEL_FALLBACK,
+    COMPAT_WEEK_LABEL_MISMATCH,
+    COMPAT_DATE_OFFSET,
+    COMPAT_NULL_DAY,
+    COMPAT_INTEGRAL_FLOAT,
+    COMPAT_DUPLICATE_PERIODS,
+    COMPAT_ENTRY_SKIPPED,
+    COMPAT_INDEX_TERM_SKIPPED,
+    COMPAT_INDEX_CURRENT_IGNORED,
+}
+
+/**
  * A single bounded event. All fields are enums, numeric status/duration/size or
  * a short random operation id; there is no free-form string field.
  */
@@ -122,6 +208,10 @@ data class DiagnosticEvent(
     val exceptionType: DiagnosticExceptionType? = null,
     val frames: List<String> = emptyList(),
     val operationId: String? = null,
+    val phase: DiagnosticPhase? = null,
+    val detail: DiagnosticDetail? = null,
+    val responseBytes: Int? = null,
+    val itemCount: Int? = null,
     val timestampEpochMillis: Long = System.currentTimeMillis(),
 ) {
     init {
@@ -129,6 +219,10 @@ data class DiagnosticEvent(
         require(durationMs == null || durationMs in 0..MAX_DURATION_MS) { "durationMs out of range" }
         require(widthDp == null || widthDp in 0..MAX_DIMENSION_DP) { "widthDp out of range" }
         require(heightDp == null || heightDp in 0..MAX_DIMENSION_DP) { "heightDp out of range" }
+        require(responseBytes == null || responseBytes in 0..MAX_RESPONSE_BYTES) {
+            "responseBytes out of range"
+        }
+        require(itemCount == null || itemCount in 0..MAX_ITEM_COUNT) { "itemCount out of range" }
         require(operationId == null || OPERATION_ID.matches(operationId)) {
             "operationId must be a short lowercase hex id"
         }
@@ -140,10 +234,13 @@ data class DiagnosticEvent(
     }
 
     companion object {
-        const val SCHEMA_VERSION = 1
+        /** Additive schema: phase/detail/responseBytes/itemCount are optional. */
+        const val SCHEMA_VERSION = 2
         const val MAX_FRAMES = 8
         const val MAX_DURATION_MS = 3_600_000L
         const val MAX_DIMENSION_DP = 20_000
+        const val MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+        const val MAX_ITEM_COUNT = 100_000
         private val OPERATION_ID = Regex("[0-9a-f]{8}")
         private val FRAME = Regex("[A-Za-z0-9_$.<>-]{1,120}")
     }
@@ -186,6 +283,10 @@ object Diagnostics {
         exceptionType: DiagnosticExceptionType? = null,
         frames: List<String> = emptyList(),
         operationId: String? = null,
+        phase: DiagnosticPhase? = null,
+        detail: DiagnosticDetail? = null,
+        responseBytes: Int? = null,
+        itemCount: Int? = null,
     ): Boolean {
         if (sink == null) return false
         val event = runCatching {
@@ -202,6 +303,10 @@ object Diagnostics {
                 exceptionType = exceptionType,
                 frames = frames,
                 operationId = operationId,
+                phase = phase,
+                detail = detail,
+                responseBytes = responseBytes,
+                itemCount = itemCount,
             )
         }.getOrNull() ?: return false
         return runCatching {
@@ -218,6 +323,8 @@ object Diagnostics {
         failure: Throwable,
         durationMs: Long? = null,
         operationId: String? = null,
+        phase: DiagnosticPhase? = null,
+        detail: DiagnosticDetail? = null,
     ): Boolean = record(
         module = module,
         action = action,
@@ -227,6 +334,8 @@ object Diagnostics {
         exceptionType = classify(failure),
         frames = appFrames(failure),
         operationId = operationId,
+        phase = phase,
+        detail = detail,
     )
 
     fun classify(failure: Throwable): DiagnosticExceptionType = when {

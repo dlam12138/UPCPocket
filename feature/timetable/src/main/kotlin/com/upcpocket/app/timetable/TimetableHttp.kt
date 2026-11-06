@@ -1,5 +1,7 @@
 package com.upcpocket.app.timetable
 
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
 import java.io.IOException
 import java.net.SocketTimeoutException
 import javax.net.ssl.SSLException
@@ -152,6 +154,10 @@ internal object UpcTimetableHost {
 class TimetableApiException(
     val code: TimetableErrorCode,
     val network: Boolean = false,
+    val detail: DiagnosticDetail? = null,
+    val httpStatus: Int? = null,
+    val responseBytes: Int? = null,
+    val exceptionType: DiagnosticExceptionType? = null,
 ) : Exception(null, null, false, false)
 
 /** 固定主机、固定路径的只读课表客户端；不做整学期遍历或自动轮询。 */
@@ -161,18 +167,23 @@ class TimetableApi internal constructor(
 ) {
     constructor() : this(OkHttpTimetableTransport())
 
-    suspend fun getIndex(cookies: List<TimetableCookie>): TimetableIndex =
-        try {
-            TimetableProtocol.parseIndex(
-                execute(
-                    method = "GET",
-                    url = UpcTimetableHost.INDEX_URL,
-                    cookies = cookies,
-                ),
-            )
+    suspend fun getIndex(cookies: List<TimetableCookie>): TimetableIndex {
+        val response = request(
+            method = "GET",
+            url = UpcTimetableHost.INDEX_URL,
+            cookies = cookies,
+        )
+        return try {
+            TimetableProtocol.parseIndex(response.text)
         } catch (failure: TimetableParseException) {
-            throw TimetableApiException(failure.code)
+            throw TimetableApiException(
+                code = failure.code,
+                detail = failure.detail,
+                httpStatus = response.status,
+                responseBytes = response.bytes,
+            )
         }
+    }
 
     suspend fun getWeek(
         cookies: List<TimetableCookie>,
@@ -185,30 +196,34 @@ class TimetableApi internal constructor(
             "week" to week.toString(),
             "type" to "2",
         ).joinToString("&") { (name, value) -> "$name=${encode(value)}" }
+        val response = request(
+            method = "POST",
+            url = UpcTimetableHost.WEEK_URL,
+            cookies = cookies,
+            body = body,
+            contentType = true,
+        )
         return try {
-            TimetableProtocol.parseWeek(
-                execute(
-                    method = "POST",
-                    url = UpcTimetableHost.WEEK_URL,
-                    cookies = cookies,
-                    body = body,
-                    contentType = true,
-                ),
-                term,
-                week,
-            )
+            TimetableProtocol.parseWeek(response.text, term, week)
         } catch (failure: TimetableParseException) {
-            throw TimetableApiException(failure.code)
+            throw TimetableApiException(
+                code = failure.code,
+                detail = failure.detail,
+                httpStatus = response.status,
+                responseBytes = response.bytes,
+            )
         }
     }
 
-    private suspend fun execute(
+    private data class Payload(val status: Int, val bytes: Int, val text: String)
+
+    private suspend fun request(
         method: String,
         url: String,
         cookies: List<TimetableCookie>,
         body: String? = null,
         contentType: Boolean = false,
-    ): String {
+    ): Payload {
         val now = clock() / 1000
         val requestPath = runCatching { java.net.URI(url).path }
             .getOrNull()
@@ -233,26 +248,108 @@ class TimetableApi internal constructor(
         }
         val response = try {
             transport.execute(TimetableHttpRequest(method, url, headers, body))
-        } catch (_: TimetableTransportException) {
-            throw TimetableApiException(TimetableErrorCode.UPSTREAM_ERROR, network = true)
+        } catch (failure: TimetableTransportException) {
+            throw when (failure.failure) {
+                TimetableTransportFailure.TIMEOUT -> TimetableApiException(
+                    code = TimetableErrorCode.UPSTREAM_ERROR,
+                    network = true,
+                    detail = DiagnosticDetail.TRANSPORT_TIMEOUT,
+                    exceptionType = DiagnosticExceptionType.TIMEOUT,
+                )
+                TimetableTransportFailure.TLS -> TimetableApiException(
+                    code = TimetableErrorCode.UPSTREAM_ERROR,
+                    network = true,
+                    detail = DiagnosticDetail.TRANSPORT_TLS,
+                    exceptionType = DiagnosticExceptionType.TLS,
+                )
+                TimetableTransportFailure.TOO_LARGE -> TimetableApiException(
+                    code = TimetableErrorCode.RESPONSE_TOO_LARGE,
+                    detail = DiagnosticDetail.TRANSPORT_TOO_LARGE,
+                    exceptionType = DiagnosticExceptionType.PARSE,
+                )
+                TimetableTransportFailure.NETWORK -> TimetableApiException(
+                    code = TimetableErrorCode.UPSTREAM_ERROR,
+                    network = true,
+                    detail = DiagnosticDetail.TRANSPORT_NETWORK,
+                    exceptionType = DiagnosticExceptionType.IO,
+                )
+            }
         }
         when (response.status) {
-            307, 308 -> throw TimetableApiException(TimetableErrorCode.UPSTREAM_ERROR)
-            in 300..399 -> throw TimetableApiException(TimetableErrorCode.AUTH_REQUIRED)
-            401 -> throw TimetableApiException(TimetableErrorCode.AUTH_REQUIRED)
-            403 -> throw TimetableApiException(TimetableErrorCode.UPSTREAM_ERROR)
+            307, 308 -> throw TimetableApiException(
+                code = TimetableErrorCode.UPSTREAM_ERROR,
+                detail = DiagnosticDetail.RESPONSE_HTTP,
+                httpStatus = response.status,
+                responseBytes = response.body.size,
+            )
+            in 300..399 -> throw TimetableApiException(
+                code = TimetableErrorCode.AUTH_REQUIRED,
+                detail = DiagnosticDetail.AUTH_REQUIRED,
+                httpStatus = response.status,
+                responseBytes = response.body.size,
+            )
+            401 -> throw TimetableApiException(
+                code = TimetableErrorCode.AUTH_REQUIRED,
+                detail = DiagnosticDetail.AUTH_REQUIRED,
+                httpStatus = 401,
+                responseBytes = response.body.size,
+            )
             200 -> Unit
-            else -> throw TimetableApiException(TimetableErrorCode.UPSTREAM_ERROR)
+            else -> throw TimetableApiException(
+                code = TimetableErrorCode.UPSTREAM_ERROR,
+                detail = DiagnosticDetail.RESPONSE_HTTP,
+                httpStatus = response.status,
+                responseBytes = response.body.size,
+            )
+        }
+        if (response.body.size > 2 * 1024 * 1024) {
+            throw TimetableApiException(
+                code = TimetableErrorCode.RESPONSE_TOO_LARGE,
+                detail = DiagnosticDetail.RESPONSE_TOO_LARGE,
+                httpStatus = response.status,
+                responseBytes = response.body.size,
+            )
+        }
+        if (response.body.isEmpty()) {
+            throw TimetableApiException(
+                code = TimetableErrorCode.SCHEMA_CHANGED,
+                detail = DiagnosticDetail.RESPONSE_EMPTY,
+                httpStatus = response.status,
+                responseBytes = 0,
+            )
         }
         val mediaType = response.header("Content-Type").orEmpty().lowercase()
         if (!mediaType.contains("application/json")) {
-            throw TimetableApiException(TimetableErrorCode.SCHEMA_CHANGED)
+            val prefix = response.body.copyOf(minOf(response.body.size, 4096))
+                .toString(Charsets.UTF_8)
+                .lowercase()
+            val looksLikeLoginPage = prefix.contains("<html") &&
+                (
+                    prefix.contains("cas") ||
+                        prefix.contains("login") ||
+                        prefix.contains("统一身份认证") ||
+                        prefix.contains("登录")
+                    )
+            throw TimetableApiException(
+                code = if (looksLikeLoginPage) {
+                    TimetableErrorCode.LOGIN_PAGE
+                } else {
+                    TimetableErrorCode.SCHEMA_CHANGED
+                },
+                detail = if (looksLikeLoginPage) {
+                    DiagnosticDetail.RESPONSE_LOGIN_PAGE
+                } else {
+                    DiagnosticDetail.RESPONSE_NON_JSON
+                },
+                httpStatus = response.status,
+                responseBytes = response.body.size,
+            )
         }
-        val text = response.body.toString(Charsets.UTF_8)
-        if (response.body.size > 2 * 1024 * 1024) {
-            throw TimetableApiException(TimetableErrorCode.RESPONSE_TOO_LARGE)
-        }
-        return text
+        return Payload(
+            status = response.status,
+            bytes = response.body.size,
+            text = response.body.toString(Charsets.UTF_8),
+        )
     }
 
     private fun encode(value: String): String =

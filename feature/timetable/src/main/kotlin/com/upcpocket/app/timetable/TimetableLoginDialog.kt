@@ -63,7 +63,7 @@ private const val TIMETABLE_APP_HOST = "app.upc.edu.cn"
 fun TimetableLoginDialog(
     url: String,
     hint: String?,
-    onCookies: (String) -> Unit,
+    onCookies: (String, String) -> Unit,
     onClose: () -> Unit,
 ) {
     val currentOnCookies by rememberUpdatedState(onCookies)
@@ -77,7 +77,29 @@ fun TimetableLoginDialog(
     val operationId = remember(generation) { Diagnostics.newOperationId() }
 
     fun readCookieHeader(): String? = runCatching {
-        cookieManager.getCookie("https://$TIMETABLE_APP_HOST/")
+        cookieManager.flush()
+        // CookieManager 只返回匹配给定 URL 路径的 Cookie。课表业务 Cookie
+        // 可能挂在 /timetable 或 /site 下，只查 "/" 会漏掉；按最具体到根
+        // 的顺序合并，同名时保留更具体路径看到的值。
+        val seen = LinkedHashMap<String, String>()
+        listOf(
+            "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-index",
+            "https://$TIMETABLE_APP_HOST/site/weekschedule/index",
+            "https://$TIMETABLE_APP_HOST/",
+        ).forEach { target ->
+            cookieManager.getCookie(target)
+                .orEmpty()
+                .split(';')
+                .map(String::trim)
+                .filter { it.isNotEmpty() }
+                .forEach { part ->
+                    val index = part.indexOf('=')
+                    if (index > 0) {
+                        seen.putIfAbsent(part.substring(0, index), part)
+                    }
+                }
+        }
+        seen.values.joinToString("; ").ifBlank { null }
     }.getOrNull()
 
     fun submitCookies(auto: Boolean) {
@@ -90,8 +112,7 @@ fun TimetableLoginDialog(
         }
         if (auto && !attempted.compareAndSet(false, true)) return
         statusHint = null
-        cookieManager.flush()
-        currentOnCookies(header)
+        currentOnCookies(header, operationId)
     }
 
     fun verifyCookies() {
@@ -215,7 +236,15 @@ fun TimetableLoginDialog(
                                                     runCatching { Uri.parse(it).host }.getOrNull()
                                                 }
                                                 if (host.equals(TIMETABLE_APP_HOST, ignoreCase = true)) {
-                                                    submitCookies(auto = true)
+                                                    // 页面脚本可能在 onPageFinished 之后才写入
+                                                    // 业务 Cookie；稍等再读一次，避免过早回报。
+                                                    view.postDelayed({
+                                                        if (pageGeneration == generation &&
+                                                            error == null
+                                                        ) {
+                                                            submitCookies(auto = true)
+                                                        }
+                                                    }, 350L)
                                                 }
                                             }
 

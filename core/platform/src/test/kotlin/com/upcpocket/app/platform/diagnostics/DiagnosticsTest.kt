@@ -32,6 +32,43 @@ class DiagnosticsTest {
     }
 
     @Test
+    fun fixedPhaseAndDetailAreBoundedEnums() {
+        val event = DiagnosticEvent(
+            module = DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.QUERY_FAIL,
+            result = DiagnosticResult.FAIL,
+            phase = DiagnosticPhase.PARSE,
+            detail = DiagnosticDetail.WEEK_PARSE_ORDER,
+            responseBytes = 2048,
+            itemCount = 7,
+        )
+        assertEquals(DiagnosticPhase.PARSE, event.phase)
+        assertEquals(DiagnosticDetail.WEEK_PARSE_ORDER, event.detail)
+        assertEquals(2048, event.responseBytes)
+        assertEquals(7, event.itemCount)
+        assertFalse(
+            runCatching {
+                DiagnosticEvent(
+                    DiagnosticModule.TIMETABLE,
+                    DiagnosticAction.QUERY_FAIL,
+                    DiagnosticResult.FAIL,
+                    responseBytes = -1,
+                )
+            }.isSuccess,
+        )
+        assertFalse(
+            runCatching {
+                DiagnosticEvent(
+                    DiagnosticModule.TIMETABLE,
+                    DiagnosticAction.QUERY_FAIL,
+                    DiagnosticResult.FAIL,
+                    itemCount = DiagnosticEvent.MAX_ITEM_COUNT + 1,
+                )
+            }.isSuccess,
+        )
+    }
+
+    @Test
     fun rejectsInvalidNumericRangesAndOperationIds() {
         assertFalse(
             runCatching {

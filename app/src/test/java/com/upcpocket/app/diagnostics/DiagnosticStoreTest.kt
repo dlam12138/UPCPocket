@@ -5,8 +5,10 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
@@ -85,6 +87,17 @@ class DiagnosticStoreTest {
                 operationId = "a1b2c3d4",
             ),
         )
+        assertTrue(
+            Diagnostics.record(
+                module = DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.QUERY_FAIL,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.SCHEMA,
+                phase = DiagnosticPhase.PARSE,
+                detail = DiagnosticDetail.WEEK_PARSE_ORDER,
+                itemCount = 7,
+            ),
+        )
         val result = store.export(device()) as DiagnosticExportResult.Success
         val entries = unzip(result.uri)
         assertTrue(entries.containsKey("summary.txt"))
@@ -94,7 +107,10 @@ class DiagnosticStoreTest {
         assertFalse(all.contains("token=secret"))
         assertFalse(all.contains("DiagnosticsCanary.kt"))
         assertTrue(all.contains("com.upcpocket.app.DiagnosticsCanary.boom"))
-        assertTrue(all.contains("\"schemaVersion\":1"))
+        assertTrue(all.contains("\"schemaVersion\":2"))
+        assertTrue(all.contains("\"phase\":\"PARSE\""))
+        assertTrue(all.contains("\"detail\":\"WEEK_PARSE_ORDER\""))
+        assertTrue(all.contains("\"itemCount\":7"))
         assertTrue(all.contains("\"widthDp\":412"))
         assertTrue(all.contains("appVersion="))
         assertFalse(all.contains("accountId"))

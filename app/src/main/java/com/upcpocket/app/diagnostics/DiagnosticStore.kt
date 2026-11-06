@@ -429,6 +429,8 @@ class DiagnosticStore(
         val action = value.optString("action", "UNKNOWN")
         val reason = value.optString("reason", "UNKNOWN")
         val exception = value.optString("exceptionType", "")
+        val phase = value.optString("phase", "")
+        val detail = value.optString("detail", "")
         buildString {
             append(module)
             append(' ')
@@ -437,6 +439,14 @@ class DiagnosticStore(
             append(result)
             append(' ')
             append(reason)
+            if (phase.isNotBlank()) {
+                append(" phase=")
+                append(phase)
+            }
+            if (detail.isNotBlank()) {
+                append(" detail=")
+                append(detail)
+            }
             if (exception.isNotBlank()) {
                 append(" exception=")
                 append(exception)
@@ -459,6 +469,10 @@ class DiagnosticStore(
         event.heightDp?.let { value.put("heightDp", it) }
         event.exceptionType?.let { value.put("exceptionType", it.name) }
         event.operationId?.let { value.put("operationId", it) }
+        event.phase?.let { value.put("phase", it.name) }
+        event.detail?.let { value.put("detail", it.name) }
+        event.responseBytes?.let { value.put("responseBytes", it) }
+        event.itemCount?.let { value.put("itemCount", it) }
         if (event.frames.isNotEmpty()) {
             value.put("frames", JSONArray(event.frames))
         }

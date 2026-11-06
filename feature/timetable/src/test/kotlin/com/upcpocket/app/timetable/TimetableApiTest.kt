@@ -1,5 +1,6 @@
 package com.upcpocket.app.timetable
 
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -124,20 +125,38 @@ class TimetableApiTest {
 
     @Test
     fun nonJsonAndBusinessAuthErrorsAreNotReportedAsEmptyWeek() = runTest {
-        val api = TimetableApi(
+        val loginPage = TimetableApi(
             FakeTransport {
                 TimetableHttpResponse(
                     200,
                     mapOf("content-type" to listOf("text/html")),
-                    "<html>login</html>".toByteArray(),
+                    "<html><body>CAS login</body></html>".toByteArray(),
                 )
             },
         )
         try {
-            api.getIndex(cookies)
+            loginPage.getIndex(cookies)
+            fail("expected login page")
+        } catch (failure: TimetableApiException) {
+            assertEquals(TimetableErrorCode.LOGIN_PAGE, failure.code)
+            assertEquals(DiagnosticDetail.RESPONSE_LOGIN_PAGE, failure.detail)
+        }
+
+        val otherHtml = TimetableApi(
+            FakeTransport {
+                TimetableHttpResponse(
+                    200,
+                    mapOf("content-type" to listOf("text/html")),
+                    "<html><body>maintenance</body></html>".toByteArray(),
+                )
+            },
+        )
+        try {
+            otherHtml.getIndex(cookies)
             fail("expected schema error")
         } catch (failure: TimetableApiException) {
             assertEquals(TimetableErrorCode.SCHEMA_CHANGED, failure.code)
+            assertEquals(DiagnosticDetail.RESPONSE_NON_JSON, failure.detail)
         }
 
         val expired = TimetableApi(

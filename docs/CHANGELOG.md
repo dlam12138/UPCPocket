@@ -1,5 +1,15 @@
 # 更新与验证
 
+## 2.0.1 续修 · 课表返回原生“无法识别的数据”诊断与兼容（本地构建，未发布）· 2026-11-06
+
+- 用户录屏：网页登录里学校课表已完整显示彩色课程，返回原生先短暂“连接中”后提示“学校返回了无法识别的数据；已保留上次缓存”，同时下面又说“查询失败，且没有缓存”。20:15 诊断 ZIP 是另一次操作，只有 7 条 WebView 事件；`WEBVIEW_FINISH OK` 仅是 `onPageFinished`，无 `QUERY_*`，因此**没有该用户原始响应，具体根因未确认**，不能把“用户数据不兼容”写成已证实。
+- 诊断 schema 2：新增固定 `phase/detail`、HTTP 状态、响应字节数、条目数；`operationId` 从网页登录贯穿 Cookie 接管→索引→会话/缓存→周查询→发布/失败；新增空 Cookie/旧上下文、非 JSON/登录页、索引/周解析规则、缓存保存、发布与兼容规则码。仍不含 URL/query/头/正文/字段值/课程名/教师/地点/账号/异常 message，沿用 24h/1MiB/队列/epoch 清理与导出白名单。
+- 兼容修复：冗余 `order`/`totalLength`/声明 `weekday`/`c_N` 起始矛盾不再丢整周；`week` 支持范围/中文分隔/无法解析回退；接受整数值浮点、空日/空单元格、非 `c_N` 元数据；单条缺名/缺 `lessArr`/越界/重复键只跳过或去重并提示“部分课程未能显示”；±1 周日期偏移、无效历史学期/当前周不拖垮整份数据；周视窗对非周日起源保留真实 7 天，避免挤出最后一天。
+- Cookie 接管：按业务/页面/根路径合并 `CookieManager`，页面完成后延迟 350ms 再自动提交；Service 在采纳成功后直接查当前周，避免二次 refresh 断链和重复索引。
+- 文案：有缓存才说“已保留上次缓存”，否则“暂无可用的旧缓存”；WeekPanel 改为“查询失败，暂无缓存”；网络超时/TLS/HTTP/登录页分别提示，不一律 `SCHEMA`。
+- 验证：`feature:timetable` 111 tests；全仓 494 tests / 73 suites / 0 failures / 0 errors / 1 skipped；`:app:lintDebug` 0 errors / 7 warnings；`:feature:timetable:lintDebug` 0 errors / 4 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 通过。模拟器 `emulator-5554` 覆盖安装：本机授权账号真实只读 27 学期/第 9 周 7 课，同 operationId 的 AUTH/INDEX/WEEK/CACHE 事件齐全；断网 10s 超时记录 `TRANSPORT_TIMEOUT` 且保留缓存，恢复网络重试成功。
+- 交付：`E:\UPCpocket\.local\artifacts\UPC-Pocket-2.0.1-timetable-schema-fix.apk`，**4,708,133** bytes，SHA-256 `E52D8D1F5D4954EA556DB273270AFB6DC615B7B8D1C851CC6FC3A42F61AB96BA`；`2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，仅“压缩 Release 构建、开发签名”。未 push/merge/publish，未改 v2.0 tag/附件；该用户真机未复测，核心结构不兼容时仍会失败但下一次报告可给出具体规则码。
+
 ## 2.0.1 · 课表网页登录空白修复（本地构建，未发布）· 2026-11-05
 
 - 真实用户反馈：课表自动登录触发验证码后打开网页登录，WebView 像此前图书馆登录一样没有正常加载。排查确认不是 tab/Insets/遮罩，而是 Compose `AndroidView` 内 WebView 缺显式 `MATCH_PARENT`：修复前 `layoutParams=-2×-2`、CAS `body=0`、移动登录 iframe `0×0`，用户名顶部 `-124`；补齐后 iframe `412×839`、用户名/密码/`LOGIN` 均在视口内。
@@ -223,8 +233,3 @@
 - 古镇口未实现原生查询，学校证书、网络与页面变化可能影响访问。
 - Room 中保留旧课表表结构仅用于覆盖升级兼容；M3 课表使用独立 JSON 缓存，不读写这五张旧表，也不把它们当作 UPC 当前账号课表。
 - APK 内部版本 `0.2.7-lightly-preview`（19），沿用此前调试证书；本次以 GitHub Release 形式分发同一已验证包。
-
-
-
-
-

@@ -8,6 +8,12 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.platform.crypto.ByteCrypto
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticSink
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcAuthCookie
 import com.upcpocket.app.upcauth.UpcAuthFailure
@@ -444,12 +450,31 @@ class TimetableServiceTest {
         service.open()
         assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
         assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertTrue(service.state.value.message!!.contains("已保留上次缓存"))
         assertEquals("示例课程A", service.state.value.meetings.first().courseName)
         assertEquals(
             "示例课程A",
             cacheStore.load(ACCOUNT_ID).week(index().terms.first(), 8)!!
                 .meetings.first().courseName,
         )
+    }
+
+    @Test
+    fun protocolFailureWithoutCacheSaysNoCacheInsteadOfKeepingOne() = runTest {
+        val service = service(
+            ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json("""{"e":0,"d":{"classes":[],"weekdays":[]}}""")
+                }
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(TimetableWeekState.ERROR, service.state.value.weekState)
+        assertTrue(service.state.value.message!!.contains("暂无可用的旧缓存"))
+        assertFalse(service.state.value.message!!.contains("已保留"))
     }
 
     @Test
@@ -520,6 +545,56 @@ class TimetableServiceTest {
         assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
         assertNotNull(sessionStore.load(ACCOUNT_ID, 1))
         assertEquals("eai-sess", sessionStore.load(ACCOUNT_ID, 1)!!.cookies.first().name)
+    }
+
+    @Test
+    fun interactiveAdoptionSharesOneOperationIdAcrossCookieIndexWeekAndCache() = runTest {
+        val events = mutableListOf<DiagnosticEvent>()
+        Diagnostics.install(object : DiagnosticSink {
+            override fun record(event: DiagnosticEvent) {
+                events += event
+            }
+        })
+        try {
+            val transport = ProgrammedTransport { request ->
+                if (request.method == "GET") json(indexFixture()) else json(weekFixture())
+            }
+            val service = service(transport)
+            assertNotNull(service.beginInteractiveLogin())
+            assertTrue(
+                service.adoptInteractiveCookies(
+                    cookieHeader = "eai-sess=web-session",
+                    operationId = "abcd1234",
+                ),
+            )
+            val correlated = events.filter { it.operationId == "abcd1234" }
+            assertTrue(
+                correlated.any {
+                    it.phase == DiagnosticPhase.COOKIE &&
+                        it.action == DiagnosticAction.QUERY_COMPLETE
+                },
+            )
+            assertTrue(
+                correlated.any {
+                    it.phase == DiagnosticPhase.INDEX &&
+                        it.detail == DiagnosticDetail.INDEX_OK
+                },
+            )
+            assertTrue(
+                correlated.any {
+                    it.phase == DiagnosticPhase.CACHE &&
+                        it.detail == DiagnosticDetail.CACHE_SAVED
+                },
+            )
+            assertTrue(
+                correlated.any {
+                    it.phase == DiagnosticPhase.WEEK &&
+                        it.detail == DiagnosticDetail.WEEK_OK
+                },
+            )
+        } finally {
+            Diagnostics.install(null)
+        }
     }
 
     @Test
