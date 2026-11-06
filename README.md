@@ -1,80 +1,87 @@
 <div align="center">
 
-# UPC Pocket 2.0.2
+<img src="docs/images/app-icon.svg" width="80" height="80" alt="UPC Pocket 图标" />
 
-**余额、电量、空教室、课表，把常用校园服务放进口袋。**
+# UPC Pocket
 
-面向中国石油大学（华东）的轻量 Android 工具
+**把石大的日常，装进口袋。**
 
-![Android 12+](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)
-![Version](https://img.shields.io/badge/version-2.0.2-5278C6)
-[![License: MIT](https://img.shields.io/badge/License-MIT-8B93A6)](LICENSE)
+面向中国石油大学（华东）的轻量 Android 校园工具
 
-[**下载 2.0.2 正式版**](https://github.com/dlam12138/UPCPocket/releases/tag/v2.0.2) · [隐私与数据](docs/PRIVACY.md) · [更新记录](docs/CHANGELOG.md) · [本地构建](docs/BUILD.md)
+[![Release](https://img.shields.io/github/v/release/dlam12138/UPCPocket?style=flat-square&label=Release&color=1B6B4A)](https://github.com/dlam12138/UPCPocket/releases/latest)
+![Android 12+](https://img.shields.io/badge/Android-12%2B-5278C6?style=flat-square)
+![APK 4.57 MiB](https://img.shields.io/badge/APK-4.57_MiB-1B6B4A?style=flat-square)
+[![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
+
+[**下载 2.0.2 正式版**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.2/UPC-Pocket-2.0.2.apk) · [**国内加速下载**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.2/UPC-Pocket-2.0.2.apk)
+
+[版本与校验文件](https://github.com/dlam12138/UPCPocket/releases/latest) · [隐私说明](docs/PRIVACY.md) · [反馈问题](https://github.com/dlam12138/UPCPocket/issues)
+
+<br />
+
+<img src="docs/images/widgets-light.png" width="760" alt="今日课表、校园卡余额、唐岛湾电量三个桌面组件，内容为合成演示数据" />
+
+<sub>今日课表、余额、电量，抬眼就能看见。图中内容为合成演示数据。</sub>
 
 </div>
 
-## 功能
+## 常用的，都放在一起
 
-| 功能 | 内容 |
+首页、课表、专注三个入口，少找几次菜单，多留一点时间。
+
+| 功能 | 日常怎么用 |
 | --- | --- |
-| 校园卡 | 保存学校账号后查询本人余额；换号立即撤下旧数据 |
-| 宿舍电量 | 唐岛湾原生查询；古镇口打开学校页面 |
-| 空闲教室 | 两校区、日期、教学楼与节次筛选；只有所选节次均无排课才显示空闲 |
-| 图书馆 | 唐岛湾、古镇口东区、求是座位；保存账号自动认证、座位图、时段与预约；验证码回退学校页面 |
-| 课表 | 周日到周六、今日课程、节次时间、稳定课程颜色与离线缓存 |
-| 专注 | 番茄钟、专注记录与统计 |
-| 桌面组件 | 校园卡、电量、今日课表，默认 2×2，课表可扩至 4×2 |
+| **校园卡余额** | 保存学校账号，查询本人余额；换号后撤下旧数据 |
+| **宿舍电量** | 唐岛湾直接查询，古镇口打开学校页面 |
+| **空闲教室** | 按校区、日期、教学楼和节次查找自习空间 |
+| **图书馆座位** | 唐岛湾、古镇口东区、求是，查看座位图、选择时段与预约 |
+| **课表** | 周日开头的整周视图、今日课程、节次时间；查过的周可离线看 |
+| **专注** | 番茄钟、专注记录与统计，陪你完成一段学习 |
+| **桌面组件** | 今日课表、校园卡、电量；默认 2×2，课表可拉宽至 4×2 |
 
-首页、课表、专注三个入口；设置集中在首页右上角。研讨间不包含在当前版本，研究资料继续归档。
+支持浅色、深色与主题配色。学校认证遇到验证码时可转到网页登录；更新和诊断报告集中在关于页。
 
-> **2.0.2 正式版**：课表修复已获反馈用户复测通过；包含本机诊断报告与应用内更新，发布时同批提供签名清单。2.0 用户需手动覆盖安装一次，已安装 2.0.1（22）的用户可在关于页检查升级。
+## 三步开始
 
-## 预览
+1. **安装**：下载 APK，支持 Android 12 及以上。旧版可直接覆盖安装，无需卸载。
+2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
+3. **按需使用**：进入课表同步当前周，设置寝室查询电量，再把常用组件放到桌面。
 
-<div align="center">
-<img src="docs/images/widgets-light.png" alt="今日课表、校园卡和电量组件（合成预览）" width="300" />
-&nbsp;
-<img src="docs/images/classrooms-light.png" alt="空闲教室筛选与网格" width="300" />
-</div>
+2.0 用户需手动安装一次；已有 2.0.1 更新候选版的用户，可以在 **设置 → 关于 UPC Pocket → 检查更新** 升级。国内加速由第三方提供，下载困难时可切换官方链接；校验文件随 Release 提供。
 
-组件预览为合成数据，教室图为公开数据的历史查询结果。
+## 更新方便，反馈也方便
 
-## 安装
+- **应用内更新**：检查新版本、选择下载线路、查看进度，校验通过后由系统确认安装；不自动下载、不强制更新。
+- **诊断报告**：关于页可导出或清除本机诊断记录，不记录账密、会话或课程正文；只在你主动分享时发出。
+- **问题反馈**：在 [Issues](https://github.com/dlam12138/UPCPocket/issues) 描述机型、版本、操作过程与实际现象。不要公开账号密码、验证码或带授权参数的链接。
 
-1. 下载 [2.0.2 Release APK](https://github.com/dlam12138/UPCPocket/releases/tag/v2.0.2)，支持 Android 12 及以上。
-2. 已安装本项目预览版时可直接覆盖安装；包名仍为 `com.upcpocket.app`，版本 `2.0.2`，versionCode `23`。
-3. 在设置中保存学校账号，进入所需功能查询；课表组件需要先同步当前周。
-4. 组件点击刷新，失败保留上次成功值与时间。2×2 表示桌面网格，不保证几何正方形；系统省电可能延迟课表本地重绘。
+## 使用前了解一下
 
-安装包使用 R8 与资源压缩，保留全部功能、通用 ABI；不含调试预览与合成组件。为兼容已有安装，2.0.2 沿用原开发证书，**是正式 Release 发布，签名仍为开发签名**，不是商店生产签名。无需卸载或清除数据。
+这是**非学校官方应用**，校园查询直接访问对应学校服务，不经本项目自建账号服务器转发。
 
-## 应用内更新与诊断
+空闲教室反映学校排课，临时占用以现场为准；图书馆规则以学校返回为准。超星原生预约代码已实现，尚未进行真实预约提交验收。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
 
-“设置 → 关于 UPC Pocket”可检查更新、导出诊断报告。前台每天最多自动检查一次元数据，下载由你主动确认；支持加速线路切换，校验签名清单和 APK 后交系统确认安装，不卸载、不清数据。
+安装包约 **4.57 MiB**，保留全部现有功能。为兼容已安装版本，沿用原开发证书，可覆盖安装保留数据。详细验证、已知限制与数据处理见 [2.0.2 发布记录](docs/releases/2.0.2.md) 和 [隐私说明](docs/PRIVACY.md)。
 
-诊断记录仅在本机有界保存，不含账密、会话或课程内容；只有你主动导出分享后才离开设备。更新机制见 [应用内更新说明](docs/updates/README.md)。
+<details>
+<summary><strong>开发与文档</strong></summary>
 
-## 数据与边界
+<br />
 
-- 非学校官方应用。校园服务直接请求对应学校系统，不经本项目自建服务器转发。
-- 学校密码加密保存在本机；保存成功不等于认证成功。账号会话与个人缓存按账号隔离，删号时清理；专注记录保留。
-- 空闲教室反映学校排课，临时占用以现场为准；13–14 节缺少确认的官方时间时显示“时间待确认”。
-- 超星原生预约已实现，但未执行真实预约写入验收；提交结果未知时应先核对学校记录，不要连续重试。
-- 不包含研讨间、课程编辑、导出、提醒、充值或校园卡流水。详细验证与限制见 [2.0.2 发布记录](docs/releases/2.0.2.md)。
-
-## 开发与文档
-
-Kotlin · Compose / Material 3 · Room / DataStore · WorkManager · RemoteViews
+Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · RemoteViews
 
 ```powershell
 .\gradlew.bat :app:assembleRelease :app:testDebugUnitTest checkModuleBoundaries
 ```
 
-使用 JDK 17+、Android SDK 36。机器路径与密钥不入库；默认交付精简 Release。参见 [构建指南](docs/BUILD.md)、[项目文档](docs/README.md) 与 [开发规范](AGENTS.md)。
+使用 JDK 17+、Android SDK 36，默认构建 R8 + 资源压缩的通用 Release。机器路径、私钥和个人业务数据不入库。
+
+[构建指南](docs/BUILD.md) · [项目文档](docs/README.md) · [开发规范](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
+
+研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出、提醒、充值或校园卡流水。
+
+</details>
 
 ## 致谢
 
-基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留 [MIT 许可证](LICENSE)。上游学校的接口与业务事实不作为 UPC 接入依据。
-
-Android 技能固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
+基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留上游版权与 [MIT 许可证](LICENSE)。Android 开发技能的固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
