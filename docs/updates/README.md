@@ -1,6 +1,6 @@
-# 应用内更新（2.0.1 本地实现，尚未发布）
+# 应用内更新
 
-本目录保存公开更新清单的验签公钥和发布/验收说明。功能已在本地实现和测试，但 **2.0.1（versionCode 22）尚未发布**；当前 GitHub Release `v2.0` 不含 `update.json`/`update.sig`，所以 2.0 客户端本身没有更新器，2.0.1 也必须由用户手动安装一次。
+随 **2.0.2 正式版（versionCode 23）** 发布，包含 APK、签名清单与校验文件。2.0 不含更新器，需手动覆盖安装一次；2.0.1（22）复测包已包含更新器，可检查升级。以下 22→23 受控测试记录为开发时证据，当前发布状态以 [2.0.2 发布记录](../releases/2.0.2.md) 为准。
 
 ## 用户可见行为
 
@@ -32,11 +32,11 @@
 {
   "schemaVersion": 1,
   "packageName": "com.upcpocket.app",
-  "versionName": "2.0.1",
-  "versionCode": 22,
+  "versionName": "2.0.2",
+  "versionCode": 23,
   "minSdk": 31,
-  "tag": "v2.0.1",
-  "assetName": "UPC-Pocket-2.0.1.apk",
+  "tag": "v2.0.2",
+  "assetName": "UPC-Pocket-2.0.2.apk",
   "sizeBytes": 0,
   "sha256": "<64 lowercase hex>",
   "publishedAt": "2026-11-06T00:00:00Z",
@@ -55,14 +55,14 @@
 ```powershell
 $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 .\tools\release_update.ps1 `
-  -Apk '<构建产物路径>\UPC-Pocket-2.0.1.apk' `
-  -VersionName '2.0.1' -VersionCode 22 `
+  -Apk '<构建产物路径>\UPC-Pocket-2.0.2.apk' `
+  -VersionName '2.0.2' -VersionCode 23 `
   -NotesPath '<更新说明路径>' `
   -OutputDirectory '<空输出目录>'
 ```
 
 脚本调用 build-tools 的 `aapt2`/`apksigner` 核对包名、versionCode/versionName、minSdk、大小、签名证书，生成：
-`UPC-Pocket-2.0.1.apk`、`update.json`、`update.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
+`UPC-Pocket-2.0.2.apk`、`update.json`、`update.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
 
 4. 只有人工确认后才把四个文件上传到同一个 GitHub Release；**不得先公开再原地替换资产**。修复必须提升 versionCode 后重发。不上传私钥、GitHub token 或 R8 mapping。
 
@@ -80,6 +80,6 @@ $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 
 ## 当前发布状态
 
-- 2.0.1（22）本地候选：见 `docs/releases/2.0.1.md`。
-- `update.json`/`update.sig` 仅本地生成，**未上传**，因此生产环境检查会如实显示“暂时无法获取更新信息”，不会伪造“已是最新”。
-- 公共加速线路是第三方服务，不保证长期可用；以后更换传输域必须走固定内置列表和验签，不能远程任意放行主机。
+- 2.0.2（23）正式发布，与 APK 同批提供 `update.json`、`update.sig` 和 `SHA256SUMS.txt`；更新签名密钥与 2.0.1 复测包一致。
+- 公共加速源可能存在同步/缓存延迟，失败会尝试其他固定线路；无法获取可信清单时显示检查失败，不伪造最新版本。
+- 2.0.1 本地候选记录保留在 `docs/releases/2.0.1.md`，其中未发布描述属于当时现场。

@@ -30,7 +30,7 @@ if (e2eVersionCode != null) {
         it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
     }
     // 默认拒绝 Release；仅本机受控安装验收可显式追加 -PallowE2eReleaseBuild=true。
-    // 这种包不得上传/发布，最终发布包必须重新以默认 versionCode=22 构建。
+    // 这种包不得上传/发布，最终发布包必须重新以默认 versionCode=23 构建。
     require(!releaseRequested || allowE2eReleaseBuild) {
         "e2eVersionCode 仅用于 debug 验收，禁止用于 Release/Bundle（受控释放需显式 allowE2eReleaseBuild）"
     }
@@ -83,8 +83,8 @@ android {
         // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
         // 2.0.1 本地候选：含课表 r3 修复与应用内更新；versionCode 22 与复测 21 区分。
         // 仅本机受控安装验收可显式传 e2eVersionCode/e2eVersionName，且构建脚本拒绝 Release。
-        versionCode = e2eVersionCode ?: 22
-        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.1"
+        versionCode = e2eVersionCode ?: 23
+        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.2"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
         buildConfigField("String", "UPDATE_PUBLIC_KEY", buildConfigString(updatePublicKey))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
