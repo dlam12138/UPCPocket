@@ -2,8 +2,6 @@ package com.upcpocket.app.timetable
 
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import java.time.LocalDate
-import java.time.temporal.ChronoUnit
-import kotlin.math.abs
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -207,30 +205,17 @@ object TimetableProtocol {
         )
         val expectedStart = term.startDay.plusDays((week - 1).toLong() * 7)
         if (dates.first() != expectedStart) {
-            val termEnd = term.startDay.plusDays(term.totalWeeks.toLong() * 7 - 1)
-            val withinTerm = !dates.first().isBefore(term.startDay) &&
-                !dates.last().isAfter(termEnd)
-            // 允许开学日前后 1 天或节假日/校历造成的 1 周偏移；更远的“另一周”
-            // 仍拒绝，避免把错误响应当成当前周发布。
-            val actualWeek = ChronoUnit.DAYS.between(term.startDay, dates.first()) / 7 + 1
-            val oneWeekShift = abs(actualWeek - week) <= 1
-            if (!withinTerm || !oneWeekShift) {
-                throw TimetableParseException(
-                    TimetableErrorCode.SCHEMA_CHANGED,
-                    DiagnosticDetail.WEEK_PARSE_DATE_ALIGN,
-                )
-            }
-            // 源周日期是权威；仍显示真实日期，不按周次重标。
-            compatibility += TimetableCompatibility.DATE_OFFSET_ACCEPTED
+            // 没有该用户或官方协议证据支持“相邻周可接受”。日期与请求周不一致
+            // 时明确失败，避免把 N±1 周数据按 N 周缓存成成功。
+            throw TimetableParseException(
+                TimetableErrorCode.SCHEMA_CHANGED,
+                DiagnosticDetail.WEEK_PARSE_DATE_ALIGN,
+            )
         }
 
         val meetings = mutableListOf<TimetableMeeting>()
         classes.forEachIndexed { dayIndex, dayElement ->
             val day = when (dayElement) {
-                is JsonNull -> {
-                    compatibility += TimetableCompatibility.NULL_DAY_ACCEPTED
-                    JsonObject(emptyMap())
-                }
                 is JsonObject -> dayElement
                 else -> throw TimetableParseException(
                     TimetableErrorCode.SCHEMA_CHANGED,
@@ -239,7 +224,7 @@ object TimetableProtocol {
             }
             val date = dates[dayIndex]
             val weekday = date.dayOfWeek.value
-            day.forEach dayLoop@{ (key, value) ->
+            day.forEach { (key, value) ->
                 val match = CELL_KEY.matchEntire(key)
                 if (match == null) {
                     // 非 c_N 的元数据键不承载课程；忽略，避免新增元数据让整周失败。
@@ -249,11 +234,11 @@ object TimetableProtocol {
                             DiagnosticDetail.WEEK_PARSE_CELL_KEY,
                         )
                     }
-                    return@dayLoop
+                    return@forEach
                 }
                 val cellStart = match.groupValues[1].toInt()
                 val entries = when (value) {
-                    is JsonNull -> return@dayLoop
+                    is JsonNull -> return@forEach
                     is JsonArray -> value
                     else -> throw TimetableParseException(
                         TimetableErrorCode.SCHEMA_CHANGED,
@@ -262,35 +247,44 @@ object TimetableProtocol {
                 }
                 if (cellStart !in 1..MAX_PERIOD) {
                     if (entries.isNotEmpty()) {
-                        compatibility += TimetableCompatibility.ENTRY_SKIPPED
+                        throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_PERIOD_RANGE,
+                        )
                     }
-                    return@dayLoop
+                    return@forEach
                 }
-                entries.forEach entryLoop@{ entryElement ->
+                entries.forEach { entryElement ->
                     val entry = entryElement as? JsonObject
-                    if (entry == null) {
-                        compatibility += TimetableCompatibility.ENTRY_SKIPPED
-                        return@entryLoop
-                    }
+                        ?: throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_ENTRY_TYPE,
+                        )
                     val name = text(entry["course_name"])
                     if (name.isNullOrBlank()) {
-                        compatibility += TimetableCompatibility.ENTRY_SKIPPED
-                        return@entryLoop
+                        throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_NAME,
+                        )
                     }
                     val rawPeriods = entry["lessArr"] as? JsonArray
                     if (rawPeriods == null || rawPeriods.isEmpty()) {
-                        compatibility += TimetableCompatibility.ENTRY_SKIPPED
-                        return@entryLoop
+                        throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_LESS_ARR,
+                        )
                     }
                     val sourcePeriods = rawPeriods.map { element ->
-                        integralIntOrNull(element) ?: run {
-                            compatibility += TimetableCompatibility.ENTRY_SKIPPED
-                            return@entryLoop
-                        }
+                        integralIntOrNull(element) ?: throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_LESS_ARR,
+                        )
                     }
                     if (sourcePeriods.any { it !in 1..MAX_PERIOD }) {
-                        compatibility += TimetableCompatibility.ENTRY_SKIPPED
-                        return@entryLoop
+                        throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_PERIOD_RANGE,
+                        )
                     }
                     if (rawPeriods.any(::isDecimalForm)) {
                         compatibility += TimetableCompatibility.INTEGRAL_FLOAT_ACCEPTED
@@ -303,19 +297,21 @@ object TimetableProtocol {
                         compatibility += TimetableCompatibility.CELL_START_IGNORED
                     }
 
-                    val weekLabel = text(entry["week"]).orEmpty()
+                    val weekLabel = text(entry["week"])
+                        ?: throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_WEEK_LABEL,
+                        )
                     val parsedWeeks = weekNumbers(weekLabel, term.totalWeeks)
-                    val weeks = when {
-                        parsedWeeks.isNullOrEmpty() -> {
-                            compatibility += TimetableCompatibility.WEEK_LABEL_FALLBACK
-                            listOf(week)
-                        }
-                        week !in parsedWeeks -> {
-                            compatibility += TimetableCompatibility.WEEK_LABEL_MISMATCH
-                            (parsedWeeks + week).distinct().sorted()
-                        }
-                        else -> parsedWeeks
+                    if (parsedWeeks == null || parsedWeeks.isEmpty() || week !in parsedWeeks) {
+                        // 不把请求周补进源周列表；源标签明确排除或无法解释时
+                        // 这条课程不能当作已核实的当前周课程。
+                        throw TimetableParseException(
+                            TimetableErrorCode.SCHEMA_CHANGED,
+                            DiagnosticDetail.WEEK_PARSE_WEEK_LABEL,
+                        )
                     }
+                    val weeks = parsedWeeks
 
                     entry["weekday"]?.let { declared ->
                         val normalized = normalizeWeekday(declared)

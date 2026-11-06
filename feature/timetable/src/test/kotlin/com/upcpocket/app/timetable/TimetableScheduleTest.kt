@@ -76,18 +76,35 @@ class TimetableScheduleTest {
     }
 
     @Test
-    fun `monday first source keeps all seven days and the sunday course`() {
+    fun `sunday first source includes boundary courses on first and last day`() {
+        val dates = listOf(
+            "2026-10-25", "2026-10-26", "2026-10-27", "2026-10-28",
+            "2026-10-29", "2026-10-30", "2026-10-31",
+        ).map(LocalDate::parse)
+        val view = buildTimetableWeekView(
+            dates,
+            listOf(
+                base.copy(date = dates.first(), weekday = 7),
+                base.copy(date = dates.last(), weekday = 6),
+            ),
+        )
+        assertEquals(dates, view.dates)
+        assertEquals(listOf(dates.first(), dates.last()), view.meetings.map { it.date })
+    }
+
+    @Test
+    fun `monday first source stays in sunday frame and marks missing sunday unknown`() {
         val mondayWeek = listOf(
             "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10",
             "2026-09-11", "2026-09-12", "2026-09-13",
         ).map(LocalDate::parse)
         val sundayMeeting = base.copy(date = mondayWeek.last(), weekday = 7)
         val view = buildTimetableWeekView(mondayWeek, listOf(sundayMeeting))
-        // 非周日起的源周直接保留真实 7 天，不能把 9/13 的课挤出视窗。
-        assertEquals(mondayWeek, view.dates)
-        assertEquals(mondayWeek.toSet(), view.knownDates)
-        assertTrue(view.unknownDates.isEmpty())
-        assertEquals(listOf(mondayWeek.last()), view.meetings.map { it.date })
+        // 周日框架不旋转课程；9/13 在框架外，9/6 标未知，不能伪装成无课。
+        assertEquals(LocalDate.parse("2026-09-06"), view.dates.first())
+        assertEquals(LocalDate.parse("2026-09-12"), view.dates.last())
+        assertEquals(setOf(LocalDate.parse("2026-09-06")), view.unknownDates)
+        assertTrue(view.meetings.isEmpty())
     }
 
     @Test

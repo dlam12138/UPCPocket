@@ -58,12 +58,63 @@ private const val TIMETABLE_APP_HOST = "app.upc.edu.cn"
  * 页面完成时仅读取 `app.upc.edu.cn` 的 Cookie 文本，由业务层再向 get-index 验证
  * 并绑定打开时的账号/代次；验证失败不保存。
  */
+internal data class CookieHeaderValue(val name: String, val value: String)
+
+internal fun parseCookieHeaderValues(header: String?): List<CookieHeaderValue> =
+    header.orEmpty()
+        .split(';')
+        .map(String::trim)
+        .filter { it.isNotEmpty() }
+        .mapNotNull { part ->
+            val index = part.indexOf('=')
+            val name = if (index > 0) part.substring(0, index).trim() else ""
+            if (name.isEmpty()) {
+                null
+            } else {
+                CookieHeaderValue(
+                    name = name,
+                    value = part.substring(index + 1).trim(),
+                )
+            }
+        }
+
+/**
+ * CookieManager 只返回“适用于该 URL”的 Cookie，且不暴露 path。按业务路径、
+ * 页面路径、根路径的顺序读取，同名时优先选择“只在更具体路径出现”的值；
+ * 若同名只有根路径值，则保留根路径值。结果仍交给 Service 按账号/代次验证。
+ */
+internal fun mergeCookieHeadersByTarget(headers: List<String?>): String? {
+    if (headers.all { it.isNullOrBlank() }) return null
+    val rootValues = parseCookieHeaderValues(headers.lastOrNull())
+        .groupBy({ it.name }, { it.value })
+    val merged = LinkedHashMap<String, String>()
+    headers.forEachIndexed { index, header ->
+        val pairs = parseCookieHeaderValues(header)
+        pairs.forEach pairLoop@{ pair ->
+            if (merged.containsKey(pair.name)) return@pairLoop
+            val rootForName = rootValues[pair.name].orEmpty()
+            val specific = if (index < headers.lastIndex) {
+                pairs.asSequence()
+                    .filter { it.name == pair.name && it.value !in rootForName }
+                    .map { it.value }
+                    .firstOrNull()
+            } else {
+                null
+            }
+            merged[pair.name] = specific ?: pair.value
+        }
+    }
+    return merged.entries
+        .joinToString("; ") { "${it.key}=${it.value}" }
+        .ifBlank { null }
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun TimetableLoginDialog(
     url: String,
     hint: String?,
-    onCookies: (String, String) -> Unit,
+    onCookies: (String, String, (Boolean) -> Unit) -> Unit,
     onClose: () -> Unit,
 ) {
     val currentOnCookies by rememberUpdatedState(onCookies)
@@ -78,28 +129,20 @@ fun TimetableLoginDialog(
 
     fun readCookieHeader(): String? = runCatching {
         cookieManager.flush()
-        // CookieManager 只返回匹配给定 URL 路径的 Cookie。课表业务 Cookie
-        // 可能挂在 /timetable 或 /site 下，只查 "/" 会漏掉；按最具体到根
-        // 的顺序合并，同名时保留更具体路径看到的值。
-        val seen = LinkedHashMap<String, String>()
-        listOf(
-            "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-index",
-            "https://$TIMETABLE_APP_HOST/site/weekschedule/index",
-            "https://$TIMETABLE_APP_HOST/",
-        ).forEach { target ->
-            cookieManager.getCookie(target)
-                .orEmpty()
-                .split(';')
-                .map(String::trim)
-                .filter { it.isNotEmpty() }
-                .forEach { part ->
-                    val index = part.indexOf('=')
-                    if (index > 0) {
-                        seen.putIfAbsent(part.substring(0, index), part)
-                    }
-                }
-        }
-        seen.values.joinToString("; ").ifBlank { null }
+        mergeCookieHeadersByTarget(
+            listOf(
+                cookieManager.getCookie(
+                    "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-datatmp",
+                ),
+                cookieManager.getCookie(
+                    "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-index",
+                ),
+                cookieManager.getCookie(
+                    "https://$TIMETABLE_APP_HOST/site/weekschedule/index",
+                ),
+                cookieManager.getCookie("https://$TIMETABLE_APP_HOST/"),
+            ),
+        )
     }.getOrNull()
 
     fun submitCookies(auto: Boolean) {
@@ -112,7 +155,10 @@ fun TimetableLoginDialog(
         }
         if (auto && !attempted.compareAndSet(false, true)) return
         statusHint = null
-        currentOnCookies(header, operationId)
+        currentOnCookies(header, operationId) { accepted ->
+            // 自动提交失败后允许后续页面完成/用户点“完成”再试；不循环认证。
+            if (!accepted) attempted.set(false)
+        }
     }
 
     fun verifyCookies() {

@@ -228,6 +228,8 @@ class TimetableService(
         }
         val currentWeek = index.currentWeek
             ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
+        // TimetableCacheStore 只返回 complete 周；不完整/部分周按需同步处理，
+        // 不把缺课当成“今天无课”。
         val week = cache.week(term, currentWeek)
             ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
         if (!week.dates.contains(today)) {
@@ -309,7 +311,6 @@ class TimetableService(
                         weekDates = emptyList(),
                         meetings = emptyList(),
                         weekState = TimetableWeekState.NOT_QUERIED,
-                        weekNotice = null,
                         weekFetchedAtEpochMillis = null,
                         message = null,
                     )
@@ -351,7 +352,6 @@ class TimetableService(
                         weekDates = emptyList(),
                         meetings = emptyList(),
                         weekState = TimetableWeekState.NOT_QUERIED,
-                        weekNotice = null,
                         weekFetchedAtEpochMillis = null,
                         message = null,
                     )
@@ -568,7 +568,6 @@ class TimetableService(
                             connection = TimetableConnection.CONNECTED,
                             interactionUrl = null,
                             message = null,
-                            weekNotice = null,
                             canRetry = false,
                         )
                     }
@@ -632,7 +631,6 @@ class TimetableService(
                     meetings = emptyList(),
                     courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
-                    weekNotice = null,
                     weekFetchedAtEpochMillis = null,
                     today = null,
                     todayMeetings = emptyList(),
@@ -1247,13 +1245,6 @@ class TimetableService(
             "学校服务暂时不可用；暂无可用的旧缓存。"
         }
 
-    private fun weekNotice(week: TimetableWeek): String? =
-        if (week.compatibility.contains(TimetableCompatibility.ENTRY_SKIPPED)) {
-            "部分课程未能显示"
-        } else {
-            null
-        }
-
     private fun currentHasCache(): Boolean {
         val current = _state.value
         return current.weekFetchedAtEpochMillis != null ||
@@ -1358,7 +1349,7 @@ class TimetableService(
             Diagnostics.record(
                 module = DiagnosticModule.TIMETABLE,
                 action = DiagnosticAction.QUERY_CHANGED,
-                result = DiagnosticResult.PARTIAL,
+                result = DiagnosticResult.OK,
                 reason = DiagnosticReason.SCHEMA,
                 phase = DiagnosticPhase.PARSE,
                 detail = when (note) {
@@ -1370,20 +1361,10 @@ class TimetableService(
                         DiagnosticDetail.COMPAT_TOTAL_LENGTH_IGNORED
                     TimetableCompatibility.CELL_START_IGNORED ->
                         DiagnosticDetail.COMPAT_CELL_START_IGNORED
-                    TimetableCompatibility.WEEK_LABEL_FALLBACK ->
-                        DiagnosticDetail.COMPAT_WEEK_LABEL_FALLBACK
-                    TimetableCompatibility.WEEK_LABEL_MISMATCH ->
-                        DiagnosticDetail.COMPAT_WEEK_LABEL_MISMATCH
-                    TimetableCompatibility.DATE_OFFSET_ACCEPTED ->
-                        DiagnosticDetail.COMPAT_DATE_OFFSET
-                    TimetableCompatibility.NULL_DAY_ACCEPTED ->
-                        DiagnosticDetail.COMPAT_NULL_DAY
                     TimetableCompatibility.INTEGRAL_FLOAT_ACCEPTED ->
                         DiagnosticDetail.COMPAT_INTEGRAL_FLOAT
                     TimetableCompatibility.DUPLICATE_PERIODS_DEDUPED ->
                         DiagnosticDetail.COMPAT_DUPLICATE_PERIODS
-                    TimetableCompatibility.ENTRY_SKIPPED ->
-                        DiagnosticDetail.COMPAT_ENTRY_SKIPPED
                     TimetableCompatibility.INDEX_TERM_SKIPPED ->
                         DiagnosticDetail.COMPAT_INDEX_TERM_SKIPPED
                     TimetableCompatibility.INDEX_CURRENT_IGNORED ->
@@ -1422,7 +1403,6 @@ class TimetableService(
                 } else {
                     TimetableWeekState.READY
                 },
-                weekNotice = weekNotice(week),
                 weekFetchedAtEpochMillis = week.fetchedAtEpochMillis,
                 today = today,
                 todayMeetings = if (todayInWeek) {
@@ -1473,7 +1453,6 @@ class TimetableService(
                 } else {
                     TimetableWeekState.CACHED
                 },
-                weekNotice = weekNotice(week),
                 weekFetchedAtEpochMillis = week.fetchedAtEpochMillis,
                 today = today,
                 todayMeetings = if (todayInWeek) {
@@ -1567,7 +1546,6 @@ class TimetableService(
                 interactionUrl = failure.interactionUrl,
                 isBusy = false,
                 canRetry = true,
-                weekNotice = if (hasData) it.weekNotice else null,
                 weekState = when {
                     hasData && current.meetings.isEmpty() -> TimetableWeekState.EMPTY
                     hasData -> TimetableWeekState.CACHED
@@ -1607,7 +1585,6 @@ class TimetableService(
                 weekDates = if (changed) emptyList() else it.weekDates,
                 meetings = if (changed) emptyList() else it.meetings,
                 weekState = if (changed) TimetableWeekState.NOT_QUERIED else it.weekState,
-                weekNotice = if (changed) null else it.weekNotice,
                 weekFetchedAtEpochMillis = if (changed) null else it.weekFetchedAtEpochMillis,
                 // 今日卡片按真实上海日期独立保留：查看其他教学周不能把它清空或
                 // 伪装成“今天无课”；换号/清理才由账号失效路径清空。
@@ -1625,7 +1602,6 @@ class TimetableService(
                     terms = terms,
                     connection = TimetableConnection.IDLE,
                     weekState = TimetableWeekState.NOT_QUERIED,
-                    weekNotice = null,
                     message = null,
                 )
             }
@@ -1729,7 +1705,6 @@ class TimetableService(
                     weekDates = emptyList(),
                     meetings = emptyList(),
                     weekState = TimetableWeekState.NOT_QUERIED,
-                    weekNotice = null,
                     weekFetchedAtEpochMillis = null,
                     today = null,
                     todayMeetings = emptyList(),
@@ -1771,7 +1746,6 @@ class TimetableService(
                     meetings = emptyList(),
                     courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
-                    weekNotice = null,
                     weekFetchedAtEpochMillis = null,
                     today = null,
                     todayMeetings = emptyList(),

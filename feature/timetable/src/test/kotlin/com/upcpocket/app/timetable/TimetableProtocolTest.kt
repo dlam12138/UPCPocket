@@ -178,61 +178,56 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun oneWeekCalendarOffsetIsAcceptedAndMarked() {
-        val parsed = TimetableProtocol.parseWeek(fixture("timetable_week_08.json"), term(), 9)
-        assertEquals(LocalDate.parse("2026-10-25"), parsed.dates.first())
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.DATE_OFFSET_ACCEPTED))
+    fun oneWeekCalendarOffsetStillFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(fixture("timetable_week_08.json"), term(), 9)
+        }
     }
 
     @Test
-    fun courseWeekListMismatchKeepsCourseForRequestedWeek() {
-        val parsed = TimetableProtocol.parseWeek(
-            mutateDayEntry(day = 1, cell = "c_6") { entry ->
-                entry["week"] = JsonPrimitive("9")
-            },
-            term(),
-            8,
-        )
-        val course = parsed.meetings.first { it.courseName == "示例课程A" }
-        assertTrue(course.weeks.contains(8))
-        assertEquals("9", course.weekLabel)
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.WEEK_LABEL_MISMATCH))
+    fun courseWeekListExcludingRequestedWeekFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateDayEntry(day = 1, cell = "c_6") { entry ->
+                    entry["week"] = JsonPrimitive("9")
+                },
+                term(),
+                8,
+            )
+        }
     }
 
     @Test
-    fun missingCourseNameSkipsOnlyThatEntry() {
-        val parsed = TimetableProtocol.parseWeek(
-            mutateDayEntry(day = 1, cell = "c_6") { it.remove("course_name") },
-            term(),
-            8,
-        )
-        assertTrue(parsed.meetings.none { it.courseName.isBlank() })
-        assertEquals(5, parsed.meetings.size)
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.ENTRY_SKIPPED))
+    fun missingCourseNameFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateDayEntry(day = 1, cell = "c_6") { it.remove("course_name") },
+                term(),
+                8,
+            )
+        }
     }
 
     @Test
-    fun missingWeekFallsBackToRequestedWeek() {
-        val parsed = TimetableProtocol.parseWeek(
-            mutateDayEntry(day = 1, cell = "c_6") { it.remove("week") },
-            term(),
-            8,
-        )
-        val course = parsed.meetings.first { it.courseName == "示例课程A" }
-        assertTrue(course.weeks.contains(8))
-        assertEquals("", course.weekLabel)
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.WEEK_LABEL_FALLBACK))
+    fun missingWeekFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateDayEntry(day = 1, cell = "c_6") { it.remove("week") },
+                term(),
+                8,
+            )
+        }
     }
 
     @Test
-    fun missingLessArrSkipsOnlyThatEntry() {
-        val parsed = TimetableProtocol.parseWeek(
-            mutateDayEntry(day = 1, cell = "c_6") { it.remove("lessArr") },
-            term(),
-            8,
-        )
-        assertEquals(5, parsed.meetings.size)
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.ENTRY_SKIPPED))
+    fun missingLessArrFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateDayEntry(day = 1, cell = "c_6") { it.remove("lessArr") },
+                term(),
+                8,
+            )
+        }
     }
 
     @Test
@@ -304,39 +299,56 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun nullDayAndOutOfRangeCellsDoNotDropValidWeek() {
-        val parsed = TimetableProtocol.parseWeek(
-            mutateRoot { root ->
-                val d = root["d"]!!.jsonObject.toMutableMap()
-                val classes = d["classes"]!!.jsonArray.toMutableList()
-                classes[6] = JsonNull
-                classes[0] = JsonObject(
-                    classes[0].jsonObject.toMutableMap().apply {
-                        put(
-                            "c_15",
-                            JsonArray(
-                                listOf(
-                                    JsonObject(
-                                        mapOf(
-                                            "course_name" to JsonPrimitive("越界课程"),
-                                            "lessArr" to JsonArray(listOf(JsonPrimitive(15))),
-                                            "week" to JsonPrimitive("8"),
+    fun nullDayFailsInsteadOfLookingEmpty() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateRoot { root ->
+                    val d = root["d"]!!.jsonObject.toMutableMap()
+                    val classes = d["classes"]!!.jsonArray.toMutableList()
+                    classes[6] = JsonNull
+                    d["classes"] = JsonArray(classes)
+                    root["d"] = JsonObject(d)
+                },
+                term(),
+                8,
+            )
+        }
+    }
+
+    @Test
+    fun outOfRangeCellWithEntryFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateRoot { root ->
+                    val d = root["d"]!!.jsonObject.toMutableMap()
+                    val classes = d["classes"]!!.jsonArray.toMutableList()
+                    classes[0] = JsonObject(
+                        classes[0].jsonObject.toMutableMap().apply {
+                            put(
+                                "c_15",
+                                JsonArray(
+                                    listOf(
+                                        JsonObject(
+                                            mapOf(
+                                                "course_name" to JsonPrimitive("越界课程"),
+                                                "lessArr" to JsonArray(
+                                                    listOf(JsonPrimitive(15)),
+                                                ),
+                                                "week" to JsonPrimitive("8"),
+                                            ),
                                         ),
                                     ),
                                 ),
-                            ),
-                        )
-                    },
-                )
-                d["classes"] = JsonArray(classes)
-                root["d"] = JsonObject(d)
-            },
-            term(),
-            8,
-        )
-        assertEquals(6, parsed.meetings.size)
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.NULL_DAY_ACCEPTED))
-        assertTrue(parsed.compatibility.contains(TimetableCompatibility.ENTRY_SKIPPED))
+                            )
+                        },
+                    )
+                    d["classes"] = JsonArray(classes)
+                    root["d"] = JsonObject(d)
+                },
+                term(),
+                8,
+            )
+        }
     }
 
     @Test

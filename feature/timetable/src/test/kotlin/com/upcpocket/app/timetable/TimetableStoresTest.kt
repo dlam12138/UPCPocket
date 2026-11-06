@@ -93,6 +93,19 @@ class TimetableStoresTest {
     }
 
     @Test
+    fun incompleteWeekIsRejectedWithoutReplacingCompleteWeek() {
+        val store = TimetableCacheStore(directory)
+        val index = index()
+        val complete = week(index.terms.first(), 8, includeMeeting = true)
+        assertTrue(store.save("acct_synthetic_1", index, complete, 1_000))
+        val incomplete = complete.copy(complete = false)
+        assertFalse(store.save("acct_synthetic_1", index, incomplete, 2_000))
+        val loaded = store.load("acct_synthetic_1")
+        assertTrue(loaded.week(index.terms.first(), 8)!!.complete)
+        assertEquals("示例课程A", loaded.week(index.terms.first(), 8)!!.meetings.first().courseName)
+    }
+
+    @Test
     fun corruptCacheDoesNotBecomeEmptyWeekOrCrash() {
         val store = TimetableCacheStore(directory)
         File(directory, TimetableStorage.CACHE_FILE).writeText("{broken")

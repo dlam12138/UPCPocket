@@ -250,7 +250,7 @@ internal fun TimetableScreen(
         TimetableLoginDialog(
             url = loginUrl!!,
             hint = loginHint,
-            onCookies = { header, operationId ->
+            onCookies = { header, operationId, result ->
                 viewModel.adoptInteractiveCookies(header, operationId) { accepted ->
                     if (accepted) {
                         loginVisible = false
@@ -258,6 +258,7 @@ internal fun TimetableScreen(
                     } else {
                         loginHint = "还没有检测到有效登录，请完成登录后重试。"
                     }
+                    result(accepted)
                 }
             },
             onClose = {
@@ -593,14 +594,6 @@ internal fun WeekPanel(
                     )
                     else -> Unit
                 }
-            }
-            state.weekNotice?.let { notice ->
-                Text(
-                    text = notice,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp, top = 2.dp),
-                )
             }
             Spacer(Modifier.height(4.dp))
             when (state.weekState) {

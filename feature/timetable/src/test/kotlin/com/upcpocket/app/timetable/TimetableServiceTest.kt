@@ -460,6 +460,31 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun weekParseFailureKeepsCachedTodayAndDoesNotClaimEmpty() = runTest {
+        today = LocalDate.parse("2026-10-26")
+        seedCacheAndSession()
+        val service = service(
+            ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json(weekFixture().replace("\"lessArr\": [6, 7]", "\"lessArr\": []"))
+                }
+            },
+        )
+        service.open()
+        assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertTrue(service.state.value.todayLoaded)
+        assertEquals(listOf("示例课程A"), service.state.value.todayMeetings.map { it.courseName })
+        assertEquals(
+            "示例课程A",
+            cacheStore.load(ACCOUNT_ID).week(index().terms.first(), 8)!!
+                .meetings.first().courseName,
+        )
+    }
+
+    @Test
     fun protocolFailureWithoutCacheSaysNoCacheInsteadOfKeepingOne() = runTest {
         val service = service(
             ProgrammedTransport { request ->
