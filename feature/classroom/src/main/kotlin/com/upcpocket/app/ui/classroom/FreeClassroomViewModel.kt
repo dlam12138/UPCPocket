@@ -11,6 +11,11 @@ import com.upcpocket.app.data.classroom.FreeClassroomQuery
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.toggleGroup
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -70,6 +75,14 @@ internal class FreeClassroomViewModel(
 
     /** 筛选一变，旧请求就不再属于当前页面；迟到结果不得写回。 */
     private fun invalidateInFlight() {
+        if (searchJob != null) {
+            Diagnostics.record(
+                module = DiagnosticModule.CLASSROOM,
+                action = DiagnosticAction.QUERY_CHANGED,
+                result = DiagnosticResult.CANCELLED,
+                reason = DiagnosticReason.FILTER_CHANGED,
+            )
+        }
         requestSeq++
         searchJob?.cancel()
         searchJob = null
@@ -126,28 +139,122 @@ internal class FreeClassroomViewModel(
         // 允许新查询取代旧查询；旧 job 的结果不会写回。
         searchJob?.cancel()
         val id = ++requestSeq
+        val operationId = Diagnostics.newOperationId()
+        val started = System.currentTimeMillis()
+        Diagnostics.record(
+            module = DiagnosticModule.CLASSROOM,
+            action = DiagnosticAction.QUERY_START,
+            result = DiagnosticResult.PENDING,
+            operationId = operationId,
+        )
         loading = true
         error = null
         searchJob = viewModelScope.launch {
             try {
                 val fresh = repository.query(query)
-                if (id == requestSeq) result = fresh
+                if (id == requestSeq) {
+                    result = fresh
+                    val duration = (System.currentTimeMillis() - started).coerceAtLeast(0)
+                    Diagnostics.record(
+                        module = DiagnosticModule.CLASSROOM,
+                        action = DiagnosticAction.QUERY_COMPLETE,
+                        result = DiagnosticResult.OK,
+                        reason = if (fresh.rooms.isEmpty()) {
+                            DiagnosticReason.EMPTY
+                        } else {
+                            null
+                        },
+                        durationMs = duration,
+                        operationId = operationId,
+                    )
+                } else {
+                    Diagnostics.record(
+                        module = DiagnosticModule.CLASSROOM,
+                        action = DiagnosticAction.STALE_RESULT,
+                        result = DiagnosticResult.SKIPPED,
+                        reason = DiagnosticReason.STALE,
+                        operationId = operationId,
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: UnknownHostException) {
-                if (id == requestSeq) error = "无法连接学校服务，请检查网络后重试"
+                if (id == requestSeq) {
+                    error = "无法连接学校服务，请检查网络后重试"
+                    recordQueryFailure(
+                        operationId,
+                        started,
+                        DiagnosticReason.NETWORK,
+                        null,
+                    )
+                }
             } catch (_: SocketTimeoutException) {
-                if (id == requestSeq) error = "学校服务响应超时，请稍后重试"
+                if (id == requestSeq) {
+                    error = "学校服务响应超时，请稍后重试"
+                    recordQueryFailure(
+                        operationId,
+                        started,
+                        DiagnosticReason.NETWORK,
+                        null,
+                        DiagnosticResult.TIMEOUT,
+                    )
+                }
             } catch (failed: IOException) {
-                if (id == requestSeq) error = failed.message ?: "查询失败，请检查网络后重试"
-            } catch (_: Exception) {
-                if (id == requestSeq) error = "查询失败，请检查网络或稍后重试"
+                if (id == requestSeq) {
+                    error = failed.message ?: "查询失败，请检查网络后重试"
+                    recordQueryFailure(
+                        operationId,
+                        started,
+                        DiagnosticReason.NETWORK,
+                        failed,
+                    )
+                }
+            } catch (failed: Exception) {
+                if (id == requestSeq) {
+                    error = "查询失败，请检查网络或稍后重试"
+                    recordQueryFailure(
+                        operationId,
+                        started,
+                        DiagnosticReason.UNKNOWN,
+                        failed,
+                    )
+                }
             } finally {
                 if (id == requestSeq) {
                     loading = false
                     searchJob = null
                 }
             }
+        }
+    }
+
+    private fun recordQueryFailure(
+        operationId: String,
+        started: Long,
+        reason: DiagnosticReason,
+        failure: Throwable?,
+        result: DiagnosticResult = DiagnosticResult.FAIL,
+    ) {
+        val duration = (System.currentTimeMillis() - started).coerceAtLeast(0)
+        if (failure == null) {
+            Diagnostics.record(
+                module = DiagnosticModule.CLASSROOM,
+                action = DiagnosticAction.QUERY_FAIL,
+                result = result,
+                reason = reason,
+                durationMs = duration,
+                operationId = operationId,
+            )
+        } else {
+            Diagnostics.recordException(
+                module = DiagnosticModule.CLASSROOM,
+                action = DiagnosticAction.QUERY_FAIL,
+                result = result,
+                reason = reason,
+                failure = failure,
+                durationMs = duration,
+                operationId = operationId,
+            )
         }
     }
 }

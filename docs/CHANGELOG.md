@@ -1,5 +1,46 @@
 # 更新与验证
 
+## 2.0.1（22）应用内更新候选 + 课表 r3 用户复测确认（本地，未发布）· 2026-11-06
+
+- **课表 r3**：反馈用户已明确复测正常；前条 5081 记录的“未复现/未确认”保留为当时证据，不再作为当前用户状态。
+- **更新入口**：设置 → 关于 → 更新，显示当前版本；前台每天最多一次元数据检查，可关闭，只用 Toast；手动检查才弹出版本、大小、3–5 条纯文本说明和“更新/稍后”，不增加首页卡/顶级入口。
+- **清单信任**：固定 GitHub 仓库与 `gh-proxy.org`/`ghproxy.net`/官方线路；清单原始 UTF-8 字节用内置 ECDSA P-256/SHA256withECDSA 公钥验签；固定字段、整数 versionCode、minSdk、tag/asset、大小、SHA-256、最高已见版本重放保护；不接受清单给的任意主机/算法。
+- **下载与安装**：单任务 `.part` 下载、进度/取消/切换线路，完整 size+SHA-256+包名/versionCode/minSdk/证书兼容校验；PackageInstaller 会话交由系统最终确认，不静默、不卸载、不清数据；未知来源授权拒绝/安装取消不循环。
+- **发布准备**：新增仓库外私钥的 `tools/release_update.ps1`，生成 APK + `update.json` + `update.sig` + `SHA256SUMS.txt`；公钥入库，私钥路径只从环境变量读取，脚本不打印私钥。**未上传、未 push/merge/publish**，`v2.0` tag/附件未改。
+- **验证**：全仓 **565 tests / 84 suites / 0 failures / 0 errors / 2 skipped**；lint 0 errors / 7 warnings；boundaries 与 R8 Release 通过。新增 updater 单测、.NET→Android 签名交叉夹具、真实网络手动测试入口；独立 probe 模拟器完成 22→23 的检查/下载/校验/系统确认安装，并实测取消安装、未知来源拒绝与错误 APK 证书拒绝。完整结果与最终 APK 路径/hash 见 [2.0.1 发布记录](releases/2.0.1.md) 第 10 节。
+
+## 2.0.1 续修 r3 · 周响应 MIME/正文分类与有效 JSON 误标修复（本地构建，未发布）· 2026-11-06
+
+- 新报告（schema 2，39 事件）实际显示：两次网页登录均完成 CAS→APP_CALLBACK→APP_PAGE，Cookie 解析 2 项并保存，`get-index` 成功 27 个学期；四次 `WEEK_REQUEST` 都在 HTTP 200 / 5081 bytes 后 `QUERY_FAIL reason=SCHEMA phase=WEEK detail=RESPONSE_NON_JSON`。该 detail 在旧代码同时表示“MIME 非 JSON”和“JSON decode 失败”，无法据此认定 WAF/登录页/错误 MIME。
+- 同账号/同协议本机只读对照：索引 2493 bytes、`application/json`、27 学期；当前周 2827 bytes、`application/json`、`e=0`、7 天/7 日；官方页面 JS 的 `scheduleLists` 同样调用 `/timetable/wap/default/get-datatmp`，body 同为 `year/term/week/type=2`。端点/账号/协议形状有效，用户 5081 未在本机复现，不能据此声称用户已修复。
+- 诊断 schema 3 新增固定 `mediaType`（JSON/JSON_SUFFIX/TEXT/HTML/OTHER/MISSING）与 `bodyType`（JSON_OBJECT/JSON_ARRAY/HTML/LOGIN_LIKE/EMPTY/MALFORMED/OTHER）；失败事件同时带 `responseBytes`，导出仍不含 URL/query/头原文/正文/HTML 片段/字段值/课程或账号数据。
+- 固定受信 endpoint 的 200 响应先做有界正文分类：有效 JSON（含 UTF-8/UTF-16 BOM）即使 Content-Type 为缺失/`text/html`/`text/plain`/其它误标也接受，并记录同 `operationId` 的 `RESPONSE_MIME_MISMATCH`；随后仍执行完整 envelope/业务 schema。HTML/登录页、JSONP/文本、malformed 一律拒绝；普通 HTML 为 `RESPONSE_HTML`，以 `{`/`[` 开头的 malformed 为 `RESPONSE_MALFORMED_JSON`；2 MiB 上限、TLS/域名/固定路径/禁重定向/单次认证恢复未改。
+- UI 按真实类别：登录页、普通网页、格式异常、响应过大、网络/TLS/超时分别提示，并保留“已保留上次缓存/暂无可用的旧缓存”的真实差别，不再把所有格式错误归为一句“无法识别的数据”。
+- 验证：`feature:timetable` **133 tests / 0 failures**；全仓 **516 tests / 75 suites / 0 failures / 0 errors / 1 skipped**；`:app:lintDebug` 0 errors / 7 warnings；`:feature:timetable:lintDebug` 0 errors / 4 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 通过（R8 + resource shrink，通用 ABI）。新增覆盖有效 JSON 误标接受、`+json`、HTML 含 JSON 片段拒绝、malformed 区分、错误 MIME 下 10013 仍走认证、超限、BOM、错误 MIME 的周仍发布、普通 HTML 保留完整缓存、格式文案、同 operationId 的 MIME_MISMATCH 事件。
+- 模拟器 `emulator-5554`（`upcpocket_api36`，Android 36）`adb install -r` 覆盖保留数据，课表已有缓存正常显示，点刷新后显示“已更新”，今日时间更新到 10:42，无崩溃。该次为正常 JSON，不产生 MIME_MISMATCH；不是用户 vivo 真机复测。
+- 交付：`E:\UPCpocket\.local\artifacts\UPC-Pocket-2.0.1-timetable-response-classify-r3.apk`，**4,708,133** bytes，SHA-256 `4A759EA8E7251E8A21966788DDCE44D23A6A9927318B8DC7568C7341BE774177`；`2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，仅“压缩 Release 构建、开发签名”。未 push/merge/publish，未改 v2.0 tag/附件；r2 APK 保留为中间证据。
+- 仍未确认用户 5081 的正文类别；下一次报告会给出 `mime=` 与 `body=`。若 `body=JSON_OBJECT/ARRAY` 且 MIME 误标，本版接受并记录 MIME_MISMATCH；若 `body=HTML/LOGIN_LIKE/MALFORMED`，本版不会假成功，按新类别继续处理。
+
+## 2.0.1 续修 · 课表返回原生“无法识别的数据”诊断与兼容（本地构建，未发布）· 2026-11-06
+
+- 用户录屏：网页登录里学校课表已完整显示彩色课程，返回原生先短暂“连接中”后提示“学校返回了无法识别的数据；已保留上次缓存”，同时下面又说“查询失败，且没有缓存”。20:15 诊断 ZIP 是另一次操作，只有 7 条 WebView 事件；`WEBVIEW_FINISH OK` 仅是 `onPageFinished`，无 `QUERY_*`，因此**没有该用户原始响应，具体根因未确认**，不能把“用户数据不兼容”写成已证实。
+- 诊断 schema 2：新增固定 `phase/detail`、HTTP 状态、响应字节数、条目数；`operationId` 从网页登录贯穿 Cookie 接管→索引→会话/缓存→周查询→发布/失败；新增空 Cookie/旧上下文、非 JSON/登录页、索引/周解析规则、缓存保存、发布与兼容规则码。仍不含 URL/query/头/正文/字段值/课程名/教师/地点/账号/异常 message，沿用 24h/1MiB/队列/epoch 清理与导出白名单。
+- 兼容修复（评审后收紧）：只保留冗余 `order`/`totalLength`/声明 `weekday`/`c_N` 起始容错、整数值浮点、空单元格、非 `c_N` 元数据、`week` 分隔符/范围格式和重复节次去重；`week` 无法解析或明确排除请求周、相邻错周日期、空 `classes` 日、带课程的 `c_15`、缺名/缺 `lessArr`/越界条目一律明确失败，不补周、不跳过、不产生部分周；UI 恢复周日至周六固定框架，未覆盖日期标未知；历史/暑期无效学期仍可跳过，当前学期不可用则失败。
+- Cookie 接管：按业务/页面/根路径合并 `CookieManager`，页面完成后延迟 350ms 再自动提交；Service 在采纳成功后直接查当前周，避免二次 refresh 断链和重复索引。
+- 文案：有缓存才说“已保留上次缓存”，否则“暂无可用的旧缓存”；WeekPanel 改为“查询失败，暂无缓存”；网络超时/TLS/HTTP/登录页分别提示，不一律 `SCHEMA`。
+- 验证：`feature:timetable` 119 tests；全仓 502 tests / 74 suites / 0 failures / 0 errors / 1 skipped；`:app:lintDebug` 0 errors / 7 warnings；`:feature:timetable:lintDebug` 0 errors / 4 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 通过。新增相邻错周拒绝、周标签排除请求周拒绝、缺名/缺 `lessArr`/空日/`c_15` 失败、解析失败不覆盖完整缓存、今日读旧完整缓存、周日框架边界课程、同名不同 path Cookie 优先级。模拟器 `emulator-5554` 覆盖安装：本机授权账号真实只读 27 学期/第 9 周 7 课，同 operationId 的 AUTH/INDEX/WEEK/CACHE 事件齐全；断网 10s 超时记录 `TRANSPORT_TIMEOUT` 且保留缓存，恢复网络重试成功。
+- 交付：`E:\UPCpocket\.local\artifacts\UPC-Pocket-2.0.1-timetable-schema-fix-r2.apk`，**4,708,133** bytes，SHA-256 `97D7A0B570C80C38E51B0C434E02D8E1910D27BD8D89CD2BFF8FD1A27947B2CE`；`2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，仅“压缩 Release 构建、开发签名”。未 push/merge/publish，未改 v2.0 tag/附件；上一轮 `...schema-fix.apk`（E52D…）保留为中间证据、不作为交付包；该用户真机未复测，核心结构不兼容时仍会失败但下一次报告可给出具体规则码。
+
+## 2.0.1 · 课表网页登录空白修复（本地构建，未发布）· 2026-11-05
+
+- 真实用户反馈：课表自动登录触发验证码后打开网页登录，WebView 像此前图书馆登录一样没有正常加载。排查确认不是 tab/Insets/遮罩，而是 Compose `AndroidView` 内 WebView 缺显式 `MATCH_PARENT`：修复前 `layoutParams=-2×-2`、CAS `body=0`、移动登录 iframe `0×0`，用户名顶部 `-124`；补齐后 iframe `412×839`、用户名/密码/`LOGIN` 均在视口内。
+- 修复：显式 `MATCH_PARENT`、首次布局后再导航；新增课表专用 HTTPS host/path/端口策略（CAS `/cas/`，课表 `/a_upc/api/cas/login`、`/site/weekschedule/`、`/timetable/wap/default/`，不含 Chaoxing 域）；主框架非法跳转显示可恢复错误，SSL/HTTP/网络错误有明确提示；渲染进程退出可重建，旧代次回调按账号/代次/epoch 丢弃；只保留 4dp 顶部进度条，错误页可“重新加载”。未照搬图书馆的 CAS iframe JS 注入。
+- 合成回归：`feature:timetable` 100 tests（新增 8 URL/目标码策略 + 2 挑战地址服务测试），全仓 482 tests / 0 failures / 1 skipped；`:app:lintDebug` 0 errors / 7 既有 warnings；`checkModuleBoundaries` 通过；`:app:assembleRelease` 成功。
+- API 36 `upcpocket_api36`（`emulator-5556`）`install -r` 覆盖保留数据：CAS 空表单可见（Release 蓝色 `LOGIN` 按钮 `y=1403–1406`）；深色、1.5× 字体、键盘、断网错误→恢复网络重载、返回均实际检查。未故意触发真实验证码，不声称验证码流程成功；真实账号仅完成一次正常 CAS/只读课表加载，未预约/取消/签到。
+- 本机诊断：关于页新增“导出诊断报告/清除诊断记录”和记录开关；私有 noBackup 目录滚动 24h/约 1 MiB 的固定枚举事件，用户主动生成 `summary.txt`+`events.jsonl` ZIP 后经系统分享面板发出；FileProvider 仅开放专用导出子目录，临时只读授权，不自动上传。事件不含账密/Cookie/URL/请求响应/课程或房间内容；换号/删号先清空诊断，诊断失败不影响业务。详见 [隐私说明](PRIVACY.md)。
+- 合成回归新增诊断 schema/拒收/编码、TTL/容量/并发清理/坏文件/FileProvider 范围/分享 Intent 与课表目标码测试；`feature:classroom` 实机公开查询、`feature:library` 实机断网 WebView 错误均产生固定码报告。
+- 精简包：`release/UPC-Pocket-2.0.1-diagnostics.apk`（构建产物 `app/build/outputs/apk/release/app-release.apk`），**4,675,365** bytes，SHA-256 `E0829FB1FA60EB7053F9A1D614E23628CEBF97C7A6DA992E981AB1E7E8092017`；版本 `2.0.1`（21），证书 SHA-256 `07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`，只能标为“压缩 Release 构建、开发签名”。未改 v2.0 tag/附件，未 push/merge/publish。详见 [2.0.1 修复记录](releases/2.0.1.md)。
+
 ## 2.0 正式版 · 2026-11-05
 
 - 用户验收通过，合并 M0–M5 到 main；版本 2.0（versionCode 20）。
@@ -213,8 +254,3 @@
 - 古镇口未实现原生查询，学校证书、网络与页面变化可能影响访问。
 - Room 中保留旧课表表结构仅用于覆盖升级兼容；M3 课表使用独立 JSON 缓存，不读写这五张旧表，也不把它们当作 UPC 当前账号课表。
 - APK 内部版本 `0.2.7-lightly-preview`（19），沿用此前调试证书；本次以 GitHub Release 形式分发同一已验证包。
-
-
-
-
-

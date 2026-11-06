@@ -4,6 +4,7 @@ import java.time.LocalDate
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -41,6 +42,85 @@ class TimetableProtocolTest {
         assertEquals(6, index.currentWeekday)
         assertEquals(LocalDate.parse("2026-10-25"), index.currentWeekdays!!.first())
         assertEquals(19, index.find("2026-2027", "1")!!.totalWeeks)
+    }
+
+    @Test
+    fun invalidHistoricalTermIsSkippedWithoutDroppingCurrentTerm() {
+        val index = TimetableProtocol.parseIndex(
+            mutateIndexRoot { root ->
+                val d = root["d"]!!.jsonObject.toMutableMap()
+                val terms = d["termInfo"]!!.jsonArray.toMutableList()
+                val historical = terms[1].jsonObject.toMutableMap()
+                historical["countweek"] = JsonPrimitive("0")
+                terms[1] = JsonObject(historical)
+                d["termInfo"] = JsonArray(terms)
+                root["d"] = JsonObject(d)
+            },
+        )
+        assertEquals(1, index.terms.size)
+        assertEquals("2026-2027", index.terms.single().year)
+        assertTrue(index.compatibility.contains(TimetableCompatibility.INDEX_TERM_SKIPPED))
+    }
+
+    @Test
+    fun duplicateTermIsSkipped() {
+        val index = TimetableProtocol.parseIndex(
+            mutateIndexRoot { root ->
+                val d = root["d"]!!.jsonObject.toMutableMap()
+                val terms = d["termInfo"]!!.jsonArray.toMutableList()
+                terms += terms[0]
+                d["termInfo"] = JsonArray(terms)
+                root["d"] = JsonObject(d)
+            },
+        )
+        assertEquals(2, index.terms.size)
+        assertTrue(index.compatibility.contains(TimetableCompatibility.INDEX_TERM_SKIPPED))
+    }
+
+    @Test
+    fun missingCurrentTermIsFatalInsteadOfFallingBackToHistory() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseIndex(
+                mutateIndexRoot { root ->
+                    val d = root["d"]!!.jsonObject.toMutableMap()
+                    val params = d["params"]!!.jsonObject.toMutableMap()
+                    params["year"] = JsonPrimitive("2099-2100")
+                    d["params"] = JsonObject(params)
+                    root["d"] = JsonObject(d)
+                },
+            )
+        }
+    }
+
+    @Test
+    fun invalidCurrentWeekIsIgnoredNotFatal() {
+        val index = TimetableProtocol.parseIndex(
+            mutateIndexRoot { root ->
+                val d = root["d"]!!.jsonObject.toMutableMap()
+                val params = d["params"]!!.jsonObject.toMutableMap()
+                params["week"] = JsonPrimitive(0)
+                d["params"] = JsonObject(params)
+                root["d"] = JsonObject(d)
+            },
+        )
+        assertNull(index.currentWeek)
+        assertTrue(index.compatibility.contains(TimetableCompatibility.INDEX_CURRENT_IGNORED))
+    }
+
+    @Test
+    fun oneDigitDateFieldsAreAccepted() {
+        val index = TimetableProtocol.parseIndex(
+            mutateIndexRoot { root ->
+                val d = root["d"]!!.jsonObject.toMutableMap()
+                val terms = d["termInfo"]!!.jsonArray.toMutableList()
+                val first = terms[0].jsonObject.toMutableMap()
+                first["startday"] = JsonPrimitive("2026-9-6")
+                terms[0] = JsonObject(first)
+                d["termInfo"] = JsonArray(terms)
+                root["d"] = JsonObject(d)
+            },
+        )
+        assertEquals(LocalDate.parse("2026-09-06"), index.terms.first().startDay)
     }
 
     @Test
@@ -91,14 +171,21 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun requestedWeekMustMatchDates() {
+    fun requestedWeekFarFromDatesStillFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(fixture("timetable_week_08.json"), term(), 1)
+        }
+    }
+
+    @Test
+    fun oneWeekCalendarOffsetStillFails() {
         failCode(TimetableErrorCode.SCHEMA_CHANGED) {
             TimetableProtocol.parseWeek(fixture("timetable_week_08.json"), term(), 9)
         }
     }
 
     @Test
-    fun courseWeekListMustContainRequestedWeek() {
+    fun courseWeekListExcludingRequestedWeekFails() {
         failCode(TimetableErrorCode.SCHEMA_CHANGED) {
             TimetableProtocol.parseWeek(
                 mutateDayEntry(day = 1, cell = "c_6") { entry ->
@@ -133,7 +220,7 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun missingLessArrFailsWithoutFallback() {
+    fun missingLessArrFails() {
         failCode(TimetableErrorCode.SCHEMA_CHANGED) {
             TimetableProtocol.parseWeek(
                 mutateDayEntry(day = 1, cell = "c_6") { it.remove("lessArr") },
@@ -144,12 +231,83 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun duplicatePeriodsFail() {
+    fun duplicatePeriodsAreDeduped() {
+        val parsed = TimetableProtocol.parseWeek(
+            mutateDayEntry(day = 1, cell = "c_6") { entry ->
+                entry["lessArr"] = JsonArray(listOf(JsonPrimitive(6), JsonPrimitive(6)))
+                entry["totalLength"] = JsonPrimitive(2)
+            },
+            term(),
+            8,
+        )
+        val course = parsed.meetings.first { it.courseName == "示例课程A" }
+        assertEquals(listOf(6), course.periods)
+        assertTrue(parsed.compatibility.contains(TimetableCompatibility.DUPLICATE_PERIODS_DEDUPED))
+    }
+
+    @Test
+    fun redundantMetadataContradictionsAreAcceptedAndMarked() {
+        val totalLength = TimetableProtocol.parseWeek(
+            mutateDayEntry(day = 1, cell = "c_6") { it["totalLength"] = JsonPrimitive(1) },
+            term(),
+            8,
+        )
+        assertTrue(totalLength.compatibility.contains(TimetableCompatibility.TOTAL_LENGTH_IGNORED))
+
+        val order = TimetableProtocol.parseWeek(
+            mutateDayEntry(day = 1, cell = "c_6") { it["order"] = JsonPrimitive(7) },
+            term(),
+            8,
+        )
+        assertTrue(order.compatibility.contains(TimetableCompatibility.ORDER_IGNORED))
+
+        val weekday = TimetableProtocol.parseWeek(
+            mutateDayEntry(day = 1, cell = "c_6") { it["weekday"] = JsonPrimitive("2") },
+            term(),
+            8,
+        )
+        assertTrue(weekday.compatibility.contains(TimetableCompatibility.WEEKDAY_IGNORED))
+
+        val cell = TimetableProtocol.parseWeek(
+            mutateCellKey(day = 1, from = "c_6", to = "c_7"),
+            term(),
+            8,
+        )
+        val course = cell.meetings.first { it.courseName == "示例课程A" }
+        assertEquals(6, course.startPeriod)
+        assertTrue(cell.compatibility.contains(TimetableCompatibility.CELL_START_IGNORED))
+    }
+
+    @Test
+    fun weekRangesAndIntegralFloatsAreAccepted() {
+        val parsed = TimetableProtocol.parseWeek(
+            mutateDayEntry(day = 1, cell = "c_6") { entry ->
+                entry["week"] = JsonPrimitive("6-9")
+                entry["lessArr"] = JsonArray(
+                    listOf(JsonPrimitive(6.0), JsonPrimitive(7.0)),
+                )
+                entry["order"] = JsonPrimitive(6.0)
+                entry["totalLength"] = JsonPrimitive(2.0)
+            },
+            term(),
+            8,
+        )
+        val course = parsed.meetings.first { it.courseName == "示例课程A" }
+        assertEquals(listOf(6, 7, 8, 9), course.weeks)
+        assertEquals(listOf(6, 7), course.periods)
+        assertTrue(parsed.compatibility.contains(TimetableCompatibility.INTEGRAL_FLOAT_ACCEPTED))
+    }
+
+    @Test
+    fun nullDayFailsInsteadOfLookingEmpty() {
         failCode(TimetableErrorCode.SCHEMA_CHANGED) {
             TimetableProtocol.parseWeek(
-                mutateDayEntry(day = 1, cell = "c_6") { entry ->
-                    entry["lessArr"] = JsonArray(listOf(JsonPrimitive(6), JsonPrimitive(6)))
-                    entry["totalLength"] = JsonPrimitive(2)
+                mutateRoot { root ->
+                    val d = root["d"]!!.jsonObject.toMutableMap()
+                    val classes = d["classes"]!!.jsonArray.toMutableList()
+                    classes[6] = JsonNull
+                    d["classes"] = JsonArray(classes)
+                    root["d"] = JsonObject(d)
                 },
                 term(),
                 8,
@@ -158,23 +316,57 @@ class TimetableProtocolTest {
     }
 
     @Test
-    fun totalLengthOrderCellAndWeekdayContradictionsFail() {
-        listOf<Pair<TimetableErrorCode, () -> String>>(
-            TimetableErrorCode.SCHEMA_CHANGED to {
-                mutateDayEntry(day = 1, cell = "c_6") { it["totalLength"] = JsonPrimitive(1) }
-            },
-            TimetableErrorCode.SCHEMA_CHANGED to {
-                mutateDayEntry(day = 1, cell = "c_6") { it["order"] = JsonPrimitive(7) }
-            },
-            TimetableErrorCode.SCHEMA_CHANGED to {
-                mutateDayEntry(day = 1, cell = "c_6") { it["weekday"] = JsonPrimitive("2") }
-            },
-            TimetableErrorCode.SCHEMA_CHANGED to {
-                mutateCellKey(day = 1, from = "c_6", to = "c_7")
-            },
-        ).forEach { (code, mutator) ->
-            failCode(code) { TimetableProtocol.parseWeek(mutator(), term(), 8) }
+    fun outOfRangeCellWithEntryFails() {
+        failCode(TimetableErrorCode.SCHEMA_CHANGED) {
+            TimetableProtocol.parseWeek(
+                mutateRoot { root ->
+                    val d = root["d"]!!.jsonObject.toMutableMap()
+                    val classes = d["classes"]!!.jsonArray.toMutableList()
+                    classes[0] = JsonObject(
+                        classes[0].jsonObject.toMutableMap().apply {
+                            put(
+                                "c_15",
+                                JsonArray(
+                                    listOf(
+                                        JsonObject(
+                                            mapOf(
+                                                "course_name" to JsonPrimitive("越界课程"),
+                                                "lessArr" to JsonArray(
+                                                    listOf(JsonPrimitive(15)),
+                                                ),
+                                                "week" to JsonPrimitive("8"),
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            )
+                        },
+                    )
+                    d["classes"] = JsonArray(classes)
+                    root["d"] = JsonObject(d)
+                },
+                term(),
+                8,
+            )
         }
+    }
+
+    @Test
+    fun nonCellMetadataKeyIsIgnored() {
+        val parsed = TimetableProtocol.parseWeek(
+            mutateRoot { root ->
+                val d = root["d"]!!.jsonObject.toMutableMap()
+                val classes = d["classes"]!!.jsonArray.toMutableList()
+                val sunday = classes[0].jsonObject.toMutableMap()
+                sunday["date_label"] = JsonPrimitive("metadata")
+                classes[0] = JsonObject(sunday)
+                d["classes"] = JsonArray(classes)
+                root["d"] = JsonObject(d)
+            },
+            term(),
+            8,
+        )
+        assertEquals(6, parsed.meetings.size)
     }
 
     @Test
@@ -298,6 +490,13 @@ class TimetableProtocolTest {
                 ),
             ),
         ).toString()
+    }
+
+    private fun mutateIndexRoot(block: (MutableMap<String, JsonElement>) -> Unit): String {
+        val root = Json.parseToJsonElement(fixture("timetable_index.json")).jsonObject
+            .toMutableMap()
+        block(root)
+        return JsonObject(root).toString()
     }
 
     private fun mutateRoot(block: (MutableMap<String, JsonElement>) -> Unit): String {

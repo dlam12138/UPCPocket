@@ -29,6 +29,8 @@ data class UiPrefs(
      * 关闭或“退出学校登录”会清理持久副本。校园卡余额不需要登录。
      */
     val rememberSchoolLogin: Boolean = false,
+    /** 本机诊断事件开关；默认开启，只写私有目录，由用户主动导出。 */
+    val diagnosticsEnabled: Boolean = true,
     /**
      * 唐岛湾电费上次选的楼号与房间号。
      *
@@ -61,6 +63,7 @@ class UiPrefsStore internal constructor(
             darkMode = p[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.SYSTEM,
             rememberSchoolLogin = p[KEY_REMEMBER_SCHOOL_LOGIN] ?: false,
+            diagnosticsEnabled = p[KEY_DIAGNOSTICS_ENABLED] ?: true,
             powerBuilding = p[KEY_POWER_BUILDING].orEmpty(),
             powerRoom = p[KEY_POWER_ROOM].orEmpty(),
             cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
@@ -70,6 +73,9 @@ class UiPrefsStore internal constructor(
     /** “记住学校登录”开关。清理动作由调用方负责（token/密文/Cookie）。 */
     suspend fun setRememberSchoolLogin(v: Boolean) =
         store.edit { it[KEY_REMEMBER_SCHOOL_LOGIN] = v }
+
+    suspend fun setDiagnosticsEnabled(v: Boolean) =
+        store.edit { it[KEY_DIAGNOSTICS_ENABLED] = v }
 
     /**
      * 一次编辑同时保存楼号与房间号，避免两个字段在不同版本/进程里各写一半。
@@ -102,6 +108,9 @@ class UiPrefsStore internal constructor(
 
         /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")
+
+        /** 本机诊断记录开关；默认开启。 */
+        val KEY_DIAGNOSTICS_ENABLED = booleanPreferencesKey("diagnostics_enabled")
 
         /** 唐岛湾电费上次选的楼号与房间号（用户已授权记住） */
         val KEY_POWER_BUILDING = stringPreferencesKey("power_building")

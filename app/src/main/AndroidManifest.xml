@@ -8,6 +8,8 @@
          课表会话使用另一个独立 alias 加密，页面/组件不读取密码。
          不做后台轮询；明文网络只在 res/xml/network_security_config.xml 里对已核实主机放开。 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 仅用于“检查更新 → 下载校验完成 → 用户在系统界面确认安装”。不静默安装。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
         校园服务入口要在系统浏览器里打开，Android 11+ 必须显式声明可查询的 Intent。
@@ -16,6 +18,11 @@
     <queries>
         <!-- 仅用于用户主动选择的微信分享/启动，不查询全部安装应用。 -->
         <package android:name="com.tencent.mm" />
+        <!-- 仅解析系统 APK 安装器；不会查询其他应用。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="content" android:mimeType="application/vnd.android.package-archive" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -104,6 +111,39 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_timetable_today_info" />
         </receiver>
+
+        <!--
+            诊断 ZIP 只能通过 FileProvider 的专用 cache 子目录临时授权读取。
+            provider 不导出，不开放 root-path/files-path，也不申请存储权限。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.diagnostics"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/diagnostic_file_paths" />
+        </provider>
+
+        <!--
+            更新 APK 使用独立 authority 与独立 FileProvider 配置，只暴露
+            cache/updates/；诊断 provider 仍只暴露 diagnostic_exports/。
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_file_paths" />
+        </provider>
+
+        <!-- 只接收本应用 PackageInstaller 会话的显式结果；不导出、无隐式 filter。 -->
+        <receiver
+            android:name=".update.UpdateInstallReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

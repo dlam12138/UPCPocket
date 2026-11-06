@@ -41,6 +41,8 @@
 - 机器专属 SDK 路径放入被 Git 忽略的 `local.properties`；JDK 路径使用本地环境或 IDE 配置，不能硬编码进共享 Gradle 配置。
 - 代码改动运行与影响范围匹配的构建和测试。Android 常规验证：`./gradlew :app:assembleDebug :app:testDebugUnitTest`；Windows 使用 `./gradlew.bat`。
 - 纯规范和文档变更检查路径、引用、来源及差异即可，无需重复构建 APK。
+- 本机诊断只写固定枚举、数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止写入账密、Cookie、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息或自由文本。导出必须由用户主动触发，FileProvider 只开放专用导出子目录并临时授权；诊断失败不得影响业务。
+- 应用内更新只允许固定 GitHub 仓库 `dlam12138/UPCPocket` 和内置候选域；清单必须用内置 ECDSA P-256 公钥验签原始 UTF-8 字节，再解析固定字段。不得依赖 GitHub API/PAT、不得让清单决定任意主机/算法、不得把镜像 SHA 文本当真实性、不得自动静默安装或为换签名卸载/清数据。每次发布必须同批提供 APK + `update.json` + `update.sig` + `SHA256SUMS.txt`，公开后不原地替换资产。更新私钥只在仓库外，发布脚本只读环境变量；`src/debug` 受控测试源不得进入 release，release TLS/网络安全配置不得为测试降低。更新 FileProvider 独立且只暴露 `cache/updates/`；最终安装用 PackageInstaller 会话交由系统确认，不静默安装。
 - 交付说明写清改动、实际验证结果与尚未验证的部分；不能把构建成功当作真机或校园接口验证成功。
 
 ## 精简交付规范

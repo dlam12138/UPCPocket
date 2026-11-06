@@ -19,6 +19,11 @@ import com.upcpocket.app.data.chaoxing.ChaoxingSessionExpiredException
 import com.upcpocket.app.data.chaoxing.ChaoxingTimeInterval
 import com.upcpocket.app.data.chaoxing.ChaoxingUser
 import com.upcpocket.app.data.chaoxing.ChaoxingWebCookies
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -230,17 +235,70 @@ class ChaoxingService(
     suspend fun loginWithSavedAccount(): ChaoxingLoginResult = autoLoginMutex.withLock {
         val context = captureContext()
             ?: return@withLock ChaoxingLoginResult.Failure(unavailableReason())
+        val started = System.currentTimeMillis()
+        val operationId = Diagnostics.newOperationId()
+        Diagnostics.record(
+            module = DiagnosticModule.LIBRARY,
+            action = DiagnosticAction.AUTH_START,
+            result = DiagnosticResult.PENDING,
+            operationId = operationId,
+        )
         val auth = try {
             authenticator.authenticate(context.accountId, context.generation.value)
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            Diagnostics.record(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.AUTH_COMPLETE,
+                result = DiagnosticResult.CANCELLED,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+                operationId = operationId,
+            )
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            Diagnostics.recordException(
+                module = DiagnosticModule.LIBRARY,
+                action = DiagnosticAction.AUTH_COMPLETE,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.UNKNOWN,
+                failure = failure,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+                operationId = operationId,
+            )
             return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.PROTOCOL_ERROR)
         }
+        val duration = (System.currentTimeMillis() - started).coerceAtLeast(0)
         val cookieHeader = when (auth) {
-            is ChaoxingAccountAuthResult.Success -> auth.cookieHeader
-            is ChaoxingAccountAuthResult.Failure ->
+            is ChaoxingAccountAuthResult.Success -> {
+                Diagnostics.record(
+                    module = DiagnosticModule.LIBRARY,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.OK,
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+                auth.cookieHeader
+            }
+            is ChaoxingAccountAuthResult.Failure -> {
+                Diagnostics.record(
+                    module = DiagnosticModule.LIBRARY,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                    result = DiagnosticResult.FAIL,
+                    reason = chaoxingDiagnosticReason(auth.reason),
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+                if (auth.reason == ChaoxingAuthFailure.INTERACTION_REQUIRED) {
+                    Diagnostics.record(
+                        module = DiagnosticModule.LIBRARY,
+                        action = DiagnosticAction.AUTH_INTERACTION,
+                        result = DiagnosticResult.BLOCKED,
+                        reason = DiagnosticReason.INTERACTION,
+                        durationMs = duration,
+                        operationId = operationId,
+                    )
+                }
                 return@withLock ChaoxingLoginResult.Failure(auth.reason)
+            }
         }
         if (!isPlausibleCookieHeader(cookieHeader)) {
             return@withLock ChaoxingLoginResult.Failure(ChaoxingAuthFailure.INVALID_SESSION)
@@ -561,4 +619,26 @@ class ChaoxingService(
             value.length <= 8 * 1024 &&
             !value.contains('\r') &&
             !value.contains('\n')
+
+    private fun chaoxingDiagnosticReason(reason: ChaoxingAuthFailure): DiagnosticReason =
+        when (reason) {
+            ChaoxingAuthFailure.INVALID_CREDENTIALS,
+            ChaoxingAuthFailure.ACCESS_DENIED,
+            ChaoxingAuthFailure.IDENTITY_MISMATCH,
+            ChaoxingAuthFailure.SESSION_EXPIRED,
+            ChaoxingAuthFailure.INVALID_SESSION,
+            -> DiagnosticReason.AUTH
+            ChaoxingAuthFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
+            ChaoxingAuthFailure.NETWORK_UNAVAILABLE -> DiagnosticReason.NETWORK
+            ChaoxingAuthFailure.TLS_ERROR -> DiagnosticReason.TLS
+            ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE,
+            ChaoxingAuthFailure.ACCOUNT_CHANGED,
+            -> DiagnosticReason.ACCOUNT
+            ChaoxingAuthFailure.CLEANUP_IN_PROGRESS,
+            ChaoxingAuthFailure.COOKIE_CLEANUP_FAILED,
+            -> DiagnosticReason.CLEANUP
+            ChaoxingAuthFailure.STALE_WEB_ENTRY -> DiagnosticReason.STALE
+            ChaoxingAuthFailure.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
+            ChaoxingAuthFailure.UPSTREAM_ERROR -> DiagnosticReason.UNKNOWN
+        }
 }

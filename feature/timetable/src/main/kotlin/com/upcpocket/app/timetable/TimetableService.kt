@@ -6,6 +6,16 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcAuthFailure
 import com.upcpocket.app.upcauth.UpcAuthResult
@@ -89,12 +99,20 @@ class TimetableService(
     private data class InteractiveContext(
         val binding: SchoolAccountReference,
         val businessEpoch: Long,
+        val operationId: String,
     )
 
     private class ServiceFailure(
         val connection: TimetableConnection,
         val displayMessage: String,
         val interactionUrl: String? = null,
+        val detail: DiagnosticDetail? = null,
+        val httpStatus: Int? = null,
+        val responseBytes: Int? = null,
+        val exceptionType: DiagnosticExceptionType? = null,
+        val mediaType: DiagnosticMediaType? = null,
+        val bodyType: DiagnosticBodyType? = null,
+        val phase: DiagnosticPhase = DiagnosticPhase.INDEX,
     ) : Exception(null, null, false, false)
 
     // ── public operations ─────────────────────────────────────────────────
@@ -107,6 +125,7 @@ class TimetableService(
      */
     suspend fun open() {
         val binding = bindingOrNull() ?: return publishAccountState()
+        val operationId = Diagnostics.newOperationId()
         operationMutex.withLock {
             val business = businessEpoch.get()
             if (!isBindingCurrent(binding)) {
@@ -125,20 +144,20 @@ class TimetableService(
                 true
             }
             if (applied) {
-                loadIndexLocked(binding, selectionEpoch.get())
+                loadIndexLocked(binding, selectionEpoch.get(), operationId)
             }
         }
     }
 
     /** 主动刷新：索引也必须重取，才能更新 currentTerm/currentWeek。 */
-    suspend fun refresh() {
+    suspend fun refresh(operationId: String = Diagnostics.newOperationId()) {
         val binding = bindingOrNull() ?: return publishAccountState()
         operationMutex.withLock {
             if (!isBindingCurrent(binding)) {
                 publishAccountState()
                 return
             }
-            loadIndexLocked(binding, selectionEpoch.get())
+            loadIndexLocked(binding, selectionEpoch.get(), operationId)
         }
     }
 
@@ -213,6 +232,8 @@ class TimetableService(
         }
         val currentWeek = index.currentWeek
             ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
+        // TimetableCacheStore 只返回 complete 周；不完整/部分周按需同步处理，
+        // 不把缺课当成“今天无课”。
         val week = cache.week(term, currentWeek)
             ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
         if (!week.dates.contains(today)) {
@@ -268,6 +289,7 @@ class TimetableService(
 
     suspend fun selectTerm(term: TimetableTerm) {
         val binding = bindingOrNull() ?: return publishAccountState()
+        val operationId = Diagnostics.newOperationId()
         selectionEpoch.incrementAndGet()
         operationMutex.withLock {
             if (!isBindingCurrent(binding)) {
@@ -303,7 +325,7 @@ class TimetableService(
                 }
             }
             if (committed && cached.week(term, week) == null) {
-                loadWeekLocked(binding, term, week, token, businessEpoch.get())
+                loadWeekLocked(binding, term, week, token, businessEpoch.get(), operationId)
             }
         }
     }
@@ -312,6 +334,7 @@ class TimetableService(
         val binding = bindingOrNull() ?: return publishAccountState()
         val term = selectedTermLocked() ?: return
         if (week !in 1..term.totalWeeks) return
+        val operationId = Diagnostics.newOperationId()
         selectionEpoch.incrementAndGet()
         operationMutex.withLock {
             if (!isBindingCurrent(binding)) {
@@ -342,7 +365,7 @@ class TimetableService(
                 }
             }
             if (committed && cachedWeek == null) {
-                loadWeekLocked(binding, term, week, token, businessEpoch.get())
+                loadWeekLocked(binding, term, week, token, businessEpoch.get(), operationId)
             }
         }
     }
@@ -359,17 +382,27 @@ class TimetableService(
                 applyAccountStateLocked(account.state.value)
                 return@withLock null
             }
-            interactiveContext = InteractiveContext(binding, businessEpoch.get())
+            // 自动登录返回的挑战页可能带本次 CAS 的 service/执行上下文；只在
+            // 官方 host/path 白名单内沿用，否则回到固定课表入口。不能把
+            // authenticator 返回的任意地址直接交给 WebView。
+            val requested = _state.value.interactionUrl
+                ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
+                ?: UpcTimetableAuthEndpoints.LOGIN_URL
+            interactiveContext = InteractiveContext(
+                binding = binding,
+                businessEpoch = businessEpoch.get(),
+                operationId = Diagnostics.newOperationId(),
+            )
             _state.update {
                 it.copy(
                     connection = TimetableConnection.INTERACTION_REQUIRED,
-                    interactionUrl = UpcTimetableAuthEndpoints.LOGIN_URL,
+                    interactionUrl = requested,
                     message = "请在学校网页完成登录。",
                     isBusy = false,
                     canRetry = true,
                 )
             }
-            UpcTimetableAuthEndpoints.LOGIN_URL
+            requested
         }
     }
 
@@ -384,47 +417,95 @@ class TimetableService(
      * WebView 页面完成/跳转时调用。只有 Cookies 非空且索引验证成功才保存；
      * 账号/代次/业务代次已变化的结果直接丢弃。
      */
-    suspend fun adoptInteractiveCookies(cookieHeader: String): Boolean {
+    suspend fun adoptInteractiveCookies(
+        cookieHeader: String,
+        operationId: String? = null,
+    ): Boolean {
         val context = interactiveContext ?: return false
+        val started = clock()
+        val op = operationId ?: context.operationId
+        recordQueryStart(DiagnosticPhase.COOKIE, null, op)
         if (!isBindingCurrent(context.binding) || businessEpoch.get() != context.businessEpoch) {
             interactiveContext = null
+            recordQueryFail(
+                phase = DiagnosticPhase.COOKIE,
+                detail = DiagnosticDetail.COOKIE_CONTEXT_STALE,
+                operationId = op,
+                reason = DiagnosticReason.AUTH,
+            )
             publishAccountState()
             return false
         }
         val cookies = parseCookieHeader(cookieHeader)
-        if (cookies.isEmpty()) return false
+        if (cookies.isEmpty()) {
+            recordQueryFail(
+                phase = DiagnosticPhase.COOKIE,
+                detail = DiagnosticDetail.COOKIE_EMPTY,
+                operationId = op,
+                reason = DiagnosticReason.AUTH,
+            )
+            return false
+        }
+        recordQueryComplete(
+            phase = DiagnosticPhase.COOKIE,
+            detail = DiagnosticDetail.COOKIE_PARSED,
+            result = DiagnosticResult.OK,
+            operationId = op,
+            itemCount = cookies.size,
+            durationMs = elapsed(started),
+        )
         if (!adopting.compareAndSet(0, 1)) return false
         return try {
             operationMutex.withLock {
+                recordQueryStart(DiagnosticPhase.INDEX, DiagnosticDetail.INDEX_REQUEST, op)
+                val indexStarted = clock()
                 val index = try {
-                    api.getIndex(cookies)
+                    api.getIndex(cookies, op)
                 } catch (failure: TimetableApiException) {
                     commitMutex.withLock {
                         if (isBindingCurrent(context.binding) &&
                             businessEpoch.get() == context.businessEpoch
                         ) {
-                            val mapped = mapApiFailure(failure)
-                            _state.update {
-                                it.copy(
-                                    connection = mapped.connection,
-                                    message = "还没有检测到登录状态，请回到课表重试。",
-                                    isBusy = false,
-                                )
-                            }
+                            publishFailure(
+                                mapApiFailure(failure, currentHasCache(), DiagnosticPhase.INDEX),
+                                op,
+                            )
                         }
                     }
                     return false
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
-                } catch (_: Exception) {
+                } catch (failure: Exception) {
+                    recordQueryException(
+                        phase = DiagnosticPhase.INDEX,
+                        detail = DiagnosticDetail.INDEX_PARSE_TERM_INFO,
+                        operationId = op,
+                        failure = failure,
+                        durationMs = elapsed(indexStarted),
+                    )
                     return false
                 }
-                commitMutex.withLock {
+                recordCompatibility(index.compatibility, op)
+                recordQueryComplete(
+                    phase = DiagnosticPhase.INDEX,
+                    detail = DiagnosticDetail.INDEX_OK,
+                    result = DiagnosticResult.OK,
+                    operationId = op,
+                    itemCount = index.terms.size,
+                    durationMs = elapsed(indexStarted),
+                )
+                val accepted = commitMutex.withLock {
                     if (!isBindingCurrent(context.binding) ||
                         businessEpoch.get() != context.businessEpoch
                     ) {
                         interactiveContext = null
                         applyAccountStateLocked(account.state.value)
+                        recordQueryFail(
+                            phase = DiagnosticPhase.COOKIE,
+                            detail = DiagnosticDetail.COOKIE_CONTEXT_STALE,
+                            operationId = op,
+                            reason = DiagnosticReason.AUTH,
+                        )
                         return@withLock false
                     }
                     val session = TimetableSession(
@@ -436,6 +517,12 @@ class TimetableService(
                     )
                     commitBarrier("adopt-session")
                     if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
+                        recordQueryFail(
+                            phase = DiagnosticPhase.SESSION,
+                            detail = DiagnosticDetail.COOKIE_SAVE_FAILED,
+                            operationId = op,
+                            reason = DiagnosticReason.STORAGE,
+                        )
                         _state.update {
                             it.copy(
                                 connection = TimetableConnection.PROTOCOL_ERROR,
@@ -445,16 +532,39 @@ class TimetableService(
                         }
                         return@withLock false
                     }
+                    recordQueryComplete(
+                        phase = DiagnosticPhase.SESSION,
+                        detail = DiagnosticDetail.COOKIE_SAVED,
+                        result = DiagnosticResult.OK,
+                        operationId = op,
+                        itemCount = cookies.size,
+                    )
                     interactiveContext = null
                     lastIndex = index
                     applyIndexSelectionLocked(index, preserveSelection = explicitSelection)
                     commitBarrier("adopt-cache")
-                    withContext(ioDispatcher) {
+                    val cached = withContext(ioDispatcher) {
                         cacheStore.save(
                             context.binding.accountId.value,
                             index,
                             null,
                             clock(),
+                        )
+                    }
+                    if (cached) {
+                        recordQueryComplete(
+                            phase = DiagnosticPhase.CACHE,
+                            detail = DiagnosticDetail.CACHE_SAVED,
+                            result = DiagnosticResult.OK,
+                            operationId = op,
+                            itemCount = index.terms.size,
+                        )
+                    } else {
+                        recordQueryFail(
+                            phase = DiagnosticPhase.CACHE,
+                            detail = DiagnosticDetail.CACHE_SAVE_FAILED,
+                            operationId = op,
+                            reason = DiagnosticReason.STORAGE,
                         )
                     }
                     _state.update {
@@ -467,6 +577,31 @@ class TimetableService(
                     }
                     true
                 }
+                if (!accepted) return false
+                val selected = _state.value.selectedTermOrNull
+                val week = _state.value.selectedWeek
+                if (selected != null && week != null) {
+                    loadWeekLocked(
+                        binding = context.binding,
+                        term = selected,
+                        week = week,
+                        token = selectionEpoch.get(),
+                        business = businessEpoch.get(),
+                        operationId = op,
+                    )
+                } else {
+                    commitMutex.withLock {
+                        publishFailure(
+                            ServiceFailure(
+                                TimetableConnection.PROTOCOL_ERROR,
+                                "学校未返回可用学期。",
+                                detail = DiagnosticDetail.INDEX_PARSE_CURRENT,
+                            ),
+                            op,
+                        )
+                    }
+                }
+                true
             }
         } finally {
             adopting.set(0)
@@ -531,8 +666,13 @@ class TimetableService(
     private suspend fun loadCache(accountId: String): TimetableCache =
         withContext(ioDispatcher) { cacheStore.load(accountId) }
 
-    private suspend fun loadIndexLocked(binding: SchoolAccountReference, token: Long) {
+    private suspend fun loadIndexLocked(
+        binding: SchoolAccountReference,
+        token: Long,
+        operationId: String,
+    ) {
         val business = businessEpoch.get()
+        val startedAt = clock()
         val started = commitMutex.withLock {
             if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                 selectionEpoch.get() != token
@@ -552,39 +692,85 @@ class TimetableService(
             }
         }
         if (!started) return
+        recordQueryStart(DiagnosticPhase.INDEX, DiagnosticDetail.INDEX_REQUEST, operationId)
         try {
-            val index = withSession(binding) { cookies -> api.getIndex(cookies) }
+            val index = withSession(
+                binding = binding,
+                hasCache = currentHasCache(),
+                operationId = operationId,
+                phase = DiagnosticPhase.INDEX,
+            ) { cookies -> api.getIndex(cookies, operationId) }
+            recordCompatibility(index.compatibility, operationId)
+            recordQueryComplete(
+                phase = DiagnosticPhase.INDEX,
+                detail = DiagnosticDetail.INDEX_OK,
+                result = DiagnosticResult.OK,
+                operationId = operationId,
+                itemCount = index.terms.size,
+                durationMs = elapsed(startedAt),
+            )
             val next = commitMutex.withLock {
                 if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                     selectionEpoch.get() != token
                 ) {
+                    recordQueryComplete(
+                        phase = DiagnosticPhase.INDEX,
+                        detail = DiagnosticDetail.STALE_DISCARDED,
+                        result = DiagnosticResult.PARTIAL,
+                        operationId = operationId,
+                        reason = DiagnosticReason.STALE,
+                    )
                     return@withLock null
                 }
                 lastIndex = index
                 applyIndexSelectionLocked(index, preserveSelection = explicitSelection)
                 commitBarrier("index-cache")
-                withContext(ioDispatcher) {
+                val cached = withContext(ioDispatcher) {
                     cacheStore.save(binding.accountId.value, index, null, clock())
+                }
+                if (cached) {
+                    recordQueryComplete(
+                        phase = DiagnosticPhase.CACHE,
+                        detail = DiagnosticDetail.CACHE_SAVED,
+                        result = DiagnosticResult.OK,
+                        operationId = operationId,
+                        itemCount = index.terms.size,
+                    )
+                } else {
+                    recordQueryFail(
+                        phase = DiagnosticPhase.CACHE,
+                        detail = DiagnosticDetail.CACHE_SAVE_FAILED,
+                        operationId = operationId,
+                        reason = DiagnosticReason.STORAGE,
+                    )
                 }
                 val term = selectedTermLocked() ?: throw ServiceFailure(
                     TimetableConnection.PROTOCOL_ERROR,
                     "学校未返回可用学期。",
+                    detail = DiagnosticDetail.INDEX_PARSE_CURRENT,
                 )
                 val week = _state.value.selectedWeek ?: defaultWeekLocked(term)
                 term to week
             } ?: return
-            loadWeekLocked(binding, next.first, next.second, selectionEpoch.get(), businessEpoch.get())
+            loadWeekLocked(
+                binding = binding,
+                term = next.first,
+                week = next.second,
+                token = selectionEpoch.get(),
+                business = businessEpoch.get(),
+                operationId = operationId,
+            )
         } catch (failure: ServiceFailure) {
             commitMutex.withLock {
                 if (isBindingCurrent(binding) && businessEpoch.get() == business &&
                     selectionEpoch.get() == token
                 ) {
-                    publishFailure(failure)
+                    publishFailure(failure, operationId)
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             commitMutex.withLock {
                 if (isBindingCurrent(binding) && businessEpoch.get() == business &&
                     selectionEpoch.get() == token
@@ -592,8 +778,11 @@ class TimetableService(
                     publishFailure(
                         ServiceFailure(
                             TimetableConnection.PROTOCOL_ERROR,
-                            "课表查询返回了无法确认的结果；已保留上次成功缓存。",
+                            unreadableDataMessage(currentHasCache()),
+                            detail = DiagnosticDetail.RESPONSE_NON_JSON,
+                            exceptionType = Diagnostics.classify(failure),
                         ),
+                        operationId,
                     )
                 }
             }
@@ -606,7 +795,9 @@ class TimetableService(
         week: Int,
         token: Long,
         business: Long,
+        operationId: String,
     ) {
+        val startedAt = clock()
         val started = commitMutex.withLock {
             if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                 selectionEpoch.get() != token ||
@@ -629,8 +820,27 @@ class TimetableService(
             }
         }
         if (!started) return
+        recordQueryStart(DiagnosticPhase.WEEK, DiagnosticDetail.WEEK_REQUEST, operationId)
         try {
-            val result = withSession(binding) { cookies -> api.getWeek(cookies, term, week) }
+            val result = withSession(
+                binding = binding,
+                hasCache = currentHasCache(),
+                operationId = operationId,
+                phase = DiagnosticPhase.WEEK,
+            ) { cookies -> api.getWeek(cookies, term, week, operationId) }
+            recordCompatibility(result.compatibility, operationId)
+            recordQueryComplete(
+                phase = DiagnosticPhase.WEEK,
+                detail = if (result.meetings.isEmpty()) {
+                    DiagnosticDetail.WEEK_EMPTY
+                } else {
+                    DiagnosticDetail.WEEK_OK
+                },
+                result = DiagnosticResult.OK,
+                operationId = operationId,
+                itemCount = result.meetings.size,
+                durationMs = elapsed(startedAt),
+            )
             commitMutex.withLock {
                 if (!isBindingCurrent(binding) || businessEpoch.get() != business ||
                     selectionEpoch.get() != token ||
@@ -638,12 +848,35 @@ class TimetableService(
                     _state.value.selectedYear != term.year ||
                     _state.value.selectedTerm != term.term
                 ) {
+                    recordQueryComplete(
+                        phase = DiagnosticPhase.WEEK,
+                        detail = DiagnosticDetail.STALE_DISCARDED,
+                        result = DiagnosticResult.PARTIAL,
+                        operationId = operationId,
+                        reason = DiagnosticReason.STALE,
+                    )
                     return@withLock
                 }
                 val stamped = result.copy(fetchedAtEpochMillis = clock())
                 commitBarrier("week-cache")
-                withContext(ioDispatcher) {
+                val cached = withContext(ioDispatcher) {
                     cacheStore.save(binding.accountId.value, lastIndex, stamped, clock())
+                }
+                if (cached) {
+                    recordQueryComplete(
+                        phase = DiagnosticPhase.CACHE,
+                        detail = DiagnosticDetail.CACHE_SAVED,
+                        result = DiagnosticResult.OK,
+                        operationId = operationId,
+                        itemCount = stamped.meetings.size,
+                    )
+                } else {
+                    recordQueryFail(
+                        phase = DiagnosticPhase.CACHE,
+                        detail = DiagnosticDetail.CACHE_SAVE_FAILED,
+                        operationId = operationId,
+                        reason = DiagnosticReason.STORAGE,
+                    )
                 }
                 commitBarrier("week-publish")
                 publishWeekLocked(stamped)
@@ -653,12 +886,12 @@ class TimetableService(
                 if (isBindingCurrent(binding) && businessEpoch.get() == business &&
                     selectionEpoch.get() == token
                 ) {
-                    publishFailure(failure)
+                    publishFailure(failure, operationId)
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
             commitMutex.withLock {
                 if (isBindingCurrent(binding) && businessEpoch.get() == business &&
                     selectionEpoch.get() == token
@@ -666,8 +899,12 @@ class TimetableService(
                     publishFailure(
                         ServiceFailure(
                             TimetableConnection.PROTOCOL_ERROR,
-                            "课表查询返回了无法确认的结果；已保留上次成功缓存。",
+                            unreadableDataMessage(currentHasCache()),
+                            detail = DiagnosticDetail.RESPONSE_NON_JSON,
+                            exceptionType = Diagnostics.classify(failure),
+                            phase = DiagnosticPhase.WEEK,
                         ),
+                        operationId,
                     )
                 }
             }
@@ -676,6 +913,9 @@ class TimetableService(
 
     private suspend fun <T> withSession(
         binding: SchoolAccountReference,
+        hasCache: Boolean,
+        operationId: String,
+        phase: DiagnosticPhase,
         operation: suspend (List<TimetableCookie>) -> T,
     ): T {
         var authAttempted = false
@@ -702,38 +942,49 @@ class TimetableService(
                             throw ServiceFailure(
                                 TimetableConnection.SESSION_EXPIRED,
                                 "登录已失效，请重新登录。",
+                                detail = DiagnosticDetail.AUTH_REQUIRED,
+                                phase = phase,
                             )
                         }
                         // 旧会话明确失效：清掉后最多按当前凭据认证一次。
                         withContext(ioDispatcher) { sessionStore.clear() }
                     } else {
-                        throw mapApiFailure(failure)
+                        throw mapApiFailure(failure, hasCache, phase)
                     }
                 }
             } else if (retriedAfterAuth) {
                 throw ServiceFailure(
                     TimetableConnection.SESSION_EXPIRED,
                     "登录已失效，请重新登录。",
+                    detail = DiagnosticDetail.AUTH_REQUIRED,
+                    phase = phase,
                 )
             }
             if (authAttempted) {
                 throw ServiceFailure(
                     TimetableConnection.SESSION_EXPIRED,
                     "登录已失效，请重新登录。",
+                    detail = DiagnosticDetail.AUTH_REQUIRED,
+                    phase = phase,
                 )
             }
-            authenticate(binding)
+            authenticate(binding, operationId, phase)
             authAttempted = true
             retriedAfterAuth = true
         }
     }
 
-    private suspend fun authenticate(binding: SchoolAccountReference) {
+    private suspend fun authenticate(
+        binding: SchoolAccountReference,
+        operationId: String,
+        phase: DiagnosticPhase,
+    ) {
         authMutex.withLock {
             if (!isBindingCurrent(binding)) {
                 throw ServiceFailure(
                     TimetableConnection.NOT_CONFIGURED,
                     "学校账号已变化，请重新打开课表。",
+                    phase = phase,
                 )
             }
             val existing = withContext(ioDispatcher) {
@@ -744,39 +995,116 @@ class TimetableService(
             }
             if (existing != null) return
             val business = businessEpoch.get()
-            val result = authenticator.authenticate(
-                expectedAccountId = binding.accountId,
-                expectedCredentialGeneration = binding.credentialGeneration.value,
+            val started = clock()
+            Diagnostics.record(
+                module = DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.AUTH_START,
+                result = DiagnosticResult.PENDING,
+                phase = DiagnosticPhase.AUTH,
+                operationId = operationId,
             )
+            val result = try {
+                authenticator.authenticate(
+                    expectedAccountId = binding.accountId,
+                    expectedCredentialGeneration = binding.credentialGeneration.value,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                Diagnostics.record(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                phase = DiagnosticPhase.AUTH,
+                    result = DiagnosticResult.CANCELLED,
+                    durationMs = (clock() - started).coerceAtLeast(0),
+                    operationId = operationId,
+                )
+                throw cancelled
+            } catch (failure: Exception) {
+                Diagnostics.recordException(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                phase = DiagnosticPhase.AUTH,
+                    result = DiagnosticResult.FAIL,
+                    reason = DiagnosticReason.UNKNOWN,
+                    failure = failure,
+                    durationMs = (clock() - started).coerceAtLeast(0),
+                    operationId = operationId,
+                )
+                throw failure
+            }
+            val duration = (clock() - started).coerceAtLeast(0)
+            when (result) {
+                is UpcAuthResult.Failure -> {
+                    val reason = diagnosticAuthReason(result.reason)
+                    Diagnostics.record(
+                        module = DiagnosticModule.TIMETABLE,
+                        action = DiagnosticAction.AUTH_COMPLETE,
+                phase = DiagnosticPhase.AUTH,
+                        result = DiagnosticResult.FAIL,
+                        reason = reason,
+                        durationMs = duration,
+                        operationId = operationId,
+                    )
+                    if (result.reason == UpcAuthFailure.INTERACTION_REQUIRED) {
+                        Diagnostics.record(
+                            module = DiagnosticModule.TIMETABLE,
+                            action = DiagnosticAction.AUTH_INTERACTION,
+                            result = DiagnosticResult.BLOCKED,
+                            reason = DiagnosticReason.INTERACTION,
+                            phase = DiagnosticPhase.AUTH,
+                            durationMs = duration,
+                            operationId = operationId,
+                        )
+                    }
+                }
+                is UpcAuthResult.Success -> Diagnostics.record(
+                    module = DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_COMPLETE,
+                phase = DiagnosticPhase.AUTH,
+                    result = DiagnosticResult.OK,
+                    durationMs = duration,
+                    operationId = operationId,
+                )
+            }
             when (result) {
                 is UpcAuthResult.Failure -> throw when (result.reason) {
                     UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
                         TimetableConnection.AUTH_FAILED,
                         "账号或密码不正确，请重新保存。",
+                        detail = DiagnosticDetail.AUTH_INVALID,
+                        phase = phase,
                     )
                     UpcAuthFailure.INTERACTION_REQUIRED -> ServiceFailure(
                         TimetableConnection.INTERACTION_REQUIRED,
                         "需要验证码或二次验证，请打开学校网页登录。",
-                        result.interactionUrl ?: UpcTimetableAuthEndpoints.LOGIN_URL,
+                        result.interactionUrl
+                            ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
+                            ?: UpcTimetableAuthEndpoints.LOGIN_URL,
+                        detail = DiagnosticDetail.AUTH_INTERACTION,
+                        phase = phase,
                     )
                     UpcAuthFailure.NETWORK_UNAVAILABLE, UpcAuthFailure.TLS_ERROR ->
                         ServiceFailure(
                             TimetableConnection.NETWORK_UNAVAILABLE,
                             "网络不可用，请稍后重试。",
+                            phase = phase,
                         )
                     UpcAuthFailure.ACCOUNT_UNAVAILABLE -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
                         "账号不可用，请重新保存。",
+                        phase = phase,
                     )
                     UpcAuthFailure.ACCOUNT_CHANGED -> ServiceFailure(
                         TimetableConnection.NOT_CONFIGURED,
                         "账号已更换，请重新登录。",
+                        phase = phase,
                     )
                     UpcAuthFailure.ACCESS_DENIED, UpcAuthFailure.UPSTREAM_ERROR,
                     UpcAuthFailure.PROTOCOL_ERROR,
                     -> ServiceFailure(
                         TimetableConnection.PROTOCOL_ERROR,
                         "登录没有完成，请稍后重试。",
+                        detail = DiagnosticDetail.AUTH_REQUIRED,
+                        phase = phase,
                     )
                 }
                 is UpcAuthResult.Success -> {
@@ -785,6 +1113,8 @@ class TimetableService(
                             throw ServiceFailure(
                                 TimetableConnection.NOT_CONFIGURED,
                                 "账号已更换，请重新登录。",
+                                detail = DiagnosticDetail.AUTH_INVALID,
+                                phase = phase,
                             )
                         }
                         val cookies = result.cookies.map {
@@ -810,6 +1140,8 @@ class TimetableService(
                             throw ServiceFailure(
                                 TimetableConnection.PROTOCOL_ERROR,
                                 "登录成功，但本机保存失败；请重试。",
+                                detail = DiagnosticDetail.COOKIE_SAVE_FAILED,
+                                phase = DiagnosticPhase.SESSION,
                             )
                         }
                     }
@@ -818,25 +1150,261 @@ class TimetableService(
         }
     }
 
-    private fun mapApiFailure(failure: TimetableApiException): ServiceFailure = when {
+    private fun diagnosticAuthReason(reason: UpcAuthFailure): DiagnosticReason = when (reason) {
+        UpcAuthFailure.INVALID_CREDENTIALS,
+        UpcAuthFailure.ACCESS_DENIED,
+        -> DiagnosticReason.AUTH
+        UpcAuthFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
+        UpcAuthFailure.NETWORK_UNAVAILABLE -> DiagnosticReason.NETWORK
+        UpcAuthFailure.TLS_ERROR -> DiagnosticReason.TLS
+        UpcAuthFailure.ACCOUNT_UNAVAILABLE,
+        UpcAuthFailure.ACCOUNT_CHANGED,
+        -> DiagnosticReason.ACCOUNT
+        UpcAuthFailure.UPSTREAM_ERROR -> DiagnosticReason.UNKNOWN
+        UpcAuthFailure.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
+    }
+
+    private fun mapApiFailure(
+        failure: TimetableApiException,
+        hasCache: Boolean,
+        phase: DiagnosticPhase,
+    ): ServiceFailure = when {
         failure.code == TimetableErrorCode.AUTH_REQUIRED -> ServiceFailure(
             TimetableConnection.SESSION_EXPIRED,
             "登录已失效，请重新登录。",
+            detail = failure.detail ?: DiagnosticDetail.AUTH_REQUIRED,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
+            phase = phase,
+        )
+        failure.code == TimetableErrorCode.LOGIN_PAGE -> ServiceFailure(
+            TimetableConnection.SESSION_EXPIRED,
+            "登录状态已失效，请重新网页登录。",
+            detail = DiagnosticDetail.RESPONSE_LOGIN_PAGE,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
+            phase = phase,
+        )
+        failure.exceptionType == DiagnosticExceptionType.TLS -> ServiceFailure(
+            TimetableConnection.NETWORK_UNAVAILABLE,
+            "无法安全连接学校服务，请稍后重试。",
+            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_TLS,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            phase = phase,
+        )
+        failure.exceptionType == DiagnosticExceptionType.TIMEOUT -> ServiceFailure(
+            TimetableConnection.NETWORK_UNAVAILABLE,
+            "连接学校服务超时，请稍后重试。",
+            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_TIMEOUT,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            phase = phase,
         )
         failure.network -> ServiceFailure(
             TimetableConnection.NETWORK_UNAVAILABLE,
             "网络不可用，请稍后重试。",
+            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_NETWORK,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            phase = phase,
         )
         failure.code == TimetableErrorCode.SCHEMA_CHANGED ||
             failure.code == TimetableErrorCode.RESPONSE_TOO_LARGE -> ServiceFailure(
             TimetableConnection.PROTOCOL_ERROR,
-            "学校返回了无法识别的数据；已保留上次缓存。",
+            responseMessage(failure, hasCache),
+            detail = failure.detail,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
+            phase = phase,
         )
         else -> ServiceFailure(
             TimetableConnection.PROTOCOL_ERROR,
-            "学校服务暂时不可用；已保留上次缓存。",
+            upstreamMessage(hasCache),
+            detail = failure.detail,
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
+            phase = phase,
         )
     }
+
+    private fun responseMessage(failure: TimetableApiException, hasCache: Boolean): String {
+        val cache = if (hasCache) {
+            "已保留上次缓存。"
+        } else {
+            "暂无可用的旧缓存。"
+        }
+        return when (failure.detail) {
+            DiagnosticDetail.RESPONSE_HTML -> "课表返回了网页内容；$cache"
+            DiagnosticDetail.RESPONSE_TOO_LARGE -> "课表响应过大；$cache"
+            else -> "课表响应格式异常；$cache"
+        }
+    }
+
+    private fun unreadableDataMessage(hasCache: Boolean): String =
+        if (hasCache) {
+            "课表响应格式异常；已保留上次缓存。"
+        } else {
+            "课表响应格式异常；暂无可用的旧缓存。"
+        }
+
+    private fun upstreamMessage(hasCache: Boolean): String =
+        if (hasCache) {
+            "学校服务暂时不可用；已保留上次缓存。"
+        } else {
+            "学校服务暂时不可用；暂无可用的旧缓存。"
+        }
+
+    private fun currentHasCache(): Boolean {
+        val current = _state.value
+        return current.weekFetchedAtEpochMillis != null ||
+            current.weekState == TimetableWeekState.CACHED ||
+            current.weekState == TimetableWeekState.READY ||
+            current.weekState == TimetableWeekState.EMPTY
+    }
+
+    // ── diagnostics ───────────────────────────────────────────────────────
+
+    private fun recordQueryStart(
+        phase: DiagnosticPhase,
+        detail: DiagnosticDetail?,
+        operationId: String,
+    ) {
+        Diagnostics.record(
+            module = DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.QUERY_START,
+            result = DiagnosticResult.PENDING,
+            phase = phase,
+            detail = detail,
+            operationId = operationId,
+        )
+    }
+
+    private fun recordQueryComplete(
+        phase: DiagnosticPhase,
+        detail: DiagnosticDetail,
+        result: DiagnosticResult,
+        operationId: String,
+        reason: DiagnosticReason? = null,
+        itemCount: Int? = null,
+        durationMs: Long? = null,
+    ) {
+        Diagnostics.record(
+            module = DiagnosticModule.TIMETABLE,
+            action = if (result == DiagnosticResult.OK) {
+                DiagnosticAction.QUERY_COMPLETE
+            } else {
+                DiagnosticAction.QUERY_CHANGED
+            },
+            result = result,
+            reason = reason,
+            phase = phase,
+            detail = detail,
+            itemCount = itemCount,
+            durationMs = durationMs,
+            operationId = operationId,
+        )
+    }
+
+    private fun recordQueryFail(
+        phase: DiagnosticPhase,
+        detail: DiagnosticDetail,
+        operationId: String,
+        reason: DiagnosticReason,
+        httpStatus: Int? = null,
+        responseBytes: Int? = null,
+        exceptionType: DiagnosticExceptionType? = null,
+        mediaType: DiagnosticMediaType? = null,
+        bodyType: DiagnosticBodyType? = null,
+        durationMs: Long? = null,
+    ) {
+        Diagnostics.record(
+            module = DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.QUERY_FAIL,
+            result = DiagnosticResult.FAIL,
+            reason = reason,
+            phase = phase,
+            detail = detail,
+            httpStatus = httpStatus,
+            responseBytes = responseBytes,
+            exceptionType = exceptionType,
+            mediaType = mediaType,
+            bodyType = bodyType,
+            durationMs = durationMs,
+            operationId = operationId,
+        )
+    }
+
+    private fun recordQueryException(
+        phase: DiagnosticPhase,
+        detail: DiagnosticDetail,
+        operationId: String,
+        failure: Throwable,
+        durationMs: Long? = null,
+    ) {
+        Diagnostics.recordException(
+            module = DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.QUERY_FAIL,
+            result = DiagnosticResult.FAIL,
+            reason = DiagnosticReason.UNKNOWN,
+            failure = failure,
+            durationMs = durationMs,
+            operationId = operationId,
+            phase = phase,
+            detail = detail,
+        )
+    }
+
+    private fun recordCompatibility(
+        notes: List<TimetableCompatibility>,
+        operationId: String,
+    ) {
+        notes.forEach { note ->
+            Diagnostics.record(
+                module = DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.QUERY_CHANGED,
+                result = DiagnosticResult.OK,
+                reason = DiagnosticReason.SCHEMA,
+                phase = DiagnosticPhase.PARSE,
+                detail = when (note) {
+                    TimetableCompatibility.WEEKDAY_IGNORED ->
+                        DiagnosticDetail.COMPAT_WEEKDAY_IGNORED
+                    TimetableCompatibility.ORDER_IGNORED ->
+                        DiagnosticDetail.COMPAT_ORDER_IGNORED
+                    TimetableCompatibility.TOTAL_LENGTH_IGNORED ->
+                        DiagnosticDetail.COMPAT_TOTAL_LENGTH_IGNORED
+                    TimetableCompatibility.CELL_START_IGNORED ->
+                        DiagnosticDetail.COMPAT_CELL_START_IGNORED
+                    TimetableCompatibility.INTEGRAL_FLOAT_ACCEPTED ->
+                        DiagnosticDetail.COMPAT_INTEGRAL_FLOAT
+                    TimetableCompatibility.DUPLICATE_PERIODS_DEDUPED ->
+                        DiagnosticDetail.COMPAT_DUPLICATE_PERIODS
+                    TimetableCompatibility.INDEX_TERM_SKIPPED ->
+                        DiagnosticDetail.COMPAT_INDEX_TERM_SKIPPED
+                    TimetableCompatibility.INDEX_CURRENT_IGNORED ->
+                        DiagnosticDetail.COMPAT_INDEX_CURRENT_IGNORED
+                },
+                operationId = operationId,
+            )
+        }
+    }
+
+    private fun elapsed(started: Long): Long = (clock() - started).coerceAtLeast(0)
 
     // ── state helpers ─────────────────────────────────────────────────────
 
@@ -953,9 +1521,59 @@ class TimetableService(
         }.getOrDefault(emptyMap())
     }
 
-    private fun publishFailure(failure: ServiceFailure) {
+    private fun failureReason(failure: ServiceFailure): DiagnosticReason = when {
+        failure.connection == TimetableConnection.AUTH_FAILED ||
+            failure.connection == TimetableConnection.SESSION_EXPIRED ||
+            failure.connection == TimetableConnection.INTERACTION_REQUIRED ->
+            DiagnosticReason.AUTH
+        failure.exceptionType == DiagnosticExceptionType.TLS -> DiagnosticReason.TLS
+        failure.exceptionType == DiagnosticExceptionType.TIMEOUT -> DiagnosticReason.NETWORK
+        failure.connection == TimetableConnection.NETWORK_UNAVAILABLE ->
+            DiagnosticReason.NETWORK
+        failure.detail == DiagnosticDetail.RESPONSE_LOGIN_PAGE -> DiagnosticReason.AUTH
+        failure.detail == DiagnosticDetail.RESPONSE_MIME_MISMATCH -> DiagnosticReason.MIME
+        failure.detail == DiagnosticDetail.RESPONSE_BUSINESS -> DiagnosticReason.HTTP
+        failure.detail == DiagnosticDetail.RESPONSE_NON_JSON ||
+            failure.detail == DiagnosticDetail.RESPONSE_HTML ||
+            failure.detail == DiagnosticDetail.RESPONSE_MALFORMED_JSON ||
+            failure.detail == DiagnosticDetail.RESPONSE_EMPTY ||
+            failure.detail == DiagnosticDetail.INDEX_PARSE_TERM_INFO ||
+            failure.detail == DiagnosticDetail.INDEX_PARSE_TERM_DATE ||
+            failure.detail == DiagnosticDetail.INDEX_PARSE_TERM_WEEKS ||
+            failure.detail == DiagnosticDetail.INDEX_PARSE_CURRENT ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_CLASSES ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_DATES ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_DATE_ALIGN ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_CELL_KEY ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_LESS_ARR ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_NAME ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_WEEK_LABEL ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_WEEKDAY ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_ORDER ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_TOTAL_LENGTH ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_PERIOD_RANGE ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_ENTRY_TYPE ||
+            failure.detail == DiagnosticDetail.WEEK_PARSE_DAY_TYPE ->
+            DiagnosticReason.SCHEMA
+        failure.httpStatus != null -> DiagnosticReason.HTTP
+        failure.connection == TimetableConnection.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
+        else -> DiagnosticReason.UNKNOWN
+    }
+
+    private fun publishFailure(failure: ServiceFailure, operationId: String) {
         val current = _state.value
         val hasData = current.weekFetchedAtEpochMillis != null
+        recordQueryFail(
+            phase = failure.phase,
+            detail = failure.detail ?: DiagnosticDetail.PUBLISH_FAIL,
+            operationId = operationId,
+            reason = failureReason(failure),
+            httpStatus = failure.httpStatus,
+            responseBytes = failure.responseBytes,
+            exceptionType = failure.exceptionType,
+            mediaType = failure.mediaType,
+            bodyType = failure.bodyType,
+        )
         _state.update {
             it.copy(
                 connection = failure.connection,

@@ -20,6 +20,8 @@ import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
+import com.upcpocket.app.diagnostics.DiagnosticStore
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.library.ChaoxingAccountAuthResult
@@ -44,6 +46,8 @@ import com.upcpocket.app.timetable.TimetableCapabilities
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.update.UpdateController
+import com.upcpocket.app.update.UpdateControllerFactory
 import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
 import com.upcpocket.app.upcauth.UpcChaoxingAuthResult
 import com.upcpocket.app.upcauth.UpcChaoxingAuthenticator
@@ -55,6 +59,9 @@ import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
 import com.upcpocket.app.widget.WidgetWork
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * 宿主手动装配容器。
@@ -80,7 +87,31 @@ object AppGraph {
         appContext = context.applicationContext
     }
 
+    private val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * 应用内更新只由宿主拥有：网络、清单验签、下载和系统安装都不经过校园插件。
+     * 构造本身不联网；前台每天最多检查一次元数据，手动检查/下载由关于页触发。
+     */
+    val updates: UpdateController by lazy {
+        UpdateControllerFactory.create(appContext, updateScope)
+    }
+
+    fun onAppForeground() {
+        updates.onForeground()
+    }
+
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }
+
+    /**
+     * 本机诊断存储：只在私有 noBackup 目录滚动保存固定码事件，由用户在“关于”
+     * 主动导出。它不参与业务事务，任何失败都必须被吞掉。
+     */
+    val diagnostics: DiagnosticStore by lazy { DiagnosticStore(appContext) }
+
+    fun installDiagnostics() {
+        Diagnostics.install(diagnostics)
+    }
 
     /**
      * 统一学校账号是共享核心能力，不属于某个业务插件。
@@ -101,6 +132,9 @@ object AppGraph {
     private suspend fun invalidateSchoolAccountData(
         request: AccountInvalidationRequest,
     ): AccountInvalidationResult {
+        // 诊断事件不含 PII，但账号前后操作不应串联；先递增清理代次，
+        // 旧队列在写入前被丢弃。清理失败不能阻塞退出。
+        runCatching { diagnostics.clearForAccountChange() }
         var failure: AccountInvalidationFailure? = null
         val library = activePlugins.capability(LibraryCapabilities.seat)
         if (library != null) {

@@ -50,6 +50,7 @@ data class TimetableIndex(
     val currentWeek: Int? = null,
     val currentWeekdays: List<@Serializable(with = LocalDateIsoSerializer::class) LocalDate>? = null,
     val currentWeekday: Int? = null,
+    val compatibility: List<TimetableCompatibility> = emptyList(),
 ) {
     fun find(year: String, term: String): TimetableTerm? =
         terms.firstOrNull { it.year == year && it.term == term }
@@ -124,6 +125,23 @@ data class TimetableMeeting(
     fun sourcePeriodsLabel(): String = sourcePeriods.joinToString("、") { "第${it}节" }
 }
 
+/**
+ * 已接受的源数据兼容差异。只记录规则，不保存课程字段值。
+ *
+ * 这些差异都不改变课程归属：日期取自源 `weekdays`，节次取自 `lessArr`。
+ */
+@Serializable
+enum class TimetableCompatibility {
+    WEEKDAY_IGNORED,
+    ORDER_IGNORED,
+    TOTAL_LENGTH_IGNORED,
+    CELL_START_IGNORED,
+    INTEGRAL_FLOAT_ACCEPTED,
+    DUPLICATE_PERIODS_DEDUPED,
+    INDEX_TERM_SKIPPED,
+    INDEX_CURRENT_IGNORED,
+}
+
 @Serializable
 data class TimetableWeek(
     val term: TimetableTerm,
@@ -132,6 +150,7 @@ data class TimetableWeek(
     val meetings: List<TimetableMeeting>,
     val fetchedAtEpochMillis: Long,
     val complete: Boolean = true,
+    val compatibility: List<TimetableCompatibility> = emptyList(),
 ) {
     init {
         require(week in 1..term.totalWeeks) { "教学周超出学期范围" }

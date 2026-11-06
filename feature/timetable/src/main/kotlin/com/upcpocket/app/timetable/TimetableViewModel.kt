@@ -39,11 +39,14 @@ class TimetableViewModel(
         viewModelScope.launch { service.cancelInteractiveLogin() }
     }
 
-    fun adoptInteractiveCookies(cookieHeader: String, onAccepted: (Boolean) -> Unit) {
+    fun adoptInteractiveCookies(
+        cookieHeader: String,
+        operationId: String,
+        onAccepted: (Boolean) -> Unit,
+    ) {
         operation?.cancel()
         operation = viewModelScope.launch {
-            val accepted = service.adoptInteractiveCookies(cookieHeader)
-            if (accepted) service.refresh()
+            val accepted = service.adoptInteractiveCookies(cookieHeader, operationId)
             onAccepted(accepted)
         }
     }

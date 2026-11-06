@@ -26,6 +26,8 @@ class UpcPocketApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        // 诊断 sink 在所有 feature 之前安装；release 也启用，不依赖 BuildConfig.DEBUG。
+        AppGraph.installDiagnostics()
         AppGraph.startPlugins()
         AppGraph.notifyPluginsCreated()
 
@@ -38,6 +40,13 @@ class UpcPocketApp : Application() {
         appScope.launch {
             AppGraph.account.restore()
             AppGraph.restorePlugins()
+        }
+
+        // 诊断开关是用户偏好；DataStore 读取完成前使用默认开启，之后立即同步。
+        appScope.launch {
+            AppGraph.uiPrefsStore.flow.collect { prefs ->
+                AppGraph.diagnostics.setEnabled(prefs.diagnosticsEnabled)
+            }
         }
 
         // 账号状态变化时只迁移本机余额缓存并重绘组件；清理中/LOADING 会让

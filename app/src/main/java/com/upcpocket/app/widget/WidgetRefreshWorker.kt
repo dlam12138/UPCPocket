@@ -5,6 +5,11 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.platform.RefreshInvalidatedException
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
@@ -28,8 +33,14 @@ class WidgetRefreshWorker(
             ?: return Result.failure()
         val expectedBindingToken = inputData.getString(WidgetWork.KEY_BINDING_TOKEN)
         val state = WidgetStateStore(applicationContext)
+        val started = System.currentTimeMillis()
+        Diagnostics.record(
+            module = kind.diagnosticModule(),
+            action = DiagnosticAction.WORKER_START,
+            result = DiagnosticResult.PENDING,
+        )
         try {
-            refresh(kind, state, expectedBindingToken)
+            refresh(kind, state, expectedBindingToken, started)
         } finally {
             state.clearRefreshing(kind)
             withContext(NonCancellable) {
@@ -43,6 +54,7 @@ class WidgetRefreshWorker(
         kind: WidgetKind,
         state: WidgetStateStore,
         expectedBindingToken: String?,
+        started: Long,
     ) {
         try {
             var pluginAvailable = true
@@ -52,9 +64,7 @@ class WidgetRefreshWorker(
                         // 冷启动时点击发生在账号 restore 之前，bindingToken 可能还是 null。
                         // 先有界等待恢复；null token 只表示“点击时尚未恢复”，服务内部仍会
                         // 用账号代际校验阻止跨账号发布。
-                        withTimeout(ACCOUNT_RESTORE_BUDGET_MS) {
-                            AppGraph.account.restore()
-                        }
+                        restoreAccount()
                         val service = AppGraph.cardServiceOrNull
                         if (service == null) {
                             pluginAvailable = false
@@ -82,9 +92,7 @@ class WidgetRefreshWorker(
                         } else {
                             // 冷启动时 Application.onCreate 只异步恢复账号；这里必须有界
                             // 等到 restore 完成，否则会误判“没有目标”。restore 本身是幂等的。
-                            withTimeout(ACCOUNT_RESTORE_BUDGET_MS) {
-                                AppGraph.account.restore()
-                            }
+                            restoreAccount()
                             service.open()
                             service.refreshToday()
                             val snapshot = service.readWidgetSnapshot()
@@ -99,20 +107,114 @@ class WidgetRefreshWorker(
             }
             if (!pluginAvailable) {
                 state.setError(kind, "功能未启用")
+                Diagnostics.record(
+                    module = kind.diagnosticModule(),
+                    action = DiagnosticAction.WORKER_SKIP,
+                    result = DiagnosticResult.SKIPPED,
+                    reason = DiagnosticReason.NOT_CONFIGURED,
+                    durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+                )
                 return
             }
             // 没有目标或目标已被清除：保持“待设置”，不编造失败。
             state.setError(kind, null)
+            Diagnostics.record(
+                module = kind.diagnosticModule(),
+                action = DiagnosticAction.WORKER_COMPLETE,
+                result = DiagnosticResult.OK,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
         } catch (_: RefreshInvalidatedException) {
             // 用户清除/切换了目标；静默丢弃，不能复活已删除的数据。
             state.setError(kind, null)
+            Diagnostics.record(
+                module = kind.diagnosticModule(),
+                action = DiagnosticAction.WORKER_SKIP,
+                result = DiagnosticResult.SKIPPED,
+                reason = DiagnosticReason.STALE,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
         } catch (_: TimeoutCancellationException) {
             state.setError(kind, "刷新超时，请稍后重试")
+            Diagnostics.record(
+                module = kind.diagnosticModule(),
+                action = DiagnosticAction.WORKER_COMPLETE,
+                result = DiagnosticResult.TIMEOUT,
+                reason = DiagnosticReason.NETWORK,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
         } catch (cancelled: CancellationException) {
+            Diagnostics.record(
+                module = kind.diagnosticModule(),
+                action = DiagnosticAction.WORKER_COMPLETE,
+                result = DiagnosticResult.CANCELLED,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
             throw cancelled
         } catch (failure: Exception) {
             state.setError(kind, friendly(failure))
+            Diagnostics.recordException(
+                module = kind.diagnosticModule(),
+                action = DiagnosticAction.WORKER_COMPLETE,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.UNKNOWN,
+                failure = failure,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
         }
+    }
+
+    private suspend fun restoreAccount() {
+        val started = System.currentTimeMillis()
+        Diagnostics.record(
+            module = DiagnosticModule.WIDGET,
+            action = DiagnosticAction.ACCOUNT_RESTORE_START,
+            result = DiagnosticResult.PENDING,
+        )
+        try {
+            withTimeout(ACCOUNT_RESTORE_BUDGET_MS) {
+                AppGraph.account.restore()
+            }
+            Diagnostics.record(
+                module = DiagnosticModule.WIDGET,
+                action = DiagnosticAction.ACCOUNT_RESTORE_COMPLETE,
+                result = DiagnosticResult.OK,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
+        } catch (timeout: TimeoutCancellationException) {
+            Diagnostics.record(
+                module = DiagnosticModule.WIDGET,
+                action = DiagnosticAction.ACCOUNT_RESTORE_COMPLETE,
+                result = DiagnosticResult.TIMEOUT,
+                reason = DiagnosticReason.ACCOUNT,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
+            throw timeout
+        } catch (cancelled: CancellationException) {
+            Diagnostics.record(
+                module = DiagnosticModule.WIDGET,
+                action = DiagnosticAction.ACCOUNT_RESTORE_COMPLETE,
+                result = DiagnosticResult.CANCELLED,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
+            throw cancelled
+        } catch (failure: Exception) {
+            Diagnostics.recordException(
+                module = DiagnosticModule.WIDGET,
+                action = DiagnosticAction.ACCOUNT_RESTORE_COMPLETE,
+                result = DiagnosticResult.FAIL,
+                reason = DiagnosticReason.UNKNOWN,
+                failure = failure,
+                durationMs = (System.currentTimeMillis() - started).coerceAtLeast(0),
+            )
+            throw failure
+        }
+    }
+
+    private fun WidgetKind.diagnosticModule(): DiagnosticModule = when (this) {
+        WidgetKind.CARD -> DiagnosticModule.CARD
+        WidgetKind.POWER -> DiagnosticModule.POWER
+        WidgetKind.TIMETABLE -> DiagnosticModule.TIMETABLE
     }
 
     private fun friendly(failure: Throwable): String {

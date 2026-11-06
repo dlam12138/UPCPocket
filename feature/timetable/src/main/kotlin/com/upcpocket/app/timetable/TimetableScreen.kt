@@ -53,6 +53,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -110,7 +111,7 @@ internal fun TimetableScreen(
     var loginVisible by remember { mutableStateOf(false) }
     var loginUrl by remember { mutableStateOf<String?>(null) }
     var loginHint by remember { mutableStateOf<String?>(null) }
-    var loginEpoch by remember { mutableStateOf(0L) }
+    var loginEpoch by remember { mutableLongStateOf(0L) }
     var infoVisible by remember { mutableStateOf(false) }
     val visibleDetail = detail?.takeIf { selected ->
         state.meetings.any { it.instanceId == selected.instanceId }
@@ -249,14 +250,15 @@ internal fun TimetableScreen(
         TimetableLoginDialog(
             url = loginUrl!!,
             hint = loginHint,
-            onCookies = { header ->
-                viewModel.adoptInteractiveCookies(header) { accepted ->
+            onCookies = { header, operationId, result ->
+                viewModel.adoptInteractiveCookies(header, operationId) { accepted ->
                     if (accepted) {
                         loginVisible = false
                         loginHint = null
                     } else {
-                        loginHint = "完成学校登录后点“完成”。"
+                        loginHint = "还没有检测到有效登录，请完成登录后重试。"
                     }
+                    result(accepted)
                 }
             },
             onClose = {
@@ -598,7 +600,7 @@ internal fun WeekPanel(
                 TimetableWeekState.NOT_QUERIED ->
                     EmptyWeekHint("这一周还没有查询。")
                 TimetableWeekState.ERROR ->
-                    EmptyWeekHint("查询失败，且没有缓存。")
+                    EmptyWeekHint("查询失败，暂无缓存。")
                 TimetableWeekState.LOADING -> if (state.meetings.isEmpty()) {
                     Box(
                         Modifier

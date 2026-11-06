@@ -59,7 +59,14 @@ import com.upcpocket.app.library.ChaoxingCleanupResult
 import com.upcpocket.app.library.ChaoxingCleanupState
 import com.upcpocket.app.library.ChaoxingLoginResult
 import com.upcpocket.app.library.ChaoxingService
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticDestination
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.net.URI
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -91,6 +98,9 @@ fun ChaoxingLoginScreen(
     var attempted by remember { mutableStateOf<String?>(null) }
     var entry by remember(account.status, account.generation) {
         mutableStateOf(service.beginWebLogin())
+    }
+    val operationId = remember(entry?.entryId, webViewGeneration) {
+        Diagnostics.newOperationId()
     }
 
     if (account.blocksPersonalSessions ||
@@ -283,6 +293,8 @@ fun ChaoxingLoginScreen(
                                     CookieManager.getInstance().setAcceptCookie(true)
                                     CookieManager.getInstance()
                                         .setAcceptThirdPartyCookies(this, true)
+                                    var pageStartedAt = 0L
+                                    var viewportRecorded = false
                                     webViewClient = object : WebViewClient() {
                                         override fun onPageStarted(
                                             view: WebView,
@@ -290,6 +302,7 @@ fun ChaoxingLoginScreen(
                                             favicon: Bitmap?,
                                         ) {
                                             if (entry?.entryId != pageEntryId) return
+                                            pageStartedAt = System.currentTimeMillis()
                                             pageLoading = true
                                             showSlowHint = false
                                             if (!busy) error = null
@@ -300,11 +313,44 @@ fun ChaoxingLoginScreen(
                                             url: String,
                                         ) {
                                             if (entry?.entryId != pageEntryId) return
-                                            if (url != "about:blank") settlePageLoading(url)
+                                            if (url != "about:blank") {
+                                                if (!viewportRecorded) {
+                                                    viewportRecorded = true
+                                                    val density = resources.displayMetrics.density
+                                                        .coerceAtLeast(1f)
+                                                    Diagnostics.record(
+                                                        module = DiagnosticModule.LIBRARY,
+                                                        action = DiagnosticAction.WEBVIEW_VIEWPORT,
+                                                        result = DiagnosticResult.OK,
+                                                        reason = DiagnosticReason.VIEWPORT,
+                                                        widthDp = (view.width / density)
+                                                            .roundToInt(),
+                                                        heightDp = (view.height / density)
+                                                            .roundToInt(),
+                                                        operationId = operationId,
+                                                    )
+                                                }
+                                                settlePageLoading(url)
+                                            }
                                         }
 
                                         override fun onPageFinished(view: WebView, url: String) {
                                             if (entry?.entryId != pageEntryId) return
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.LIBRARY,
+                                                action = DiagnosticAction.WEBVIEW_FINISH,
+                                                result = if (error == null) {
+                                                    DiagnosticResult.OK
+                                                } else {
+                                                    DiagnosticResult.FAIL
+                                                },
+                                                destination = chaoxingLoginDestination(url),
+                                                durationMs = pageStartedAt.takeIf { it > 0 }?.let {
+                                                    (System.currentTimeMillis() - it)
+                                                        .coerceAtLeast(0)
+                                                },
+                                                operationId = operationId,
+                                            )
                                             // SSO 成功后会落在 i.chaoxing.com/base；此时还没有
                                             // office 应用的 oa_uid/oa_deptid。回到座位入口一次，
                                             // 让官方前端建立应用 Cookie，再走本人核验与发布门闩。
@@ -332,11 +378,28 @@ fun ChaoxingLoginScreen(
                                             if (url == "about:blank" || !request.isForMainFrame) {
                                                 return false
                                             }
+                                            val destination = chaoxingLoginDestination(url)
                                             if (!isAllowedChaoxingLoginUrl(url)) {
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.LIBRARY,
+                                                    action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                    result = DiagnosticResult.BLOCKED,
+                                                    reason = DiagnosticReason.POLICY,
+                                                    destination = destination,
+                                                    operationId = operationId,
+                                                )
                                                 error = "登录页跳转到了未允许的地址（${loginHost(url)}），已停止加载。"
                                                 pageLoading = false
                                                 return true
                                             }
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.LIBRARY,
+                                                action = DiagnosticAction.WEBVIEW_NAVIGATION,
+                                                result = DiagnosticResult.OK,
+                                                reason = DiagnosticReason.MAIN_FRAME,
+                                                destination = destination,
+                                                operationId = operationId,
+                                            )
                                             return false
                                         }
 
@@ -345,13 +408,17 @@ fun ChaoxingLoginScreen(
                                             handler: SslErrorHandler,
                                             sslError: SslError?,
                                         ) {
-                                            if (entry?.entryId != pageEntryId) {
-                                                handler.cancel()
-                                                return
-                                            }
                                             handler.cancel()
+                                            if (entry?.entryId != pageEntryId) return
                                             error = "登录页证书校验失败，已停止。"
                                             pageLoading = false
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.LIBRARY,
+                                                action = DiagnosticAction.WEBVIEW_SSL_REJECT,
+                                                result = DiagnosticResult.FAIL,
+                                                reason = DiagnosticReason.TLS,
+                                                operationId = operationId,
+                                            )
                                         }
 
                                         override fun onReceivedHttpError(
@@ -365,6 +432,17 @@ fun ChaoxingLoginScreen(
                                             ) {
                                                 error = "登录页暂时不可用，请稍后重试。"
                                                 pageLoading = false
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.LIBRARY,
+                                                    action = DiagnosticAction.WEBVIEW_HTTP_ERROR,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.HTTP,
+                                                    destination = chaoxingLoginDestination(
+                                                        request.url.toString(),
+                                                    ),
+                                                    httpStatus = errorResponse.statusCode,
+                                                    operationId = operationId,
+                                                )
                                             }
                                         }
 
@@ -379,6 +457,16 @@ fun ChaoxingLoginScreen(
                                             ) {
                                                 pageLoading = false
                                                 error = "登录页加载失败；请检查网络后重试。"
+                                                Diagnostics.record(
+                                                    module = DiagnosticModule.LIBRARY,
+                                                    action = DiagnosticAction.WEBVIEW_MAIN_FRAME_ERROR,
+                                                    result = DiagnosticResult.FAIL,
+                                                    reason = DiagnosticReason.NETWORK,
+                                                    destination = chaoxingLoginDestination(
+                                                        request.url.toString(),
+                                                    ),
+                                                    operationId = operationId,
+                                                )
                                             }
                                         }
 
@@ -390,6 +478,13 @@ fun ChaoxingLoginScreen(
                                             pageLoading = false
                                             webViewAlive = false
                                             error = "登录页渲染进程异常退出；请重新加载。"
+                                            Diagnostics.record(
+                                                module = DiagnosticModule.LIBRARY,
+                                                action = DiagnosticAction.WEBVIEW_RENDERER_EXIT,
+                                                result = DiagnosticResult.FAIL,
+                                                reason = DiagnosticReason.RENDERER,
+                                                operationId = operationId,
+                                            )
                                             return true
                                         }
                                     }
@@ -401,6 +496,15 @@ fun ChaoxingLoginScreen(
                                         if (initialLoadStarted) return
                                         if (width <= 0 || height <= 0) return
                                         initialLoadStarted = true
+                                        Diagnostics.record(
+                                            module = DiagnosticModule.LIBRARY,
+                                            action = DiagnosticAction.WEBVIEW_START,
+                                            result = DiagnosticResult.PENDING,
+                                            destination = chaoxingLoginDestination(
+                                                UpcOfficialEntryLinks.SEAT,
+                                            ),
+                                            operationId = operationId,
+                                        )
                                         loadUrl(UpcOfficialEntryLinks.SEAT)
                                     }
                                     addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
@@ -533,6 +637,20 @@ internal fun isAllowedChaoxingLoginUrl(raw: String): Boolean {
         "i.chaoxing.com" -> path.isNullOrEmpty() || path == "/" ||
             path == "/base" || path.startsWith("/base/")
         else -> true
+    }
+}
+
+internal fun chaoxingLoginDestination(raw: String): DiagnosticDestination {
+    if (raw == "about:blank") return DiagnosticDestination.UNKNOWN_DESTINATION
+    val uri = runCatching { URI(raw) }.getOrNull() ?: return DiagnosticDestination.UNKNOWN_DESTINATION
+    if (!uri.scheme.equals("https", true)) return DiagnosticDestination.UNKNOWN_DESTINATION
+    return when (uri.host?.lowercase()) {
+        "cas.upc.edu.cn" -> DiagnosticDestination.CAS_LOGIN
+        "passport2-api.chaoxing.com" -> DiagnosticDestination.APP_CALLBACK
+        "i.chaoxing.com", "office.chaoxing.com", "app.upc.edu.cn" ->
+            DiagnosticDestination.APP_PAGE
+        "tyrzfw.chaoxing.com" -> DiagnosticDestination.OTHER
+        else -> DiagnosticDestination.UNKNOWN_DESTINATION
     }
 }
 

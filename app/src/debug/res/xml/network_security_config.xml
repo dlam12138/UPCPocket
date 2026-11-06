@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only 受控更新源使用 http://10.0.2.2:<port> 指向开发机；
+    Release 继续使用 res/xml/network_security_config.xml（仅既有学校明文主机），
+    不包含本文件，也不允许 10.0.2.2 或任意明文更新源。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">jhzf.upc.edu.cn</domain>
+        <domain includeSubdomains="false">dfcz.upc.edu.cn</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
