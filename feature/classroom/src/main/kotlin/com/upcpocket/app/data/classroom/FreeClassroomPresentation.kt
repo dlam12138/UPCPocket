@@ -21,6 +21,14 @@ enum class ClassroomPeriodGroup(
     val rangeLabel: String get() = "${periods.min()}–${periods.max()}"
 }
 
+/**
+ * 节次选择模式。
+ *
+ * 预设模式使用上午/下午/晚上快捷组，条件变化后自动查询；自定义模式保留自选节次，
+ * 只有用户点“查询”才发请求。
+ */
+enum class ClassroomQueryMode { PRESET, CUSTOM }
+
 enum class GroupSelectionState { NONE, PARTIAL, ALL }
 
 fun groupSelectionState(selected: Set<Int>, group: ClassroomPeriodGroup): GroupSelectionState {

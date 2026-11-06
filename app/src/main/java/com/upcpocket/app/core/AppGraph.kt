@@ -16,6 +16,7 @@ import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
+import com.upcpocket.app.data.classroom.DataStoreFreeClassroomCampusStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
@@ -221,7 +222,11 @@ object AppGraph {
         )
     }
 
-    private val classroomPlugin: ClassroomPlugin by lazy { ClassroomPlugin() }
+    private val classroomPlugin: ClassroomPlugin by lazy {
+        ClassroomPlugin(
+            campusStore = DataStoreFreeClassroomCampusStore(appContext),
+        )
+    }
 
     /**
      * 图书馆认证适配：只有这里通过 core 的受控凭据完成 libseat 正常 CAS。

@@ -61,6 +61,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -74,10 +75,12 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.data.classroom.BuildingRoomGroup
 import com.upcpocket.app.data.classroom.ClassroomPeriodGroup
 import com.upcpocket.app.data.classroom.FreeClassroomCampus
+import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.FreeClassroomRoom
 import com.upcpocket.app.data.classroom.GroupSelectionState
+import com.upcpocket.app.data.classroom.NoOpFreeClassroomCampusStore
 import com.upcpocket.app.data.classroom.displayGroups
 import com.upcpocket.app.data.classroom.formatPeriods
 import com.upcpocket.app.data.classroom.groupSelectionState
@@ -95,13 +98,14 @@ import java.util.Locale
 fun FreeClassroomScreen(
     onBack: () -> Unit,
     repository: FreeClassroomRepository? = null,
+    campusStore: FreeClassroomCampusStore = NoOpFreeClassroomCampusStore,
 ) {
     val actualRepository = remember(repository) { repository ?: com.upcpocket.app.data.classroom.PublicFreeClassroomRepository() }
-    val factory = remember(actualRepository) {
+    val factory = remember(actualRepository, campusStore) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                FreeClassroomViewModel(actualRepository) as T
+                FreeClassroomViewModel(actualRepository, campusStore) as T
         }
     }
     val model: FreeClassroomViewModel = viewModel(factory = factory)
@@ -220,7 +224,7 @@ fun FreeClassroomScreen(
                 )
             }
 
-            if (model.loading) {
+            if (model.loading || model.restoringCampus) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "loading") {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
@@ -286,7 +290,7 @@ fun FreeClassroomScreen(
                         }
                     }
                 }
-            } else if (!model.loading) {
+            } else if (!model.loading && !model.restoringCampus) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "prompt") {
                     Text(
                         when {
@@ -327,7 +331,8 @@ private fun ClassroomFilterPanel(
     onQuery: () -> Unit,
 ) {
     // 查询期间筛选仍可改：ViewModel 会取消在途请求并递增代次，旧响应不能写回。
-    val filtersEnabled = true
+    // 读取上次校区期间先禁用筛选，保证初始查询只发一次。
+    val filtersEnabled = !model.restoringCampus
     val dateLabel = remember(model.date) {
         model.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA))
     }
@@ -361,7 +366,7 @@ private fun ClassroomFilterPanel(
                     onClick = onOpenDate,
                     enabled = filtersEnabled,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier.heightIn(min = 48.dp),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("classroom_date"),
                 ) {
                     Text(dateLabel, maxLines = 1, softWrap = false)
                 }
@@ -369,11 +374,6 @@ private fun ClassroomFilterPanel(
                     IconButton(onClick = { model.moveDate(-1) }, enabled = filtersEnabled) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "前一天")
                     }
-                    TextButton(
-                        onClick = { model.chooseDate(model.today()) },
-                        enabled = filtersEnabled,
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                    ) { Text("今天") }
                     IconButton(onClick = { model.moveDate(1) }, enabled = filtersEnabled) {
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "后一天")
                     }
@@ -401,7 +401,7 @@ private fun ClassroomFilterPanel(
                     val state = groupSelectionState(model.periods, group)
                     FilterChip(
                         selected = state == GroupSelectionState.ALL,
-                        onClick = { model.toggleGroup(group) },
+                        onClick = { model.choosePreset(group) },
                         enabled = filtersEnabled,
                         modifier = Modifier.heightIn(min = 48.dp),
                         label = {
@@ -445,7 +445,7 @@ private fun ClassroomFilterPanel(
 
             Button(
                 onClick = onQuery,
-                enabled = !model.loading && model.periods.isNotEmpty(),
+                enabled = !model.restoringCampus && !model.loading && model.periods.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) {
                 Text(

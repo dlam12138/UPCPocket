@@ -1,5 +1,6 @@
 package com.upcpocket.app.classroom
 
+import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -16,6 +17,7 @@ val CLASSROOM_ROUTE: PluginRouteId = PluginRouteId.parse("classroom.free")
 /** 空教室插件贡献的首页入口与查询页；页面状态仍由原 ViewModel 持有。 */
 internal class ClassroomUi(
     private val repository: FreeClassroomRepository,
+    private val campusStore: FreeClassroomCampusStore,
 ) : PluginUiContributor {
 
     override val pluginId = CLASSROOM_PLUGIN_ID
@@ -25,6 +27,7 @@ internal class ClassroomUi(
             PluginPage(CLASSROOM_ROUTE, CLASSROOM_PLUGIN_ID) { host ->
                 FreeClassroomScreen(
                     repository = repository,
+                    campusStore = campusStore,
                     onBack = host::back,
                 )
             },
