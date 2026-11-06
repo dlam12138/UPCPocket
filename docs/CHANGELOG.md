@@ -1,5 +1,14 @@
 # 更新与验证
 
+## 2.0.1（22）应用内更新候选 + 课表 r3 用户复测确认（本地，未发布）· 2026-11-06
+
+- **课表 r3**：反馈用户已明确复测正常；前条 5081 记录的“未复现/未确认”保留为当时证据，不再作为当前用户状态。
+- **更新入口**：设置 → 关于 → 更新，显示当前版本；前台每天最多一次元数据检查，可关闭，只用 Toast；手动检查才弹出版本、大小、3–5 条纯文本说明和“更新/稍后”，不增加首页卡/顶级入口。
+- **清单信任**：固定 GitHub 仓库与 `gh-proxy.org`/`ghproxy.net`/官方线路；清单原始 UTF-8 字节用内置 ECDSA P-256/SHA256withECDSA 公钥验签；固定字段、整数 versionCode、minSdk、tag/asset、大小、SHA-256、最高已见版本重放保护；不接受清单给的任意主机/算法。
+- **下载与安装**：单任务 `.part` 下载、进度/取消/切换线路，完整 size+SHA-256+包名/versionCode/minSdk/证书兼容校验；PackageInstaller 会话交由系统最终确认，不静默、不卸载、不清数据；未知来源授权拒绝/安装取消不循环。
+- **发布准备**：新增仓库外私钥的 `tools/release_update.ps1`，生成 APK + `update.json` + `update.sig` + `SHA256SUMS.txt`；公钥入库，私钥路径只从环境变量读取，脚本不打印私钥。**未上传、未 push/merge/publish**，`v2.0` tag/附件未改。
+- **验证**：全仓 **565 tests / 84 suites / 0 failures / 0 errors / 2 skipped**；lint 0 errors / 7 warnings；boundaries 与 R8 Release 通过。新增 updater 单测、.NET→Android 签名交叉夹具、真实网络手动测试入口；独立 probe 模拟器完成 22→23 的检查/下载/校验/系统确认安装，并实测取消安装、未知来源拒绝与错误 APK 证书拒绝。完整结果与最终 APK 路径/hash 见 [2.0.1 发布记录](releases/2.0.1.md) 第 10 节。
+
 ## 2.0.1 续修 r3 · 周响应 MIME/正文分类与有效 JSON 误标修复（本地构建，未发布）· 2026-11-06
 
 - 新报告（schema 2，39 事件）实际显示：两次网页登录均完成 CAS→APP_CALLBACK→APP_PAGE，Cookie 解析 2 项并保存，`get-index` 成功 27 个学期；四次 `WEEK_REQUEST` 都在 HTTP 200 / 5081 bytes 后 `QUERY_FAIL reason=SCHEMA phase=WEEK detail=RESPONSE_NON_JSON`。该 detail 在旧代码同时表示“MIME 非 JSON”和“JSON decode 失败”，无法据此认定 WAF/登录页/错误 MIME。

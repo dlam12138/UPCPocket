@@ -46,6 +46,8 @@ import com.upcpocket.app.timetable.TimetableCapabilities
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.update.UpdateController
+import com.upcpocket.app.update.UpdateControllerFactory
 import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
 import com.upcpocket.app.upcauth.UpcChaoxingAuthResult
 import com.upcpocket.app.upcauth.UpcChaoxingAuthenticator
@@ -57,6 +59,9 @@ import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
 import com.upcpocket.app.widget.WidgetWork
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 /**
  * 宿主手动装配容器。
@@ -80,6 +85,20 @@ object AppGraph {
 
     fun init(context: Context) {
         appContext = context.applicationContext
+    }
+
+    private val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    /**
+     * 应用内更新只由宿主拥有：网络、清单验签、下载和系统安装都不经过校园插件。
+     * 构造本身不联网；前台每天最多检查一次元数据，手动检查/下载由关于页触发。
+     */
+    val updates: UpdateController by lazy {
+        UpdateControllerFactory.create(appContext, updateScope)
+    }
+
+    fun onAppForeground() {
+        updates.onForeground()
     }
 
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }

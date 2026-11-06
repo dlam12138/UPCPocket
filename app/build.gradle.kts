@@ -1,6 +1,45 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
+// ── 应用内更新：公开清单验签公钥与 debug-only 受控测试源 ───────────────
+// 公钥可入库；私钥只在本机仓库外，由 tools/release_update.ps1 通过环境变量读取。
+// Release 中的测试源字段固定为空，代码还要求 BuildConfig.DEBUG，双重排除。
+val updatePublicKeyFile = rootProject.file("docs/updates/upcpocket-update-public-key.b64")
+val updatePublicKey = if (updatePublicKeyFile.isFile) {
+    updatePublicKeyFile.readText(Charsets.UTF_8).trim()
+} else {
+    ""
+}
+require(updatePublicKey.isNotBlank()) {
+    "缺少更新清单验签公钥：docs/updates/upcpocket-update-public-key.b64"
+}
+
+fun buildConfigString(value: String): String =
+    "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val updateTestBaseUrl = providers.gradleProperty("updateTestBase").orNull.orEmpty().trim()
+val updateTestPublicKey = providers.gradleProperty("updateTestPublicKey").orNull.orEmpty().trim()
+
+// 仅用于本机受控安装验收：显式传入 e2eVersionCode 才改变版本；Release 任务直接失败。
+// 正常发布构建不要传这两个属性。
+val e2eVersionCode = providers.gradleProperty("e2eVersionCode").orNull?.toIntOrNull()
+val e2eVersionName = providers.gradleProperty("e2eVersionName").orNull.orEmpty().trim()
+val allowE2eReleaseBuild = providers.gradleProperty("allowE2eReleaseBuild").orNull == "true"
+if (e2eVersionCode != null) {
+    val releaseRequested = gradle.startParameter.taskNames.any {
+        it.contains("release", ignoreCase = true) || it.contains("bundle", ignoreCase = true)
+    }
+    // 默认拒绝 Release；仅本机受控安装验收可显式追加 -PallowE2eReleaseBuild=true。
+    // 这种包不得上传/发布，最终发布包必须重新以默认 versionCode=22 构建。
+    require(!releaseRequested || allowE2eReleaseBuild) {
+        "e2eVersionCode 仅用于 debug 验收，禁止用于 Release/Bundle（受控释放需显式 allowE2eReleaseBuild）"
+    }
+    require(e2eVersionCode in 1..999_999) { "e2eVersionCode 非法" }
+    require(e2eVersionName.matches(Regex("^[0-9]+(\\.[0-9]+){1,3}(-[0-9A-Za-z.-]{1,32})?$"))) {
+        "e2eVersionName 非法"
+    }
+}
+
 // ── 签名 ───────────────────────────────────────────────────────────────
 // 凭据在仓库根的 keystore.properties（已 gitignore），keystore 文件本身在仓库之外。
 // 刻意让 debug 与 release 用**同一套签名**：不同签名不能互相覆盖安装，
@@ -42,10 +81,12 @@ android {
         // 轻量版在 0.1.10（code 11）之上递增，保证覆盖安装不会触发降级。
         // 第二步在 0.2.0（code 12）之上继续递增；第三步 0.2.2 / code 14；
         // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
-        // 2.0.1 本地修复构建：仅覆盖安装验证课表网页登录；不改写 v2.0 发布附件。
-        versionCode = 21
-        versionName = "2.0.1"
+        // 2.0.1 本地候选：含课表 r3 修复与应用内更新；versionCode 22 与复测 21 区分。
+        // 仅本机受控安装验收可显式传 e2eVersionCode/e2eVersionName，且构建脚本拒绝 Release。
+        versionCode = e2eVersionCode ?: 22
+        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.1"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
+        buildConfigField("String", "UPDATE_PUBLIC_KEY", buildConfigString(updatePublicKey))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -63,8 +104,13 @@ android {
     buildTypes {
         debug {
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("upcpocket")
+            // 只有命令行显式提供时才注入；不写死本机地址，发布包也拿不到这两个字段。
+            buildConfigField("String", "UPDATE_TEST_BASE_URL", buildConfigString(updateTestBaseUrl))
+            buildConfigField("String", "UPDATE_TEST_PUBLIC_KEY", buildConfigString(updateTestPublicKey))
         }
         release {
+            buildConfigField("String", "UPDATE_TEST_BASE_URL", "\"\"")
+            buildConfigField("String", "UPDATE_TEST_PUBLIC_KEY", "\"\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

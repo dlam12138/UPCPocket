@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 只暴露应用内更新下载目录；不开放整个 cache/files，也不接受外部路径。 -->
+    <cache-path
+        name="update_apk"
+        path="updates/" />
+</paths>

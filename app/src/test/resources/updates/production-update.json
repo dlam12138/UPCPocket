@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "packageName": "com.upcpocket.app",
+  "versionName": "2.0.1",
+  "versionCode": 22,
+  "minSdk": 31,
+  "tag": "v2.0.1",
+  "assetName": "UPC-Pocket-2.0.1.apk",
+  "sizeBytes": 4790541,
+  "sha256": "6b2e36685345d2c258b04a79913ed2a96ed850f16e5f83baaeb86bf8d3a44d23",
+  "publishedAt": "2026-11-06T04:17:14Z",
+  "notes": [
+    "修复课表网页登录后的响应识别",
+    "新增应用内检查、下载与安装更新",
+    "安装由系统确认，保留本机账号与数据"
+  ]
+}

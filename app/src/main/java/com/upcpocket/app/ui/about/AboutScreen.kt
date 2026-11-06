@@ -173,6 +173,12 @@ fun AboutScreen(onBack: () -> Unit) {
                 }
             }
 
+            SectionHeader(
+                title = "更新",
+                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
+            )
+            UpdateSection()
+
             AboutCard("现在能用") {
                 Bullet("课表：查看学期、教学周、周网格与今日课程；已查询的周可离线查看。")
                 Bullet("校园卡：查看余额与过渡余额；组件显示上次成功读取。")
