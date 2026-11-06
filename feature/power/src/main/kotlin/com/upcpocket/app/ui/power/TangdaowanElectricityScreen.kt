@@ -340,7 +340,13 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 enabled = !loading,
                 modifier = Modifier.fillMaxWidth(),
                 supportingText = {
-                    Text("会记住楼号与房间号；清除会同时移除组件的上次电量。")
+                    Text(
+                        when {
+                            building.isBlank() -> "先选择上方楼号，再填写房间号。"
+                            room.isBlank() -> "填写完整房间号后，点击下方“查询”。"
+                            else -> "输入已保留，点击下方“查询”更新电量。清除记录也会清除组件数据。"
+                        },
+                    )
                 },
             )
 

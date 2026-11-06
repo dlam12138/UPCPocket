@@ -97,7 +97,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "三个组件默认 2×2，课表可拉到 4×2；点击组件刷新。",
+                text = "先在应用内查询一次，再添加对应组件。点击组件右上角刷新，点击主体打开功能页。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -139,9 +139,9 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
 
             Text(
                 text = if (supported) {
-                    "没有弹出面板时，可长按桌面添加。"
+                    "没有弹出面板时，长按桌面空白处 → 小组件 → UPC Pocket。课表组件可拉到 4×2。"
                 } else {
-                    "请长按桌面，在小组件中添加。"
+                    "长按桌面空白处 → 小组件 → UPC Pocket。课表组件可拉到 4×2。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -159,6 +159,15 @@ class TimetableFirstLoginScreenTest {
         }
         rule.onNodeWithText("日期").assertDoesNotExist()
         rule.onNodeWithText("学校登录").assertDoesNotExist()
+        rule.onNodeWithText("账号已保存，点击右上角刷新读取课表。")
+            .assertIsDisplayed()
+        rule.onNodeWithContentDescription("刷新课表").performClick()
+        rule.waitUntil(5_000) {
+            service.state.value.connection == TimetableConnection.CONNECTED &&
+                service.state.value.weekState == TimetableWeekState.READY
+        }
+        rule.onNodeWithText("账号已保存，点击右上角刷新读取课表。")
+            .assertDoesNotExist()
     }
 
     private fun json(body: String): TimetableHttpResponse = TimetableHttpResponse(

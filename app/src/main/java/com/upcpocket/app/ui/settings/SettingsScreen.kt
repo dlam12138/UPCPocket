@@ -154,7 +154,7 @@ fun SettingsScreen(
                     SettingsDivider()
                     NavigationRow(
                         title = "关于 UPC Pocket",
-                        subtitle = "版本、来源与致谢",
+                        subtitle = "使用指南、版本与来源",
                         icon = Icons.Filled.Info,
                         onClick = onOpenAbout,
                     )

@@ -149,7 +149,7 @@ fun SchoolAccountScreen(
             busy = false
             when (result) {
                 SchoolAccountWriteResult.Success -> {
-                    message = "已保存，尚未验证。"
+                    message = "已保存，尚未验证。返回课表后，点击右上角刷新。"
                     messageIsError = false
                 }
                 is SchoolAccountWriteResult.Failure -> {
@@ -404,7 +404,7 @@ fun SchoolAccountScreen(
                     Text("账号如何使用", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "校园卡余额使用当前账号的学号。课表与图书馆在使用时登录学校；" +
-                            "验证码会打开学校网页。保存账号不代表已验证。",
+                        "验证码会打开学校网页。保存后返回课表，点击右上角刷新开始验证和查询。",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

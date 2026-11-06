@@ -92,7 +92,7 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("这一周还没有查询。").assertIsDisplayed()
+        rule.onNodeWithText("这一周还没有查询，点击右上角刷新。").assertIsDisplayed()
         rule.onNodeWithText("本周无课程").assertDoesNotExist()
     }
 

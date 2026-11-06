@@ -58,6 +58,7 @@ class SchoolAccountScreenTest {
         }
 
         rule.onNodeWithTag("account_message").assertTextContains("已保存，尚未验证", substring = true)
+        rule.onNodeWithTag("account_message").assertTextContains("返回课表后，点击右上角刷新", substring = true)
         assertPasswordCleared("password_input")
         assertPasswordCleared("confirm_input")
         assertEquals("20260001", controller.lastAccount)

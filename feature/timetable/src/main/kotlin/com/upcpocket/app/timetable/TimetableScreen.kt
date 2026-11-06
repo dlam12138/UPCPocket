@@ -305,7 +305,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
             )
             Text("连接课表", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "使用学校账号查询当前教学周。仅在进入课表时查询。",
+                text = "先设置学校账号，保存后返回这里，点击右上角刷新读取课表。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -349,7 +349,7 @@ private fun NoTermsCard() {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("尚未取得学期", style = MaterialTheme.typography.titleMedium)
             Text(
-                "课程服务暂时不可用，或需要重新登录。",
+                "点击右上角刷新重新读取；需要验证时，按上方提示完成学校登录。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -524,6 +524,22 @@ internal fun ConnectionBanner(
                     modifier = Modifier.padding(top = 6.dp),
                 )
             }
+            if (!state.isBusy && state.connection == TimetableConnection.IDLE) {
+                Text(
+                    "账号已保存，点击右上角刷新读取课表。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
+                Text(
+                    "点击下方“学校登录”，在学校页面完成验证后继续。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
             state.weekFetchedAtEpochMillis?.let { fetched ->
                 Text(
                     "更新于 ${formatFetchedAt(fetched)}" +
@@ -598,7 +614,7 @@ internal fun WeekPanel(
             Spacer(Modifier.height(4.dp))
             when (state.weekState) {
                 TimetableWeekState.NOT_QUERIED ->
-                    EmptyWeekHint("这一周还没有查询。")
+                    EmptyWeekHint("这一周还没有查询，点击右上角刷新。")
                 TimetableWeekState.ERROR ->
                     EmptyWeekHint("查询失败，暂无缓存。")
                 TimetableWeekState.LOADING -> if (state.meetings.isEmpty()) {
