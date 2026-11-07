@@ -228,6 +228,14 @@ class LibraryReservationDuplicateException :
 class LibraryReservationPreflightFailedException(message: String) :
     LibrarySeatException(message)
 
+/**
+ * 提交前/提交时会话上下文已变化（换号/退出/重新登录）：本次 reserve 必须整体中止，
+ * 且**不得清理新会话**、不得在新代次登记防重键。与 [LibrarySessionExpiredException]
+ * 分开，避免 withToken 的失效分支误清新账号会话。
+ */
+class LibraryReservationContextStaleException :
+    LibrarySeatException("登录状态已变化，请重新确认后再试。")
+
 object LibrarySeatStatus {
     fun label(status: String): String = when (status) {
         "FREE" -> "可用"

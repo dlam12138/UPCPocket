@@ -7,6 +7,7 @@ import java.net.URI
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,6 +16,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlin.coroutines.coroutineContext
 
 data class LibrarySeatSession(
     val token: String,
@@ -28,9 +30,18 @@ data class LibrarySeatSession(
  * （统一账号原生认证或学校 WebView 回退），本类只接收并核验登录后的 token。
  * token 仅由 Service 的受控提交门闩发布到内存；本类不写数据库/文件/日志。
  */
-class LibrarySeatRepository(
-    private val sessionAllowed: () -> Boolean = { true },
+class LibrarySeatRepository private constructor(
+    private val sessionAllowed: () -> Boolean,
+    private val reserveTransport: ReserveTransport?,
 ) {
+    // 保留原来的尾随 lambda 构造方式；测试传输只由模块内的定向测试注入。
+    constructor(sessionAllowed: () -> Boolean = { true }) : this(sessionAllowed, null)
+
+    internal constructor(
+        reserveTransport: ReserveTransport,
+        sessionAllowed: () -> Boolean = { true },
+    ) : this(sessionAllowed, reserveTransport)
+
     private val _session = MutableStateFlow<LibrarySeatSession?>(null)
     val session: StateFlow<LibrarySeatSession?> = _session.asStateFlow()
 
@@ -40,8 +51,39 @@ class LibrarySeatRepository(
     /** 会话范围防重闩；关闭重进/重建 ViewModel 只要 repository 仍是同一会话即生效。 */
     val attemptLatch = ReservationAttemptLatch()
 
-    internal fun registerReservationAttempt(request: LibraryReservationRequest): Boolean =
-        attemptLatch.registerOrReject(request, currentSessionGeneration())
+    /** 一次 reserve 进入时的会话快照；整个预检→登记→POST 都绑定它。 */
+    private data class SessionSnapshot(
+        val token: String,
+        val user: LibraryUser,
+        val generation: Long,
+    )
+
+    /** 在同一把锁里原子捕获 token + 本人 + 代次，避免读到半更新状态。 */
+    private fun captureSession(): SessionSnapshot? = synchronized(sessionLock) {
+        val s = _session.value ?: return null
+        SessionSnapshot(s.token, s.user, sessionGeneration)
+    }
+
+    /** 会话是否仍是捕获时的那一个（门闩 + token + 代次都一致）。 */
+    private fun isSameSession(snapshot: SessionSnapshot): Boolean =
+        sessionAllowed() && synchronized(sessionLock) {
+            matchesSnapshotLocked(snapshot)
+        }
+
+    private fun matchesSnapshotLocked(snapshot: SessionSnapshot): Boolean {
+        val current = _session.value ?: return false
+        return sessionGeneration == snapshot.generation && current.token == snapshot.token &&
+            current.user.id == snapshot.user.id && current.user.username == snapshot.user.username
+    }
+
+    /** 登记防重键时绑定**捕获代次**，迟到的旧 reserve 不得占用新会话的键。 */
+    private fun registerAt(snapshot: SessionSnapshot, request: LibraryReservationRequest): Boolean =
+        synchronized(sessionLock) {
+            if (!sessionAllowed() || !matchesSnapshotLocked(snapshot)) {
+                throw LibraryReservationContextStaleException()
+            }
+            attemptLatch.registerOrReject(request, snapshot.generation)
+        }
 
     /** 仅供测试/诊断：当前会话是否已登记该键（不写业务内容）。 */
     internal fun hasAttempted(request: LibraryReservationRequest): Boolean =
@@ -237,22 +279,17 @@ class LibrarySeatRepository(
             )
         }
 
-    suspend fun captchaEnabled(): Boolean = withContext(Dispatchers.IO) {
-        val root = LibrarySeatProtocol.objectOf(
-            request("GET", "/rest/v2/settings"),
-        )
-        val data = root["data"] as? JsonObject
-        val raw = (data?.get("isCaptchaOpen") as? JsonPrimitive)?.contentOrNull
-        raw == "1" || raw.equals("true", ignoreCase = true)
-    }
-
     suspend fun reserve(
         date: String,
         seatId: String,
         startId: String,
         endId: String,
-    ): LibraryReservationAttempt = withToken { token ->
-        val user = _session.value?.user ?: throw LibrarySessionExpiredException()
+    ): LibraryReservationAttempt = withContext(Dispatchers.IO) {
+        if (!sessionAllowed()) throw LibrarySessionExpiredException()
+        // ── 进入时原子捕获会话：token + 本人 + 代次，整个流程都绑定它 ──
+        val snapshot = captureSession() ?: throw LibrarySessionExpiredException()
+        val token = snapshot.token
+        val user = snapshot.user
         val requestKey = LibraryReservationRequest(
             system = LibraryReservationRequest.SYSTEM_LIBSEAT,
             userId = user.id,
@@ -261,22 +298,47 @@ class LibrarySeatRepository(
             startId = startId,
             endId = endId,
         )
-        // CAPTCHA / 设置读取属于 POST 前验证：任何失败都不得冒充已发送。
+
+        // ── POST 前预检（验证码 / 设置读取）属于「未发出提交」阶段 ──
+        // 任何失败都不得冒充已发送；若预检期间会话已变化，整体中止且不清新会话。
         val captcha = try {
-            captchaEnabled()
+            if (reserveTransport != null) {
+                reserveTransport.captchaEnabled(token)
+            } else {
+                captchaEnabledWithToken(token)
+            }
         } catch (e: CancellationException) {
             throw e
+        } catch (e: LibraryReservationContextStaleException) {
+            throw e
+        } catch (e: LibrarySessionExpiredException) {
+            // 预检本身报会话失效：只在仍是捕获会话时才允许清理；否则视为上下文过期。
+            if (!isSameSession(snapshot)) throw LibraryReservationContextStaleException()
+            throw LibraryReservationPreflightFailedException(
+                e.message ?: "提交前验证失败，请在学校页面预约。",
+            )
         } catch (e: Exception) {
+            if (!isSameSession(snapshot)) throw LibraryReservationContextStaleException()
             throw LibraryReservationPreflightFailedException(
                 e.message ?: "提交前验证失败，请在学校页面预约。",
             )
         }
-        if (captcha) return@withToken LibraryReservationAttempt.NOT_SENT
-        // 会话范围防重：登记与代次绑定，关闭重进/切模式/重建 VM 都在同一 repository 上生效。
-        if (!registerReservationAttempt(requestKey)) {
+        // 预检返回后、登记前：必须仍是同一会话，否则不能占用/清理新会话。
+        coroutineContext.ensureActive()
+        if (!isSameSession(snapshot)) throw LibraryReservationContextStaleException()
+        if (captcha) return@withContext LibraryReservationAttempt.NOT_SENT
+
+        // ── 登记防重：绑定捕获代次，旧上下文不得写新会话的键 ──
+        if (!registerAt(snapshot, requestKey)) {
             throw LibraryReservationDuplicateException()
         }
-        LibrarySeatProtocol.ensureBooked(
+        // 登记后、真正写请求发出前再校验一次（防止登记与 POST 之间换号）。
+        coroutineContext.ensureActive()
+        if (!isSameSession(snapshot)) throw LibraryReservationContextStaleException()
+
+        val body = if (reserveTransport != null) {
+            reserveTransport.postReservation(token, date, seatId, startId, endId, user)
+        } else {
             request(
                 "POST",
                 "/rest/v2/freeBook",
@@ -290,9 +352,21 @@ class LibrarySeatRepository(
                     "username" to user.username,
                     "authid" to "",
                 ),
-            ),
-        )
+                tokenOverride = token, // 签名 token 与 query 都来自捕获会话，不读当前 _session
+            )
+        }
+        LibrarySeatProtocol.ensureBooked(body)
         LibraryReservationAttempt.SENT
+    }
+
+    /** 生产预检：用捕获 token 显式签名，不读当前 _session。 */
+    private fun captchaEnabledWithToken(token: String): Boolean {
+        val root = LibrarySeatProtocol.objectOf(
+            request("GET", "/rest/v2/settings", tokenOverride = token),
+        )
+        val data = root["data"] as? JsonObject
+        val raw = (data?.get("isCaptchaOpen") as? JsonPrimitive)?.contentOrNull
+        return raw == "1" || raw.equals("true", ignoreCase = true)
     }
 
     suspend fun cancel(reservationId: String): Unit = withToken { token ->

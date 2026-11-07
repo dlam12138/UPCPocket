@@ -417,4 +417,80 @@ class LibraryTimeSearchLogicTest {
         assertTrue(base.canConfirmTimeReservation())
         assertFalse(base.copy(reservationSubmitted = true).canConfirmTimeReservation())
     }
+
+    // ── 合法空终页：不得被「无新增 id」一刀切拒绝 ──
+
+    @Test
+    fun `首次合法空终页 complete 且 seats 为空可显示暂无座位`() {
+        val state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(emptyList(), 1, false), // seats={} page1 hasMore=false
+            1,
+        )
+        assertTrue("严格解析后的合法空终页必须完成", state.complete)
+        assertFalse(state.hasMore)
+        assertFalse(state.partialFailure)
+        assertTrue(state.seats.isEmpty())
+        assertEquals(1, state.loadedPages)
+    }
+
+    @Test
+    fun `后续合法空末页保留已加载 N 项且 complete 无加载更多`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a"), seat("b")), 1, true),
+            1,
+        )
+        assertFalse(state.complete)
+        assertTrue(state.hasMore)
+        // 实测证据形状：batch=1,page=2 → 0 个 / hasMore=false
+        state = foldTimePage(state, LibraryTimeSearchPage(emptyList(), 2, false), 2)
+        assertTrue("合法空末页必须完成，不能永远重试", state.complete)
+        assertFalse(state.hasMore)
+        assertFalse(state.partialFailure)
+        assertEquals(listOf("a", "b"), state.seats.map { it.id })
+        assertEquals(2, state.loadedPages)
+    }
+
+    @Test
+    fun `空名单但 hasMore 为真是不前进保留可重试`() {
+        val state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(emptyList(), 1, true),
+            1,
+        )
+        assertFalse(state.complete)
+        assertTrue(state.partialFailure)
+        assertTrue(state.hasMore) // retryTime 可重新发出
+    }
+
+    @Test
+    fun `非空名单全旧 id 仍是 partial 不冒充完整`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a")), 1, true),
+            1,
+        )
+        state = foldTimePage(state, LibraryTimeSearchPage(listOf(seat("a")), 2, false), 2)
+        assertFalse(state.complete)
+        assertTrue(state.partialFailure)
+        assertEquals(listOf("a"), state.seats.map { it.id })
+    }
+
+    @Test
+    fun `非空名单含新 id 正常去重累积`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a"), seat("a"), seat("b")), 1, true),
+            1,
+        )
+        state = foldTimePage(
+            state,
+            LibraryTimeSearchPage(listOf(seat("b"), seat("c")), 2, false),
+            2,
+        )
+        assertEquals(listOf("a", "b", "c"), state.seats.map { it.id })
+        assertTrue(state.complete)
+        assertFalse(state.partialFailure)
+    }
 }

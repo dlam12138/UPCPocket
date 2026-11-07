@@ -83,13 +83,18 @@ internal fun LibrarySeatViewModel.UiState.currentTimeSearchKey(): LibraryTimeSea
 /**
  * 把一页真实结果折叠进累积状态。
  *
- * - 校验服务端 `page.page` 必须等于请求页且不能小于 [current.nextPage]（页号倒退）；
- *   不一致时保留已读结果并标记未完整加载，绝不写 complete。
- * - 同一页内按 id 去重，再与已累积 id 去重；终页若全是重复同样不伪装完整成功。
- * - hasMore 以服务端为准；读完且无失败才 complete；
- * - 单次条件最多 [TIME_SEARCH_MAX_PAGES] 页。
- * - 任何「不前进/重复/异常」状态都保留 hasMore=true（若服务端仍说有更多）或标记
- *   partialFailure，让「重试 / 加载更多」能真正重新发出当前合法页，而不是空操作。
+ * `page`/`hasMore`/名单字段已由 [LibrarySeatProtocol.parseTimeSearchPage] 严格校验，
+ * 这里只按「名单是否真空」与「是否有新 id」分四种情况，绝不把合法空终页一刀切拒绝：
+ *
+ *  1. **空名单 + hasMore=false** → 合法结束：complete=true，保留已加载 seats
+ *     （首屏则 seats=[] 显示「暂无可约座位」），不显示加载更多。实测证据：
+ *     `batch=1,page=2 → 0 个 / hasMore=false` 即学校真实合法终止形式。
+ *  2. **空名单 + hasMore=true** → 不前进：partialFailure + 可重试。
+ *  3. **非空名单但全是旧 id（无新增）** → 重复/异常页：partialFailure，不冒充完整。
+ *  4. **非空名单含新 id** → 页内 + 跨页去重后正常累积，按 hasMore/上限决定 complete。
+ *
+ * 另外校验服务端 `page.page` 必须等于请求页且不能小于 [current.nextPage]（页号倒退），
+ * 不一致时保留已读结果并标记未完整加载，绝不写 complete。
  */
 fun foldTimePage(
     current: LibraryTimeSearchResult,
@@ -113,10 +118,32 @@ fun foldTimePage(
     val uniqueOnPage = page.seats.filter { pageIds.add(it.id) }
     val existingIds = current.seats.mapTo(linkedSetOf()) { it.id }
     val fresh = uniqueOnPage.filter { it.id !in existingIds }
+
+    // ── 情况 1/2：本页名单真空（严格解析后确实是 0 个候选）──
+    if (uniqueOnPage.isEmpty()) {
+        return if (!page.hasMore) {
+            // 合法空终页：不丢已读结果，直接完成。
+            current.copy(
+                seats = current.seats,
+                loadedPages = current.loadedPages + 1,
+                nextPage = requestedPage + 1,
+                hasMore = false,
+                complete = true,
+                partialFailure = false,
+                pageLimitReached = false,
+            )
+        } else {
+            // 空页却说还有更多 = 不前进，保留可重试。
+            current.asNonAdvancingPage()
+        }
+    }
+
+    // ── 情况 3：名单非空但全部是旧 id（重复页），不冒充完整 ──
     if (fresh.isEmpty()) {
-        // 重复页 / 不推进：无论 hasMore 是什么，都不能写成「完整读完」。
         return current.asNonAdvancingPage()
     }
+
+    // ── 情况 4：含新 id，正常去重累积 ──
     val loaded = current.loadedPages + 1
     val accumulated = current.seats + fresh
     return when {

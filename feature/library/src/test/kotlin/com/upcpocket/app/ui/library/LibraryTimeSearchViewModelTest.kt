@@ -201,6 +201,58 @@ class LibraryTimeSearchViewModelTest {
         assertTrue("重试必须真正发请求", ops.timeSearchCalls > beforeRetry)
     }
 
+    // ── 3b. 合法空终页 / 不前进空页（VM 真实编排，不直接构造 complete）──
+
+    @Test
+    fun `首次严格解析合法空终页走生产 complete 空态`() = runTest(dispatcher) {
+        vm.setState(baseState(roomA))
+        // 经 parser 等价形状：seats={} page=1 hasMore=false
+        ops.timeSearchResults.add(LibraryTimeSearchPage(emptyList(), 1, false))
+        vm.searchByTime()
+        advanceUntilIdle()
+        val r = requireNotNull(vm.state.timeResult)
+        assertTrue(r.complete)
+        assertFalse(r.hasMore)
+        assertFalse(r.partialFailure)
+        assertTrue(r.seats.isEmpty())
+        // 生产 UI 分支依据：complete && seats.isEmpty() → 「这个时段暂无可约座位」
+    }
+
+    @Test
+    fun `后续合法空末页保留 N 项且 complete 无加载更多`() = runTest(dispatcher) {
+        vm.setState(baseState(roomA))
+        ops.timeSearchResults.add(LibraryTimeSearchPage(listOf(seat("a"), seat("b")), 1, true))
+        vm.searchByTime()
+        advanceUntilIdle()
+        assertTrue(vm.state.timeResult?.hasMore == true)
+        // 下一页 = 真实观察过的 batch=1,page=2 → 0 个 / hasMore=false
+        ops.timeSearchResults.add(LibraryTimeSearchPage(emptyList(), 2, false))
+        vm.loadMoreTime()
+        advanceUntilIdle()
+        val r = requireNotNull(vm.state.timeResult)
+        assertTrue(r.complete)
+        assertFalse(r.hasMore)
+        assertFalse(r.partialFailure)
+        assertEquals(listOf("a", "b"), r.seats.map { it.id })
+    }
+
+    @Test
+    fun `不前进空页后重试真发请求`() = runTest(dispatcher) {
+        vm.setState(baseState(roomA))
+        // 空名单 + hasMore=true → partialFailure/可重试
+        ops.timeSearchResults.add(LibraryTimeSearchPage(emptyList(), 1, true))
+        vm.searchByTime()
+        advanceUntilIdle()
+        assertTrue(vm.state.timeResult?.partialFailure == true)
+        val before = ops.timeSearchCalls
+        // 重试后返回合法空终页 → complete
+        ops.timeSearchResults.add(LibraryTimeSearchPage(emptyList(), 1, false))
+        vm.retryTime()
+        advanceUntilIdle()
+        assertTrue("重试必须真发请求", ops.timeSearchCalls > before)
+        assertTrue(vm.state.timeResult?.complete == true)
+    }
+
     // ── 4. 未知结果会话范围防重（close/reenter/新 VM 不再 POST）──
 
     @Test
@@ -323,6 +375,51 @@ class LibraryTimeSearchViewModelTest {
 
     // ── fakes ──────────────────────────────────────────────────
 
+    @Test
+    fun `迟到提交响应和预检错误都不改新房间状态`() = runTest(dispatcher) {
+        for (lateFailure in listOf(false, true)) {
+            ops.reserveGate = CompletableDeferred()
+            vm = newVm(baseState(roomA).copy(
+                timeResult = LibraryTimeSearchResult(key = keyA, seats = listOf(seat("s-late-$lateFailure")), complete = true),
+                timeSelectedSeat = seat("s-late-$lateFailure"),
+                timeStartTimes = listOf(LibraryTimeOption("840", "14:00")),
+                timeEndTimes = listOf(LibraryTimeOption("960", "16:00")),
+                timeStart = LibraryTimeOption("840", "14:00"),
+                timeStop = LibraryTimeOption("960", "16:00"),
+            ))
+            vm.confirmTimeReservation()
+            advanceUntilIdle()
+            val newRoomState = baseState(roomB).copy(loading = true, error = "new-room-status")
+            vm.setState(newRoomState)
+            val readsBefore = ops.reservationReads
+            if (lateFailure) {
+                ops.reserveGate!!.completeExceptionally(LibraryReservationPreflightFailedException("old-status"))
+            } else {
+                ops.reserveGate!!.complete(LibraryReservationAttempt.SENT)
+            }
+            advanceUntilIdle()
+            assertEquals(newRoomState, vm.state)
+            assertEquals(readsBefore, ops.reservationReads)
+        }
+    }
+
+    @Test
+    fun `确认之后调度之前换号不向新会话提交旧选择`() = runTest(dispatcher) {
+        val candidate = seat("s-switch")
+        vm.setState(baseState(roomA).copy(
+            timeResult = LibraryTimeSearchResult(key = keyA, seats = listOf(candidate), complete = true),
+            timeSelectedSeat = candidate,
+            timeStartTimes = listOf(LibraryTimeOption("840", "14:00")),
+            timeEndTimes = listOf(LibraryTimeOption("960", "16:00")),
+            timeStart = LibraryTimeOption("840", "14:00"),
+            timeStop = LibraryTimeOption("960", "16:00"),
+        ))
+        vm.confirmTimeReservation()
+        ops.token = "new-session"
+        advanceUntilIdle()
+        assertEquals(0, ops.reserveCalls)
+    }
+
     /** 直接设置 UiState（绕过 private set），仅测试用。 */
     private fun LibrarySeatViewModel.setState(value: LibrarySeatViewModel.UiState) {
         // Compose `by mutableStateOf` 生成 `state$delegate` 字段（MutableState<UiState>）。
@@ -338,7 +435,8 @@ class LibraryTimeSearchViewModelTest {
     private class FakeOps : LibrarySeatOps {
         private val _session = MutableStateFlow<LibrarySeatSession?>(null)
         override val session get() = _session
-        override fun sessionToken(): String? = "token-fixed"
+        var token: String? = "token-fixed"
+        override fun sessionToken(): String? = token
 
         val timeSearchResults = mutableListOf<LibraryTimeSearchPage>()
         var timeSearchError: Throwable? = null
@@ -351,6 +449,8 @@ class LibraryTimeSearchViewModelTest {
         var reserveThrowsUnknown = false
         var reservePreflightFails = false
         var reserveCalls = 0
+        var reserveGate: CompletableDeferred<LibraryReservationAttempt>? = null
+        var reservationReads = 0
         // 与生产 Repository 共用的会话范围防重闩，供 close/reenter/新 VM 全链路验证。
         val latch = ReservationAttemptLatch()
 
@@ -394,11 +494,15 @@ class LibraryTimeSearchViewModelTest {
                 throw LibraryReservationDuplicateException()
             }
             reserveCalls++
+            reserveGate?.let { return it.await() }
             if (reserveThrowsUnknown) throw RuntimeException("unknown result")
             return LibraryReservationAttempt.SENT
         }
 
-        override suspend fun myReservations() = emptyList<com.upcpocket.app.data.library.LibraryReservation>()
+        override suspend fun myReservations(): List<com.upcpocket.app.data.library.LibraryReservation> {
+            reservationReads++
+            return emptyList()
+        }
     }
 
     private class FakeHiddenStore : LibraryHiddenSeatsStore {

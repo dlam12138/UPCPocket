@@ -98,6 +98,7 @@ import com.upcpocket.app.data.library.LibraryFloor
 import com.upcpocket.app.data.library.LibraryHiddenSeat
 import com.upcpocket.app.data.library.LibraryReservation
 import com.upcpocket.app.data.library.LibraryReservationAttempt
+import com.upcpocket.app.data.library.LibraryReservationContextStaleException
 import com.upcpocket.app.data.library.LibraryReservationDuplicateException
 import com.upcpocket.app.data.library.LibraryReservationMatch
 import com.upcpocket.app.data.library.LibraryReservationPreflightFailedException
@@ -2268,11 +2269,13 @@ internal class LibrarySeatViewModel(
     private fun submitReservation(context: ReservationContext, mode: RoomSeatMode) {
         val beforeIds = state.reservations.map { it.id }.toSet()
         viewModelScope.launch {
+            if (!isReservationContextCurrent(context, mode)) return@launch
             // 请求与最终状态分开：请求失败/超时也不等于「没预约上」，先查询核对再下结论。
             val attempt = try {
                 ops.reserve(context.date, context.seatId, context.startId, context.endId)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
+                if (!isReservationContextCurrent(context, mode)) return@launch
                 if (e is LibrarySessionExpiredException) {
                     // 会话失效：不能确定是否发出，但 repository 闩已按当前会话登记；
                     // 只做失效处理，不重提。
@@ -2298,12 +2301,23 @@ internal class LibrarySeatViewModel(
                     )
                     return@launch
                 }
+                if (e is LibraryReservationContextStaleException) {
+                    // 提交前/提交时会话已变化：本次整体中止，没有发出 POST；
+                    // 不占新会话防重键、不清新账号会话、不冒充已发送。
+                    state = state.copy(
+                        loading = false,
+                        showConfirm = false,
+                        error = e.message ?: "登录状态已变化，请重新确认后再试。",
+                    )
+                    return@launch
+                }
                 // 其它异常（含超时/未知）：结果未知，已尝试发出或可能发出，登记为已提交。
                 state = state.copy(loading = true, error = null, notice = null,
                     showConfirm = false, reservationSubmitted = true)
                 checkReservationsAfterAttempt(context, mode, beforeIds, e)
                 return@launch
             }
+            if (!isReservationContextCurrent(context, mode)) return@launch
             when (attempt) {
                 LibraryReservationAttempt.NOT_SENT -> {
                     // POST 前验证/CAPTCHA 拒绝：不算已发送，不影响正常网页回退，
@@ -2323,6 +2337,16 @@ internal class LibrarySeatViewModel(
         }
     }
 
+    private fun isReservationContextCurrent(context: ReservationContext, mode: RoomSeatMode): Boolean =
+        ops.sessionToken() == context.token && state.building?.id == context.buildingId &&
+            state.room?.roomId == context.roomId && state.date == context.date &&
+            state.seatMode == mode && when (mode) {
+                RoomSeatMode.TIME -> state.timeSelectedSeat?.id == context.seatId &&
+                    state.timeBegin == context.startValue && state.timeFinish == context.endValue
+                RoomSeatMode.SEAT -> state.seat?.id == context.seatId &&
+                    state.start?.id == context.startId && state.end?.id == context.endId
+            }
+
     /** 提交后核对「我的预约」；迟到/新账号/新房间响应不得写回状态。 */
     private suspend fun checkReservationsAfterAttempt(
         context: ReservationContext,
@@ -2337,15 +2361,7 @@ internal class LibrarySeatViewModel(
             Result.failure(e)
         }
         // 核对响应迟到：会话/房间/模式已变就丢弃，不写新上下文。
-        if (ops.sessionToken() != context.token ||
-            state.building?.id != context.buildingId ||
-            state.room?.roomId != context.roomId ||
-            state.date != context.date ||
-            (mode == RoomSeatMode.TIME && state.seatMode != RoomSeatMode.TIME)
-        ) {
-            state = state.copy(loading = false)
-            return
-        }
+        if (!isReservationContextCurrent(context, mode)) return
         checked.onSuccess { list ->
             val current = activeReservations(list)
             val matched = current.firstOrNull { it.id !in beforeIds }?.takeIf {
