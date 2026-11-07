@@ -1,6 +1,6 @@
 # 应用内更新
 
-随 **2.0.2 正式版（versionCode 23）** 发布，包含 APK、签名清单与校验文件。2.0 不含更新器，需手动覆盖安装一次；2.0.1（22）复测包已包含更新器，可检查升级。以下 22→23 受控测试记录为开发时证据，当前发布状态以 [2.0.2 发布记录](../releases/2.0.2.md) 为准。
+更新器自 **2.0.2 正式版** 提供；当前 **2.0.3（versionCode 24）** 同批发布 APK、签名清单与校验文件。2.0 不含更新器，需手动覆盖安装一次；2.0.1（22）复测包已包含更新器，可检查升级。以下 22→23 受控测试记录为开发时证据，当前发布状态以 [2.0.3 发布记录](../releases/2.0.3.md) 为准。
 
 ## 用户可见行为
 
@@ -32,14 +32,14 @@
 {
   "schemaVersion": 1,
   "packageName": "com.upcpocket.app",
-  "versionName": "2.0.2",
-  "versionCode": 23,
+  "versionName": "2.0.3",
+  "versionCode": 24,
   "minSdk": 31,
-  "tag": "v2.0.2",
-  "assetName": "UPC-Pocket-2.0.2.apk",
+  "tag": "v2.0.3",
+  "assetName": "UPC-Pocket-2.0.3.apk",
   "sizeBytes": 0,
   "sha256": "<64 lowercase hex>",
-  "publishedAt": "2026-11-06T00:00:00Z",
+  "publishedAt": "2026-11-07T00:00:00Z",
   "notes": ["...", "...", "..."]
 }
 ```
@@ -55,14 +55,14 @@
 ```powershell
 $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 .\tools\release_update.ps1 `
-  -Apk '<构建产物路径>\UPC-Pocket-2.0.2.apk' `
-  -VersionName '2.0.2' -VersionCode 23 `
+  -Apk '<构建产物路径>\UPC-Pocket-2.0.3.apk' `
+  -VersionName '2.0.3' -VersionCode 24 `
   -NotesPath '<更新说明路径>' `
   -OutputDirectory '<空输出目录>'
 ```
 
 脚本调用 build-tools 的 `aapt2`/`apksigner` 核对包名、versionCode/versionName、minSdk、大小、签名证书，生成：
-`UPC-Pocket-2.0.2.apk`、`update.json`、`update.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
+`UPC-Pocket-2.0.3.apk`、`update.json`、`update.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
 
 4. 只有人工确认后才把四个文件上传到同一个 GitHub Release；**不得先公开再原地替换资产**。修复必须提升 versionCode 后重发。不上传私钥、GitHub token 或 R8 mapping。
 
@@ -80,6 +80,6 @@ $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 
 ## 当前发布状态
 
-- 2.0.2（23）正式发布，与 APK 同批提供 `update.json`、`update.sig` 和 `SHA256SUMS.txt`；更新签名密钥与 2.0.1 复测包一致。
+- 2.0.3（24）正式发布，与 APK 同批提供 `update.json`、`update.sig` 和 `SHA256SUMS.txt`；更新签名密钥与 2.0.1 复测包一致。
 - 公共加速源可能存在同步/缓存延迟，失败会尝试其他固定线路；无法获取可信清单时显示检查失败，不伪造最新版本。
 - 2.0.1 本地候选记录保留在 `docs/releases/2.0.1.md`，其中未发布描述属于当时现场。

@@ -7,7 +7,7 @@
 | Android | minSdk 31 / compileSdk 与 targetSdk 36 |
 | JDK | 17+（本机 Android Studio JBR 21） |
 | Android Gradle Plugin | 8.7.3 |
-| Kotlin | 2.0.21 |
+| Kotlin | 2.0.31 |
 | Compose BOM | 2024.12.01 |
 | Room | 2.6.1 |
 
@@ -53,8 +53,8 @@ Linux/macOS：
 ```powershell
 $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 .\tools\release_update.ps1 `
-  -Apk '<空目录>\UPC-Pocket-2.0.2.apk' `
-  -VersionName '2.0.2' -VersionCode 23 `
+  -Apk '<空目录>\UPC-Pocket-2.0.3.apk' `
+  -VersionName '2.0.3' -VersionCode 24 `
   -NotesPath '<3–5 行纯文本说明>' `
   -OutputDirectory '<空输出目录>'
 ```
@@ -71,7 +71,7 @@ $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 .\gradlew.bat :app:assembleRelease
 ```
 
-2.0.2 正式发布使用 `versionName=2.0.2`、`versionCode=23`，开启 R8 与资源压缩。为兼容已安装预览版，保留原开发证书；未配置生产密钥时必须如实注明开发签名。安装包和校验值以 [2.0.2 发布记录](releases/2.0.2.md) 及 GitHub Release 附件为准，不把 debug 包重新命名冒充精简 Release。
+2.0.3 正式发布使用 `versionName=2.0.3`、`versionCode=24`，开启 R8 与资源压缩。为兼容已安装预览版，保留原开发证书；未配置生产密钥时必须如实注明开发签名。安装包和校验值以 [2.0.3 发布记录](releases/2.0.3.md) 及 GitHub Release 附件为准，不把 debug 包重新命名冒充精简 Release。
 
 签名证书 SHA-256（公开证书指纹，不是私钥）：
 
