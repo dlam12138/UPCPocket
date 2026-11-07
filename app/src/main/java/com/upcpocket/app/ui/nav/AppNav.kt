@@ -1,27 +1,42 @@
 package com.upcpocket.app.ui.nav
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -37,6 +52,7 @@ import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
+import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.official.OfficialWebScreen
@@ -71,6 +87,8 @@ private val hostHome = Destination(
 fun AppNav(
     launchTarget: WidgetLaunchTarget? = null,
     onLaunchConsumed: () -> Unit = {},
+    openTodo: Boolean = false,
+    onTodoConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -91,13 +109,30 @@ fun AppNav(
     }.sortedWith(compareBy({ it.order }, { it.route }))
     // 首页由宿主固定在最左，即使未来某个插件贡献了更小的 order 也不能抢占宿主 tab。
     val destinations = listOf(hostHome) + pluginDestinations
+    val tabRoutes = remember(destinations) { destinations.map { it.route }.toSet() }
     val showBottomBar = destinations.any { it.route == currentRoute }
+
+    // 四个一级 tab 各自保存/恢复状态。tab 入口统一走这里，不把另一个 tab 压到
+    // 当前 tab 的返回栈里；因此点“首页”永远回到首页根，而不是恢复某个二级页。
+    fun switchTab(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
+    fun openPluginRoute(route: PluginRouteId) {
+        if (route.value in tabRoutes) {
+            switchTab(route.value)
+        } else {
+            navController.navigate(route.value) { launchSingleTop = true }
+        }
+    }
 
     val pageHost = remember(navController) {
         object : PluginPageHost {
-            override fun open(route: PluginRouteId) {
-                navController.navigate(route.value) { launchSingleTop = true }
-            }
+            override fun open(route: PluginRouteId) = openPluginRoute(route)
 
             override fun back() {
                 navController.popBackStack()
@@ -109,19 +144,13 @@ fun AppNav(
         }
     }
 
-    val sectionHost = remember(navController) {
+    val sectionHost = remember(navController, tabRoutes) {
         object : PluginSectionHost {
             override fun openSchoolAccountSettings() {
                 navController.navigate(AppRoutes.ACCOUNT) { launchSingleTop = true }
             }
-        }
-    }
 
-    fun switchTab(route: String) {
-        navController.navigate(route) {
-            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-            launchSingleTop = true
-            restoreState = true
+            override fun open(route: PluginRouteId) = openPluginRoute(route)
         }
     }
 
@@ -129,15 +158,24 @@ fun AppNav(
         navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true }
     }
 
+    // 通知点击进入待办 tab；具体条目由 TodoService.pendingOpenTask 交给页面。
+    LaunchedEffect(openTodo) {
+        if (!openTodo) return@LaunchedEffect
+        val page = pluginUi.page(TODO_ROUTE)
+        if (page != null) {
+            switchTab(page.routeId.value)
+        } else {
+            switchTab(AppRoutes.HOME)
+        }
+        onTodoConsumed()
+    }
+
     // 桌面组件的固定入口：校园卡回首页（余额功能区所在），电费直接进唐岛湾原生查询页。
     // 只在消费一次后清空，避免重组时反复导航；不接受任意路由或 Intent 转发。
     LaunchedEffect(launchTarget) {
         when (launchTarget) {
             WidgetLaunchTarget.CARD_BALANCE -> {
-                navController.navigate(AppRoutes.HOME) {
-                    popUpTo(navController.graph.findStartDestination().id) { inclusive = false }
-                    launchSingleTop = true
-                }
+                switchTab(AppRoutes.HOME)
             }
             WidgetLaunchTarget.POWER_TANGDAOWAN -> {
                 val powerPage = pluginUi.page(POWER_TANGDAOWAN_ROUTE)
@@ -152,7 +190,7 @@ fun AppNav(
             WidgetLaunchTarget.TIMETABLE -> {
                 val timetablePage = pluginUi.page(TIMETABLE_ROUTE)
                 if (timetablePage != null) {
-                    navController.navigate(timetablePage.routeId.value) { launchSingleTop = true }
+                    switchTab(timetablePage.routeId.value)
                 } else {
                     navController.navigate(AppRoutes.HOME) { launchSingleTop = true }
                 }
@@ -168,48 +206,11 @@ fun AppNav(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
-                Column {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                    )
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        tonalElevation = 0.dp,
-                    ) {
-                        destinations.forEach { destination ->
-                            val selected = currentRoute == destination.route
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = { switchTab(destination.route) },
-                                icon = {
-                                    Icon(
-                                        imageVector = if (selected) {
-                                            destination.icon
-                                        } else {
-                                            destination.outlinedIcon
-                                        },
-                                        contentDescription = destination.label,
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        destination.label,
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                },
-                                alwaysShowLabel = true,
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                                    indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                ),
-                                modifier = Modifier.testTag("tab_${destination.route}"),
-                            )
-                        }
-                    }
-                }
+                FloatingDock(
+                    destinations = destinations,
+                    currentRoute = currentRoute,
+                    onSelect = ::switchTab,
+                )
             }
         },
     ) { innerPadding ->
@@ -224,6 +225,7 @@ fun AppNav(
                 HomeScreen(
                     serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
                     cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
+                    todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
                     sectionHost = sectionHost,
                     onOpenRoute = pageHost::open,
                     onOpenSettings = ::openSettings,
@@ -268,6 +270,97 @@ fun AppNav(
             }
             composable(AppRoutes.ABOUT) {
                 AboutScreen(onBack = { navController.popBackStack() })
+            }
+        }
+    }
+}
+
+/**
+ * 四项悬浮胶囊 dock。
+ *
+ * 只在一级 tab 路由显示；图标无常驻文字，但 Icon 的 contentDescription 与
+ * selectable(role=Tab) 提供无障碍名称和选中语义。键盘弹出时整块隐藏，避免挡住
+ * 底部新增面板。
+ */
+@Composable
+private fun FloatingDock(
+    destinations: List<Destination>,
+    currentRoute: String?,
+    onSelect: (String) -> Unit,
+) {
+    val density = LocalDensity.current
+    if (WindowInsets.ime.getBottom(density) > 0) return
+    val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(top = 6.dp, bottom = navigationBottom + 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp)
+                    .selectableGroup(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                destinations.forEach { destination ->
+                    val selected = currentRoute == destination.route
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .selectable(
+                                selected = selected,
+                                role = Role.Tab,
+                                onClick = { onSelect(destination.route) },
+                            )
+                            .testTag("tab_${destination.route}"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(13.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = if (selected) {
+                                    destination.icon
+                                } else {
+                                    destination.outlinedIcon
+                                },
+                                contentDescription = destination.label,
+                                tint = if (selected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(23.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

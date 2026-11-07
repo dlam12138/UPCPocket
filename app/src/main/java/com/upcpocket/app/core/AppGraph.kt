@@ -47,6 +47,10 @@ import com.upcpocket.app.timetable.TimetableCapabilities
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.todo.TodoCapabilities
+import com.upcpocket.app.todo.TodoLaunchContract
+import com.upcpocket.app.todo.TodoPlugin
+import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.update.UpdateController
 import com.upcpocket.app.update.UpdateControllerFactory
 import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
@@ -229,6 +233,27 @@ object AppGraph {
     }
 
     /**
+     * 本机待办与提醒。通知点击只通过固定 Action + 本地 UUID 打开对应条目。
+     */
+    private val todoPlugin: TodoPlugin by lazy {
+        TodoPlugin(appContext) { taskId -> todoOpenIntent(taskId) }
+    }
+
+    private fun todoOpenIntent(taskId: String): PendingIntent {
+        val intent = Intent(appContext, MainActivity::class.java).apply {
+            action = TodoLaunchContract.ACTION_OPEN
+            putExtra(TodoLaunchContract.EXTRA_TASK_ID, taskId)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        return PendingIntent.getActivity(
+            appContext,
+            taskId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
      * 图书馆认证适配：只有这里通过 core 的受控凭据完成 libseat 正常 CAS。
      * 插件只拿到核验后的 seat token 与本人标识，不依赖 core:account、不读密码。
      */
@@ -349,6 +374,7 @@ object AppGraph {
             runtime.register(classroomPlugin.descriptor) { classroomPlugin }
             runtime.register(libraryPlugin.descriptor) { libraryPlugin }
             runtime.register(focusPlugin.descriptor) { focusPlugin }
+            runtime.register(todoPlugin.descriptor) { todoPlugin }
             runtime.register(timetablePlugin.descriptor) { timetablePlugin }
         }
     }
@@ -414,6 +440,10 @@ object AppGraph {
     /** 课表组件只读本地缓存；插件未激活时返回 null，组件显示未同步而不是伪造空课。 */
     val timetableServiceOrNull: TimetableService?
         get() = activePlugins.capability(TimetableCapabilities.week)
+
+    /** 通知点击/待办页共享的本地数据源；插件未激活时不打开任何任务。 */
+    val todoStoreOrNull: TodoStore?
+        get() = activePlugins.capability(TodoCapabilities.store)
 
     /**
      * 启动装配；由 Application 在设置 Context 后调用。

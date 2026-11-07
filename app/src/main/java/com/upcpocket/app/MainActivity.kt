@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.todo.TodoLaunchContract
 import com.upcpocket.app.ui.nav.AppNav
 import com.upcpocket.app.ui.theme.UpcPocketTheme
 import com.upcpocket.app.widget.WidgetLaunchTarget
@@ -30,15 +31,19 @@ class MainActivity : ComponentActivity() {
      */
     private val widgetTarget = mutableStateOf<WidgetLaunchTarget?>(null)
 
+    /** 通知点击要求打开待办 tab；具体条目由 TodoService.pendingOpenTask 传递。 */
+    private val openTodo = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         // 只在真正新建时消费组件入口。配置变更/旋转时 savedInstanceState 非空，
         // 不再从旧 Intent 重新导航，避免把用户已切走的页面又弹回来。
-        widgetTarget.value = if (savedInstanceState == null) {
-            WidgetLaunchTarget.fromIntent(intent)
+        if (savedInstanceState == null) {
+            widgetTarget.value = WidgetLaunchTarget.fromIntent(intent)
+            consumeTodoIntent(intent)
         } else {
-            null
+            widgetTarget.value = null
         }
 
         // 更新提示只做短 Toast，不弹 Dialog、不阻断登录/预约；是否每天检查由控制器门闩决定。
@@ -61,6 +66,8 @@ class MainActivity : ComponentActivity() {
                 AppNav(
                     launchTarget = widgetTarget.value,
                     onLaunchConsumed = { widgetTarget.value = null },
+                    openTodo = openTodo.value,
+                    onTodoConsumed = { openTodo.value = false },
                 )
             }
         }
@@ -83,5 +90,12 @@ class MainActivity : ComponentActivity() {
         // 保持 getIntent() 与最新投递一致；解析规则与 onCreate 完全相同。
         setIntent(intent)
         WidgetLaunchTarget.fromIntent(intent)?.let { widgetTarget.value = it }
+        consumeTodoIntent(intent)
+    }
+
+    private fun consumeTodoIntent(intent: Intent?) {
+        val taskId = TodoLaunchContract.taskId(intent) ?: return
+        AppGraph.todoStoreOrNull?.openTask(taskId)
+        openTodo.value = true
     }
 }

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 用户主动设置提醒时才按需申请通知权限；拒绝仍可保存待办。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 12+ 精确提醒特殊访问；未获授权时退回不精确调度并显示真实状态。 -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- 重启后从 Room 重建必要调度。 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application>
+        <!-- AlarmManager 只投递本应用显式 PendingIntent。 -->
+        <receiver
+            android:name="com.upcpocket.app.todo.TodoAlarmReceiver"
+            android:exported="false" />
+        <!-- 通知上的完成/稍后动作只来自本应用 immutable PendingIntent。 -->
+        <receiver
+            android:name="com.upcpocket.app.todo.TodoActionReceiver"
+            android:exported="false" />
+        <!-- 重启、包更新、时间/时区与精确闹钟授权变化后重建调度。 -->
+        <receiver
+            android:name="com.upcpocket.app.todo.TodoRescheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

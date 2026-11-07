@@ -58,16 +58,16 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `timetable and focus are the only plugin tabs and more list is gone`() {
+    fun `timetable todo and focus are the only plugin tabs and more list is gone`() {
         val tabs = AppGraph.ui.bottomNav
         assertEquals(
-            listOf("timetable.tab", "focus.tab"),
+            listOf("timetable.tab", "todo.tab", "focus.tab"),
             tabs.map { it.entryId.value },
         )
-        assertEquals(listOf("课表", "专注"), tabs.map { it.label })
-        assertEquals(listOf(5, 10), tabs.map { it.order })
+        assertEquals(listOf("课表", "待办", "专注"), tabs.map { it.label })
+        assertEquals(listOf(5, 7, 10), tabs.map { it.order })
         assertEquals(
-            listOf("timetable.week", "focus"),
+            listOf("timetable.week", "todo.list", "focus"),
             tabs.map { it.route.value },
         )
         tabs.forEach { tab ->
@@ -78,6 +78,10 @@ class HostPluginUiTest {
         assertEquals(
             listOf("card.balance.section"),
             AppGraph.ui.sectionsFor(UiSurface.HOME_CARD).map { it.entryId.value },
+        )
+        assertEquals(
+            listOf("todo.home"),
+            AppGraph.ui.sectionsFor(UiSurface.HOME_TODO).map { it.entryId.value },
         )
         assertEquals(
             listOf("library.account.section"),
@@ -91,6 +95,15 @@ class HostPluginUiTest {
             com.upcpocket.app.timetable.TimetableCapabilities.week,
         )
         assertNotNull(service)
+    }
+
+    @Test
+    fun `todo plugin is active with the shared store capability`() {
+        val store = AppGraph.activePlugins.capability(
+            com.upcpocket.app.todo.TodoCapabilities.store,
+        )
+        assertNotNull(store)
+        assertEquals("todo", AppGraph.ui.page(com.upcpocket.app.todo.TODO_ROUTE)?.pluginId?.value)
     }
 
     @Test
@@ -122,12 +135,13 @@ class HostPluginUiTest {
                 "focus",
                 "focus.stats",
                 "timetable.week",
+                "todo.list",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),
         )
         assertTrue(
             AppGraph.ui.pages.all {
-                it.pluginId.value in setOf("power", "classroom", "library", "focus", "timetable")
+                it.pluginId.value in setOf("power", "classroom", "library", "focus", "timetable", "todo")
             },
         )
     }

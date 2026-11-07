@@ -37,13 +37,14 @@ value class PluginRouteId private constructor(val value: String) {
 /**
  * 宿主决定入口最终出现在哪个栏目；插件只声明稳定归属。
  *
- * M5 不再挂载“更多”页，因此宿主当前只读取 [HOME_SERVICES]、[HOME_CARD] 和
- * [MORE_SCHOOL]（设置里的图书馆登录区）。[MORE_LEARNING] 保留枚举值，避免旧插件
- * 源级编译中断；它不再产生可点入口，课表/专注分别贡献底部 tab。
+ * M5 不再挂载“更多”页，因此宿主当前只读取 [HOME_SERVICES]、[HOME_CARD]、
+ * [HOME_TODO] 和 [MORE_SCHOOL]（设置里的图书馆登录区）。[MORE_LEARNING] 保留枚举值，
+ * 避免旧插件源级编译中断；它不再产生可点入口，课表/待办/专注分别贡献底部 tab。
  */
 enum class UiSurface {
     HOME_SERVICES,
     HOME_CARD,
+    HOME_TODO,
     MORE_LEARNING,
     MORE_SCHOOL,
 }
@@ -56,6 +57,7 @@ enum class UiIcon {
     INSIGHTS,
     TIMER,
     TIMETABLE,
+    TODO,
 }
 
 /** 页面只能通过宿主导航，不能拿 NavController 或对外 Intent。 */
@@ -71,10 +73,13 @@ interface PluginPageHost {
 /**
  * 嵌在宿主页面中的区块可用的宿主动作。
  *
- * 只开放宿主自有设置页，不接受任意路由、Intent 或 URL；插件仍不持有 NavController。
+ * 只开放宿主自有设置页与已注册的稳定路由；不接受任意 Intent 或 URL。
  */
 interface PluginSectionHost {
     fun openSchoolAccountSettings()
+
+    /** 打开已由插件注册的页面；未注册时宿主忽略。 */
+    fun open(route: PluginRouteId) = Unit
 }
 
 /**

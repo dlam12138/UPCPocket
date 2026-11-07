@@ -41,5 +41,11 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+        <!-- debug-only todo probe; explicit adb broadcasts only, never release. -->
+        <receiver
+            android:name=".debug.TodoProbeReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver" />
     </application>
 </manifest>

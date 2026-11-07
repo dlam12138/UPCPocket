@@ -69,6 +69,7 @@ private data class QuickAction(
 fun HomeScreen(
     serviceEntries: List<PluginEntry>,
     cardSections: List<PluginSection>,
+    todoSections: List<PluginSection>,
     sectionHost: PluginSectionHost,
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenSettings: () -> Unit,
@@ -120,6 +121,15 @@ fun HomeScreen(
                 greeting = greeting,
                 onOpenSettings = onOpenSettings,
             )
+
+            if (todoSections.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                todoSections.forEach { section ->
+                    androidx.compose.runtime.key(section.entryId) {
+                        section.content(sectionHost)
+                    }
+                }
+            }
 
             if (actions.isNotEmpty()) {
                 SectionHeader(

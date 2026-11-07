@@ -174,6 +174,7 @@ dependencies {
     implementation(project(":feature:library"))
     implementation(project(":feature:focus"))
     implementation(project(":feature:timetable"))
+    implementation(project(":feature:todo"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

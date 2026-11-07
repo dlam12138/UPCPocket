@@ -47,4 +47,5 @@ include(
     ":feature:library",
     ":feature:focus",
     ":feature:timetable",
+    ":feature:todo",
 )
