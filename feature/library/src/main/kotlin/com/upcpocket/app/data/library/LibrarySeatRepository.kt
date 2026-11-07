@@ -5,6 +5,7 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URLEncoder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,6 +36,16 @@ class LibrarySeatRepository(
 
     private val sessionLock = Any()
     private var sessionGeneration = 0L
+
+    /** 会话范围防重闩；关闭重进/重建 ViewModel 只要 repository 仍是同一会话即生效。 */
+    val attemptLatch = ReservationAttemptLatch()
+
+    internal fun registerReservationAttempt(request: LibraryReservationRequest): Boolean =
+        attemptLatch.registerOrReject(request, currentSessionGeneration())
+
+    /** 仅供测试/诊断：当前会话是否已登记该键（不写业务内容）。 */
+    internal fun hasAttempted(request: LibraryReservationRequest): Boolean =
+        attemptLatch.hasAttempted(request, currentSessionGeneration())
 
     /**
      * 只完成 token 兑换/本人读取，不发布会话。
@@ -240,9 +251,31 @@ class LibrarySeatRepository(
         seatId: String,
         startId: String,
         endId: String,
-    ): Unit = withToken { token ->
-        if (captchaEnabled()) throw LibraryCaptchaRequiredException()
+    ): LibraryReservationAttempt = withToken { token ->
         val user = _session.value?.user ?: throw LibrarySessionExpiredException()
+        val requestKey = LibraryReservationRequest(
+            system = LibraryReservationRequest.SYSTEM_LIBSEAT,
+            userId = user.id,
+            date = date,
+            seatId = seatId,
+            startId = startId,
+            endId = endId,
+        )
+        // CAPTCHA / 设置读取属于 POST 前验证：任何失败都不得冒充已发送。
+        val captcha = try {
+            captchaEnabled()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw LibraryReservationPreflightFailedException(
+                e.message ?: "提交前验证失败，请在学校页面预约。",
+            )
+        }
+        if (captcha) return@withToken LibraryReservationAttempt.NOT_SENT
+        // 会话范围防重：登记与代次绑定，关闭重进/切模式/重建 VM 都在同一 repository 上生效。
+        if (!registerReservationAttempt(requestKey)) {
+            throw LibraryReservationDuplicateException()
+        }
         LibrarySeatProtocol.ensureBooked(
             request(
                 "POST",
@@ -259,6 +292,7 @@ class LibrarySeatRepository(
                 ),
             ),
         )
+        LibraryReservationAttempt.SENT
     }
 
     suspend fun cancel(reservationId: String): Unit = withToken { token ->

@@ -121,7 +121,9 @@ class LibraryTimeSearchLogicTest {
             1,
         )
         state = foldTimePage(state, LibraryTimeSearchPage(listOf(seat("a")), 2, true), 2)
-        assertFalse(state.hasMore)
+        // 不推进：标记部分失败且保留 hasMore，让「重试」能真正重新发出合法页，
+        // 而不是把没读到伪装成结束。
+        assertTrue(state.hasMore)
         assertFalse(state.complete)
         assertTrue(state.partialFailure)
         assertEquals(1, state.seats.size)
@@ -303,5 +305,116 @@ class LibraryTimeSearchLogicTest {
         assertFalse(state.canConfirmReservation())
         assertTrue(state.copy(reservationSubmitted = false, hiddenSeatIds = emptySet())
             .canConfirmTimeReservation())
+    }
+
+    // ── 服务端页号 / 同页去重 / 终页重叠 / 失败可重试 / 隐藏交集 ──
+
+    @Test
+    fun `服务端页号与请求不一致保留已读标 partial 不写 complete`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a")), 1, true),
+            1,
+        )
+        val before = state.seats.map { it.id }
+        state = foldTimePage(
+            state,
+            LibraryTimeSearchPage(listOf(seat("z")), 1, true), // 服务端报 1（倒退）
+            2,
+        )
+        assertEquals(before, state.seats.map { it.id })
+        assertTrue(state.partialFailure)
+        assertFalse(state.complete)
+        assertTrue(state.hasMore) // 可重试
+    }
+
+    @Test
+    fun `同一页内重复 id 去重不重复累计`() {
+        val folded = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(
+                listOf(seat("a"), seat("a"), seat("b")), 1, false,
+            ),
+            1,
+        )
+        assertEquals(listOf("a", "b"), folded.seats.map { it.id })
+        assertTrue(folded.complete)
+    }
+
+    @Test
+    fun `无效终页全重复不伪装成完整读完`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a")), 1, true),
+            1,
+        )
+        state = foldTimePage(
+            state,
+            LibraryTimeSearchPage(listOf(seat("a")), 2, false), // 终页但全是旧 id
+            2,
+        )
+        assertFalse(state.complete)
+        assertTrue(state.partialFailure)
+        assertEquals(listOf("a"), state.seats.map { it.id })
+    }
+
+    @Test
+    fun `有效终页与旧页重叠仍按新增成员完成`() {
+        var state = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a"), seat("b")), 1, true),
+            1,
+        )
+        state = foldTimePage(
+            state,
+            LibraryTimeSearchPage(listOf(seat("b"), seat("c")), 2, false),
+            2,
+        )
+        assertEquals(listOf("a", "b", "c"), state.seats.map { it.id })
+        assertTrue(state.complete)
+        assertFalse(state.partialFailure)
+    }
+
+    @Test
+    fun `首屏失败与下一页失败都保留可重试的 hasMore`() {
+        val first = LibraryTimeSearchResult(key = key).asFirstPageFailure("查询失败")
+        assertTrue(first.failed)
+        assertTrue(first.hasMore)      // retryTime 会重新 searchByTime
+        assertFalse(first.complete)
+
+        val loaded = foldTimePage(
+            LibraryTimeSearchResult(key = key),
+            LibraryTimeSearchPage(listOf(seat("a")), 1, true),
+            1,
+        ).asNextPageFailure()
+        assertTrue(loaded.hasMore)     // retryTime 会重新 loadMoreTime
+        assertTrue(loaded.partialFailure)
+        assertFalse(loaded.complete)
+    }
+
+    @Test
+    fun `已隐藏数只取已加载候选交集不是房间总数`() {
+        val result = LibraryTimeSearchResult(
+            key = key, seats = listOf(seat("a"), seat("b")), complete = true,
+        )
+        // 房间隐藏名单含 a、b 和第三项 x（未加载），交集应为 2 而非 3。
+        assertEquals(2, result.hiddenAmongLoaded(setOf("a", "b", "x")))
+        assertEquals(0, result.hiddenAmongLoaded(emptySet()))
+        assertEquals(listOf<LibrarySeat>(), result.visibleCandidates(setOf("a", "b")))
+    }
+
+    @Test
+    fun `canConfirmTimeReservation 检 reservationSubmitted`() {
+        val candidate = seat("a")
+        val base = timeState().copy(
+            timeResult = LibraryTimeSearchResult(key = key, seats = listOf(candidate), complete = true),
+            timeSelectedSeat = candidate,
+            timeStartTimes = listOf(LibraryTimeOption("840", "14:00")),
+            timeEndTimes = listOf(LibraryTimeOption("960", "16:00")),
+            timeStart = LibraryTimeOption("840", "14:00"),
+            timeStop = LibraryTimeOption("960", "16:00"),
+        )
+        assertTrue(base.canConfirmTimeReservation())
+        assertFalse(base.copy(reservationSubmitted = true).canConfirmTimeReservation())
     }
 }

@@ -83,10 +83,13 @@ internal fun LibrarySeatViewModel.UiState.currentTimeSearchKey(): LibraryTimeSea
 /**
  * 把一页真实结果折叠进累积状态。
  *
- * - 座位按稳定 id 去重；
- * - nextPage 只按**请求页号**前进，识别页号倒退/重复页/不推进，避免死循环；
+ * - 校验服务端 `page.page` 必须等于请求页且不能小于 [current.nextPage]（页号倒退）；
+ *   不一致时保留已读结果并标记未完整加载，绝不写 complete。
+ * - 同一页内按 id 去重，再与已累积 id 去重；终页若全是重复同样不伪装完整成功。
  * - hasMore 以服务端为准；读完且无失败才 complete；
  * - 单次条件最多 [TIME_SEARCH_MAX_PAGES] 页。
+ * - 任何「不前进/重复/异常」状态都保留 hasMore=true（若服务端仍说有更多）或标记
+ *   partialFailure，让「重试 / 加载更多」能真正重新发出当前合法页，而不是空操作。
  */
 fun foldTimePage(
     current: LibraryTimeSearchResult,
@@ -94,14 +97,9 @@ fun foldTimePage(
     requestedPage: Int,
     maxPages: Int = TIME_SEARCH_MAX_PAGES,
 ): LibraryTimeSearchResult {
-    if (requestedPage < current.nextPage) {
-        // 页号倒退：忽略这一页，保留已读结果并标记未完整加载。
-        return current.copy(
-            hasMore = false,
-            complete = false,
-            partialFailure = true,
-            failureMessage = "部分结果未加载",
-        )
+    // 服务端页号必须与请求页一致，且不能倒退；否则视为不可信页。
+    if (page.page != requestedPage || requestedPage < current.nextPage) {
+        return current.asNonAdvancingPage()
     }
     if (current.loadedPages >= maxPages) {
         return current.copy(
@@ -110,16 +108,14 @@ fun foldTimePage(
             pageLimitReached = true,
         )
     }
+    // 页内去重 + 跨页去重。
+    val pageIds = linkedSetOf<String>()
+    val uniqueOnPage = page.seats.filter { pageIds.add(it.id) }
     val existingIds = current.seats.mapTo(linkedSetOf()) { it.id }
-    val fresh = page.seats.filter { it.id !in existingIds }
-    if (fresh.isEmpty() && page.hasMore) {
-        // 重复页/不推进：服务端还说有更多却没给出新 id，停止，避免死循环。
-        return current.copy(
-            hasMore = false,
-            complete = false,
-            partialFailure = true,
-            failureMessage = "部分结果未加载",
-        )
+    val fresh = uniqueOnPage.filter { it.id !in existingIds }
+    if (fresh.isEmpty()) {
+        // 重复页 / 不推进：无论 hasMore 是什么，都不能写成「完整读完」。
+        return current.asNonAdvancingPage()
     }
     val loaded = current.loadedPages + 1
     val accumulated = current.seats + fresh
@@ -153,22 +149,38 @@ fun foldTimePage(
     }
 }
 
-/** 首屏查询失败：不写 0 个可约，保留失败标记。 */
+/**
+ * 不前进/异常页：保留已读结果，保持可重试。
+ *
+ * 若已读结果本身还标记 hasMore（服务端曾说有更多），保留它让 loadMoreTime 能
+ * 重新发出同一页；否则也置 hasMore=true，配合 partialFailure 让「重试」重新查询
+ * 当前条件，而不是把「没读到」伪装成结束。
+ */
+private fun LibraryTimeSearchResult.asNonAdvancingPage(): LibraryTimeSearchResult =
+    copy(
+        hasMore = true,
+        complete = false,
+        partialFailure = true,
+        failureMessage = "部分结果未加载",
+    )
+
+/** 首屏查询失败：不写 0 个可约，保留失败标记与可重试。 */
 fun LibraryTimeSearchResult.asFirstPageFailure(message: String): LibraryTimeSearchResult =
     copy(
         querying = false,
         failed = true,
         failureMessage = message,
-        hasMore = false,
+        hasMore = true,   // 允许「重试」重新发起同一条件查询，不是空操作
         complete = false,
         seats = emptyList(),
     )
 
-/** 下一页失败：保留同条件已读结果，只标注部分未加载并允许重试。 */
+/** 下一页失败：保留同条件已读结果，保持 hasMore 与可重试。 */
 fun LibraryTimeSearchResult.asNextPageFailure(): LibraryTimeSearchResult =
     copy(
         querying = false,
         partialFailure = true,
+        hasMore = true,
         failureMessage = "部分结果未加载",
     )
 
@@ -181,6 +193,13 @@ fun LibraryTimeSearchResult.visibleCandidates(hiddenIds: Set<String>): List<Libr
     seats.filter { it.id !in hiddenIds }
 
 /**
+ * 「已隐藏 M」只统计**已加载候选中**被个人隐藏的项，不是整个房间的隐藏总数。
+ * 避免把房间级隐藏名单数量误读成「本次结果隐藏了多少」。
+ */
+fun LibraryTimeSearchResult.hiddenAmongLoaded(hiddenIds: Set<String>): Int =
+    seats.count { it.id in hiddenIds }
+
+/**
  * 按时段模式的最终确认守卫。
  *
  * 与按座位模式的 canConfirmReservation() 完全分开：不依赖 layout 的
@@ -189,6 +208,8 @@ fun LibraryTimeSearchResult.visibleCandidates(hiddenIds: Set<String>): List<Libr
  */
 internal fun LibrarySeatViewModel.UiState.canConfirmTimeReservation(): Boolean {
     if (seatMode != RoomSeatMode.TIME) return false
+    // 与按座位模式一致：已经发出过提交的同一选择不得再次显示可确认。
+    if (reservationSubmitted) return false
     if (loading || timeSelecting) return false
     val result = timeResult ?: return false
     if (result.failed || result.querying) return false

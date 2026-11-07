@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.upcpocket.app.data.library.LibraryHiddenSeat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -23,13 +24,18 @@ private val Context.libraryHiddenSeatsDataStore: DataStore<Preferences> by
  * system=libseat、buildingId、roomId、稳定 seatId；不同房间同编号不会串联。
  * 只额外保存座号展示快照，学校更新编号时以当前官方布局名称优先。
  *
- * 读写失败会抛出，由 ViewModel 转成「保存失败/读取失败」短提示，不假装已持久化。
+ * 所有写操作都在 DataStore 的单个原子 `edit` 里「解码当前值 → 修改 → 编码」，
+ * 不读取 edit 外的旧快照再整体覆盖，因此并发 hide/hide、hide/restore 不会互相丢更新。
+ * `edit` 在冲突时会用新的当前值重跑变换（transform 必须是纯函数）。
+ *
+ * 写入/解码失败返回 false，由 ViewModel 转成真实短提示，不假装已持久化；
+ * 但 CancellationException 必须原样抛出，不能吞掉协程取消。
  */
 interface LibraryHiddenSeatsStore {
     /** 当前房间全部隐藏项（含座号展示快照）；读取失败时抛出。 */
     suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat>
 
-    /** 当前房间隐藏的稳定 seatId 集合。 */
+    /** 当前房间隐藏的稳定 seatId 集合（与 entries 同一次读取派生，避免两份快照不一致）。 */
     suspend fun hiddenIds(buildingId: String, roomId: String): Set<String>
 
     /** 隐藏一个座位；返回是否真的写入成功。 */
@@ -86,10 +92,6 @@ private fun composite(entry: StoredHiddenSeat) =
 private fun compositePrefix(system: String, buildingId: String, roomId: String) =
     "$system|$buildingId|$roomId|"
 
-/**
- * 用单个 DataStore 字符串键保存一份 JSON 列表；所有修改都在 `edit` 里读-改-写，
- * 每项身份带完整命名空间。DataStore 保证原子提交与跨重启持久化。
- */
 class DataStoreLibraryHiddenSeatsStore internal constructor(
     private val store: DataStore<Preferences>,
 ) : LibraryHiddenSeatsStore {
@@ -98,26 +100,51 @@ class DataStoreLibraryHiddenSeatsStore internal constructor(
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    private suspend fun loadAll(): MutableMap<String, StoredHiddenSeat> {
-        val raw = store.data.first()[KEY_HIDDEN_SEATS] ?: return linkedMapOf()
-        val list = runCatching { json.decodeFromString<List<StoredHiddenSeat>>(raw) }
-            .getOrElse { throw IllegalStateException("隐藏座位读取失败", it) }
+    /** 在原子变换内解码；损坏的 JSON 当作读取失败抛出，由 edit 回滚（不写入）。 */
+    private fun decode(prefs: Preferences): MutableMap<String, StoredHiddenSeat> {
+        val raw = prefs[KEY_HIDDEN_SEATS] ?: return linkedMapOf()
+        val list = try {
+            json.decodeFromString<List<StoredHiddenSeat>>(raw)
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            throw IllegalStateException("隐藏座位读取失败", e)
+        }
         return list.associateBy { composite(it) }.toMutableMap()
     }
 
-    private suspend fun writeAll(all: Map<String, StoredHiddenSeat>): Boolean {
-        val raw = json.encodeToString(all.values.toList())
-        return try {
-            store.edit { prefs -> prefs[KEY_HIDDEN_SEATS] = raw }
-            true
-        } catch (_: Exception) {
-            false
+    private fun encode(all: Map<String, StoredHiddenSeat>): String =
+        json.encodeToString(all.values.toList())
+
+    /**
+     * 单个原子写变换。`body` 只做纯内存修改；任何解码/编码/写入异常返回 false，
+     * 取消异常原样抛出。edit 会串行化并发写，冲突时用新当前值重跑 body。
+     */
+    private suspend fun atomicEdit(
+        body: (MutableMap<String, StoredHiddenSeat>) -> Unit,
+    ): Boolean = try {
+        store.edit { prefs ->
+            val all = decode(prefs)
+            body(all)
+            prefs[KEY_HIDDEN_SEATS] = encode(all)
         }
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
     }
 
     override suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat> {
+        // 读取失败（IO 损坏/解码异常）抛出，由 ViewModel 显示「读取失败」而非假空列表。
+        val prefs = try {
+            store.data.first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw IllegalStateException("隐藏座位读取失败", e)
+        }
         val prefix = compositePrefix(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
-        return loadAll().values
+        return decode(prefs).values
             .filter { composite(it).startsWith(prefix) }
             .map { it.toModel() }
             .sortedBy { it.nameSnapshot }
@@ -128,25 +155,21 @@ class DataStoreLibraryHiddenSeatsStore internal constructor(
 
     override suspend fun hide(entry: LibraryHiddenSeat): Boolean {
         require(entry.system == LibraryHiddenSeat.SYSTEM_LIBSEAT) { "未知来源" }
-        val all = loadAll()
-        all[composite(entry.toStored())] = entry.toStored()
-        return writeAll(all)
+        val stored = entry.toStored()
+        return atomicEdit { all -> all[composite(stored)] = stored }
     }
 
-    override suspend fun restore(buildingId: String, roomId: String, seatId: String): Boolean {
-        val all = loadAll()
-        val key = "${LibraryHiddenSeat.SYSTEM_LIBSEAT}|$buildingId|$roomId|$seatId"
-        if (all.remove(key) == null) return true
-        return writeAll(all)
-    }
+    override suspend fun restore(buildingId: String, roomId: String, seatId: String): Boolean =
+        atomicEdit { all ->
+            all.remove("${LibraryHiddenSeat.SYSTEM_LIBSEAT}|$buildingId|$roomId|$seatId")
+        }
 
     override suspend fun restoreAll(buildingId: String, roomId: String): Boolean {
         val prefix = compositePrefix(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
-        val all = loadAll()
-        val toRemove = all.keys.filter { it.startsWith(prefix) }
-        if (toRemove.isEmpty()) return true
-        toRemove.forEach { all.remove(it) }
-        return writeAll(all)
+        return atomicEdit { all ->
+            val toRemove = all.keys.filter { it.startsWith(prefix) }
+            toRemove.forEach { all.remove(it) }
+        }
     }
 
     override suspend fun count(buildingId: String, roomId: String): Int =

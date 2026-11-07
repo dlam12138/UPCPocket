@@ -156,6 +156,35 @@ data class LibraryTimeSearchResult(
     val querying: Boolean = false,
 )
 
+/**
+ * 一次原生预约提交的完整身份（用于会话范围防重闩）。
+ *
+ * 关键字段都取真实服务端 id 与来源：本人 user id、座位 id、日期、真实
+ * startId/endId、来源系统。绑定到账号/会话代次，关闭重进、切模式、重建
+ * ViewModel 都不能绕过「结果未知不再 POST」。验证码/CAPTCHA 在 POST 前
+ * 就被拒绝时不登记，保证正常网页回退仍可再次尝试。
+ */
+data class LibraryReservationRequest(
+    val system: String,
+    val userId: String,
+    val date: String,
+    val seatId: String,
+    val startId: String,
+    val endId: String,
+) {
+    companion object {
+        const val SYSTEM_LIBSEAT = "libseat"
+    }
+}
+
+/** 预约提交结果：是否真正发出过 POST；未发出（如提交前验证失败）不得冒充已发送。 */
+enum class LibraryReservationAttempt {
+    /** 已真正发出 POST；结果未知/超时也保持登记，不自动重提。 */
+    SENT,
+    /** POST 前被拒绝（验证码/本地校验），不算已发送，不影响网页回退。 */
+    NOT_SENT,
+}
+
 data class LibraryReservation(
     val id: String,
     val date: String,
@@ -187,6 +216,17 @@ class LibrarySessionExpiredException(message: String = "登录已失效，请重
 
 class LibraryCaptchaRequiredException :
     LibrarySeatException("需要图形验证码，请在学校页面预约。")
+
+/** 同一会话内重复的未知结果提交被拒绝；不再次发出 POST。 */
+class LibraryReservationDuplicateException :
+    LibrarySeatException("这次预约已提交且结果未确认，请勿重复提交，请先到学校记录核对。")
+
+/**
+ * POST 之前的验证/设置读取失败或验证码分支：没有真正发出提交，
+ * 不得登记防重闩、不得冒充已发送，正常网页回退仍可再次尝试。
+ */
+class LibraryReservationPreflightFailedException(message: String) :
+    LibrarySeatException(message)
 
 object LibrarySeatStatus {
     fun label(status: String): String = when (status) {

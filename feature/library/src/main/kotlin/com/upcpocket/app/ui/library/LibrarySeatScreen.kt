@@ -97,17 +97,21 @@ import com.upcpocket.app.data.library.LibraryFilters
 import com.upcpocket.app.data.library.LibraryFloor
 import com.upcpocket.app.data.library.LibraryHiddenSeat
 import com.upcpocket.app.data.library.LibraryReservation
+import com.upcpocket.app.data.library.LibraryReservationAttempt
+import com.upcpocket.app.data.library.LibraryReservationDuplicateException
 import com.upcpocket.app.data.library.LibraryReservationMatch
+import com.upcpocket.app.data.library.LibraryReservationPreflightFailedException
 import com.upcpocket.app.data.library.LibraryRoom
 import com.upcpocket.app.data.library.LibrarySeat
 import com.upcpocket.app.data.library.LibrarySeatException
 import com.upcpocket.app.data.library.LibrarySeatLayout
+import com.upcpocket.app.data.library.LibrarySeatOps
 import com.upcpocket.app.data.library.LibrarySeatRepository
+import com.upcpocket.app.data.library.LibrarySeatRepositoryOps
 import com.upcpocket.app.data.library.LibrarySessionExpiredException
 import com.upcpocket.app.data.library.LibraryTimeOption
 import com.upcpocket.app.data.library.LibraryTimeSearchResult
 import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
-import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.library.LibraryAccountAuthFailure
 import com.upcpocket.app.library.LibraryAccountLoginResult
 import com.upcpocket.app.library.LibraryService
@@ -136,7 +140,15 @@ fun LibrarySeatScreen(
         object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                LibrarySeatViewModel(repo, service.sessionStore, hiddenSeatsStore) as T
+                LibrarySeatViewModel(
+                    repo = repo,
+                    hiddenSeatsStore = hiddenSeatsStore,
+                    ops = LibrarySeatRepositoryOps(repo),
+                    logoutCleanup = {
+                        service.sessionStore.clearLibrary()
+                        LibrarySeatCookies.clearSeatCookies()
+                    },
+                ) as T
         }
     }
     val vm: LibrarySeatViewModel = viewModel(factory = factory)
@@ -626,119 +638,89 @@ private fun LibrarySeatDetailPage(
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        if (timeMode) {
-                            val chosen = state.timeSelectedSeat
-                            Text(chosen?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
-                            Text(
-                                if (state.timeBegin != null && state.timeFinish != null) {
-                                    "${state.timeBegin}–${state.timeFinish}" +
-                                        (durationText(
-                                            state.timeStart ?: LibraryTimeOption("", state.timeBegin),
-                                            state.timeStop ?: LibraryTimeOption("", state.timeFinish),
-                                        )?.let { " · $it" } ?: "")
-                                } else "选择时段",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        } else {
+            if (timeMode) {
+                TimeSearchBottomBar(state = state, onConfirm = vm::requestTimeReservation)
+            } else {
+                Surface(tonalElevation = 2.dp) {
+                    Row(
+                        Modifier.fillMaxWidth().navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
                             Text(seat?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
                             Text(seatSummary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                    }
-                    Button(
-                        onClick = {
-                            if (timeMode) {
-                                vm.requestTimeReservation()
-                            } else {
+                        Button(
+                            onClick = {
                                 when {
                                     seat == null -> Unit
                                     state.start == null || state.end == null -> vm.openTimeSheet()
                                     else -> vm.requestReservation()
                                 }
-                            }
-                        },
-                        enabled = if (timeMode) {
-                            state.canConfirmTimeReservation()
-                        } else {
-                            when {
+                            },
+                            enabled = when {
                                 seat == null -> false
                                 state.start == null || state.end == null -> seat.selectable && !state.loading
                                 else -> state.canConfirmReservation()
-                            }
-                        },
-                    ) {
-                        Text(
-                            if (timeMode) {
-                                "确认预约"
-                            } else {
+                            },
+                        ) {
+                            Text(
                                 when {
                                     seat == null -> "选择座位"
                                     state.start == null || state.end == null -> "选择时间"
                                     else -> "确认预约"
-                                }
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                 }
             }
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    FilterChip(
-                        selected = state.seatMode == RoomSeatMode.SEAT,
-                        onClick = { vm.setSeatMode(RoomSeatMode.SEAT) },
-                        label = { Text("按座位选") },
-                    )
-                    FilterChip(
-                        selected = state.seatMode == RoomSeatMode.TIME,
-                        onClick = { vm.setSeatMode(RoomSeatMode.TIME) },
-                        label = { Text("按时段找") },
-                    )
-                }
+        if (timeMode) {
+            Box(Modifier.fillMaxSize().padding(padding)) {
+                LibraryTimeSearchContent(
+                    state = state,
+                    onMode = vm::setSeatMode,
+                    onPickBegin = { pickingBegin = true },
+                    onPickFinish = { pickingFinish = true },
+                    onSearch = vm::searchByTime,
+                    onSelect = vm::selectTimeCandidate,
+                    onHide = vm::hideSeat,
+                    onRetry = vm::retryTime,
+                    onLoadMore = vm::loadMoreTime,
+                )
             }
-            if (timeMode) {
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 item {
-                    TimeRangeControls(
-                        begin = state.timeBegin,
-                        finish = state.timeFinish,
-                        onPickBegin = { pickingBegin = true },
-                        onPickFinish = { pickingFinish = true },
-                        onSearch = vm::searchByTime,
-                        canSearch = validTimeRange(state.timeBegin, state.timeFinish) &&
-                            state.timeResult?.querying != true,
-                        querying = state.timeResult?.querying == true,
-                    )
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        FilterChip(
+                            selected = true,
+                            onClick = {},
+                            label = { Text("按座位选") },
+                        )
+                        FilterChip(
+                            selected = false,
+                            onClick = { vm.setSeatMode(RoomSeatMode.TIME) },
+                            label = { Text("按时段找") },
+                        )
+                    }
                 }
-                item {
-                    TimeSearchResults(
-                        state = state,
-                        vm = vm,
-                        onHide = vm::hideSeat,
-                    )
-                }
-            } else {
                 seatModeContent(state, vm, seat, room)
-            }
-            item {
-                state.notice?.let { notice ->
-                    Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                item {
+                    state.notice?.let { notice ->
+                        Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
         }
@@ -898,8 +880,74 @@ private fun TimePickDialog(
     )
 }
 
+/**
+ * 按时段找页面的主体（生产组件）：模式切换 + 时间输入 + 结果列表。
+ *
+ * debug 合成预览用同一个 [state] 类型与同一套派生规则、无网络回调调用它，
+ * 不复制第二份布局，也不硬编码计数/hasMore/时长/确认可用性。
+ */
 @Composable
-private fun TimeRangeControls(
+internal fun LibraryTimeSearchContent(
+    state: LibrarySeatViewModel.UiState,
+    onMode: (RoomSeatMode) -> Unit,
+    onPickBegin: () -> Unit,
+    onPickFinish: () -> Unit,
+    onSearch: () -> Unit,
+    onSelect: (LibrarySeat) -> Unit,
+    onHide: (LibrarySeat) -> Unit,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = state.seatMode == RoomSeatMode.SEAT,
+                    onClick = { onMode(RoomSeatMode.SEAT) },
+                    label = { Text("按座位选") },
+                )
+                FilterChip(
+                    selected = state.seatMode == RoomSeatMode.TIME,
+                    onClick = { onMode(RoomSeatMode.TIME) },
+                    label = { Text("按时段找") },
+                )
+            }
+        }
+        item {
+            TimeRangeControls(
+                begin = state.timeBegin,
+                finish = state.timeFinish,
+                onPickBegin = onPickBegin,
+                onPickFinish = onPickFinish,
+                onSearch = onSearch,
+                canSearch = validTimeRange(state.timeBegin, state.timeFinish) &&
+                    state.timeResult?.querying != true,
+                querying = state.timeResult?.querying == true,
+            )
+        }
+        item {
+            TimeSearchResults(
+                state = state,
+                onSelect = onSelect,
+                onHide = onHide,
+                onRetry = onRetry,
+                onLoadMore = onLoadMore,
+            )
+        }
+        item {
+            state.notice?.let { notice ->
+                Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+internal fun TimeRangeControls(
     begin: String?,
     finish: String?,
     onPickBegin: () -> Unit,
@@ -941,12 +989,56 @@ private fun TimeRangeControls(
     }
 }
 
+/**
+ * 按时段找的底部摘要与确认（生产组件，debug 合成预览也复用同一套派生规则）。
+ * 时长、可选状态、按钮文案都由 [state] 推导，不硬编码「2 小时」或 chosen!=null。
+ */
+@Composable
+internal fun TimeSearchBottomBar(
+    state: LibrarySeatViewModel.UiState,
+    onConfirm: () -> Unit,
+) {
+    val chosen = state.timeSelectedSeat
+    val start = state.timeStart
+    val stop = state.timeStop
+    val summary = if (start != null && stop != null) {
+        "${start.value}–${stop.value}" +
+            (durationText(start, stop)?.let { " · $it" } ?: "")
+    } else if (state.timeBegin != null && state.timeFinish != null) {
+        "${state.timeBegin}–${state.timeFinish}"
+    } else {
+        "选择时段"
+    }
+    Surface(tonalElevation = 2.dp) {
+        Row(
+            Modifier.fillMaxWidth().navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(chosen?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
+                Text(
+                    summary,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(onClick = onConfirm, enabled = state.canConfirmTimeReservation()) {
+                Text("确认预约")
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimeSearchResults(
+internal fun TimeSearchResults(
     state: LibrarySeatViewModel.UiState,
-    vm: LibrarySeatViewModel,
+    onSelect: (LibrarySeat) -> Unit,
     onHide: (LibrarySeat) -> Unit,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     val result = state.timeResult
     val visible = result?.visibleCandidates(state.hiddenSeatIds).orEmpty()
@@ -956,7 +1048,10 @@ private fun TimeSearchResults(
             result.querying && result.loadedPages == 0 ->
                 CompactNotice("正在查找", "只查询当前房间。")
             result.failed ->
-                CompactNotice("查询失败", result.failureMessage ?: "请重试")
+                Column {
+                    CompactNotice("查询失败", result.failureMessage ?: "请重试")
+                    TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
+                }
             result.complete && result.seats.isEmpty() ->
                 CompactNotice("这个时段暂无可约座位", "可以修改时段再找。")
             result.complete && visible.isEmpty() && result.seats.isNotEmpty() ->
@@ -968,15 +1063,17 @@ private fun TimeSearchResults(
                 } else {
                     "已加载 ${result.seats.size} 个"
                 }
+                // 已隐藏数只取「已加载候选 ∩ 个人隐藏」，不是整个房间的隐藏总数。
+                val hiddenAmongLoaded = result.hiddenAmongLoaded(state.hiddenSeatIds)
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(countLabel, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.weight(1f))
-                    if (state.hiddenSeatIds.isNotEmpty()) {
+                    if (hiddenAmongLoaded > 0) {
                         Text(
-                            "已隐藏 ${state.hiddenSeatIds.size}",
+                            "已加载中隐藏 $hiddenAmongLoaded",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -986,7 +1083,7 @@ private fun TimeSearchResults(
                     TimeCandidateRow(
                         candidate = candidate,
                         selected = state.timeSelectedSeat?.id == candidate.id,
-                        onSelect = { vm.selectTimeCandidate(candidate) },
+                        onSelect = { onSelect(candidate) },
                         onHide = { onHide(candidate) },
                     )
                 }
@@ -994,12 +1091,12 @@ private fun TimeSearchResults(
                     result.partialFailure ->
                         Column {
                             Text("部分结果未加载", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = vm::loadMoreTime) { Text("重试") }
+                            TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
                         }
                     result.pageLimitReached ->
                         Text("已加载前 ${result.seats.size} 个，请缩小范围", style = MaterialTheme.typography.labelSmall)
                     result.hasMore ->
-                        TextButton(onClick = vm::loadMoreTime, enabled = !result.querying) { Text("加载更多") }
+                        TextButton(onClick = onLoadMore, enabled = !result.querying) { Text("加载更多") }
                 }
                 if (state.timeSelecting) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1582,8 +1679,11 @@ private fun SeatCell(
 
 internal class LibrarySeatViewModel(
     private val repo: LibrarySeatRepository,
-    private val sessionStore: SchoolSessionStore,
     private val hiddenSeatsStore: LibraryHiddenSeatsStore,
+    private val ops: LibrarySeatOps,
+    private val logoutCleanup: () -> Unit = {},
+    /** 仅供状态恢复/测试注入初始状态；生产 factory 不传。 */
+    initialState: UiState = UiState(),
 ) : ViewModel() {
     data class UiState(
         val filters: LibraryFilters? = null,
@@ -1635,7 +1735,7 @@ internal class LibrarySeatViewModel(
         val undoHidden: LibraryHiddenSeat? = null,
     )
 
-    var state by mutableStateOf(UiState())
+    var state by mutableStateOf(initialState)
         private set
     private var roomRequestGeneration = 0L
     private var timeRequestGeneration = 0L
@@ -1863,79 +1963,6 @@ internal class LibrarySeatViewModel(
         state = state.copy(showConfirm = false)
     }
 
-    fun confirmReservation() {
-        if (state.reservationSubmitted) return
-        if (!state.canConfirmReservation()) {
-            state = state.copy(showConfirm = false, error = "所选座位或时段已不可用，请重新选择")
-            return
-        }
-        val date = state.date ?: return
-        val seat = state.seat ?: return
-        val start = state.start ?: return
-        val end = state.end ?: return
-        val beforeIds = state.reservations.map { it.id }.toSet()
-        val requestToken = repo.session.value?.token
-        state = state.copy(
-            loading = true,
-            error = null,
-            notice = null,
-            showConfirm = false,
-            reservationSubmitted = true,
-        )
-        viewModelScope.launch {
-            // 请求与最终状态分开：请求失败/超时也不等于“没预约上”，先查询核对再下结论。
-            val requestError = try {
-                repo.reserve(date, seat.id, start.id, end.id)
-                null
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                e
-            }
-            if (requestError is LibrarySessionExpiredException) {
-                fail(requestError, requestToken)
-                return@launch
-            }
-            val checked = runCatching { repo.myReservations() }
-            checked.onSuccess { list ->
-                val current = activeReservations(list)
-                val matched = current.firstOrNull { it.id !in beforeIds }?.takeIf {
-                    LibraryReservationMatch.matches(it, date, start.value, end.value, seat.name)
-                }
-                val legacyMatchWithoutNewId = current.firstOrNull {
-                    it.id in beforeIds && LibraryReservationMatch.matches(
-                        it, date, start.value, end.value, seat.name,
-                    )
-                }
-                val notice = when {
-                    matched != null ->
-                        "预约成功，已在“我的预约”中核对到该座位与完整时段（记录 ${matched.id}）。"
-                    legacyMatchWithoutNewId != null ->
-                        "学校已接受请求，但“我的预约”里只有同步前就存在的记录，不能证明本次预约成功；请刷新核对，不要重复提交。"
-                    requestError != null ->
-                        "预约请求结果不确定（${requestError.friendly()}），核对后也没有看到新记录；请先刷新核对，不要重复提交。"
-                    else ->
-                        "学校已接受预约请求，但“我的预约”暂未出现新记录；结果待核对，请刷新，不要重复提交。"
-                }
-                state = state.copy(
-                    loading = false,
-                    reservations = current,
-                    reservationsUpdatedAt = System.currentTimeMillis(),
-                    reservationsError = null,
-                    showTimeDialog = false,
-                    notice = notice,
-                )
-            }.onFailure { error ->
-                state = state.copy(
-                    loading = false,
-                    notice = if (requestError == null) {
-                        "预约请求已提交，但核对“我的预约”失败（${error.friendly()}）；结果待确认，请稍后刷新，不要重复提交。"
-                    } else {
-                        "预约请求与核对都没有成功（${requestError.friendly()}）；结果不确定，请先刷新核对，不要重复提交。"
-                    },
-                )
-            }
-        }
-    }
 
     // ───────────────── 按时段找 ─────────────────
 
@@ -1993,7 +2020,7 @@ internal class LibrarySeatViewModel(
         val inFlight = state.timeResult
         if (inFlight?.querying == true && inFlight.key == key) return
         val generation = ++timeSearchGeneration
-        val token = repo.session.value?.token
+        val token = ops.sessionToken()
         val context = TimeQueryContext(generation, token, key)
         state = state.copy(
             timeResult = LibraryTimeSearchResult(key = key, querying = true),
@@ -2012,9 +2039,10 @@ internal class LibrarySeatViewModel(
     fun loadMoreTime() {
         val current = state.timeResult ?: return
         val key = state.currentTimeSearchKey() ?: return
-        if (current.key != key || current.querying || !current.hasMore || current.pageLimitReached) return
+        if (current.key != key || current.querying || current.pageLimitReached) return
+        if (!current.hasMore && !current.partialFailure) return
         val generation = timeSearchGeneration
-        val token = repo.session.value?.token
+        val token = ops.sessionToken()
         val context = TimeQueryContext(generation, token, key)
         state = state.copy(
             timeResult = current.copy(querying = true, partialFailure = false, failureMessage = null),
@@ -2022,11 +2050,25 @@ internal class LibrarySeatViewModel(
         loadTimePage(context, firstPage = false)
     }
 
+    /**
+     * 「重试」：首屏失败重新查找（page 1），下一页失败/不前进重新发出当前合法页。
+     * 不是空操作 —— 两种情况都会真正走 [loadTimePage]。
+     */
+    fun retryTime() {
+        val current = state.timeResult ?: return
+        if (current.key != state.currentTimeSearchKey()) return
+        if (current.failed) {
+            searchByTime()
+        } else {
+            loadMoreTime()
+        }
+    }
+
     private fun loadTimePage(context: TimeQueryContext, firstPage: Boolean) {
         val page = if (firstPage) 1 else state.timeResult?.nextPage ?: return
         viewModelScope.launch {
             try {
-                val result = repo.timeSearchSeats(
+                val result = ops.timeSearchSeats(
                     key = context.key,
                     page = page,
                     batch = TIME_SEARCH_BATCH,
@@ -2070,7 +2112,7 @@ internal class LibrarySeatViewModel(
         state.seatMode == RoomSeatMode.TIME &&
             context.isCurrent(
                 timeSearchGeneration,
-                repo.session.value?.token,
+                ops.sessionToken(),
                 state.currentTimeSearchKey(),
             )
 
@@ -2082,7 +2124,7 @@ internal class LibrarySeatViewModel(
         if (result.key != key || result.seats.none { it.id == seat.id }) return
         if (seat.id in state.hiddenSeatIds) return
         val generation = ++timeRequestGeneration
-        val token = repo.session.value?.token
+        val token = ops.sessionToken()
         state = state.copy(
             timeSelecting = true,
             timeSelectedSeat = seat,
@@ -2095,17 +2137,19 @@ internal class LibrarySeatViewModel(
         )
         viewModelScope.launch {
             try {
-                val starts = repo.startTimes(seat.id, key.date)
+                val starts = ops.startTimes(seat.id, key.date)
                 val start = matchOfficialTime(starts, key.beginText)
                     ?: throw LibrarySeatException("该座位时段已变化，请重新查找")
-                val ends = repo.endTimes(seat.id, key.date, start.id)
+                val ends = ops.endTimes(seat.id, key.date, start.id)
                 val stop = matchOfficialTime(ends, key.endText)
                     ?: throw LibrarySeatException("该座位时段已变化，请重新查找")
+                // 迟到响应：代次/token/完整键/模式/所选座位任一变化都不得恢复确认。
                 if (generation != timeRequestGeneration ||
-                    repo.session.value?.token != token ||
+                    ops.sessionToken() != token ||
                     state.currentTimeSearchKey() != key ||
                     state.seatMode != RoomSeatMode.TIME ||
-                    state.timeSelectedSeat?.id != seat.id
+                    state.timeSelectedSeat?.id != seat.id ||
+                    seat.id in state.hiddenSeatIds
                 ) {
                     return@launch
                 }
@@ -2145,7 +2189,13 @@ internal class LibrarySeatViewModel(
         state = state.copy(showConfirm = true)
     }
 
-    /** 时段模式最终提交：与按座位模式共用一次性/核对逻辑，但守卫完全分开。 */
+    /**
+     * 按时段模式最终提交。防重由两层保证：
+     *  - 会话范围 repository 闩（[LibraryReservationRequest]）阻止真正再次 POST；
+     *  - [reservationSubmitted] UI 状态阻止再次显示可确认。
+     * 关闭重进 / 切模式 / 重建 ViewModel 只要 repository 仍是同一会话，就不能绕过。
+     * POST 前的验证码/CAPTCHA 不算已发送，不置 submitted，正常网页回退仍可再试。
+     */
     fun confirmTimeReservation() {
         if (state.reservationSubmitted) return
         if (!state.canConfirmTimeReservation()) {
@@ -2156,92 +2206,220 @@ internal class LibrarySeatViewModel(
         val seat = state.timeSelectedSeat ?: return
         val start = state.timeStart ?: return
         val stop = state.timeStop ?: return
-        val beforeIds = state.reservations.map { it.id }.toSet()
-        val requestToken = repo.session.value?.token
-        // 提交前置位：网络读取迟到、未知结果都不能再次启用同一提交的确认。
-        state = state.copy(
-            loading = true,
-            error = null,
-            notice = null,
-            showConfirm = false,
-            reservationSubmitted = true,
+        submitReservation(
+            context = ReservationContext(
+                token = ops.sessionToken(),
+                date = key.date,
+                seatId = seat.id,
+                seatName = seat.name,
+                startId = start.id,
+                endId = stop.id,
+                startValue = start.value,
+                endValue = stop.value,
+                buildingId = key.buildingId,
+                roomId = key.roomId,
+            ),
+            mode = RoomSeatMode.TIME,
         )
+    }
+
+    /** 按座位模式最终提交，复用同一防重闩与响应校验。 */
+    fun confirmReservation() {
+        if (state.reservationSubmitted) return
+        if (!state.canConfirmReservation()) {
+            state = state.copy(showConfirm = false, error = "所选座位或时段已不可用，请重新选择")
+            return
+        }
+        val date = state.date ?: return
+        val seat = state.seat ?: return
+        val start = state.start ?: return
+        val end = state.end ?: return
+        submitReservation(
+            context = ReservationContext(
+                token = ops.sessionToken(),
+                date = date,
+                seatId = seat.id,
+                seatName = seat.name,
+                startId = start.id,
+                endId = end.id,
+                startValue = start.value,
+                endValue = end.value,
+                buildingId = state.building?.id,
+                roomId = state.room?.roomId,
+            ),
+            mode = RoomSeatMode.SEAT,
+        )
+    }
+
+    /** 一次提交的完整上下文；迟到响应据此核对账号/会话/房间，不写新房间/新账号。 */
+    private data class ReservationContext(
+        val token: String?,
+        val date: String,
+        val seatId: String,
+        val seatName: String,
+        val startId: String,
+        val endId: String,
+        val startValue: String,
+        val endValue: String,
+        val buildingId: String?,
+        val roomId: String?,
+    )
+
+    private fun submitReservation(context: ReservationContext, mode: RoomSeatMode) {
+        val beforeIds = state.reservations.map { it.id }.toSet()
         viewModelScope.launch {
-            val requestError = try {
-                repo.reserve(key.date, seat.id, start.id, stop.id)
-                null
+            // 请求与最终状态分开：请求失败/超时也不等于「没预约上」，先查询核对再下结论。
+            val attempt = try {
+                ops.reserve(context.date, context.seatId, context.startId, context.endId)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
-                e
-            }
-            if (requestError is LibrarySessionExpiredException) {
-                fail(requestError, requestToken)
+                if (e is LibrarySessionExpiredException) {
+                    // 会话失效：不能确定是否发出，但 repository 闩已按当前会话登记；
+                    // 只做失效处理，不重提。
+                    fail(e, context.token)
+                    return@launch
+                }
+                if (e is LibraryReservationDuplicateException) {
+                    // 防重闩拒绝：确认这不是新发出请求，保持 UI 不可再确认。
+                    state = state.copy(
+                        loading = false,
+                        showConfirm = false,
+                        reservationSubmitted = true,
+                        error = e.message ?: "这次预约已提交，请勿重复提交。",
+                    )
+                    return@launch
+                }
+                if (e is LibraryReservationPreflightFailedException) {
+                    // POST 前验证失败：没有发出提交，不置 submitted，网页回退仍可再试。
+                    state = state.copy(
+                        loading = false,
+                        showConfirm = false,
+                        error = e.message ?: "提交前验证失败，请在学校页面预约。",
+                    )
+                    return@launch
+                }
+                // 其它异常（含超时/未知）：结果未知，已尝试发出或可能发出，登记为已提交。
+                state = state.copy(loading = true, error = null, notice = null,
+                    showConfirm = false, reservationSubmitted = true)
+                checkReservationsAfterAttempt(context, mode, beforeIds, e)
                 return@launch
             }
-            val checked = runCatching { repo.myReservations() }
-            checked.onSuccess { list ->
-                val current = activeReservations(list)
-                val matched = current.firstOrNull { it.id !in beforeIds }?.takeIf {
-                    LibraryReservationMatch.matches(it, key.date, start.value, stop.value, seat.name)
-                }
-                val legacyMatchWithoutNewId = current.firstOrNull {
-                    it.id in beforeIds && LibraryReservationMatch.matches(
-                        it, key.date, start.value, stop.value, seat.name,
+            when (attempt) {
+                LibraryReservationAttempt.NOT_SENT -> {
+                    // POST 前验证/CAPTCHA 拒绝：不算已发送，不影响正常网页回退，
+                    // 也不置 reservationSubmitted。
+                    state = state.copy(
+                        loading = false,
+                        showConfirm = false,
+                        error = "需要验证码或学校未允许本次提交，请在学校页面预约。",
                     )
                 }
-                val notice = when {
-                    matched != null ->
-                        "预约成功，已在“我的预约”中核对到该座位与完整时段（记录 ${matched.id}）。"
-                    legacyMatchWithoutNewId != null ->
-                        "学校已接受请求，但“我的预约”里只有同步前就存在的记录，不能证明本次预约成功；请刷新核对，不要重复提交。"
-                    requestError != null ->
-                        "预约请求结果不确定（${requestError.friendly()}），核对后也没有看到新记录；请先刷新核对，不要重复提交。"
-                    else ->
-                        "学校已接受预约请求，但“我的预约”暂未出现新记录；结果待核对，请刷新，不要重复提交。"
+                LibraryReservationAttempt.SENT -> {
+                    state = state.copy(loading = true, error = null, notice = null,
+                        showConfirm = false, reservationSubmitted = true)
+                    checkReservationsAfterAttempt(context, mode, beforeIds, null)
                 }
-                state = state.copy(
-                    loading = false,
-                    reservations = current,
-                    reservationsUpdatedAt = System.currentTimeMillis(),
-                    reservationsError = null,
-                    notice = notice,
-                )
-            }.onFailure { error ->
-                state = state.copy(
-                    loading = false,
-                    notice = if (requestError == null) {
-                        "预约请求已提交，但核对“我的预约”失败（${error.friendly()}）；结果待确认，请稍后刷新，不要重复提交。"
-                    } else {
-                        "预约请求与核对都没有成功（${requestError.friendly()}）；结果不确定，请先刷新核对，不要重复提交。"
-                    },
+            }
+        }
+    }
+
+    /** 提交后核对「我的预约」；迟到/新账号/新房间响应不得写回状态。 */
+    private suspend fun checkReservationsAfterAttempt(
+        context: ReservationContext,
+        mode: RoomSeatMode,
+        beforeIds: Set<String>,
+        requestError: Throwable?,
+    ) {
+        val checked = try {
+            Result.success(ops.myReservations())
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            Result.failure(e)
+        }
+        // 核对响应迟到：会话/房间/模式已变就丢弃，不写新上下文。
+        if (ops.sessionToken() != context.token ||
+            state.building?.id != context.buildingId ||
+            state.room?.roomId != context.roomId ||
+            state.date != context.date ||
+            (mode == RoomSeatMode.TIME && state.seatMode != RoomSeatMode.TIME)
+        ) {
+            state = state.copy(loading = false)
+            return
+        }
+        checked.onSuccess { list ->
+            val current = activeReservations(list)
+            val matched = current.firstOrNull { it.id !in beforeIds }?.takeIf {
+                LibraryReservationMatch.matches(
+                    it, context.date, context.startValue, context.endValue, context.seatName,
                 )
             }
+            val legacyMatchWithoutNewId = current.firstOrNull {
+                it.id in beforeIds && LibraryReservationMatch.matches(
+                    it, context.date, context.startValue, context.endValue, context.seatName,
+                )
+            }
+            val notice = when {
+                matched != null ->
+                    "预约成功，已在“我的预约”中核对到该座位与完整时段（记录 ${matched.id}）。"
+                legacyMatchWithoutNewId != null ->
+                    "学校已接受请求，但“我的预约”里只有同步前就存在的记录，不能证明本次预约成功；请刷新核对，不要重复提交。"
+                requestError != null ->
+                    "预约请求结果不确定（${requestError.friendly()}），核对后也没有看到新记录；请先刷新核对，不要重复提交。"
+                else ->
+                    "学校已接受预约请求，但“我的预约”暂未出现新记录；结果待核对，请刷新，不要重复提交。"
+            }
+            state = state.copy(
+                loading = false,
+                reservations = current,
+                reservationsUpdatedAt = System.currentTimeMillis(),
+                reservationsError = null,
+                notice = notice,
+            )
+        }.onFailure { error ->
+            state = state.copy(
+                loading = false,
+                notice = if (requestError == null) {
+                    "预约请求已提交，但核对“我的预约”失败（${error.friendly()}）；结果待确认，请稍后刷新，不要重复提交。"
+                } else {
+                    "预约请求与核对都没有成功（${requestError.friendly()}）；结果不确定，请先刷新核对，不要重复提交。"
+                },
+            )
         }
     }
 
     // ───────────────── 本机个人隐藏 ─────────────────
 
+    /**
+     * 读取当前房间隐藏名单：只做一次 [LibraryHiddenSeatsStore.entries] 读取，
+     * ids 由同一次结果派生，避免两份快照不一致。响应校验房间+代次，旧房间响应
+     * 不污染新房间。
+     */
     private fun loadHiddenSeats() {
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
         val generation = ++hiddenGeneration
         viewModelScope.launch {
             try {
-                val ids = hiddenSeatsStore.hiddenIds(buildingId, roomId)
                 val entries = hiddenSeatsStore.entries(buildingId, roomId)
-                if (generation != hiddenGeneration || state.building?.id != buildingId ||
-                    state.room?.roomId != roomId
-                ) {
-                    return@launch
-                }
-                state = state.copy(hiddenSeatIds = ids, hiddenEntries = entries)
+                if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
+                state = state.copy(
+                    hiddenSeatIds = entries.mapTo(linkedSetOf()) { it.seatId },
+                    hiddenEntries = entries,
+                )
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
-                if (generation == hiddenGeneration) {
+                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
                     state = state.copy(hiddenActionError = "隐藏名单读取失败")
                 }
             }
         }
     }
+
+    private fun isHiddenContextCurrent(generation: Long, buildingId: String, roomId: String): Boolean =
+        generation == hiddenGeneration &&
+            state.building?.id == buildingId &&
+            state.room?.roomId == roomId
 
     fun hideSeat(seat: LibrarySeat) {
         val buildingId = state.building?.id ?: return
@@ -2253,25 +2431,41 @@ internal class LibrarySeatViewModel(
             seatId = seat.id,
             nameSnapshot = seat.name,
         )
+        // 立即清掉正被选中的座位/确认与在途选时（不等持久化），避免隐藏期间仍可确认；
+        // 代次递增使迟到的 startTimes/endTimes 不能恢复确认。
+        timeRequestGeneration++
+        state = state.copy(
+            timeSelectedSeat = state.timeSelectedSeat?.takeIf { it.id != seat.id },
+            seat = state.seat?.takeIf { it.id != seat.id },
+            showConfirm = false,
+            timeStartTimes = emptyList(),
+            timeEndTimes = emptyList(),
+            timeStart = null,
+            timeStop = null,
+            timeSelecting = false,
+        )
+        val generation = ++hiddenGeneration
         viewModelScope.launch {
-            val saved = hiddenSeatsStore.hide(entry)
+            val saved = try {
+                hiddenSeatsStore.hide(entry)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
             if (!saved) {
-                state = state.copy(hiddenActionError = "保存失败，请重试")
+                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
+                    state = state.copy(hiddenActionError = "保存失败，请重试")
+                }
                 return@launch
             }
-            // 选中即清空；两模式的确认状态都清掉。
+            // 存储偏好可完成在 A，但 UI 发布必须校验仍是捕获的房间 + 代次。
+            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
             state = state.copy(
                 hiddenSeatIds = state.hiddenSeatIds + seat.id,
                 hiddenEntries = state.hiddenEntries + entry,
                 undoHidden = entry,
                 hiddenActionError = null,
-                timeSelectedSeat = state.timeSelectedSeat?.takeIf { it.id != seat.id },
-                seat = state.seat?.takeIf { it.id != seat.id },
-                showConfirm = false,
-                timeStartTimes = emptyList(),
-                timeEndTimes = emptyList(),
-                timeStart = null,
-                timeStop = null,
             )
             loadHiddenSeats()
         }
@@ -2279,12 +2473,22 @@ internal class LibrarySeatViewModel(
 
     fun undoHide() {
         val entry = state.undoHidden ?: return
+        val generation = ++hiddenGeneration
         viewModelScope.launch {
-            val saved = hiddenSeatsStore.restore(entry.buildingId, entry.roomId, entry.seatId)
+            val saved = try {
+                hiddenSeatsStore.restore(entry.buildingId, entry.roomId, entry.seatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
             if (!saved) {
-                state = state.copy(hiddenActionError = "保存失败，请重试")
+                if (generation == hiddenGeneration) {
+                    state = state.copy(hiddenActionError = "保存失败，请重试")
+                }
                 return@launch
             }
+            if (generation != hiddenGeneration) return@launch
             state = state.copy(undoHidden = null)
             loadHiddenSeats()
         }
@@ -2306,12 +2510,22 @@ internal class LibrarySeatViewModel(
     fun restoreHidden(seatId: String) {
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
+        val generation = ++hiddenGeneration
         viewModelScope.launch {
-            val saved = hiddenSeatsStore.restore(buildingId, roomId, seatId)
+            val saved = try {
+                hiddenSeatsStore.restore(buildingId, roomId, seatId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
             if (!saved) {
-                state = state.copy(hiddenActionError = "保存失败，请重试")
+                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
+                    state = state.copy(hiddenActionError = "保存失败，请重试")
+                }
                 return@launch
             }
+            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
             loadHiddenSeats()
         }
     }
@@ -2319,12 +2533,22 @@ internal class LibrarySeatViewModel(
     fun restoreAllHidden() {
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
+        val generation = ++hiddenGeneration
         viewModelScope.launch {
-            val saved = hiddenSeatsStore.restoreAll(buildingId, roomId)
+            val saved = try {
+                hiddenSeatsStore.restoreAll(buildingId, roomId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
             if (!saved) {
-                state = state.copy(hiddenActionError = "保存失败，请重试")
+                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
+                    state = state.copy(hiddenActionError = "保存失败，请重试")
+                }
                 return@launch
             }
+            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
             loadHiddenSeats()
         }
     }
@@ -2332,6 +2556,7 @@ internal class LibrarySeatViewModel(
     fun clearHiddenActionError() {
         state = state.copy(hiddenActionError = null)
     }
+
 
     fun refreshReservations() {
         if (state.reservationsBusy) return
@@ -2446,8 +2671,7 @@ internal class LibrarySeatViewModel(
     /** 只退出图书馆：清本业务 token 与 libspace Cookie，不动其它业务。 */
     fun logout() {
         repo.clearSession()
-        sessionStore.clearLibrary()
-        LibrarySeatCookies.clearSeatCookies()
+        logoutCleanup()
         resetAfterLogout()
     }
 

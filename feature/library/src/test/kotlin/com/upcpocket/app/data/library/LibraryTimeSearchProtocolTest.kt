@@ -109,4 +109,102 @@ class LibraryTimeSearchProtocolTest {
             ).hasMore,
         )
     }
+
+    // ── 严格校验：缺失/无效 page、hasMore 不得默认成「没有更多」 ──
+
+    @Test
+    fun `缺 page 是协议失败不是默认请求页`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"hasMore":true}}""", 1,
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertTrue(e!!.message!!.contains("分页页码"))
+    }
+
+    @Test
+    fun `缺 hasMore 是协议失败不默认结束`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":1}}""", 1,
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertTrue(e!!.message!!.contains("分页标记"))
+    }
+
+    @Test
+    fun `无效 hasMore 值是协议失败`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":1,"hasMore":"maybe"}}""", 1,
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+    }
+
+    @Test
+    fun `服务端页号与请求不一致是协议失败`() {
+        val e = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":3,"hasMore":true}}""", 2,
+            )
+        }.exceptionOrNull()
+        assertTrue(e is LibrarySeatException)
+        assertTrue(e!!.message!!.contains("不一致"))
+    }
+
+    @Test
+    fun `坏名单条目不能被过滤成合法空名单`() {
+        val badObj = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{
+                  "1001":{"id":"s1","name":"A1","type":"seat","enabled":true,"status":"FREE"},
+                  "1002":"not-an-object"
+                },"page":1,"hasMore":false}}""", 1,
+            )
+        }.exceptionOrNull()
+        assertTrue(badObj is LibrarySeatException)
+        val blankId = runCatching {
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{
+                  "1001":{"id":"","name":"A1","type":"seat","enabled":true,"status":"FREE"}
+                },"page":1,"hasMore":false}}""", 1,
+            )
+        }.exceptionOrNull()
+        assertTrue(blankId is LibrarySeatException)
+        assertTrue(blankId!!.message!!.contains("标识"))
+    }
+
+    @Test
+    fun `同页重复 id 保留给上层去重不静默删除`() {
+        val page = LibrarySeatProtocol.parseTimeSearchPage(
+            """{"status":true,"data":{"seats":{
+              "1001":{"id":"s1","name":"A1","type":"seat","enabled":true,"status":"FREE"},
+              "1002":{"id":"s1","name":"A1-dup","type":"seat","enabled":true,"status":"FREE"}
+            },"page":1,"hasMore":false}}""", 1,
+        )
+        assertEquals(2, page.seats.size)
+        assertEquals(2, page.seats.count { it.id == "s1" })
+    }
+
+    @Test
+    fun `布尔 false 与字符串零显式接受`() {
+        assertFalse(
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":1,"hasMore":false}}""", 1,
+            ).hasMore,
+        )
+        assertFalse(
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":1,"hasMore":"0"}}""", 1,
+            ).hasMore,
+        )
+        assertFalse(
+            LibrarySeatProtocol.parseTimeSearchPage(
+                """{"status":true,"data":{"seats":{},"page":1,"hasMore":"false"}}""", 1,
+            ).hasMore,
+        )
+    }
 }

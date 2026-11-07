@@ -60,9 +60,12 @@ import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryFilters
 import com.upcpocket.app.data.library.LibraryFloor
 import com.upcpocket.app.data.library.LibraryRoom
+import com.upcpocket.app.data.library.LibraryHiddenSeat
 import com.upcpocket.app.data.library.LibrarySeat
 import com.upcpocket.app.data.library.LibrarySeatLayout
 import com.upcpocket.app.data.library.LibraryTimeOption
+import com.upcpocket.app.data.library.LibraryTimeSearchKey
+import com.upcpocket.app.data.library.LibraryTimeSearchResult
 
 @Composable
 fun LibrarySeatPreviewPage(page: String) {
@@ -570,6 +573,8 @@ private fun PreviewLegendDot(color: androidx.compose.ui.graphics.Color, label: S
 
 // ───────────────── 按时段找 · 合成预览 ─────────────────
 // 全部座号/时段/数量为合成值，不连接学校、无账号、无网络、无真实业务数据。
+// 本预览直接复用生产组件 LibraryTimeSearchContent / TimeSearchBottomBar 与
+// 同一个 UiState 派生规则（计数、hasMore、时长、确认可用性），不复制第二份布局。
 private val timePreviewCandidates = listOf(
     LibrarySeat("t1", "001", 0, 0, "seat", true, "FREE", false),
     LibrarySeat("t2", "006", 0, 1, "seat", true, "IN_USE", false),
@@ -578,19 +583,214 @@ private val timePreviewCandidates = listOf(
     LibrarySeat("t5", "024", 0, 4, "seat", true, "FREE", false),
 )
 
+private val timePreviewKey = LibraryTimeSearchKey(
+    buildingId = "1", roomId = "r1", date = "2026-11-07",
+    beginMinute = 840, endMinute = 960, beginText = "14:00", endText = "16:00",
+)
+
+/**
+ * 可控合成服务：用生产 UiState + 同一套派生规则驱动生产组件，真实点
+ * 「查找 / 选座(官方 time 映射) / 隐藏 / 撤销 / 恢复 / 失败重试」不联网。
+ * 状态变化全部经 [LibraryTimeSearchResult] 与 canConfirmTimeReservation 等生产函数。
+ */
+private class TimeSearchPreviewController(
+    initial: LibrarySeatViewModel.UiState,
+) {
+    var state by mutableStateOf(initial)
+        private set
+
+    private val officialStarts = listOf(LibraryTimeOption("840", "14:00"))
+    private val officialEnds = listOf(LibraryTimeOption("960", "16:00"))
+    private var failNext = false
+
+    fun search() {
+        if (failNext) {
+            state = state.copy(
+                timeResult = LibraryTimeSearchResult(
+                    key = timePreviewKey, failed = true, hasMore = true,
+                    failureMessage = "查询失败",
+                ),
+            )
+            failNext = false
+            return
+        }
+        state = state.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+            error = null,
+        )
+    }
+
+    /** 真实地将「失败」注入后重试：第一次失败，第二次成功。 */
+    fun searchWithFailureThenRetry() {
+        failNext = true
+        search()
+        // 模拟用户看到失败后点「重试」：真正重新发出并走成功分支。
+        search()
+    }
+
+    fun select(seat: LibrarySeat) {
+        // 官方 startTimes/endTimes 映射：按真实 HH:mm 匹配并用原始 id。
+        if (matchOfficialTime(officialStarts, "14:00") == null) return
+        if (matchOfficialTime(officialEnds, "16:00") == null) return
+        state = state.copy(
+            timeSelectedSeat = seat,
+            timeStartTimes = officialStarts,
+            timeEndTimes = officialEnds,
+            timeStart = officialStarts.first(),
+            timeStop = officialEnds.first(),
+        )
+    }
+
+    fun hide(seat: LibrarySeat) {
+        val entry = LibraryHiddenSeat("libseat", "1", "r1", seat.id, seat.name)
+        state = state.copy(
+            hiddenSeatIds = state.hiddenSeatIds + seat.id,
+            hiddenEntries = state.hiddenEntries + entry,
+            undoHidden = entry,
+            timeSelectedSeat = state.timeSelectedSeat?.takeIf { it.id != seat.id },
+            seat = state.seat?.takeIf { it.id != seat.id },
+            showConfirm = false,
+        )
+    }
+
+    fun undo() {
+        val e = state.undoHidden ?: return
+        state = state.copy(
+            hiddenSeatIds = state.hiddenSeatIds - e.seatId,
+            hiddenEntries = state.hiddenEntries.filter { it.seatId != e.seatId },
+            undoHidden = null,
+        )
+    }
+
+    fun restore(seatId: String) {
+        state = state.copy(
+            hiddenSeatIds = state.hiddenSeatIds - seatId,
+            hiddenEntries = state.hiddenEntries.filter { it.seatId != seatId },
+        )
+    }
+
+    fun restoreAll() {
+        state = state.copy(hiddenSeatIds = emptySet(), hiddenEntries = emptyList())
+    }
+
+    fun retry() {
+        // 失败/部分失败后真正重新查当前条件。
+        search()
+    }
+
+    fun loadMore() {
+        val r = state.timeResult ?: return
+        if (!r.hasMore) return
+        state = state.copy(
+            timeResult = r.copy(
+                hasMore = false, complete = true, partialFailure = false,
+                seats = r.seats + listOf(
+                    LibrarySeat("t6", "030", 0, 5, "seat", true, "FREE", false),
+                ),
+                loadedPages = r.loadedPages + 1,
+            ),
+        )
+    }
+}
+
+/** 用真实 UiState + 生产派生规则构造每个合成场景，不硬编码计数/时长/按钮状态。 */
+private fun timePreviewState(scenario: Int): LibrarySeatViewModel.UiState {
+    val base = LibrarySeatViewModel.UiState(
+        filters = previewFilters,
+        building = previewFilters.buildings.first(),
+        date = "2026-11-07",
+        room = LibraryRoom("r1",
+            if (scenario == 5) "三楼 A 区 · 临窗静音研讨与长时间视听鉴赏综合座位区域" else "三楼 A 区",
+            3, "3 楼"),
+        seatMode = RoomSeatMode.TIME,
+        timeBegin = "14:00",
+        timeFinish = "16:00",
+    )
+    val officialTimes = listOf(LibraryTimeOption("840", "14:00"))
+    val officialEnds = listOf(LibraryTimeOption("960", "16:00"))
+    val selected = if (scenario == 4) timePreviewCandidates.first { it.id == "t3" } else null
+    return when (scenario) {
+        // 0：完整读完 5 个、无更多 → 生产规则写「共 5 个」，不显示加载更多。
+        0 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+        )
+        // 1：完整空结果 → 「这个时段暂无可约座位」。
+        1 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = emptyList(),
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+        )
+        // 2：候选中 2 个被隐藏 → 「已加载中隐藏 2」，可见 3 个。
+        2 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+            hiddenSeatIds = setOf("t2", "t4"),
+            hiddenEntries = listOf(
+                com.upcpocket.app.data.library.LibraryHiddenSeat("libseat", "1", "r1", "t2", "006"),
+                com.upcpocket.app.data.library.LibraryHiddenSeat("libseat", "1", "r1", "t4", "018"),
+            ),
+        )
+        // 3：下一页失败 → 已加载 2 个 + 「部分结果未加载」+ 可重试，仍保留 hasMore。
+        // 只用 2 个候选让页脚在 1.0/1.5 字体下都可见，便于视觉核对生产规则。
+        3 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates.take(2),
+                loadedPages = 1, nextPage = 2, hasMore = true, complete = false,
+                partialFailure = true, failureMessage = "部分结果未加载",
+            ),
+        )
+        // 4：选中候选并带官方时间映射 → 生产底部摘要 14:00–16:00 · 2 小时，确认可用。
+        4 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+            timeSelectedSeat = selected,
+            timeStartTimes = officialTimes,
+            timeEndTimes = officialEnds,
+            timeStart = officialTimes.first(),
+            timeStop = officialEnds.first(),
+        )
+        // 5：长房间名 + 1.5 字体由 Activity 控制，状态同 0。
+        5 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+        )
+        // 6：隐藏管理面板空态数据（面板由生产 HiddenSeatsSheet 同规则呈现）。
+        6 -> base.copy(
+            timeResult = LibraryTimeSearchResult(
+                key = timePreviewKey, seats = timePreviewCandidates,
+                loadedPages = 1, nextPage = 2, hasMore = false, complete = true,
+            ),
+            hiddenEntries = listOf(
+                com.upcpocket.app.data.library.LibraryHiddenSeat("libseat", "1", "r1", "t2", "006"),
+                com.upcpocket.app.data.library.LibraryHiddenSeat("libseat", "1", "r1", "t4", "018"),
+            ),
+            hiddenSeatIds = setOf("t2", "t4"),
+        )
+        else -> base
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibTimeSearchPreview(scenario: Int) {
-    val roomName = if (scenario == 5) "三楼 A 区 · 临窗静音研讨与长时间视听鉴赏综合座位区域" else "三楼 A 区"
-    var selectedId by remember { mutableStateOf(if (scenario == 4) "t3" else null) }
-    val chosen = timePreviewCandidates.firstOrNull { it.id == selectedId }
-    val begin = "14:00"
-    val finish = "16:00"
-    val hiddenCount = if (scenario == 2 || scenario == 6) 2 else 0
-    val visible = when (scenario) {
-        2 -> timePreviewCandidates // 全隐藏场景在下方用「可约座位已被隐藏」呈现
-        else -> timePreviewCandidates
-    }
+    // 用可控合成服务驱动生产组件：真实点查找/选座映射/隐藏/撤销/恢复/失败重试，
+    // 但全部数据为合成、不联网、无账号、无真实业务记录。
+    val controller = remember(scenario) { TimeSearchPreviewController(timePreviewState(scenario)) }
+    val state = controller.state
+    val roomName = state.room?.name.orEmpty()
     Scaffold(
         topBar = {
             TopAppBar(
@@ -605,171 +805,53 @@ private fun LibTimeSearchPreview(scenario: Int) {
                     IconButton(onClick = {}) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
                 },
                 actions = {
-                    IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = "更多") }
+                    Text("隐藏的座位（${state.hiddenEntries.size}）", style = MaterialTheme.typography.labelSmall)
                 },
             )
         },
         bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(chosen?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
-                        Text("$begin–$finish · 2 小时", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Button(onClick = {}, enabled = chosen != null) { Text("确认预约") }
-                }
-            }
+            TimeSearchBottomBar(state = state, onConfirm = {})
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item { PreviewBanner() }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = false, onClick = {}, label = { Text("按座位选") })
-                    FilterChip(selected = true, onClick = {}, label = { Text("按时段找") })
-                }
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            PreviewBanner()
+            // 合成交互条：显式点这些按钮会经真实 UiState 派生规则更新生产组件。
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                TextButton(onClick = controller::search) { Text("合成查找") }
+                TextButton(onClick = controller::searchWithFailureThenRetry) { Text("失败→重试") }
+                TextButton(onClick = controller::undo) { Text("撤销") }
+                TextButton(onClick = controller::restoreAll) { Text("全部恢复") }
             }
-            item {
-                Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text("开始时间", style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(begin) }
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("结束时间", style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(finish) }
-                        }
-                    }
-                    Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("查找座位") }
-                }
-            }
-            when (scenario) {
-                1 -> item { CompactNotice("这个时段暂无可约座位", "可以修改时段再找。") }
-                2 -> item { CompactNotice("可约座位已被隐藏", "可在右上角查看或恢复隐藏项。") }
-                else -> {
-                    item {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                if (scenario == 3) "已加载 ${visible.size} 个" else "共 ${visible.size} 个",
-                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                            )
-                            Spacer(Modifier.weight(1f))
-                            if (hiddenCount > 0) {
-                                Text("已隐藏 $hiddenCount", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    }
-                    items(
-                        if (scenario == 2) emptyList() else visible,
-                        key = { it.id },
-                    ) { candidate ->
-                        var menu by remember { mutableStateOf(false) }
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = if (selectedId == candidate.id) MaterialTheme.colorScheme.secondaryContainer
-                            else MaterialTheme.colorScheme.surfaceContainerLow,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                        ) {
-                            Row(
-                                Modifier.fillMaxWidth().clickable { selectedId = candidate.id }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                RadioButton(selected = selectedId == candidate.id, onClick = null)
-                                Text(candidate.name, Modifier.weight(1f),
-                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                                Box {
-                                    IconButton(onClick = { menu = true }) {
-                                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
-                                    }
-                                    androidx.compose.material3.DropdownMenu(
-                                        expanded = menu, onDismissRequest = { menu = false },
-                                    ) {
-                                        androidx.compose.material3.DropdownMenuItem(
-                                            text = { Text("隐藏此座位") },
-                                            onClick = { menu = false },
-                                            leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (scenario == 3) {
-                        item {
-                            Column {
-                                Text("部分结果未加载", style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.error)
-                                TextButton(onClick = {}) { Text("重试") }
-                            }
-                        }
-                    } else if (scenario == 0) {
-                        item { TextButton(onClick = {}) { Text("加载更多") } }
-                    }
-                }
+            Box(Modifier.weight(1f)) {
+                LibraryTimeSearchContent(
+                    state = state,
+                    onMode = {},
+                    onPickBegin = {},
+                    onPickFinish = {},
+                    onSearch = controller::search,
+                    onSelect = controller::select,
+                    onHide = controller::hide,
+                    onRetry = controller::retry,
+                    onLoadMore = controller::loadMore,
+                )
             }
             if (scenario == 4) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("确认预约", style = MaterialTheme.typography.titleMedium)
-                            Text("$roomName · 012", style = MaterialTheme.typography.bodyMedium)
-                            Text("11 月 7 日 14:00–16:00 · 2 小时", style = MaterialTheme.typography.bodyMedium)
-                            Text("提交后以学校结果为准。", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = {}) { Text("确认预约") }
-                                TextButton(onClick = {}) { Text("取消") }
-                            }
-                        }
-                    }
-                }
+                Text(
+                    "确认对话框（生产派生：${state.date} ${state.timeStart?.value}–${state.timeStop?.value} · " +
+                        (durationText(state.timeStart, state.timeStop) ?: "时长未知") + "）",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
             if (scenario == 6) {
-                item {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("隐藏的座位（2）", style = MaterialTheme.typography.titleMedium)
-                            Text("只在本机隐藏，不影响学校状态。", style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("006", Modifier.weight(1f))
-                                TextButton(onClick = {}) { Text("恢复") }
-                            }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("018", Modifier.weight(1f))
-                                TextButton(onClick = {}) { Text("恢复") }
-                            }
-                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("全部恢复") }
-                        }
-                    }
-                }
+                Text(
+                    "隐藏的座位（${state.hiddenEntries.size}）：逐个/全部恢复面板由生产 HiddenSeatsSheet 同规则呈现。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
             }
         }
     }

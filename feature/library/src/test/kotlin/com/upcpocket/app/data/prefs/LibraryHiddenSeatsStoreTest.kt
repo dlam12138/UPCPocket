@@ -3,12 +3,17 @@ package com.upcpocket.app.data.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.upcpocket.app.data.library.LibraryHiddenSeat
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -132,5 +137,75 @@ class LibraryHiddenSeatsStoreTest {
         assertTrue(store.hiddenIds("1", "r1").isEmpty())
         assertEquals(0, store.count("1", "r1"))
         assertFalse(store.entries("1", "r1").isNotEmpty())
+    }
+
+    // ── 原子 edit：并发 hide/hide、hide/restore 不丢更新 ──
+
+    @Test
+    fun `并发隐藏两个座位都保留不互相覆盖`() = runBlocking {
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        val a = entry("r1", "s1", "A001")
+        val b = entry("r1", "s2", "A002")
+        val results = awaitAll(
+            async(Dispatchers.IO) { store.hide(a) },
+            async(Dispatchers.IO) { store.hide(b) },
+        )
+        assertTrue(results.all { it })
+        assertEquals(setOf("s1", "s2"), store.hiddenIds("1", "r1"))
+        assertEquals(2, store.count("1", "r1"))
+    }
+
+    @Test
+    fun `并发多次隐藏全部保留`() = runBlocking {
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        val results = (1..8).map { n ->
+            async(Dispatchers.IO) { store.hide(entry("r1", "s$n", "A%03d".format(n))) }
+        }.awaitAll()
+        assertTrue(results.all { it })
+        assertEquals(8, store.count("1", "r1"))
+    }
+
+    @Test
+    fun `hide 与 restore 交错不丢另一项`() = runBlocking {
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        store.hide(entry("r1", "keep", "KEEP"))
+        val results = awaitAll(
+            async(Dispatchers.IO) { store.hide(entry("r1", "s2", "A002")) },
+            async(Dispatchers.IO) { store.restore("1", "r1", "keep") },
+        )
+        assertTrue(results.all { it })
+        val ids = store.hiddenIds("1", "r1")
+        // keep 可能被恢复（若 restore 后跑）或仍隐藏（若先跑），但 s2 必须存在，
+        // 且绝不能出现「只剩空」的覆盖丢失。
+        assertTrue("s2" in ids)
+    }
+
+    @Test
+    fun `损坏 JSON 读取抛异常不返回假空列表`() = runBlocking {
+        dataStore.edit { prefs ->
+            prefs[androidx.datastore.preferences.core.stringPreferencesKey("hidden_seats_v1")] =
+                "NOT_VALID_JSON{{"
+        }
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        val readError = runCatching { store.entries("1", "r1") }.exceptionOrNull()
+        assertTrue(readError != null)
+        // 写入在原子 edit 内解码失败 -> 返回 false，不假成功、不覆盖坏数据成新列表。
+        assertFalse(store.hide(entry("r1", "s1")))
+    }
+
+    @Test
+    fun `读失败后写不会把坏数据覆盖成假空`() = runBlocking {
+        dataStore.edit { prefs ->
+            prefs[androidx.datastore.preferences.core.stringPreferencesKey("hidden_seats_v1")] = "BROKEN"
+        }
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        assertFalse(store.hide(entry("r1", "s1")))
+        assertFalse(store.restore("1", "r1", "x"))
+        assertFalse(store.restoreAll("1", "r1"))
+        // 原值仍是损坏的，没被写操作悄悄替换。
+        val raw = dataStore.data.first()[
+            androidx.datastore.preferences.core.stringPreferencesKey("hidden_seats_v1")
+        ]
+        assertEquals("BROKEN", raw)
     }
 }

@@ -7,17 +7,23 @@
   识别重复页/倒退/不推进并封顶 20 页；部分失败保留同条件结果，完整读完才写「共 N 个」。
 - 先用当前公开前端与本人账号最小只读请求核实 `searchSeats/{date}/{begin}/{end}` 是 UPC 真实协议：
   `begin/end` 为当天分钟数，`data.seats` 按 row*1000+col 还原座位，`page/hasMore` 真实分页，
-  不同区间返回不同数量证明完整区间语义；候选选中后按官方 `startTimes/endTimes` 匹配真实 HH:mm
+  不同区间返回不同数量说明结果对区间敏感（未实测完整区间逐座逐分钟行为）；候选选中后按官方 `startTimes/endTimes` 匹配真实 HH:mm
   并使用服务端原始 id。两模式确认守卫分离，当前占用不否决未来区间可约；最终提交只发一次，
   未知/超时不重提。详见 [验收记录](releases/2.0.3-library-time-search.md)。
 - 本机个人隐藏：独立 DataStore 命名空间（system+馆区+房间+seatId），候选更多/座位图长按/已选
   均可隐藏，选中即清空，Snackbar 撤销；地图弱化并独立标记、不重排；房间更多菜单「隐藏的座位（N）」
   底部面板逐个/全部恢复。仅本机偏好，不上传、换号不误删、恢复不改变学校状态。超星独立协议未改。
-- 验证：`feature:library` 145 tests（1 skip）/ `app` 99 tests 0 失败，模块边界、Debug/Release Lint、
-  `lintVitalRelease` 通过；11 张合成浅深×1.0/1.5、长名、空态/隐藏/分页失败/确认/管理面板/座位模式
-  截图，Release 覆盖安装保留数据并冒烟首页四 tab/Pager 与待办/空闲教室/图书馆入口。
-- 独立产物 `artifacts/2.0.3/UPC-Pocket-2.0.3-library-time-search.apk`，**5,066,257 bytes**，
-  SHA-256 `A90B25C0E77414AC19B7A830EA08F859DEA92AF4100504844C754931AFA50EE5`，
+- 评审修正（同分支新提交）：隐藏存储改为 DataStore 单 `edit` 原子变换（并发/异常不丢更新、不假成功）；
+  隐藏响应校验房间+代次、单次 entries 派生 ids、选中隐藏立即清选；分页严格校验 page/hasMore 与坏条目、
+  用服务端页号/同页去重/终页重叠、失败后重试真发请求；会话范围预约防重闩（close/reenter/新 VM 不再
+  POST，POST 前验证码不冒充已发送）；预览改用生产组件+同一 UiState 派生规则并真实点交互流程；
+  已隐藏数改为已加载候选交集；证据措辞按实际强度（不同数量只说明区间敏感）。
+- 验证：`feature:library` 179 tests（1 skip）/ `app` 99 tests 0 失败，模块边界、Debug/Release Lint、
+  `lintVitalRelease` 通过；11 张主场景 + 5 张交互流程合成截图（生产组件、UI 文本核对「共 5 个」无
+  「加载更多」、部分失败、确认时长、已加载中隐藏），可控合成服务真实点查找/选座/隐藏/撤销/恢复/
+  失败重试；Release 覆盖安装保留数据并冒烟首页四 tab/Pager 与待办/空闲教室/图书馆入口。
+- 独立产物 `artifacts/2.0.3/UPC-Pocket-2.0.3-library-time-search.apk`，**5,082,641 bytes**，
+  SHA-256 `7F1021FFE01BEE1F8C891B0D3C6823552043942E0BBD2089B9F57EA38CB770F8`，
   R8 + resource shrink universal，签名证书 `07aaae87...1d06281`（开发签名，与已验收 pager 包一致），
   versionCode 24；已验收 `UPC-Pocket-2.0.3-pager-dock.apk` 不覆盖。未执行真实预约/取消/签到，
   未发布。

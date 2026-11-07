@@ -165,18 +165,44 @@ internal object LibrarySeatProtocol {
      * 2026-11-07 用当前公开前端 + 本人账号最小只读请求核对：
      * `data` 是 `{seats:{row*1000+col:seat}, page:n, hasMore:bool}`，seat 字段与
      * layoutByDate 一致（id/name/type/enabled/status/local），行/列由 key 还原。
-     * status=false 或 data 异常都是业务/协议失败，不能当成「这个时段没有座位」。
+     *
+     * 已确认的契约字段严格校验：`page` 必须存在、数字且等于请求页；`hasMore` 必须
+     * 为布尔或明确的字符串值（true/false/1/0）。缺失/无效一律报协议失败，绝不默认成
+     * 「没有更多」—— 否则会把「没读到」伪装成「这个时段暂无可约座位 / 共 N 个」。
+     * 名单里任何非对象或空 id 条目同样报协议失败，不能用 mapNotNull 把坏名单
+     * 变成合法空名单。同页重复 id 保留给上层去重，不在这里悄悄删除。
      */
     fun parseTimeSearchPage(body: String, requestedPage: Int): LibraryTimeSearchPage {
         val root = objectOf(body)
         ensureBusinessSuccess(root)
         val data = root["data"] as? JsonObject ?: fail("时段查询响应缺少 data")
-        val seatsObj = data["seats"] as? JsonObject
-            ?: data["seats"] as? JsonArray
-            ?: fail("时段查询缺少 seats")
-        val seats = when (seatsObj) {
-            is JsonObject -> seatsObj.mapNotNull { (key, value) ->
-                val obj = value as? JsonObject ?: return@mapNotNull null
+
+        // ── page：必须存在、为整数、且等于本次请求页 ───────────────────
+        val rawPage = data["page"] ?: fail("时段查询缺少分页页码")
+        val serverPage = (rawPage as? JsonPrimitive)?.let {
+            it.intOrNull ?: it.contentOrNull?.toIntOrNull()
+        } ?: fail("时段查询分页页码无效")
+        if (serverPage != requestedPage) fail("时段查询分页页码不一致")
+
+        // ── hasMore：只接受已验证的布尔/字符串形式，缺失即协议失败 ──
+        val rawHasMore = data["hasMore"] ?: fail("时段查询缺少分页标记")
+        val hasMore = when (val primitive = rawHasMore as? JsonPrimitive) {
+            null -> fail("时段查询分页标记无效")
+            else -> when {
+                primitive.booleanOrNull != null -> primitive.booleanOrNull == true
+                primitive.contentOrNull.equals("true", ignoreCase = true) -> true
+                primitive.contentOrNull.equals("false", ignoreCase = true) -> false
+                primitive.contentOrNull == "1" -> true
+                primitive.contentOrNull == "0" -> false
+                else -> fail("时段查询分页标记无效")
+            }
+        }
+
+        // ── seats：坏条目直接失败，不 mapNotNull 吞掉 ─────────────────
+        val seatsEl = data["seats"] ?: fail("时段查询缺少 seats")
+        val seats = when (seatsEl) {
+            is JsonObject -> seatsEl.map { (key, value) ->
+                val obj = value as? JsonObject ?: fail("时段查询座位条目格式异常")
                 val numericKey = key.toIntOrNull()
                 val row = obj["row"]?.let { (it as? JsonPrimitive)?.intOrNull }
                     ?: numericKey?.div(1000)
@@ -186,45 +212,30 @@ internal object LibrarySeatProtocol {
                     ?: numericKey?.rem(1000)
                     ?: key.substringAfter('_', "").toIntOrNull()
                     ?: 0
-                LibrarySeat(
-                    id = string(obj, "id"),
-                    name = string(obj, "name"),
-                    row = row,
-                    col = col,
-                    type = string(obj, "type").ifBlank { "seat" },
-                    enabled = boolean(obj, "enabled"),
-                    status = string(obj, "status").ifBlank { "UNKNOWN" },
-                    localOnly = boolean(obj, "local"),
-                )
-            }.filter { it.id.isNotBlank() }
-            is JsonArray -> seatsObj.mapNotNull { item ->
-                val obj = item as? JsonObject ?: return@mapNotNull null
-                LibrarySeat(
-                    id = string(obj, "id"),
-                    name = string(obj, "name"),
-                    row = intOrNull(obj, "row") ?: 0,
-                    col = intOrNull(obj, "col") ?: 0,
-                    type = string(obj, "type").ifBlank { "seat" },
-                    enabled = boolean(obj, "enabled"),
-                    status = string(obj, "status").ifBlank { "UNKNOWN" },
-                    localOnly = boolean(obj, "local"),
-                )
-            }.filter { it.id.isNotBlank() }
+                parseSeatEntry(obj, row, col)
+            }
+            is JsonArray -> seatsEl.map { item ->
+                val obj = item as? JsonObject ?: fail("时段查询座位条目格式异常")
+                parseSeatEntry(obj, intOrNull(obj, "row") ?: 0, intOrNull(obj, "col") ?: 0)
+            }
             else -> fail("时段查询 seats 格式异常")
         }
-        // 服务端 page 只作为观察值；是否前进由调用方按去重结果判定。
-        val serverPage = intOrNull(data, "page") ?: requestedPage
-        // 实测部署 hasMore 是布尔；同时兼容字符串 "true"/"1"。不用含 == 的
-        // Elvis 链，避免把「false」短路与优先级写成难读的表达式。
-        val rawHasMore = data["hasMore"] as? JsonPrimitive
-        val hasMore = when {
-            rawHasMore == null -> false
-            rawHasMore.booleanOrNull != null -> rawHasMore.booleanOrNull == true
-            rawHasMore.contentOrNull.equals("true", ignoreCase = true) -> true
-            rawHasMore.contentOrNull == "1" -> true
-            else -> false
-        }
         return LibraryTimeSearchPage(seats, serverPage, hasMore)
+    }
+
+    private fun parseSeatEntry(obj: JsonObject, row: Int, col: Int): LibrarySeat {
+        val id = string(obj, "id")
+        if (id.isBlank()) fail("时段查询座位缺少标识")
+        return LibrarySeat(
+            id = id,
+            name = string(obj, "name"),
+            row = row,
+            col = col,
+            type = string(obj, "type").ifBlank { "seat" },
+            enabled = boolean(obj, "enabled"),
+            status = string(obj, "status").ifBlank { "UNKNOWN" },
+            localOnly = boolean(obj, "local"),
+        )
     }
 
     fun parseStartTimes(body: String): List<LibraryTimeOption> {
