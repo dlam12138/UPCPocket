@@ -3,13 +3,17 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.plugin.ui.UiSurface
+import com.upcpocket.app.todo.TodoLaunchContract
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -55,6 +59,30 @@ class HostPluginUiTest {
         entries.forEach { entry ->
             assertNotNull("入口 ${entry.entryId} 缺少页面", AppGraph.ui.page(entry.route!!))
         }
+    }
+
+    @Test
+    fun `todo open intents keep colliding uuid hashes separate`() {
+        val first = "47ef2254-ebd1-4c07-9a5e-022143e6ab61"
+        val second = "5235b5d5-d2ef-4431-829c-b670e3e11dfb"
+        assertEquals(first.hashCode(), second.hashCode())
+
+        val firstIntent = AppGraph.todoOpenIntent(first)
+        val secondIntent = AppGraph.todoOpenIntent(second)
+
+        assertNotSame(firstIntent, secondIntent)
+        assertNotEquals(
+            shadowOf(firstIntent).savedIntent.data,
+            shadowOf(secondIntent).savedIntent.data,
+        )
+        assertEquals(
+            first,
+            shadowOf(firstIntent).savedIntent.getStringExtra(TodoLaunchContract.EXTRA_TASK_ID),
+        )
+        assertEquals(
+            second,
+            shadowOf(secondIntent).savedIntent.getStringExtra(TodoLaunchContract.EXTRA_TASK_ID),
+        )
     }
 
     @Test

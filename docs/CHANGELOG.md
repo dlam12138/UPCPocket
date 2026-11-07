@@ -15,7 +15,7 @@
 - 专注/热力图不属于本轮范围，`feature/focus` 相关文件保持 `3905611` 基线，本候选不宣称热力图改动。
 - 本地候选版本为 2.0.3 / versionCode 24，正式下载与在线更新仍以已发布的 2.0.2 为准。
 - 构建、宿主与相关模块单测、Release Lint 和模块边界检查通过；完成 API 36 覆盖安装、首次使用提示、今日课表组件与空闲教室校区恢复/自动查询冒烟。详见 [候选验证记录](releases/2.0.3-candidate.md)。
-- 本轮待办候选最终验证：app 98（1 skip）/ todo 13 / focus 34 单测 0 失败，模块边界与 Release Lint 通过；R8 + resource shrink 通用 Release 为 4,951,569 bytes，SHA-256 `209718A9A4D23CBCBA814583EF8FC8A2DC5EB10D89B4E1FED84EB53D0E260759`；专用 probe 完成普通进程死亡提醒、完成/稍后/点击、拒权再授权、精确闹钟、重启、强停边界、包更新重排与四 tab/1.5 字体冒烟。详见 [待办与 dock 验收记录](releases/2.0.3-todo-home-dock.md)。
+- 本轮待办候选最终验证：app 99（1 skip）/ todo 24 / focus 34 单测 0 失败，模块边界与 Release Lint 通过；R8 + resource shrink 通用 Release 为 4,967,953 bytes，SHA-256 `71990740F51C81008D87196FDA1A6AD220D9F82DF87400E195CCC72F6391B0A2`；专用 probe 完成普通进程死亡提醒、完成/稍后/点击、拒权再授权、精确闹钟、重启、强停边界、旧动作零副作用、包更新重排与四 tab/1.5 字体冒烟。详见 [待办与 dock 验收记录](releases/2.0.3-todo-home-dock.md)。
 
 ## 2.0.2 正式版 · 2026-11-06
 

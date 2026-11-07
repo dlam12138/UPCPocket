@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.upcpocket.app.todo.TodoReminderAccessApi
 data class TodoReminderAccess(
     val notificationsEnabled: Boolean,
     val exactAlarmsAllowed: Boolean,
@@ -17,9 +18,9 @@ data class TodoReminderAccess(
 }
 
 /** 每次展示/调度前动态查询，不缓存系统授权。 */
-class TodoReminderAccessProvider(private val context: Context) {
+class TodoReminderAccessProvider(private val context: Context) : TodoReminderAccessApi {
 
-    fun current(): TodoReminderAccess {
+    override fun current(): TodoReminderAccess {
         val manager = NotificationManagerCompat.from(context)
         val appEnabled = manager.areNotificationsEnabled()
         val channel = context.getSystemService(NotificationManager::class.java)

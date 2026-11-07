@@ -2,9 +2,9 @@ package com.upcpocket.app.todo
 
 import android.app.PendingIntent
 import android.content.Context
+import com.upcpocket.app.todo.data.TodoDatabase
 import com.upcpocket.app.todo.data.TodoRepository
 import com.upcpocket.app.todo.data.TodoTask
-import com.upcpocket.app.todo.data.TodoDatabase
 import com.upcpocket.app.todo.reminder.TodoAlarmScheduler
 import com.upcpocket.app.todo.reminder.TodoNotifier
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 interface TodoStore {
     val tasks: Flow<List<TodoTask>>
@@ -42,30 +44,71 @@ interface TodoStore {
     suspend fun reconcileAll()
 }
 
+internal interface TodoAlarmSchedulerApi {
+    fun schedule(taskId: String, revision: Int, atMillis: Long, exact: Boolean)
+    fun cancel(taskId: String)
+}
+
+internal interface TodoNotifierApi {
+    fun ensureChannel()
+    fun post(task: TodoTask, revision: Int, firedAt: Long): Boolean
+    fun cancel(taskId: String)
+}
+
+internal interface TodoReminderAccessApi {
+    fun current(): TodoReminderAccess
+}
+
+/**
+ * 依赖只在真正使用时才创建，避免 AppGraph 装配阶段打开 Room 或通知渠道。
+ * internal 构造只给同模块测试注入 fake scheduler/notifier/clock。
+ */
+internal class TodoServiceDependencies(
+    val repository: () -> TodoRepository,
+    val alarms: () -> TodoAlarmSchedulerApi,
+    val notifier: () -> TodoNotifierApi,
+    val accessProvider: () -> TodoReminderAccessApi,
+) {
+    companion object {
+        fun forContext(
+            context: Context,
+            openAppIntent: (String) -> PendingIntent,
+        ): TodoServiceDependencies {
+            val appContext = context.applicationContext
+            return TodoServiceDependencies(
+                repository = { TodoRepository(TodoDatabase.get(appContext).taskDao()) },
+                alarms = { TodoAlarmScheduler(appContext) },
+                notifier = { TodoNotifier(appContext, openAppIntent) },
+                accessProvider = { TodoReminderAccessProvider(appContext) },
+            )
+        }
+    }
+}
+
 /**
  * 待办数据、提醒调度和通知动作的唯一业务入口。
  *
- * Room 是事实来源；AlarmManager 与通知都是可重建的副作用。所有通知动作都先按
- * taskId + revision 条件更新，旧动作在数据库层被拒绝。
+ * Room 是事实来源；AlarmManager 与通知都是可重建的副作用。所有读写、调度和
+ * 通知副作用在同一 service Mutex 内串行，外部接收器协程不会用旧快照覆盖新状态。
+ * 旧 taskId+revision 动作在数据库条件更新失败时直接返回，不取消当前 Alarm/通知。
  */
-class TodoService(
-    context: Context,
-    private val openAppIntent: (String) -> PendingIntent,
+class TodoService internal constructor(
+    private val dependencies: TodoServiceDependencies,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : TodoStore {
 
-    private val appContext = context.applicationContext
+    constructor(
+        context: Context,
+        openAppIntent: (String) -> PendingIntent,
+        clock: () -> Long = System::currentTimeMillis,
+    ) : this(TodoServiceDependencies.forContext(context, openAppIntent), clock)
 
-    private val database: TodoDatabase by lazy { TodoDatabase.get(appContext) }
-    private val repository: TodoRepository by lazy { TodoRepository(database.taskDao()) }
-    private val accessProvider: TodoReminderAccessProvider by lazy {
-        TodoReminderAccessProvider(appContext)
-    }
-    private val notifier: TodoNotifier by lazy {
-        TodoNotifier(appContext, openAppIntent)
-    }
-    private val alarms: TodoAlarmScheduler by lazy { TodoAlarmScheduler(appContext) }
+    private val repository by lazy { dependencies.repository() }
+    private val alarms by lazy { dependencies.alarms() }
+    private val notifier by lazy { dependencies.notifier() }
+    private val accessProvider by lazy { dependencies.accessProvider() }
 
+    private val mutex = Mutex()
     private val openTaskId = MutableStateFlow<String?>(null)
 
     override val tasks: Flow<List<TodoTask>> get() = repository.tasks
@@ -78,7 +121,7 @@ class TodoService(
         return accessProvider.current()
     }
 
-    override suspend fun add(title: String, reminderAt: Long?): TodoTask {
+    override suspend fun add(title: String, reminderAt: Long?): TodoTask = mutex.withLock {
         val normalized = title.trim()
         require(normalized.isNotEmpty()) { "待办标题不能为空" }
         val now = clock()
@@ -94,45 +137,47 @@ class TodoService(
             revision = 1,
         )
         repository.insert(task)
-        reconcile(task)
-        return task
+        reconcileLocked(task)
+        task
     }
 
-    override suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean {
-        val normalized = title.trim()
-        if (normalized.isEmpty()) return false
-        val old = repository.byId(id) ?: return false
-        val reminderChanged = old.reminderAt != reminderAt
-        val firedAt = if (reminderChanged) null else old.reminderFiredAt
-        val updated = repository.updateContent(
-            id = id,
-            title = normalized,
-            reminderAt = reminderAt,
-            firedAt = firedAt,
-            now = clock(),
-        ) ?: return false
+    override suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean =
+        mutex.withLock {
+            val normalized = title.trim()
+            if (normalized.isEmpty()) return@withLock false
+            val old = repository.byId(id) ?: return@withLock false
+            val reminderChanged = old.reminderAt != reminderAt
+            val firedAt = if (reminderChanged) null else old.reminderFiredAt
+            val updated = repository.updateContent(
+                id = id,
+                title = normalized,
+                reminderAt = reminderAt,
+                firedAt = firedAt,
+                now = clock(),
+            ) ?: return@withLock false
+            alarms.cancel(id)
+            notifier.cancel(id)
+            if (!updated.completed) reconcileLocked(updated)
+            true
+        }
+
+    override suspend fun setCompleted(id: String, completed: Boolean): Boolean =
+        mutex.withLock {
+            val updated = repository.setCompleted(id, completed, clock()) ?: return@withLock false
+            alarms.cancel(id)
+            notifier.cancel(id)
+            if (!updated.completed) reconcileLocked(updated)
+            true
+        }
+
+    override suspend fun delete(id: String): TodoTask? = mutex.withLock {
+        val deleted = repository.delete(id) ?: return@withLock null
         alarms.cancel(id)
         notifier.cancel(id)
-        if (!updated.completed) reconcile(updated)
-        return true
+        deleted
     }
 
-    override suspend fun setCompleted(id: String, completed: Boolean): Boolean {
-        val updated = repository.setCompleted(id, completed, clock()) ?: return false
-        alarms.cancel(id)
-        notifier.cancel(id)
-        if (!updated.completed) reconcile(updated)
-        return true
-    }
-
-    override suspend fun delete(id: String): TodoTask? {
-        val deleted = repository.delete(id) ?: return null
-        alarms.cancel(id)
-        notifier.cancel(id)
-        return deleted
-    }
-
-    override suspend fun restore(task: TodoTask): Boolean {
+    override suspend fun restore(task: TodoTask): Boolean = mutex.withLock {
         val now = clock()
         val restored = task.copy(
             revision = task.revision + 1,
@@ -141,8 +186,8 @@ class TodoService(
         repository.insert(restored)
         alarms.cancel(restored.id)
         notifier.cancel(restored.id)
-        reconcile(restored)
-        return true
+        reconcileLocked(restored)
+        true
     }
 
     override fun openTask(taskId: String) {
@@ -154,7 +199,7 @@ class TodoService(
     }
 
     /** 重启、包更新、时间/时区变化和授权变化后从数据库重建。 */
-    override suspend fun reconcileAll() {
+    override suspend fun reconcileAll(): Unit = mutex.withLock {
         val now = clock()
         val access = accessProvider.current()
         repository.all().forEach { task ->
@@ -166,48 +211,61 @@ class TodoService(
                     plan.at,
                     plan.exact,
                 )
-                is TodoReminderPlan.NotifyNow -> fire(task.id, task.revision, now)
+                is TodoReminderPlan.NotifyNow -> fireLocked(task.id, task.revision, now)
                 is TodoReminderPlan.Blocked -> Unit
                 TodoReminderPlan.Nothing -> Unit
             }
         }
     }
 
-    /** AlarmReceiver 到点入口；revision 不匹配时静默丢弃。 */
+    /**
+     * Alarm 到点入口。
+     *
+     * - revision 不匹配、任务已完成/已发送/无提醒：完全无副作用；
+     * - revision 匹配但当前 reminderAt 还在未来（过早事件）：只重建当前有效调度；
+     * - 到期且通知可用：标记 fired 后发一次通知。
+     */
     suspend fun onAlarm(taskId: String, revision: Int, now: Long = clock()) {
-        val task = repository.byId(taskId) ?: run {
-            alarms.cancel(taskId)
-            return
+        mutex.withLock {
+            val task = repository.byId(taskId) ?: return@withLock
+            if (task.completed || task.reminderAt == null || task.reminderFiredAt != null) {
+                return@withLock
+            }
+            if (task.revision != revision) return@withLock
+            if (task.reminderAt > now) {
+                reconcileLocked(task)
+                return@withLock
+            }
+            if (!accessProvider.current().notificationsEnabled) return@withLock
+            fireLocked(taskId, revision, now)
         }
-        if (!TodoReminderPlanner.acceptsAlarm(task, revision)) {
-            alarms.cancel(taskId)
-            return
-        }
-        val access = accessProvider.current()
-        if (!access.notificationsEnabled) return
-        fire(taskId, revision, now)
     }
 
     suspend fun onActionComplete(taskId: String, revision: Int) {
-        repository.completeIfRevision(taskId, revision, clock())
-        alarms.cancel(taskId)
-        notifier.cancel(taskId)
+        mutex.withLock {
+            // 条件更新失败 = 旧动作/任务不存在；绝不再按 taskId 取消当前调度。
+            repository.completeIfRevision(taskId, revision, clock()) ?: return@withLock
+            alarms.cancel(taskId)
+            notifier.cancel(taskId)
+        }
     }
 
     suspend fun onActionSnooze(taskId: String, revision: Int) {
-        val now = clock()
-        val updated = repository.snoozeIfRevision(
-            id = taskId,
-            revision = revision,
-            until = now + SNOOZE_MILLIS,
-            now = now,
-        )
-        alarms.cancel(taskId)
-        notifier.cancel(taskId)
-        updated?.let { reconcile(it) }
+        mutex.withLock {
+            val now = clock()
+            val updated = repository.snoozeIfRevision(
+                id = taskId,
+                revision = revision,
+                until = now + SNOOZE_MILLIS,
+                now = now,
+            ) ?: return@withLock
+            alarms.cancel(taskId)
+            notifier.cancel(taskId)
+            reconcileLocked(updated)
+        }
     }
 
-    private suspend fun reconcile(task: TodoTask) {
+    private suspend fun reconcileLocked(task: TodoTask) {
         val now = clock()
         val access = accessProvider.current()
         when (val plan = TodoReminderPlanner.plan(task, now, access)) {
@@ -217,7 +275,7 @@ class TodoService(
                 plan.at,
                 plan.exact,
             )
-            is TodoReminderPlan.NotifyNow -> fire(task.id, task.revision, now)
+            is TodoReminderPlan.NotifyNow -> fireLocked(task.id, task.revision, now)
             is TodoReminderPlan.Blocked -> {
                 // 过去未发送且通知不可用：不标记已发送，授权恢复后由重建补一次。
                 alarms.cancel(task.id)
@@ -226,7 +284,7 @@ class TodoService(
         }
     }
 
-    private suspend fun fire(taskId: String, expectedRevision: Int, now: Long) {
+    private suspend fun fireLocked(taskId: String, expectedRevision: Int, now: Long) {
         val marked = repository.markFiredIfRevision(
             id = taskId,
             revision = expectedRevision,
@@ -235,7 +293,7 @@ class TodoService(
         ) ?: return
         val posted = notifier.post(marked, marked.revision, now)
         if (!posted) {
-            // 权限可能在调度后被撤回；回滚 firedAt，避免把未显示的通知当成已发送。
+            // 权限/channel 可能在调度后被关闭；回滚 firedAt，避免把未显示的通知当成已发送。
             repository.clearFiredIfRevision(marked.id, marked.revision, now)
         }
     }

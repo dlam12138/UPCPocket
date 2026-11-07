@@ -3,6 +3,7 @@ package com.upcpocket.app.core
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.MainActivity
@@ -239,15 +240,21 @@ object AppGraph {
         TodoPlugin(appContext) { taskId -> todoOpenIntent(taskId) }
     }
 
-    private fun todoOpenIntent(taskId: String): PendingIntent {
+    internal fun todoOpenIntent(taskId: String): PendingIntent {
         val intent = Intent(appContext, MainActivity::class.java).apply {
             action = TodoLaunchContract.ACTION_OPEN
+            data = Uri.Builder()
+                .scheme("upcpocket")
+                .authority("todo")
+                .appendPath("open")
+                .appendPath(taskId)
+                .build()
             putExtra(TodoLaunchContract.EXTRA_TASK_ID, taskId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         return PendingIntent.getActivity(
             appContext,
-            taskId.hashCode(),
+            0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

@@ -2,17 +2,19 @@ package com.upcpocket.app.todo.reminder
 
 import android.app.AlarmManager
 import android.content.Context
+import com.upcpocket.app.todo.TodoAlarmSchedulerApi
 
 /** AlarmManager 只负责一次性提醒；任务/代数仍以 Room 为准。 */
-class TodoAlarmScheduler(private val context: Context) {
+class TodoAlarmScheduler(private val context: Context) : TodoAlarmSchedulerApi {
 
     private val alarmManager: AlarmManager? =
         context.getSystemService(AlarmManager::class.java)
 
-    fun schedule(taskId: String, revision: Int, atMillis: Long, exact: Boolean) {
+    override fun schedule(taskId: String, revision: Int, atMillis: Long, exact: Boolean) {
         val manager = alarmManager ?: return
         val pending = TodoIntents.alarm(context, taskId, revision)
-        // 同一任务的 PendingIntent 身份固定；新 revision 通过 FLAG_UPDATE_CURRENT 覆盖旧 extras。
+        // 同一任务的 Alarm PendingIntent 身份固定（data 含完整 taskId，revision 在 extras）；
+        // 新 revision 覆盖旧 extras，取消时只凭完整 taskId，不会串到哈希相同的任务。
         manager.cancel(pending)
         val canExact = manager.canScheduleExactAlarms()
         try {
@@ -27,7 +29,7 @@ class TodoAlarmScheduler(private val context: Context) {
         }
     }
 
-    fun cancel(taskId: String) {
+    override fun cancel(taskId: String) {
         TodoIntents.cancelAlarm(context, taskId)
     }
 }

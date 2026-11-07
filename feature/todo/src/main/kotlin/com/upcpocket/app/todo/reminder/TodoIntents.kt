@@ -3,10 +3,18 @@ package com.upcpocket.app.todo.reminder
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import com.upcpocket.app.todo.TodoActionReceiver
 import com.upcpocket.app.todo.TodoAlarmReceiver
 
-/** 所有 PendingIntent 都绑定本应用显式组件，不接受外部隐式路由。 */
+/**
+ * 所有 PendingIntent 都绑定本应用显式组件，不接受外部隐式路由。
+ *
+ * - Alarm 身份 = 完整 taskId（同一任务 stable，revision 只放 extras，便于按 taskId 取消）；
+ * - 通知动作身份 = 完整 taskId + revision + 动作（旧 token 不会被新 revision 的
+ *   FLAG_UPDATE_CURRENT 重绑定）；
+ * - 不使用 String.hashCode 作为任务唯一身份，避免合法 UUID 哈希碰撞串任务。
+ */
 internal object TodoIntents {
 
     const val ACTION_ALARM = "com.upcpocket.app.todo.action.ALARM"
@@ -15,21 +23,39 @@ internal object TodoIntents {
     const val EXTRA_TASK_ID = "com.upcpocket.app.todo.extra.TASK_ID"
     const val EXTRA_REVISION = "com.upcpocket.app.todo.extra.REVISION"
 
-    fun alarmRequestCode(taskId: String): Int = taskId.hashCode()
+    private const val SCHEME = "upcpocket"
+    private const val HOST = "todo"
+    private const val REQUEST_CODE = 0
 
-    fun completeRequestCode(taskId: String): Int = taskId.hashCode() xor 0x434f4d50
+    internal fun alarmData(taskId: String): Uri =
+        Uri.Builder().scheme(SCHEME).authority(HOST).appendPath("alarm").appendPath(taskId).build()
 
-    fun snoozeRequestCode(taskId: String): Int = taskId.hashCode() xor 0x534e4f5a
+    internal fun actionData(taskId: String, revision: Int, action: String): Uri {
+        val suffix = when (action) {
+            ACTION_COMPLETE -> "complete"
+            ACTION_SNOOZE -> "snooze"
+            else -> error("不支持的通知动作")
+        }
+        return Uri.Builder()
+            .scheme(SCHEME)
+            .authority(HOST)
+            .appendPath("action")
+            .appendPath(taskId)
+            .appendPath(revision.toString())
+            .appendPath(suffix)
+            .build()
+    }
 
     fun alarm(context: Context, taskId: String, revision: Int): PendingIntent {
         val intent = Intent(context, TodoAlarmReceiver::class.java).apply {
             action = ACTION_ALARM
+            data = alarmData(taskId)
             putExtra(EXTRA_TASK_ID, taskId)
             putExtra(EXTRA_REVISION, revision)
         }
         return PendingIntent.getBroadcast(
             context,
-            alarmRequestCode(taskId),
+            REQUEST_CODE,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -41,19 +67,15 @@ internal object TodoIntents {
         taskId: String,
         revision: Int,
     ): PendingIntent {
-        val requestCode = when (action) {
-            ACTION_COMPLETE -> completeRequestCode(taskId)
-            ACTION_SNOOZE -> snoozeRequestCode(taskId)
-            else -> error("不支持的通知动作")
-        }
         val intent = Intent(context, TodoActionReceiver::class.java).apply {
             this.action = action
+            data = actionData(taskId, revision, action)
             putExtra(EXTRA_TASK_ID, taskId)
             putExtra(EXTRA_REVISION, revision)
         }
         return PendingIntent.getBroadcast(
             context,
-            requestCode,
+            REQUEST_CODE,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -62,10 +84,11 @@ internal object TodoIntents {
     fun cancelAlarm(context: Context, taskId: String) {
         val intent = Intent(context, TodoAlarmReceiver::class.java).apply {
             action = ACTION_ALARM
+            data = alarmData(taskId)
         }
         val pending = PendingIntent.getBroadcast(
             context,
-            alarmRequestCode(taskId),
+            REQUEST_CODE,
             intent,
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
         ) ?: return
