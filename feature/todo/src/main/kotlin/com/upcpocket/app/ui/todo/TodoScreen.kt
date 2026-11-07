@@ -62,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.plugin.ui.LocalDockClearance
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoOrdering
@@ -75,6 +77,8 @@ import kotlinx.coroutines.launch
 fun TodoScreen(store: TodoStore) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val active = LocalPluginPageActive.current
+    val dockClearance = LocalDockClearance.current
     val snackbar = remember { SnackbarHostState() }
     val tasks by store.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -104,8 +108,10 @@ fun TodoScreen(store: TodoStore) {
     val completed = remember(tasks) { TodoOrdering.completed(tasks) }
     val hasReminders = tasks.any { !it.completed && it.reminderAt != null }
 
-    // 通知点击后只消费确实存在的任务；列表尚未加载时保留 pending，等 Flow 到达。
-    LaunchedEffect(pendingOpenTask, tasks) {
+    // 通知点击后只消费确实存在的任务；列表尚未加载或页面只是 Pager 预加载时保留
+    // pending，等页面稳定活动后再打开编辑器。
+    LaunchedEffect(pendingOpenTask, tasks, active) {
+        if (!active) return@LaunchedEffect
         val id = pendingOpenTask ?: return@LaunchedEffect
         tasks.firstOrNull { it.id == id }?.let { task ->
             adding = false
@@ -118,7 +124,12 @@ fun TodoScreen(store: TodoStore) {
         topBar = {
             TopAppBar(title = { Text("待办") })
         },
-        snackbarHost = { SnackbarHost(snackbar) },
+        snackbarHost = {
+            SnackbarHost(
+                snackbar,
+                modifier = Modifier.padding(bottom = dockClearance),
+            )
+        },
         floatingActionButton = {
             FloatingActionButton(
                 onClick = {
@@ -127,7 +138,8 @@ fun TodoScreen(store: TodoStore) {
                 },
                 modifier = Modifier
                     .semantics { contentDescription = "新增待办" }
-                    .testTag("todo_add"),
+                    .testTag("todo_add")
+                    .padding(bottom = dockClearance),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
             }
@@ -143,7 +155,7 @@ fun TodoScreen(store: TodoStore) {
                 start = 16.dp,
                 end = 16.dp,
                 top = 8.dp,
-                bottom = 96.dp,
+                bottom = 96.dp + dockClearance,
             ),
         ) {
             if (hasReminders && (access.hasNotificationIssue || access.hasExactAlarmIssue)) {

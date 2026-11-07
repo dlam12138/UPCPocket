@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
@@ -76,6 +77,7 @@ fun HomeScreen(
     onOpenOfficialWeb: () -> Unit,
 ) {
     val today = LocalDate.now(CAMPUS_ZONE)
+    val dockClearance = LocalDockClearance.current
     val dateLabel = today.format(
         DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
     )
@@ -113,7 +115,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp + dockClearance),
         ) {
             Header(
                 eyebrow = "UPC POCKET",

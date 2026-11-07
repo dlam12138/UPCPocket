@@ -11,8 +11,15 @@ class TimetableViewModel(
 
     val state = service.state
     private var operation: Job? = null
+    private var started = false
 
-    init {
+    /**
+     * Pager 预加载只允许建立页面/ViewModel，不允许在这里登录或查询课表。
+     * 页面成为稳定活动页后才调用一次；重复进入 tab 不重新 open/refresh。
+     */
+    fun start() {
+        if (started) return
+        started = true
         operation = viewModelScope.launch {
             service.open()
             service.refreshToday()

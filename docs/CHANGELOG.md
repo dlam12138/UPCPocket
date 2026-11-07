@@ -10,12 +10,14 @@
 - 请求取消与代次隔离继续生效；失败或无完整响应不显示空闲，`d.js` 空闲交集与完整查询键缓存不变。关于页使用指南同步为新行为短文案。
 - 新增本机独立待办：仅标题/完成/可选一次性提醒，支持添加、编辑、完成/撤销、删除/撤销误删；独立 Room 库与学校账号清理分离，换号不删个人待办。
 - 首页页头下、常用服务上方新增全宽待办摘要：未完成数量、至多两条、独立勾选与添加，列表和计数共用同一 Repository Flow。
-- 底部改为首页/课表/待办/专注四项悬浮胶囊 dock：图标常驻、选中 filled + 轻底色、无障碍名称/selected 语义、浅深主题；键盘和二级页隐藏，四个 tab 各自保留滚动/返回状态，组件进入课表也可回首页。
+- 底部改为首页/课表/待办/专注四项悬浮胶囊 dock：视觉/覆盖结构移植 ZZUPocket（3beuml，MIT，commit `dda318e9...`），只换 UPC 四入口；胶囊覆盖内容、不占整条底栏，浅色半透明/深色 surface、0.5dp 渐变描边、圆形选中泡与窄软影。
+- 四个一级页本身支持整页左右拖动（左滑下一页/右滑上一页，两端不循环），连续跟手下拉、松手吸附/取消回弹；胶囊选中泡与图标色态随 Pager 进度连续动画，点击只 `animateScrollToPage`，不压 Nav 返回栈。通知/组件/首页卡片与 Pager 选中同步；二级页/键盘/编辑 sheet 不翻页，课表内部横向控件优先。
+- Pager 预加载保留四页状态但不自动登录/查课表：`LocalPluginPageActive` 门控课表 `start()`、Focus 权限请求和 Todo pending 通知；`LocalDockClearance` 给滚动末尾/FAB/Snackbar 留出 88dp+导航栏余量。
 - 提醒使用 AlarmManager + 持久化 revision：通知/精确闹钟拒权真实提示，完成/删除/编辑/稍后 10 分钟取消旧调度，旧通知动作按 taskId+revision 拒绝；普通进程死亡、重启、包更新和授权变化后可重建，不依赖常驻 Worker。
-- 专注/热力图不属于本轮范围，`feature/focus` 相关文件保持 `3905611` 基线，本候选不宣称热力图改动。
+- 专注/热力图的数据与样式不属于本轮范围；`FocusHeatmap.kt`、`Heatmap.kt`、`FocusStatsScreen.kt` 保持 `3905611`，仅 `FocusScreen` 增加活动页权限门控与 dock 底部余量。
 - 本地候选版本为 2.0.3 / versionCode 24，正式下载与在线更新仍以已发布的 2.0.2 为准。
 - 构建、宿主与相关模块单测、Release Lint 和模块边界检查通过；完成 API 36 覆盖安装、首次使用提示、今日课表组件与空闲教室校区恢复/自动查询冒烟。详见 [候选验证记录](releases/2.0.3-candidate.md)。
-- 本轮待办候选最终验证：app 99（1 skip）/ todo 24 / focus 34 单测 0 失败，模块边界与 Release Lint 通过；R8 + resource shrink 通用 Release 为 4,967,953 bytes，SHA-256 `71990740F51C81008D87196FDA1A6AD220D9F82DF87400E195CCC72F6391B0A2`；专用 probe 完成普通进程死亡提醒、完成/稍后/点击、拒权再授权、精确闹钟、重启、强停边界、旧动作零副作用、包更新重排与四 tab/1.5 字体冒烟。详见 [待办与 dock 验收记录](releases/2.0.3-todo-home-dock.md)。
+- 本轮待办候选最终验证：app 99（1 skip）/ todo 24 / timetable 133 / focus 34 单测 0 失败，模块边界与 Debug/Release Lint 通过；R8 + resource shrink 通用 Release 为 **5,000,721 bytes**，SHA-256 `11281640C259D529582412DA9C41C3B8591BE7A2A2BF127802757510EDA344F8`；专用 probe 完成普通进程死亡提醒、完成/稍后/点击、拒权再授权、精确闹钟、重启、强停边界、旧动作零副作用、包更新重排，以及本轮整页 Pager 拖动/取消/点击、首尾/快速切页、组件/通知深链、键盘/二级页保护、四 tab 浅深×1.0/1.5 截图。详见 [待办、Pager 与 dock 验收记录](releases/2.0.3-todo-home-dock.md)。
 
 ## 2.0.2 正式版 · 2026-11-06
 

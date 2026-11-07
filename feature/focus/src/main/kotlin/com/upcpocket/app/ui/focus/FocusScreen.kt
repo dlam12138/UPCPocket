@@ -48,6 +48,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import com.upcpocket.app.plugin.ui.LocalDockClearance
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -108,7 +110,10 @@ fun FocusScreen(
     val vm: FocusViewModel = viewModel(factory = factory)
     val ui by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val active = LocalPluginPageActive.current
+    val dockClearance = LocalDockClearance.current
 
+    var permissionAsked by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showManual by remember { mutableStateOf(false) }
     var showNewTag by remember { mutableStateOf(false) }
@@ -118,7 +123,9 @@ fun FocusScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(active) {
+        if (!active || permissionAsked) return@LaunchedEffect
+        permissionAsked = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             val granted = ContextCompat.checkSelfPermission(
                 context,
@@ -172,7 +179,7 @@ fun FocusScreen(
 
             TodayRecords(ui.todayRecords, onDelete = vm::deleteRecord)
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(24.dp + dockClearance))
         }
     }
 

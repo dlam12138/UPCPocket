@@ -73,6 +73,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.upcpocket.app.plugin.ui.LocalDockClearance
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.StatusPill
@@ -107,6 +109,11 @@ internal fun TimetableScreen(
     onOpenAccountSettings: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val active = LocalPluginPageActive.current
+    val dockClearance = LocalDockClearance.current
+    LaunchedEffect(active) {
+        if (active) viewModel.start()
+    }
     var detail by remember { mutableStateOf<TimetableMeeting?>(null) }
     var loginVisible by remember { mutableStateOf(false) }
     var loginUrl by remember { mutableStateOf<String?>(null) }
@@ -181,7 +188,7 @@ internal fun TimetableScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.accountBlocked) {

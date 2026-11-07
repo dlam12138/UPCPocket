@@ -1,7 +1,26 @@
 package com.upcpocket.app.plugin.ui
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import com.upcpocket.app.plugin.api.PluginId
+
+/**
+ * 一级页底部的悬浮 dock 安全余量。
+ *
+ * 宿主提供“系统导航栏 + 胶囊高度 + 呼吸间距”的实际值；一级页把它加到滚动内容
+ * 或 FAB/Snackbar 的底部，不把整个滚动视口缩掉。二级页默认 0。
+ */
+val LocalDockClearance = compositionLocalOf<Dp> { 0.dp }
+
+/**
+ * 一级页当前是否是 Pager 的稳定活动页。
+ *
+ * 预加载的相邻页可以做布局，但不应启动学校查询、请求通知权限或消费通知待打开
+ * 任务。默认 true，保持非 Pager 场景/测试的既有行为。
+ */
+val LocalPluginPageActive = compositionLocalOf { true }
 
 /** 稳定入口 ID，例如 `power.tangdaowan`。展示顺序变化不改变它。 */
 @JvmInline
