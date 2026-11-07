@@ -1,5 +1,27 @@
 # 更新与验证
 
+## 2.0.3 图书馆按时段找座位与个人隐藏候选 · 未发布
+
+- 唐岛湾房间页新增「按座位选 / 按时段找」，默认原座位流程；按时段找用 HH:mm 起止、点「查找座位」
+  才联网，只查当前房间、首次一页、手动加载更多，按服务端 `page/hasMore` 与稳定 id 去重，
+  识别重复页/倒退/不推进并封顶 20 页；部分失败保留同条件结果，完整读完才写「共 N 个」。
+- 先用当前公开前端与本人账号最小只读请求核实 `searchSeats/{date}/{begin}/{end}` 是 UPC 真实协议：
+  `begin/end` 为当天分钟数，`data.seats` 按 row*1000+col 还原座位，`page/hasMore` 真实分页，
+  不同区间返回不同数量证明完整区间语义；候选选中后按官方 `startTimes/endTimes` 匹配真实 HH:mm
+  并使用服务端原始 id。两模式确认守卫分离，当前占用不否决未来区间可约；最终提交只发一次，
+  未知/超时不重提。详见 [验收记录](releases/2.0.3-library-time-search.md)。
+- 本机个人隐藏：独立 DataStore 命名空间（system+馆区+房间+seatId），候选更多/座位图长按/已选
+  均可隐藏，选中即清空，Snackbar 撤销；地图弱化并独立标记、不重排；房间更多菜单「隐藏的座位（N）」
+  底部面板逐个/全部恢复。仅本机偏好，不上传、换号不误删、恢复不改变学校状态。超星独立协议未改。
+- 验证：`feature:library` 145 tests（1 skip）/ `app` 99 tests 0 失败，模块边界、Debug/Release Lint、
+  `lintVitalRelease` 通过；11 张合成浅深×1.0/1.5、长名、空态/隐藏/分页失败/确认/管理面板/座位模式
+  截图，Release 覆盖安装保留数据并冒烟首页四 tab/Pager 与待办/空闲教室/图书馆入口。
+- 独立产物 `artifacts/2.0.3/UPC-Pocket-2.0.3-library-time-search.apk`，**5,066,257 bytes**，
+  SHA-256 `A90B25C0E77414AC19B7A830EA08F859DEA92AF4100504844C754931AFA50EE5`，
+  R8 + resource shrink universal，签名证书 `07aaae87...1d06281`（开发签名，与已验收 pager 包一致），
+  versionCode 24；已验收 `UPC-Pocket-2.0.3-pager-dock.apk` 不覆盖。未执行真实预约/取消/签到，
+  未发布。
+
 ## 2.0.3 使用引导、空闲教室与本机待办候选 · 未发布
 
 - 学校账号保存成功后，明确提示返回课表并点击右上角刷新；保留“已保存，尚未验证”的真实状态。

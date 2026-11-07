@@ -1,6 +1,7 @@
 package com.upcpocket.app.ui.library
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,22 +13,29 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -40,7 +48,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatPlace
@@ -59,6 +69,13 @@ fun LibrarySeatPreviewPage(page: String) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when (page) {
             "lib-seat", "lib-time" -> LibSeatPreview(showTime = page == "lib-time")
+            "lib-timesearch" -> LibTimeSearchPreview(scenario = 0)
+            "lib-timesearch-empty" -> LibTimeSearchPreview(scenario = 1)
+            "lib-timesearch-hidden" -> LibTimeSearchPreview(scenario = 2)
+            "lib-timesearch-partial" -> LibTimeSearchPreview(scenario = 3)
+            "lib-timesearch-confirm" -> LibTimeSearchPreview(scenario = 4)
+            "lib-timesearch-longname" -> LibTimeSearchPreview(scenario = 5)
+            "lib-timesearch-hiddensheet" -> LibTimeSearchPreview(scenario = 6)
             "chaoxing-area" -> ChaoxingAreaPreview()
             "chaoxing-seat", "chaoxing-time" -> ChaoxingSeatPreview(showTime = page == "chaoxing-time")
             else -> LibAreaPreview()
@@ -548,5 +565,212 @@ private fun PreviewLegendDot(color: androidx.compose.ui.graphics.Color, label: S
                 .background(color, RoundedCornerShape(3.dp)),
         )
         Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+// ───────────────── 按时段找 · 合成预览 ─────────────────
+// 全部座号/时段/数量为合成值，不连接学校、无账号、无网络、无真实业务数据。
+private val timePreviewCandidates = listOf(
+    LibrarySeat("t1", "001", 0, 0, "seat", true, "FREE", false),
+    LibrarySeat("t2", "006", 0, 1, "seat", true, "IN_USE", false),
+    LibrarySeat("t3", "012", 0, 2, "seat", true, "FREE", false),
+    LibrarySeat("t4", "018", 0, 3, "seat", true, "FREE", false),
+    LibrarySeat("t5", "024", 0, 4, "seat", true, "FREE", false),
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LibTimeSearchPreview(scenario: Int) {
+    val roomName = if (scenario == 5) "三楼 A 区 · 临窗静音研讨与长时间视听鉴赏综合座位区域" else "三楼 A 区"
+    var selectedId by remember { mutableStateOf(if (scenario == 4) "t3" else null) }
+    val chosen = timePreviewCandidates.firstOrNull { it.id == selectedId }
+    val begin = "14:00"
+    val finish = "16:00"
+    val hiddenCount = if (scenario == 2 || scenario == 6) 2 else 0
+    val visible = when (scenario) {
+        2 -> timePreviewCandidates // 全隐藏场景在下方用「可约座位已被隐藏」呈现
+        else -> timePreviewCandidates
+    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(roomName, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text("唐岛湾 · 11 月 7 日", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = {}) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
+                },
+                actions = {
+                    IconButton(onClick = {}) { Icon(Icons.Filled.MoreVert, contentDescription = "更多") }
+                },
+            )
+        },
+        bottomBar = {
+            Surface(tonalElevation = 2.dp) {
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(chosen?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
+                        Text("$begin–$finish · 2 小时", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Button(onClick = {}, enabled = chosen != null) { Text("确认预约") }
+                }
+            }
+        },
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item { PreviewBanner() }
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = false, onClick = {}, label = { Text("按座位选") })
+                    FilterChip(selected = true, onClick = {}, label = { Text("按时段找") })
+                }
+            }
+            item {
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text("开始时间", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(begin) }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text("结束时间", style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text(finish) }
+                        }
+                    }
+                    Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("查找座位") }
+                }
+            }
+            when (scenario) {
+                1 -> item { CompactNotice("这个时段暂无可约座位", "可以修改时段再找。") }
+                2 -> item { CompactNotice("可约座位已被隐藏", "可在右上角查看或恢复隐藏项。") }
+                else -> {
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                if (scenario == 3) "已加载 ${visible.size} 个" else "共 ${visible.size} 个",
+                                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(Modifier.weight(1f))
+                            if (hiddenCount > 0) {
+                                Text("已隐藏 $hiddenCount", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                    items(
+                        if (scenario == 2) emptyList() else visible,
+                        key = { it.id },
+                    ) { candidate ->
+                        var menu by remember { mutableStateOf(false) }
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = if (selectedId == candidate.id) MaterialTheme.colorScheme.secondaryContainer
+                            else MaterialTheme.colorScheme.surfaceContainerLow,
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        ) {
+                            Row(
+                                Modifier.fillMaxWidth().clickable { selectedId = candidate.id }
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                RadioButton(selected = selectedId == candidate.id, onClick = null)
+                                Text(candidate.name, Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                Box {
+                                    IconButton(onClick = { menu = true }) {
+                                        Icon(Icons.Filled.MoreVert, contentDescription = "更多")
+                                    }
+                                    androidx.compose.material3.DropdownMenu(
+                                        expanded = menu, onDismissRequest = { menu = false },
+                                    ) {
+                                        androidx.compose.material3.DropdownMenuItem(
+                                            text = { Text("隐藏此座位") },
+                                            onClick = { menu = false },
+                                            leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (scenario == 3) {
+                        item {
+                            Column {
+                                Text("部分结果未加载", style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = {}) { Text("重试") }
+                            }
+                        }
+                    } else if (scenario == 0) {
+                        item { TextButton(onClick = {}) { Text("加载更多") } }
+                    }
+                }
+            }
+            if (scenario == 4) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("确认预约", style = MaterialTheme.typography.titleMedium)
+                            Text("$roomName · 012", style = MaterialTheme.typography.bodyMedium)
+                            Text("11 月 7 日 14:00–16:00 · 2 小时", style = MaterialTheme.typography.bodyMedium)
+                            Text("提交后以学校结果为准。", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(onClick = {}) { Text("确认预约") }
+                                TextButton(onClick = {}) { Text("取消") }
+                            }
+                        }
+                    }
+                }
+            }
+            if (scenario == 6) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("隐藏的座位（2）", style = MaterialTheme.typography.titleMedium)
+                            Text("只在本机隐藏，不影响学校状态。", style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("006", Modifier.weight(1f))
+                                TextButton(onClick = {}) { Text("恢复") }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("018", Modifier.weight(1f))
+                                TextButton(onClick = {}) { Text("恢复") }
+                            }
+                            OutlinedButton(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("全部恢复") }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

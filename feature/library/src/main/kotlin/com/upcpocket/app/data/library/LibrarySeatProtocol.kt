@@ -159,6 +159,74 @@ internal object LibrarySeatProtocol {
         return LibrarySeatLayout(rows, cols, seats)
     }
 
+    /**
+     * 「按时段找」`/rest/v2/searchSeats/{date}/{begin}/{end}` 的一页。
+     *
+     * 2026-11-07 用当前公开前端 + 本人账号最小只读请求核对：
+     * `data` 是 `{seats:{row*1000+col:seat}, page:n, hasMore:bool}`，seat 字段与
+     * layoutByDate 一致（id/name/type/enabled/status/local），行/列由 key 还原。
+     * status=false 或 data 异常都是业务/协议失败，不能当成「这个时段没有座位」。
+     */
+    fun parseTimeSearchPage(body: String, requestedPage: Int): LibraryTimeSearchPage {
+        val root = objectOf(body)
+        ensureBusinessSuccess(root)
+        val data = root["data"] as? JsonObject ?: fail("时段查询响应缺少 data")
+        val seatsObj = data["seats"] as? JsonObject
+            ?: data["seats"] as? JsonArray
+            ?: fail("时段查询缺少 seats")
+        val seats = when (seatsObj) {
+            is JsonObject -> seatsObj.mapNotNull { (key, value) ->
+                val obj = value as? JsonObject ?: return@mapNotNull null
+                val numericKey = key.toIntOrNull()
+                val row = obj["row"]?.let { (it as? JsonPrimitive)?.intOrNull }
+                    ?: numericKey?.div(1000)
+                    ?: key.substringBefore('_').toIntOrNull()
+                    ?: 0
+                val col = obj["col"]?.let { (it as? JsonPrimitive)?.intOrNull }
+                    ?: numericKey?.rem(1000)
+                    ?: key.substringAfter('_', "").toIntOrNull()
+                    ?: 0
+                LibrarySeat(
+                    id = string(obj, "id"),
+                    name = string(obj, "name"),
+                    row = row,
+                    col = col,
+                    type = string(obj, "type").ifBlank { "seat" },
+                    enabled = boolean(obj, "enabled"),
+                    status = string(obj, "status").ifBlank { "UNKNOWN" },
+                    localOnly = boolean(obj, "local"),
+                )
+            }.filter { it.id.isNotBlank() }
+            is JsonArray -> seatsObj.mapNotNull { item ->
+                val obj = item as? JsonObject ?: return@mapNotNull null
+                LibrarySeat(
+                    id = string(obj, "id"),
+                    name = string(obj, "name"),
+                    row = intOrNull(obj, "row") ?: 0,
+                    col = intOrNull(obj, "col") ?: 0,
+                    type = string(obj, "type").ifBlank { "seat" },
+                    enabled = boolean(obj, "enabled"),
+                    status = string(obj, "status").ifBlank { "UNKNOWN" },
+                    localOnly = boolean(obj, "local"),
+                )
+            }.filter { it.id.isNotBlank() }
+            else -> fail("时段查询 seats 格式异常")
+        }
+        // 服务端 page 只作为观察值；是否前进由调用方按去重结果判定。
+        val serverPage = intOrNull(data, "page") ?: requestedPage
+        // 实测部署 hasMore 是布尔；同时兼容字符串 "true"/"1"。不用含 == 的
+        // Elvis 链，避免把「false」短路与优先级写成难读的表达式。
+        val rawHasMore = data["hasMore"] as? JsonPrimitive
+        val hasMore = when {
+            rawHasMore == null -> false
+            rawHasMore.booleanOrNull != null -> rawHasMore.booleanOrNull == true
+            rawHasMore.contentOrNull.equals("true", ignoreCase = true) -> true
+            rawHasMore.contentOrNull == "1" -> true
+            else -> false
+        }
+        return LibraryTimeSearchPage(seats, serverPage, hasMore)
+    }
+
     fun parseStartTimes(body: String): List<LibraryTimeOption> {
         val root = objectOf(body)
         ensureBusinessSuccess(root)

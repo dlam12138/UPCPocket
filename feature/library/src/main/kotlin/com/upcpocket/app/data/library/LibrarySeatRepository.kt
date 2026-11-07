@@ -158,6 +158,36 @@ class LibrarySeatRepository(
         )
     }
 
+    /**
+     * 当前房间在目标完整区间可约的一页座位（只读）。
+     *
+     * beginMinute/endMinute 是 HH:mm 转成的当天分钟数（学校路径参数单位）。
+     * page 从 1 起，batch 是该次查询使用的页大小；token/签名头与其它
+     * `/rest/v2` 读取一致，不新增加密或查询来源。
+     */
+    suspend fun timeSearchSeats(
+        key: LibraryTimeSearchKey,
+        page: Int,
+        batch: Int,
+        guard: () -> Boolean = { true },
+    ): LibraryTimeSearchPage = withToken { token ->
+        if (!sessionAllowed() || !guard()) throw LibrarySessionExpiredException()
+        LibrarySeatProtocol.parseTimeSearchPage(
+            request(
+                "GET",
+                "/rest/v2/searchSeats/${path(key.date)}/${key.beginMinute}/${key.endMinute}",
+                mapOf(
+                    "roomId" to key.roomId,
+                    "buildingId" to key.buildingId,
+                    "batch" to batch.toString(),
+                    "page" to page.toString(),
+                    "token" to token,
+                ),
+            ),
+            page,
+        )
+    }
+
     suspend fun startTimes(seatId: String, date: String): List<LibraryTimeOption> = withToken { token ->
         LibrarySeatProtocol.parseStartTimes(
             request(

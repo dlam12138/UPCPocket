@@ -6,6 +6,8 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
 import com.upcpocket.app.data.library.LibrarySeatRepository
+import com.upcpocket.app.data.prefs.DataStoreLibraryHiddenSeatsStore
+import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.plugin.api.Plugin
 import com.upcpocket.app.plugin.api.PluginCapability
@@ -72,6 +74,10 @@ class LibraryPlugin(
         authenticator = chaoxingAuthenticator,
     )
 
+    /** 本机个人隐藏座位：独立 DataStore，与学校账号/会话无关。 */
+    val hiddenSeatsStore: LibraryHiddenSeatsStore =
+        DataStoreLibraryHiddenSeatsStore(context.applicationContext)
+
     override fun capabilities(): List<PluginCapability> = listOf(
         PluginCapability(LibraryCapabilities.seat, service),
         PluginCapability(LibraryCapabilities.chaoxing, chaoxingService),
@@ -80,5 +86,5 @@ class LibraryPlugin(
     override val pluginId get() = descriptor.id
 
     override fun contribute(registry: PluginUiRegistry) =
-        LibraryUi(service, chaoxingService).contribute(registry)
+        LibraryUi(service, chaoxingService, hiddenSeatsStore).contribute(registry)
 }

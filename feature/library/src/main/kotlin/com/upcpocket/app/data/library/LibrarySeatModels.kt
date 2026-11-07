@@ -88,6 +88,74 @@ data class LibrarySeatLayout(
 
 data class LibraryTimeOption(val id: String, val value: String)
 
+/**
+ * 一次「按时段找」查询的完整身份。
+ *
+ * 分页、迟到响应与最终确认都要拿它和账号/会话代次一起复核：换馆区、房间、
+ * 日期、时段或模式后的旧结果不能混入新条件。beginMinute/endMinute 是
+ * HH:mm 转成的当天分钟数（学校 searchSeats 路径参数单位，实测 840=14:00）。
+ */
+data class LibraryTimeSearchKey(
+    val buildingId: String,
+    val roomId: String,
+    val date: String,
+    val beginMinute: Int,
+    val endMinute: Int,
+    val beginText: String,
+    val endText: String,
+)
+
+/**
+ * 本机个人隐藏座位（唐岛湾 libseat）。
+ *
+ * 不是学校封禁/账号数据：只落本机，退出或换号不删除，可逐个/全部恢复。
+ * 命名空间 = system + buildingId + roomId + seatId；nameSnapshot 只是座号展示
+ * 快照，展示时以当前官方布局名称优先。
+ */
+data class LibraryHiddenSeat(
+    val system: String,
+    val buildingId: String,
+    val roomId: String,
+    val seatId: String,
+    val nameSnapshot: String,
+) {
+    companion object {
+        const val SYSTEM_LIBSEAT = "libseat"
+    }
+}
+
+/**
+ * 按时段找的一页真实结果。
+ *
+ * seats 是学校 `data.seats`（key=row*1000+col）还原出的座位；page/hasMore
+ * 来自学校 `data.page`/`data.hasMore`，不能由「本页 N 条」臆断。
+ */
+data class LibraryTimeSearchPage(
+    val seats: List<LibrarySeat>,
+    val page: Int,
+    val hasMore: Boolean,
+)
+
+/**
+ * 一次按时段查询累积出的、去重后的候选状态。
+ *
+ * status 只由服务端查询推进；部分分页失败时保留同条件已读候选并标记
+ * partialFailure，hasMore=true 时仍保留加载更多，不伪造 0 或「共 N 个」。
+ */
+data class LibraryTimeSearchResult(
+    val key: LibraryTimeSearchKey,
+    val seats: List<LibrarySeat> = emptyList(),
+    val loadedPages: Int = 0,
+    val nextPage: Int = 1,
+    val hasMore: Boolean = false,
+    val complete: Boolean = false,
+    val partialFailure: Boolean = false,
+    val pageLimitReached: Boolean = false,
+    val failed: Boolean = false,
+    val failureMessage: String? = null,
+    val querying: Boolean = false,
+)
+
 data class LibraryReservation(
     val id: String,
     val date: String,

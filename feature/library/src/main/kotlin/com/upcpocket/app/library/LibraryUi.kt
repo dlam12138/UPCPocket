@@ -1,6 +1,7 @@
 package com.upcpocket.app.library
 
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
+import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -49,6 +50,7 @@ private val LEGACY_DISCUSSION_ROUTES = listOf(
 internal class LibraryUi(
     private val service: LibraryService,
     private val chaoxingService: ChaoxingService,
+    private val hiddenSeatsStore: LibraryHiddenSeatsStore,
 ) : PluginUiContributor {
 
     override val pluginId = LIBRARY_PLUGIN_ID
@@ -63,6 +65,7 @@ internal class LibraryUi(
             PluginPage(LIBRARY_SEAT_ROUTE, LIBRARY_PLUGIN_ID) { host ->
                 LibrarySeatScreen(
                     service = service,
+                    hiddenSeatsStore = hiddenSeatsStore,
                     onBack = host::back,
                     onLogin = { host.open(LIBRARY_LOGIN_ROUTE) },
                 )
