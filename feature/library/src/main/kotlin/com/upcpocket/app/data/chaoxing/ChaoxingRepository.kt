@@ -130,10 +130,12 @@ class ChaoxingRepository internal constructor(
         startMinute: Int,
         endMinute: Int,
         seatNum: String,
+        beforePost: () -> Boolean = { true },
     ): ChaoxingReservationResult = withContext(Dispatchers.IO) {
         val selectParams = linkedMapOf(
             "id" to roomId.toString(),
             "deptIdEnc" to FID_ENC,
+            "fidEnc" to FID_ENC,
             "day" to date,
         )
         if (kind == ChaoxingSeatKind.SEATENGINE) selectParams["seatId"] = SEAT_ID
@@ -147,8 +149,8 @@ class ChaoxingRepository internal constructor(
         } catch (expired: ChaoxingSessionExpiredException) {
             throw expired
         } catch (failure: IOException) {
-            return@withContext ChaoxingReservationResult.Unknown(
-                "网络中断，尚未确认是否提交成功；请到官方预约记录核对，勿连续重试。",
+            return@withContext ChaoxingReservationResult.Rejected(
+                "提交前检查失败，未提交，请重试。",
             )
         }
         if (secrets.riskCheckRequired) {
@@ -157,8 +159,8 @@ class ChaoxingRepository internal constructor(
             )
         }
         if (kind == ChaoxingSeatKind.SEATENGINE && secrets.wfwEngineEnc.length > 256) {
-            return@withContext ChaoxingReservationResult.Unknown(
-                "选座页校验字段异常；未提交，请打开官方页。",
+            return@withContext ChaoxingReservationResult.Rejected(
+                "选座页校验字段异常，未提交。",
             )
         }
         val params = ChaoxingReservationProtocol.submitParams(
@@ -172,20 +174,21 @@ class ChaoxingRepository internal constructor(
             submitEnc = secrets.submitEnc,
             wfwEngineEnc = secrets.wfwEngineEnc,
         )
+        if (!beforePost()) return@withContext ChaoxingReservationResult.Rejected("登录或选择已变化，未重复提交。")
         val response = try {
             fetch(
                 cookieHeader,
                 "https://office.chaoxing.com/data/apps/${kind.api}/submit",
                 formBody = form(params),
             )
-        } catch (failure: IOException) {
+        } catch (failure: Exception) {
             return@withContext ChaoxingReservationResult.Unknown(
                 "网络中断，提交结果未知；请到官方预约记录核对，勿连续重试。",
             )
         }
         when {
             response.status in setOf(401, 403, 302, 303) ->
-                throw ChaoxingSessionExpiredException()
+                ChaoxingReservationResult.Unknown("登录在提交时失效，结果未知；请核对学校记录。")
             response.status == 429 -> ChaoxingReservationResult.Unknown(
                 "请求过于频繁，提交结果未知；请到学校记录核对，不要连续重试。",
             )

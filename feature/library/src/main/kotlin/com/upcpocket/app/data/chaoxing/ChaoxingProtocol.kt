@@ -85,10 +85,11 @@ object ChaoxingProtocol {
             ?.takeIf { it > 0 }
             ?: throw ChaoxingException("房间详情缺少 timeUnit", "chaoxing_protocol")
         val day = parseDate(date)
-        val hours = hours(config["commonTimeConfig"] as? JsonObject, day)
-            ?: hours(room["seatSpecialTime"] as? JsonObject, day)
+        val hours = hours(room["seatSpecialTime"] as? JsonObject, day)
+            ?: hours(room["seatEngineSpecialTime"] as? JsonObject, day)
+            ?: hours(config["commonTimeConfig"] as? JsonObject, day)
             ?: throw ChaoxingException("房间详情缺少开放时段", "chaoxing_protocol")
-        val roomId = int(room, "id") ?: expectedRoomId
+        val roomId = int(room, "id") ?: throw ChaoxingException("房间详情缺少标识")
         if (roomId != expectedRoomId) {
             throw ChaoxingException("房间详情与请求区域不一致", "chaoxing_protocol")
         }
@@ -104,7 +105,24 @@ object ChaoxingProtocol {
             startMinute = hours.first,
             endMinute = hours.second,
             places = emptyList(),
+            disabledSeatNums = (data["seatAttributes"] as? JsonArray).orEmpty().mapNotNull { item ->
+                val attribute = item as? JsonObject ?: throw ChaoxingException("座位属性无效")
+                val num = stringOrNull(attribute, "seatNum") ?: throw ChaoxingException("属性缺少座号")
+                val allowed = int(attribute, "isReserve") ?: throw ChaoxingException("属性缺少可约标记")
+                if (allowed !in 0..1) throw ChaoxingException("可约标记无效")
+                num.takeIf { allowed == 0 }
+            }.toSet(),
+            seatRulesKnown = data["seatAttributes"] is JsonArray,
+            minDurationMinutes = durationMinutes(config, "minReserveDuration"),
+            maxDurationMinutes = durationMinutes(config, "reserveDuration"),
+            closed = int(room, "isOpen") == 1,
         )
+    }
+
+    private fun durationMinutes(config: JsonObject, key: String): Int? {
+        val value = (config[key] as? JsonPrimitive)?.doubleOrNull ?: return null
+        if (!value.isFinite()) throw ChaoxingException("时长规则无效")
+        return (value * 60).toInt().takeIf { it > 0 }
     }
 
     fun parseSeatPlaces(body: String): List<ChaoxingSeatPlace> {
@@ -130,7 +148,7 @@ object ChaoxingProtocol {
                 rotate = rotate,
             )
         }
-        if (data.isNotEmpty() && places.isEmpty()) {
+        if (places.size != data.size || places.map { it.seatNum }.toSet().size != places.size) {
             throw ChaoxingException("座位图坐标无效", "chaoxing_protocol")
         }
         return places
@@ -140,8 +158,9 @@ object ChaoxingProtocol {
         val data = objectData(body)
         val list = data["seatReserves"] as? JsonArray
             ?: throw ChaoxingException("已用座位响应缺少 seatReserves", "chaoxing_protocol")
-        return list.mapNotNull { item ->
-            (item as? JsonObject)?.let { stringOrNull(it, "seatNum") }
+        return list.map { item ->
+            val obj = item as? JsonObject ?: throw ChaoxingException("占用项无效")
+            stringOrNull(obj, "seatNum") ?: throw ChaoxingException("占用项缺少座号")
         }.toSet()
     }
 
@@ -206,7 +225,7 @@ object ChaoxingProtocol {
     private fun envelope(body: String): JsonObject {
         val root = parseObject(body)
             ?: throw ChaoxingException("响应不是 JSON", "chaoxing_protocol")
-        if (root["success"]?.let { (it as? JsonPrimitive)?.booleanOrNull } == false) {
+        if ((root["success"] as? JsonPrimitive)?.booleanOrNull != true) {
             throw ChaoxingException("学校返回业务失败", "chaoxing_upstream")
         }
         if (root["data"] == null) {

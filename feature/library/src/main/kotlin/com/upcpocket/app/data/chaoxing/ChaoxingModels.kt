@@ -77,6 +77,11 @@ data class ChaoxingSeatRoomDetail(
     val startMinute: Int,
     val endMinute: Int,
     val places: List<ChaoxingSeatPlace>,
+    val disabledSeatNums: Set<String> = emptySet(),
+    val seatRulesKnown: Boolean = false,
+    val minDurationMinutes: Int? = null,
+    val maxDurationMinutes: Int? = null,
+    val closed: Boolean = false,
 )
 
 data class ChaoxingTimeInterval(

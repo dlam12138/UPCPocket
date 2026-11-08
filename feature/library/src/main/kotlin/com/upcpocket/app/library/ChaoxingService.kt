@@ -81,7 +81,7 @@ sealed interface ChaoxingCleanupResult {
     data class Failed(val reason: String) : ChaoxingCleanupResult
 }
 
-private data class ChaoxingLoginContext(
+data class ChaoxingReadContext(
     val epoch: Long,
     val revision: Long,
     val accountId: SchoolAccountId,
@@ -119,8 +119,11 @@ class ChaoxingService(
     private val autoLoginMutex = Mutex()
     private var epoch = 0L
     private var revision = 0L
+    private val _requestRevision = MutableStateFlow(0L)
+    val requestRevision: StateFlow<Long> = _requestRevision.asStateFlow()
     private var entrySequence = 0L
     private var activeEntryId: Long? = null
+    private var boundSessionContext: ChaoxingReadContext? = null
     // 会话内记住“提交结果未知”的精确请求；关闭详情页/重建 ViewModel 后仍不能重发。
     private val unknownSubmissions = mutableSetOf<String>()
     private var cleanupInProgress = false
@@ -217,8 +220,10 @@ class ChaoxingService(
                 !isCurrentLocked(entry) ->
                     ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_CHANGED)
                 else -> {
-                    _session.value = ChaoxingSession(cookieHeader, user)
                     revision++
+                    boundSessionContext = ChaoxingReadContext(epoch, revision, entry.accountId, entry.generation)
+                    _session.value = ChaoxingSession(cookieHeader, user)
+                    _requestRevision.value = revision
                     activeEntryId = null
                     ChaoxingLoginResult.Success
                 }
@@ -343,8 +348,10 @@ class ChaoxingService(
                 !isCurrent(context) ->
                     ChaoxingLoginResult.Failure(ChaoxingAuthFailure.ACCOUNT_CHANGED)
                 else -> {
-                    _session.value = ChaoxingSession(cookieHeader, user)
                     revision++
+                    boundSessionContext = context.copy(revision = revision)
+                    _session.value = ChaoxingSession(cookieHeader, user)
+                    _requestRevision.value = revision
                     // 自动登录成功即让旧的网页登录入口失效。
                     activeEntryId = null
                     ChaoxingLoginResult.Success
@@ -406,51 +413,50 @@ class ChaoxingService(
         startMinute: Int,
         endMinute: Int,
         seatNum: String,
+        expectedContext: ChaoxingReadContext? = readContext(),
+        selectionCurrent: () -> Boolean = { true },
     ): ChaoxingReservationResult {
         val current = _session.value ?: throw ChaoxingSessionExpiredException()
-        val context = captureContext() ?: throw ChaoxingSessionExpiredException()
-        val submissionKey = submissionKey(
-            current.user.sno,
-            kind,
-            roomId,
-            date,
-            startMinute,
-            endMinute,
-            seatNum,
-        )
-        if (synchronized(stateLock) { submissionKey in unknownSubmissions }) {
-            return ChaoxingReservationResult.Unknown(
-                "上次提交结果未知；请先到学校记录核对，本次不会再次发送。" +
-                    "确认未成功后重新登录再试。",
-            )
+        val context = expectedContext ?: throw ChaoxingSessionExpiredException()
+        fun valid() = isReadContextCurrent(context) && _session.value === current && selectionCurrent()
+        if (!valid()) return ChaoxingReservationResult.Rejected("登录或选择已变化，请重新选择。")
+        val key = submissionKey(current.user.sno, kind, roomId, date, startMinute, endMinute, seatNum)
+        if (synchronized(stateLock) { key in unknownSubmissions }) {
+            return ChaoxingReservationResult.Unknown("上次提交结果未知；请先到学校记录核对，本次不会再次发送。")
         }
-        val result = try {
-            repository.submitReservation(
-                kind = kind,
-                cookieHeader = current.cookieHeader,
-                roomId = roomId,
-                date = date,
-                startMinute = startMinute,
-                endMinute = endMinute,
-                seatNum = seatNum,
-            )
-        } catch (expired: ChaoxingSessionExpiredException) {
-            signOutIfCurrent(current.cookieHeader)
+        var sent = false
+        val result = try { repository.submitReservation(
+            kind, current.cookieHeader, roomId, date, startMinute, endMinute, seatNum,
+            beforePost = {
+                synchronized(stateLock) {
+                    if (!valid() || key in unknownSubmissions) false else {
+                        // Only the actual POST boundary claims the key. Preflight/interaction never does.
+                        unknownSubmissions += key
+                        sent = true
+                        true
+                    }
+                }
+            },
+        ) } catch (expired: ChaoxingSessionExpiredException) {
+            signOutIfCurrent(current.cookieHeader, context)
             throw expired
         }
-        val stillCurrent = isCurrent(context) &&
-            _session.value?.cookieHeader == current.cookieHeader
-        if (!stillCurrent) {
-            synchronized(stateLock) { unknownSubmissions += submissionKey }
-            return ChaoxingReservationResult.Unknown(
-                "账号或登录在提交期间变化，结果未知；请到学校记录核对，不要连续重试。",
-            )
+        if (!valid()) {
+            return if (sent) ChaoxingReservationResult.Unknown("登录或选择已变化，提交结果请到学校记录核对。")
+            else ChaoxingReservationResult.Rejected("登录或选择已变化，未提交。")
         }
-        if (result is ChaoxingReservationResult.Unknown) {
-            synchronized(stateLock) { unknownSubmissions += submissionKey }
+        if (sent && result !is ChaoxingReservationResult.Unknown && result !is ChaoxingReservationResult.Success) {
+            synchronized(stateLock) { unknownSubmissions.remove(key) }
         }
         return result
     }
+
+    /** Opaque, credential-free request identity; compare before reads, selection and POST. */
+    fun readContext(): ChaoxingReadContext? = synchronized(stateLock) {
+        captureContext()?.takeIf { _session.value != null && it == boundSessionContext }
+    }
+    fun isReadContextCurrent(context: ChaoxingReadContext?): Boolean =
+        context != null && readContext() == context
 
     private fun submissionKey(
         userSno: String,
@@ -489,27 +495,22 @@ class ChaoxingService(
         block: suspend (String, () -> Boolean) -> T,
     ): T {
         val current = _session.value ?: throw ChaoxingSessionExpiredException()
-        val context = captureContext() ?: throw ChaoxingSessionExpiredException()
-        val guard = { isCurrent(context) && _session.value?.cookieHeader == current.cookieHeader }
+        val context = readContext() ?: throw ChaoxingSessionExpiredException()
+        val guard = { isReadContextCurrent(context) && _session.value === current }
         return try {
             val result = block(current.cookieHeader) { guard() }
             if (!guard()) throw ChaoxingSessionExpiredException()
             result
         } catch (expired: ChaoxingSessionExpiredException) {
-            signOutIfCurrent(current.cookieHeader)
+            signOutIfCurrent(current.cookieHeader, context)
             throw expired
         } catch (failure: ChaoxingException) {
             throw failure
         }
     }
 
-    private suspend fun signOutIfCurrent(cookieHeader: String) {
-        val shouldClear = synchronized(stateLock) {
-            _session.value?.cookieHeader == cookieHeader
-        }
-        if (shouldClear) {
-            performCleanup(expectedCookie = cookieHeader)
-        }
+    private suspend fun signOutIfCurrent(cookieHeader: String, context: ChaoxingReadContext) {
+        performCleanup(expectedCookie = cookieHeader, expectedContext = context)
     }
 
     /**
@@ -517,21 +518,26 @@ class ChaoxingService(
      * 清理没有成功前 cleanupInProgress/cleanupFailed 会阻止新登录发布，旧清理完成
      * 也不会删掉稍后发布的新会话。
      */
-    private suspend fun performCleanup(expectedCookie: String?): ChaoxingCleanupResult {
+    private suspend fun performCleanup(
+        expectedCookie: String?, expectedContext: ChaoxingReadContext? = null,
+    ): ChaoxingCleanupResult {
         var owner = false
         var job: CompletableDeferred<Boolean>
         synchronized(stateLock) {
+            if (expectedContext != null && !isReadContextCurrent(expectedContext)) return ChaoxingCleanupResult.Success
             if (expectedCookie != null && _session.value?.cookieHeader != expectedCookie) {
                 return ChaoxingCleanupResult.Success
             }
             epoch++
             revision++
+            boundSessionContext = null
             _session.value = null
             unknownSubmissions.clear()
             activeEntryId = null
             cleanupInProgress = true
             cleanupFailed = false
             _cleanupState.value = ChaoxingCleanupState.CLEARING
+            _requestRevision.value = revision
             val existing = cleanupJob
             if (existing == null) {
                 job = CompletableDeferred()
@@ -578,10 +584,10 @@ class ChaoxingService(
             }
         }
 
-    private fun captureContext(): ChaoxingLoginContext? = synchronized(stateLock) {
+    private fun captureContext(): ChaoxingReadContext? = synchronized(stateLock) {
         if (cleanupInProgress || cleanupFailed) return@synchronized null
         val reference = currentReferenceLocked() ?: return@synchronized null
-        ChaoxingLoginContext(
+        ChaoxingReadContext(
             epoch = epoch,
             revision = revision,
             accountId = reference.accountId,
@@ -589,7 +595,7 @@ class ChaoxingService(
         )
     }
 
-    private fun isCurrent(context: ChaoxingLoginContext): Boolean = synchronized(stateLock) {
+    private fun isCurrent(context: ChaoxingReadContext): Boolean = synchronized(stateLock) {
         if (cleanupInProgress || cleanupFailed) return@synchronized false
         epoch == context.epoch && revision == context.revision &&
             currentReferenceLocked()?.let {

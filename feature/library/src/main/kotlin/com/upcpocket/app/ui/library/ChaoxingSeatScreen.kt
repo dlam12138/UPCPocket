@@ -5,6 +5,8 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,6 +38,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -53,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -64,8 +74,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -79,6 +91,7 @@ import com.upcpocket.app.data.chaoxing.ChaoxingSeatPlace
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoom
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatRoomDetail
 import com.upcpocket.app.data.upc.UpcOfficialEntryLinks
+import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.library.ChaoxingAuthFailure
 import com.upcpocket.app.library.ChaoxingLoginResult
 import com.upcpocket.app.library.ChaoxingService
@@ -90,13 +103,14 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChaoxingSeatScreen(
     service: ChaoxingService,
+    hiddenSeatsStore: LibraryHiddenSeatsStore,
     initialKind: ChaoxingSeatKind = ChaoxingSeatKind.SEAT,
     onBack: () -> Unit,
     onOpenLogin: () -> Unit,
 ) {
     val session by service.session.collectAsStateWithLifecycle()
     val vm: ChaoxingSeatViewModel = viewModel(
-        factory = ChaoxingSeatViewModel.factory(service, initialKind),
+        factory = ChaoxingSeatViewModel.factory(service, initialKind, hiddenSeatsStore),
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -106,16 +120,15 @@ fun ChaoxingSeatScreen(
     var autoLoginError by remember { mutableStateOf<String?>(null) }
     val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
 
-    LaunchedEffect(session) {
-        if (session != null) vm.refresh()
-    }
-
     if (state.detail != null) {
         ChaoxingSeatDetailPage(
             state = state,
             vm = vm,
             onExit = vm::closeRoom,
-            onOpenOfficial = { openChaoxingOfficial(context, state.officialUrl) },
+            onOpenOfficial = {
+                if (state.interactionRequired) onOpenLogin()
+                else openChaoxingOfficial(context, state.officialUrl)
+            },
         )
         return
     }
@@ -170,7 +183,7 @@ fun ChaoxingSeatScreen(
                                 if (canAutoLogin) {
                                     "使用已保存的学校账号登录；需要验证码时打开学校网页。"
                                 } else {
-                                    "登录后可查看区域与座位；预约在学校页面。"
+                                    "登录后选择座位和时段。"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -402,284 +415,215 @@ internal fun ChaoxingAreaRow(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ChaoxingSeatDetailPage(
-    state: ChaoxingSeatUiState,
-    vm: ChaoxingSeatViewModel,
-    onExit: () -> Unit,
-    onOpenOfficial: () -> Unit,
+    state: ChaoxingSeatUiState, vm: ChaoxingSeatViewModel,
+    onExit: () -> Unit, onOpenOfficial: () -> Unit,
 ) {
-    BackHandler(onBack = onExit)
-    val detail = state.detail ?: return
-    val context = LocalContext.current
-    var showTimeSheet by rememberSaveable { mutableStateOf(false) }
-    var showReserveConfirm by rememberSaveable { mutableStateOf(false) }
-    val selectedSeat = state.selectedSeat
-    val selectedStart = state.selectedStart
-    val selectedEnd = state.selectedEnd
-    LaunchedEffect(state.selectedDate, state.selectedSeat, selectedStart, selectedEnd) {
-        showReserveConfirm = false
-    }
-    val timeLabel = if (selectedStart != null && selectedEnd != null) {
-        "${formatMinute(selectedStart)}–${formatMinute(selectedEnd)} · " +
-            formatDuration(selectedEnd - selectedStart)
-    } else {
-        "尚未选择时段"
-    }
+    ChaoxingSeatDetailContent(state, onExit, onOpenOfficial,
+        vm::setSeatMode, vm::selectStart, vm::selectEnd, vm::searchSeats, vm::selectSeat,
+        vm::hideSeat, vm::openHiddenSheet, vm::closeHiddenSheet, vm::restoreHidden,
+        vm::restoreAllHidden, vm::reserveSelected, vm::clearHiddenNotice, vm::reloadHidden)
+}
 
+/** Production detail UI; debug screenshots invoke this exact component with synthetic state. */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+internal fun ChaoxingSeatDetailContent(
+    state: ChaoxingSeatUiState,
+    onExit: () -> Unit, onOpenOfficial: () -> Unit,
+    onMode: (RoomSeatMode) -> Unit, onStart: (Int) -> Unit, onEnd: (Int) -> Unit,
+    onSearch: () -> Unit, onSelect: (String) -> Unit, onHide: (String) -> Unit,
+    onOpenHidden: () -> Unit, onCloseHidden: () -> Unit, onRestore: (String) -> Unit,
+    onRestoreAll: () -> Unit, onReserve: () -> Unit, onClearHiddenNotice: () -> Unit,
+    onReloadHidden: () -> Unit,
+) {
+    val detail = state.detail ?: return
+    val view = LocalView.current
+    val lightBars = MaterialTheme.colorScheme.background.luminance() > 0.5f
+    DisposableEffect(view, lightBars) {
+        val activity = generateSequence(view.context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>().firstOrNull()
+        val controller = activity?.window?.insetsController
+        val previous = controller?.systemBarsAppearance ?: 0
+        val mask = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+            android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        controller?.setSystemBarsAppearance(if (lightBars) mask else 0, mask)
+        onDispose { controller?.setSystemBarsAppearance(previous, mask) }
+    }
+    BackHandler(onBack = onExit)
+    var timePart by remember { mutableStateOf<String?>(null) }
+    var confirmKey by remember { mutableStateOf<ChaoxingSeatUiState?>(null) }
+    var menu by remember { mutableStateOf(false) }
+    val snack = remember { SnackbarHostState() }
+    LaunchedEffect(state.undoHidden) {
+        val entry = state.undoHidden ?: return@LaunchedEffect
+        if (snack.showSnackbar("已隐藏座位 ${entry.nameSnapshot}", "撤销") == SnackbarResult.ActionPerformed) {
+            onRestore(entry.seatId)
+        }
+        onClearHiddenNotice()
+    }
+    val range = if (state.selectedStart != null && state.selectedEnd != null) {
+        "${formatMinute(state.selectedStart)}–${formatMinute(state.selectedEnd)} · " +
+            formatDuration(state.selectedEnd - state.selectedStart)
+    } else "选择时段"
+    // Confirmation is tied to immutable selection + query generation, never revived by late results.
+    val confirm = confirmKey?.takeIf {
+        state.canConfirm() && it.kind == state.kind && it.selectedDate == state.selectedDate &&
+            it.detail === state.detail && it.seatMode == state.seatMode &&
+            it.queryGeneration == state.queryGeneration && it.selectedSeat == state.selectedSeat &&
+            it.selectedStart == state.selectedStart && it.selectedEnd == state.selectedEnd
+    }
+    LaunchedEffect(state.kind, state.detail, state.selectedDate, state.seatMode,
+        state.queryGeneration, state.selectedSeat, state.hiddenBusy, state.canConfirm()) { confirmKey = null }
     Scaffold(
+        snackbarHost = { SnackbarHost(snack) },
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(detail.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            "${shortChaoxingDate(state.selectedDate)} · ${state.kind.campusLabel}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            Surface {
+              Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = 8.dp),
+                  verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回区域") }
+                Column(Modifier.weight(1f)) {
+                    Text(detail.name, style = MaterialTheme.typography.titleMedium)
+                    Text("${state.kind.campusLabel} · ${shortChaoxingDate(state.selectedDate)}",
+                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Box {
+                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多") }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("隐藏的座位（${state.hiddenEntries.size}）") },
+                            onClick = { menu = false; onOpenHidden() })
+                        DropdownMenuItem(text = { Text("学校页面") }, onClick = { menu = false; onOpenOfficial() })
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onExit) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回区域")
-                    }
-                },
-                actions = { TextButton(onClick = onOpenOfficial) { Text("学校页面") } },
-            )
+                }
+              }
+            }
         },
         bottomBar = {
-            Surface(tonalElevation = 2.dp) {
-                Row(
-                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            selectedSeat?.let { "已选 $it" } ?: "点选可用座位",
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            "$timeLabel · " + if (state.usedSeatsLoaded) {
-                                "${state.usedSeats.size} 个已用"
-                            } else {
-                                "已用座位未知"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    when {
-                        state.reserving -> Button(onClick = {}, enabled = false) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text("提交中")
-                        }
-                        state.selectedStart == null -> Button(
-                            onClick = { showTimeSheet = true },
-                        ) { Text("选择时段") }
-                        state.reservationSucceeded -> Button(
-                            onClick = onOpenOfficial,
-                        ) { Text("查看学校记录") }
-                        state.reservationUnknown -> Button(
-                            onClick = onOpenOfficial,
-                        ) { Text("先查看学校记录") }
-                        state.selectedSeat == null -> Button(
-                            onClick = {},
-                            enabled = false,
-                        ) { Text("先选座位") }
-                        else -> Button(
-                            onClick = { showReserveConfirm = true },
-                            enabled = state.usedSeatsLoaded &&
-                                state.selectedSeat !in state.usedSeats,
-                        ) { Text("预约") }
-                    }
-                }
-            }
+            val official = state.reservationUnknown || state.reservationSucceeded || state.interactionRequired
+            SeatSelectionBottomBar(state.selectedSeat, range,
+                state.canConfirm() || official, {
+                    if (official) onOpenOfficial() else confirmKey = state
+                }, when {
+                    state.reserving -> "提交中…"
+                    state.reservationUnknown || state.reservationSucceeded -> "查看学校记录"
+                    state.interactionRequired -> "完成验证"
+                    else -> "确认预约"
+                })
         },
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+        LazyColumn(Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
+            verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
+                FilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
+            } }
             item {
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("使用时段", style = MaterialTheme.typography.labelMedium)
-                        Text(
-                            "$timeLabel · 开放 ${formatMinute(detail.startMinute)}–${formatMinute(detail.endMinute)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            "默认首个时段，可更改",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                if (state.seatMode == RoomSeatMode.TIME) {
+                    TimeRangeControls(state.selectedStart?.let(::formatMinute), state.selectedEnd?.let(::formatMinute),
+                        { timePart = "start" }, { timePart = "end" }, onSearch,
+                        state.validInterval() && !state.querying, state.querying)
+                } else Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                    Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("使用时段", style = MaterialTheme.typography.labelMedium)
+                            Text(range, style = MaterialTheme.typography.bodyMedium)
+                            Text("开放 ${formatMinute(detail.startMinute)}–${formatMinute(detail.endMinute)}",
+                                style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(onClick = { timePart = "start" }) { Text("更改") }
                     }
-                    TextButton(onClick = { showTimeSheet = true }) { Text("更改") }
                 }
             }
-            state.detailError?.let { message ->
-                item { CompactNotice("座位图加载失败", message) }
-            }
-            state.reservationMessage?.let { message ->
-                item {
-                    CompactNotice(
-                        if (state.reservationUnknown) "提交结果未知" else "预约状态",
-                        message,
-                    )
-                }
-            }
-            item {
-                FlowRow(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
+            state.hiddenError?.let { item {
+                Text(it, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onReloadHidden, enabled = !state.hiddenBusy) { Text("重试") }
+            } }
+            state.reservationMessage?.let { item { CompactNotice(if (state.reservationUnknown) "提交结果未知" else "预约状态", it) } }
+            if (state.seatMode == RoomSeatMode.TIME) {
+                item { ChaoxingTimeResults(state, onSelect, onHide, onSearch) }
+            } else {
+                if (state.querying) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                state.detailError?.let { item {
+                    CompactNotice("查询失败", it)
+                    TextButton(onClick = onSearch) { Text("重试") }
+                } }
+                item { FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LegendDot(MaterialTheme.colorScheme.primary, "可选")
-                    if (state.usedSeatsLoaded) {
-                        LegendDot(MaterialTheme.colorScheme.error, "已用")
-                    } else {
-                        LegendDot(MaterialTheme.colorScheme.surfaceVariant, "已用未知")
-                    }
+                    LegendDot(MaterialTheme.colorScheme.error, if (state.usedSeatsLoaded) "已用" else "已用未知")
                     LegendDot(MaterialTheme.colorScheme.tertiary, "已选")
-                }
-            }
-            item {
-                if (detail.places.isEmpty()) {
-                    CompactNotice("没有座位图", "学校未返回该区域座位坐标；不能显示虚构平面图。")
-                } else {
-                    ChaoxingSeatMap(
-                        places = detail.places,
-                        usedSeats = state.usedSeats,
-                        usedSeatsLoaded = state.usedSeatsLoaded,
-                        selectedSeat = selectedSeat,
-                        onSelect = vm::selectSeat,
-                    )
-                }
+                    if (state.hiddenIds.isNotEmpty()) LegendDot(MaterialTheme.colorScheme.outline, "已隐藏")
+                } }
+                item { ChaoxingSeatMap(detail.places, state.usedSeats, state.usedSeatsLoaded,
+                    state.selectedSeat, onSelect, state.hiddenIds, onHide, detail.disabledSeatNums) }
+                state.selectedSeat?.let { seat -> item {
+                    TextButton(onClick = { onHide(seat) }, enabled = !state.hiddenBusy) { Text("隐藏座位 $seat") }
+                } }
             }
         }
     }
-
-    if (showReserveConfirm) {
-        AlertDialog(
-            onDismissRequest = { if (!state.reserving) showReserveConfirm = false },
-            title = { Text("确认预约") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("${detail.name} · ${selectedSeat ?: "未选座"}")
-                    Text("${state.selectedDate} · ${formatMinute(selectedStart ?: 0)}–" +
-                        formatMinute(selectedEnd ?: 0))
-                    Text(
-                        "提交后会占用座位。若超时或结果未知，请先到学校记录核对，不要连续重试。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
+    if (confirm != null) AlertDialog(
+        onDismissRequest = { confirmKey = null }, title = { Text("确认预约") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("${state.kind.campusLabel} · ${detail.name} · ${state.selectedSeat}")
+            Text("${state.selectedDate} · $range")
+            Text("提交后占用座位；结果未知时请先核对学校记录。", style = MaterialTheme.typography.bodySmall)
+        } },
+        confirmButton = { TextButton(onClick = { confirmKey = null; onReserve() }, enabled = state.canConfirm()) { Text("确认预约") } },
+        dismissButton = { TextButton(onClick = { confirmKey = null }) { Text("取消") } },
+    )
+    if (state.showHiddenSheet) HiddenSeatManagementSheet(state.hiddenEntries, onCloseHidden, onRestore, onRestoreAll)
+    if (timePart != null) ModalBottomSheet(onDismissRequest = { timePart = null },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(if (timePart == "start") "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium)
+            val options = if (timePart == "start") chaoxingStartOptions(detail)
+                else state.selectedStart?.let { chaoxingEndOptions(detail, it) }.orEmpty()
+            if (options.isEmpty()) Text("没有可选时间")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                options.forEach { minute -> FilterChip(
+                    selected = minute == if (timePart == "start") state.selectedStart else state.selectedEnd,
                     onClick = {
-                        showReserveConfirm = false
-                        vm.reserveSelected()
-                    },
-                    enabled = !state.reserving,
-                ) { Text("确认预约") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showReserveConfirm = false },
-                    enabled = !state.reserving,
-                ) { Text("取消") }
-            },
-        )
-    }
-
-    if (showTimeSheet) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ModalBottomSheet(
-            onDismissRequest = { showTimeSheet = false },
-            sheetState = sheetState,
-        ) {
-            Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp).padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text("选择时段", style = MaterialTheme.typography.titleMedium)
-                Text(
-                    "结束时间由开放时间决定；回到详情页再确认预约。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text("开始时间", style = MaterialTheme.typography.labelLarge)
-                val starts = chaoxingStartOptions(detail)
-                if (starts.isEmpty()) {
-                    Text("当天没有可选时间。", color = MaterialTheme.colorScheme.error)
-                } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        starts.forEach { start ->
-                            FilterChip(
-                                selected = state.selectedStart == start,
-                                onClick = { vm.selectStart(start) },
-                                label = { Text(formatMinute(start)) },
-                            )
-                        }
-                    }
-                }
-                Text("结束时间", style = MaterialTheme.typography.labelLarge)
-                val ends = state.selectedStart?.let { chaoxingEndOptions(detail, it) }.orEmpty()
-                if (state.selectedStart == null) {
-                    Text("先选择开始时间。", style = MaterialTheme.typography.bodySmall)
-                } else if (ends.isEmpty()) {
-                    Text("没有可用结束时间。", color = MaterialTheme.colorScheme.error)
-                } else {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ends.forEach { end ->
-                            FilterChip(
-                                selected = state.selectedEnd == end,
-                                onClick = { vm.selectEnd(end) },
-                                label = { Text(formatMinute(end)) },
-                            )
-                        }
-                    }
-                }
-                if (state.selectedStart != null && state.selectedEnd != null) {
-                    Text(
-                        "已选 ${formatMinute(state.selectedStart)}–${formatMinute(state.selectedEnd)}" +
-                            " · ${formatDuration(state.selectedEnd - state.selectedStart)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                state.detailError?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { showTimeSheet = false }, enabled = state.selectedStart != null) {
-                        Text("完成")
-                    }
-                    OutlinedButton(onClick = onOpenOfficial) { Text("学校页面") }
-                }
+                        if (timePart == "start") { onStart(minute); timePart = "end" }
+                        else { onEnd(minute); timePart = null }
+                    }, label = { Text(formatMinute(minute)) }) }
             }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun ChaoxingTimeResults(state: ChaoxingSeatUiState, onSelect: (String) -> Unit,
+    onHide: (String) -> Unit, onRetry: () -> Unit) {
+    val candidates = state.candidates
+    val visible = candidates.filter { it.seatNum !in state.hiddenIds }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when {
+            state.querying -> CompactNotice("正在查找", "只查询当前房间。")
+            state.detailError != null -> {
+                CompactNotice("查询失败", state.detailError)
+                TextButton(onClick = onRetry) { Text("重试") }
+            }
+            !state.usedSeatsLoaded -> CompactNotice("按时段找", "选择时段，查找可约座位")
+            candidates.isEmpty() -> CompactNotice("这个时段暂无可约座位", "可以修改时段再找。")
+            visible.isEmpty() -> CompactNotice("可约座位已被隐藏", "可在右上角查看或恢复隐藏项。")
+            else -> {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("共 ${candidates.size} 个", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    val hidden = candidates.size - visible.size
+                    if (hidden > 0) Text("隐藏 $hidden", style = MaterialTheme.typography.labelSmall)
+                }
+                visible.forEach { place -> SeatCandidateRow(place.seatNum, state.hiddenLoaded && !state.hiddenBusy && !state.reserving,
+                    state.selectedSeat == place.seatNum, { onSelect(place.seatNum) }, { onHide(place.seatNum) }) }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 internal fun ChaoxingSeatMap(
     places: List<ChaoxingSeatPlace>,
@@ -687,6 +631,9 @@ internal fun ChaoxingSeatMap(
     usedSeatsLoaded: Boolean,
     selectedSeat: String?,
     onSelect: (String) -> Unit,
+    hiddenIds: Set<String> = emptySet(),
+    onHide: (String) -> Unit = {},
+    disabledIds: Set<String> = emptySet(),
 ) {
     if (places.isEmpty()) return
     val minX = places.minOf { it.x }
@@ -711,9 +658,13 @@ internal fun ChaoxingSeatMap(
         ) {
             Box(Modifier.width(mapWidth).height(mapHeight).padding(8.dp)) {
                 places.forEach { place ->
+                    val hidden = place.seatNum in hiddenIds
+                    val disabled = place.seatNum in disabledIds
                     val used = place.seatNum in usedSeats
                     val selected = place.seatNum == selectedSeat
                     val color = when {
+                        hidden -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        disabled -> MaterialTheme.colorScheme.surfaceVariant
                         selected -> MaterialTheme.colorScheme.tertiaryContainer
                         !usedSeatsLoaded -> MaterialTheme.colorScheme.surfaceVariant
                         used -> MaterialTheme.colorScheme.errorContainer
@@ -737,21 +688,24 @@ internal fun ChaoxingSeatMap(
                             .graphicsLayer(rotationZ = place.rotate)
                             .semantics {
                                 contentDescription = "座位 ${place.seatNum}，" + when {
+                                    hidden -> "已在本机隐藏"
+                                    disabled -> "不可预约"
                                     !usedSeatsLoaded -> "当前时段已用状态未取得"
                                     used -> "当前时段已用"
                                     else -> "当前时段可用"
                                 }
                             }
-                            .clickable(enabled = usedSeatsLoaded && !used) {
-                                onSelect(place.seatNum)
-                            },
+                            .combinedClickable(
+                                onClick = { if (usedSeatsLoaded && !used && !hidden && !disabled) onSelect(place.seatNum) },
+                                onLongClick = { if (!hidden) onHide(place.seatNum) },
+                            ),
                         shape = RoundedCornerShape(5.dp),
                         color = color,
                         tonalElevation = if (selected) 3.dp else 0.dp,
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                place.seatNum,
+                                if (hidden) "·" else place.seatNum,
                                 color = textColor,
                                 fontSize = if (seatWidth >= 26.dp) 9.sp else 8.sp,
                                 maxLines = 1,
@@ -789,7 +743,9 @@ internal fun chaoxingEndOptions(detail: ChaoxingSeatRoomDetail, start: Int): Lis
     val result = mutableListOf<Int>()
     var end = start + detail.timeUnit
     while (end <= detail.endMinute) {
-        result += end
+        val duration = end - start
+        if ((detail.minDurationMinutes == null || duration >= detail.minDurationMinutes) &&
+            (detail.maxDurationMinutes == null || duration <= detail.maxDurationMinutes)) result += end
         end += detail.timeUnit
     }
     return result
