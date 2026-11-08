@@ -9,6 +9,8 @@ import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.data.prefs.NoOpLibraryHiddenSeatsStore
 import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.library.ChaoxingReadContext
+import java.time.Clock
+import java.time.ZonedDateTime
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
@@ -41,6 +43,7 @@ data class ChaoxingSeatUiState(
     val officialUrl: String = ChaoxingSeatKind.SEAT.officialUrl,
     val seatMode: RoomSeatMode = RoomSeatMode.SEAT,
     val querying: Boolean = false,
+    val timeUnavailableReason: String? = null,
     val queryGeneration: Long = 0,
     val hiddenEntries: List<LibraryHiddenSeat> = emptyList(),
     val hiddenLoaded: Boolean = false,
@@ -60,30 +63,24 @@ internal val ChaoxingSeatKind.hiddenSystem: String get() = "chaoxing-$api"
 internal val ChaoxingSeatKind.hiddenBuilding: String get() =
     if (this == ChaoxingSeatKind.SEAT) "e32f8fbde51f9dba:4197453" else "e32f8fbde51f9dba:4258"
 
-internal fun ChaoxingSeatUiState.validInterval(): Boolean {
+internal fun ChaoxingSeatUiState.validInterval(now: ZonedDateTime = chaoxingNow()): Boolean {
     val d = detail ?: return false
     val b = selectedStart ?: return false
     val e = selectedEnd ?: return false
-    val now = java.time.ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))
-    val day = runCatching { LocalDate.parse(selectedDate) }.getOrNull() ?: return false
-    if (day < now.toLocalDate() || (day == now.toLocalDate() && b < now.hour * 60 + now.minute)) return false
-    return !d.closed && d.timeUnit > 0 && b >= d.startMinute && b < e && e <= d.endMinute &&
-        (b - d.startMinute) % d.timeUnit == 0 && (e - b) % d.timeUnit == 0 &&
-        (d.minDurationMinutes == null || e - b >= d.minDurationMinutes) &&
-        (d.maxDurationMinutes == null || e - b <= d.maxDurationMinutes)
+    return e in chaoxingEndOptions(d, b, selectedDate, now)
 }
 
 private fun ChaoxingSeatRoomDetail.completeSeats(): Boolean =
     seatRulesKnown && capacity > 0 && places.size == capacity && places.map { it.seatNum }.toSet().size == capacity
 
-internal fun ChaoxingSeatUiState.canConfirm(): Boolean =
-    validInterval() && detail?.completeSeats() == true && selectedSeat !in detail.disabledSeatNums && hiddenLoaded && !hiddenBusy && !reserving && !querying &&
+internal fun ChaoxingSeatUiState.canConfirm(now: ZonedDateTime = chaoxingNow()): Boolean =
+    validInterval(now) && detail?.completeSeats() == true && selectedSeat !in detail.disabledSeatNums && hiddenLoaded && !hiddenBusy && !reserving && !querying &&
         !reservationUnknown && !reservationSucceeded && usedSeatsLoaded &&
         selectedSeat != null && selectedSeat !in hiddenIds && selectedSeat !in usedSeats &&
         detail?.places?.any { it.seatNum == selectedSeat } == true
 
-private fun ChaoxingSeatUiState.canConfirmAfterPreflight(seat: String?): Boolean =
-    copy(reserving = false, selectedSeat = seat).canConfirm()
+private fun ChaoxingSeatUiState.canConfirmAfterPreflight(seat: String?, now: ZonedDateTime): Boolean =
+    copy(reserving = false, selectedSeat = seat).canConfirm(now)
 
 /** Entire UI request identity; session context contains no credentials. */
 private data class ChaoxingQueryKey(
@@ -95,8 +92,10 @@ class ChaoxingSeatViewModel(
     private val service: ChaoxingService,
     initialKind: ChaoxingSeatKind = ChaoxingSeatKind.SEAT,
     private val hiddenStore: LibraryHiddenSeatsStore = NoOpLibraryHiddenSeatsStore,
+    private val clock: Clock = Clock.system(CHAOXING_ZONE),
 ) : ViewModel() {
-    private val _state = MutableStateFlow(ChaoxingSeatUiState(kind = initialKind, officialUrl = initialKind.officialUrl))
+    private val _state = MutableStateFlow(ChaoxingSeatUiState(kind = initialKind, officialUrl = initialKind.officialUrl,
+        dates = dateOptions(clock), selectedDate = dateOptions(clock).first()))
     val state: StateFlow<ChaoxingSeatUiState> = _state.asStateFlow()
     private var generation = 0L
     private var roomGeneration = 0L
@@ -114,6 +113,17 @@ class ChaoxingSeatViewModel(
                     if (it != null) loadRooms()
                 }
         }
+    }
+
+    private fun now(): ZonedDateTime = ZonedDateTime.now(clock)
+    private fun legalTimes(s: ChaoxingSeatUiState): ChaoxingSeatUiState {
+        val d = s.detail ?: return s
+        val instant = now()
+        val starts = chaoxingStartOptions(d, s.selectedDate, instant)
+        val start = s.selectedStart?.takeIf { it in starts } ?: starts.firstOrNull()
+        val ends = start?.let { chaoxingEndOptions(d, it, s.selectedDate, instant) }.orEmpty()
+        return s.copy(selectedStart = start, selectedEnd = s.selectedEnd?.takeIf { it in ends } ?: ends.firstOrNull(),
+            timeUnavailableReason = chaoxingTimeUnavailableReason(d, s.selectedDate, instant))
     }
 
     private fun key() = _state.value.let {
@@ -173,12 +183,7 @@ class ChaoxingSeatViewModel(
             try {
                 val detail = service.seatRoomDetail(s.kind, room.id, s.selectedDate)
                 if (!valid()) return@launch
-                val now = java.time.ZonedDateTime.now(ZoneId.of("Asia/Shanghai"))
-                val start = chaoxingStartOptions(detail).firstOrNull {
-                    s.selectedDate != now.toLocalDate().toString() || it >= now.hour * 60 + now.minute
-                }
-                _state.value = _state.value.copy(detail = detail, detailBusy = false,
-                    selectedStart = start, selectedEnd = start?.let { chaoxingEndOptions(detail, it).firstOrNull() })
+                _state.value = legalTimes(_state.value.copy(detail = detail, detailBusy = false))
                 queryUsedSeats()
                 reloadHidden()
             } catch (e: CancellationException) { throw e
@@ -194,28 +199,30 @@ class ChaoxingSeatViewModel(
     }
     fun setSeatMode(mode: RoomSeatMode) {
         if (_state.value.seatMode == mode) return
-        _state.value = invalidate().copy(seatMode = mode)
+        _state.value = legalTimes(invalidate().copy(seatMode = mode))
         if (mode == RoomSeatMode.SEAT) queryUsedSeats()
     }
     fun selectStart(start: Int) {
         val s = _state.value
         val d = s.detail ?: return
-        if (start !in chaoxingStartOptions(d)) return
-        _state.value = invalidate(s).copy(selectedStart = start,
-            selectedEnd = chaoxingEndOptions(d, start).firstOrNull())
+        if (start !in chaoxingStartOptions(d, s.selectedDate, now())) return
+        _state.value = legalTimes(invalidate(s).copy(selectedStart = start))
         if (s.seatMode == RoomSeatMode.SEAT) queryUsedSeats()
     }
     fun selectEnd(end: Int) {
         val s = _state.value
         val d = s.detail ?: return
         val b = s.selectedStart ?: return
-        if (end !in chaoxingEndOptions(d, b)) return
+        if (end !in chaoxingEndOptions(d, b, s.selectedDate, now())) return
         _state.value = invalidate(s).copy(selectedEnd = end)
         if (s.seatMode == RoomSeatMode.SEAT) queryUsedSeats()
     }
     fun searchSeats() { if (!_state.value.querying) queryUsedSeats() }
     private fun queryUsedSeats() {
-        if (!_state.value.validInterval()) return
+        if (!_state.value.validInterval(now())) {
+            _state.value = legalTimes(invalidate())
+            return
+        }
         _state.value = invalidate().copy(querying = true)
         val k = key()
         val s = _state.value
@@ -247,13 +254,14 @@ class ChaoxingSeatViewModel(
     fun reserveSelected() {
         val s = _state.value
         val k = key()
-        if (!s.canConfirm() || !current(k)) return
+        if (!s.canConfirm(now()) || !current(k)) return
         _state.value = s.copy(reserving = true, reservationMessage = null)
         viewModelScope.launch {
+            var postStarted = false
             try {
                 // Read again under the same session and full selection key before POST preflight.
                 val rules = service.seatRoomDetail(k.kind, k.room!!, k.date)
-                if (!current(k) || !_state.value.copy(detail = rules).canConfirmAfterPreflight(s.selectedSeat)) {
+                if (!current(k) || !_state.value.copy(detail = rules).canConfirmAfterPreflight(s.selectedSeat, now())) {
                     if (current(k)) _state.value = _state.value.copy(reserving = false, selectedSeat = null,
                         reservationMessage = "座位或时间规则已变化，请重新选择。")
                     return@launch
@@ -263,6 +271,9 @@ class ChaoxingSeatViewModel(
                     if (current(k)) _state.value = _state.value.copy(reserving = false)
                     return@launch
                 }
+                if (!fresh.all { num -> rules.places.any { it.seatNum == num } }) {
+                    throw ChaoxingException("座位集合已变化")
+                }
                 if (s.selectedSeat in fresh || s.selectedSeat in _state.value.hiddenIds) {
                     _state.value = _state.value.copy(reserving = false, selectedSeat = null,
                         usedSeats = fresh, reservationMessage = "座位状态已变化，请重新选择。")
@@ -271,7 +282,8 @@ class ChaoxingSeatViewModel(
                 val result = service.submitReservation(k.kind, k.room, k.date, k.start, k.end,
                     s.selectedSeat!!, expectedContext = k.context,
                     selectionCurrent = { current(k) && _state.value.selectedSeat == s.selectedSeat &&
-                        !_state.value.hiddenBusy && s.selectedSeat !in _state.value.hiddenIds && _state.value.validInterval() })
+                        !_state.value.hiddenBusy && s.selectedSeat !in _state.value.hiddenIds && _state.value.validInterval(now()) },
+                    onPostStarted = { postStarted = true })
                 if (!current(k) || _state.value.selectedSeat != s.selectedSeat) return@launch
                 _state.value = _state.value.copy(reserving = false,
                     reservationUnknown = result is ChaoxingReservationResult.Unknown,
@@ -286,7 +298,9 @@ class ChaoxingSeatViewModel(
             } catch (e: CancellationException) { throw e
             } catch (e: Exception) {
                 if (current(k)) _state.value = _state.value.copy(reserving = false,
-                    reservationMessage = "提交前检查失败，未提交，请重试。")
+                    reservationUnknown = postStarted,
+                    reservationMessage = if (postStarted) unknownChaoxingSubmission().message
+                        else "提交前检查失败，未提交，请重试。")
             }
         }
     }
@@ -350,8 +364,8 @@ class ChaoxingSeatViewModel(
     }
 }
 
-private fun dateOptions(): List<String> {
-    val today = LocalDate.now(ZoneId.of("Asia/Shanghai"))
+private fun dateOptions(clock: Clock = Clock.system(CHAOXING_ZONE)): List<String> {
+    val today = LocalDate.now(clock.withZone(CHAOXING_ZONE))
     return listOf(today.toString(), today.plusDays(1).toString())
 }
 internal fun ChaoxingSeatUiState.afterCloseRoom(): ChaoxingSeatUiState =

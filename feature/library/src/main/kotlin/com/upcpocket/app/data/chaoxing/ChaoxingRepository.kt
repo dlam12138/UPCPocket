@@ -175,31 +175,16 @@ class ChaoxingRepository internal constructor(
             wfwEngineEnc = secrets.wfwEngineEnc,
         )
         if (!beforePost()) return@withContext ChaoxingReservationResult.Rejected("登录或选择已变化，未重复提交。")
-        val response = try {
-            fetch(
-                cookieHeader,
-                "https://office.chaoxing.com/data/apps/${kind.api}/submit",
-                formBody = form(params),
-            )
-        } catch (failure: Exception) {
-            return@withContext ChaoxingReservationResult.Unknown(
-                "网络中断，提交结果未知；请到官方预约记录核对，勿连续重试。",
-            )
-        }
-        when {
-            response.status in setOf(401, 403, 302, 303) ->
-                ChaoxingReservationResult.Unknown("登录在提交时失效，结果未知；请核对学校记录。")
-            response.status == 429 -> ChaoxingReservationResult.Unknown(
-                "请求过于频繁，提交结果未知；请到学校记录核对，不要连续重试。",
-            )
-            response.status !in 200..299 -> ChaoxingReservationResult.Unknown(
-                "学校服务暂时不可用，提交结果未知；请到学校记录核对。",
-            )
-            else -> ChaoxingReservationProtocol.parseSubmitResponse(
-                response.body,
-                seatNum,
-                date,
-            )
+        // Everything after claiming the POST boundary is uncertain unless a recognized response proves otherwise.
+        try {
+            val response = fetch(cookieHeader,
+                "https://office.chaoxing.com/data/apps/${kind.api}/submit", formBody = form(params))
+            if (response.status !in 200..299) unknownChaoxingSubmission()
+            else ChaoxingReservationProtocol.parseSubmitResponse(response.body, seatNum, date)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            unknownChaoxingSubmission()
         }
     }
 

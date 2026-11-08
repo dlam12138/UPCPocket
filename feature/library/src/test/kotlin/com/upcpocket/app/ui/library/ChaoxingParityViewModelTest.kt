@@ -5,6 +5,8 @@ import com.upcpocket.app.data.chaoxing.*
 import com.upcpocket.app.data.prefs.*
 import com.upcpocket.app.data.library.LibraryHiddenSeat
 import com.upcpocket.app.library.*
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.concurrent.CountDownLatch
@@ -25,12 +27,15 @@ class ChaoxingParityViewModelTest {
         override val state = MutableStateFlow(SchoolAccountState(SchoolAccountStatus.SAVED_UNVERIFIED, AccountGeneration(3)))
         override val accountReference = MutableStateFlow(SchoolAccountReference(SchoolAccountId("synthetic"), AccountGeneration(3)))
     }
-    private class Fixture(val kind: ChaoxingSeatKind, val store: LibraryHiddenSeatsStore = NoOpLibraryHiddenSeatsStore) {
+    private class Fixture(val kind: ChaoxingSeatKind, val store: LibraryHiddenSeatsStore = NoOpLibraryHiddenSeatsStore,
+        val clock: Clock = Clock.system(CHAOXING_ZONE)) {
         val account = Account()
         val posts = AtomicInteger()
         val usedCalls = AtomicInteger()
         var attributes = "[]"
         var capacity = 3
+        var minHours: Double? = null
+        var maxHours: Double? = null
         var used: (ChaoxingHttpRequest) -> String = { """{"success":true,"data":{"seatReserves":[]}}""" }
         var preflight: () -> String = { """<input id="submit_enc" value="synthetic">""" }
         var submit: () -> String = { "broken" }
@@ -43,7 +48,7 @@ class ChaoxingParityViewModelTest {
                     val hours = listOf("mon","tues","wed","thur","fri","sat","sun").flatMap {
                         listOf("\"${it}StartTime\":\"08:00\"", "\"${it}EndTime\":\"22:00\"")
                     }.joinToString(",")
-                    """{"success":true,"data":{"seatAttributes":$attributes,"seatRoom":{"id":$id,"capacity":$capacity},"seatConfig":{"timeUnit":30,"commonTimeConfig":{$hours}}}}"""
+                    """{"success":true,"data":{"seatAttributes":$attributes,"seatRoom":{"id":$id,"capacity":$capacity},"seatConfig":{"timeUnit":30,"minReserveDuration":$minHours,"reserveDuration":$maxHours,"commonTimeConfig":{$hours}}}}"""
                 }
                 r.url.contains("/getdrawseat") -> """{"success":true,"data":[
                     {"seatNum":"001","xleft":0.5,"ytop":0,"width":30,"height":30,"rotate":630},
@@ -61,17 +66,96 @@ class ChaoxingParityViewModelTest {
             ChaoxingAccountAuthenticator { _,_-> ChaoxingAccountAuthResult.Failure(ChaoxingAuthFailure.ACCOUNT_UNAVAILABLE) },
             clearCookies = { true })
         lateinit var vm: ChaoxingSeatViewModel
-        suspend fun open(date: String) {
+        suspend fun open(date: String, loaded: Boolean = true) {
             assertEquals(ChaoxingLoginResult.Success, service.loginWithWebCookies("synthetic=cookie"))
-            vm = ChaoxingSeatViewModel(service,kind,store)
+            vm = ChaoxingSeatViewModel(service,kind,store,clock)
             vm.selectDate(date)
             room(1)
-            await { it.usedSeatsLoaded && it.hiddenLoaded }
+            await { it.detail != null && it.hiddenLoaded && (!loaded || it.usedSeatsLoaded) }
         }
         fun room(id: Int) = vm.openRoom(ChaoxingSeatRoom(id,"合成区域", "",3,null,480,1320))
         suspend fun await(test: (ChaoxingSeatUiState)->Boolean): ChaoxingSeatUiState =
             withTimeout(6000) { vm.state.first(test) }
         suspend fun time() { vm.setSeatMode(RoomSeatMode.TIME); vm.searchSeats(); await { it.usedSeatsLoaded } }
+    }
+
+    @Test fun `malformed post envelopes stay unknown across same and new viewmodels for both protocols`() = runBlocking<Unit> {
+        val bodies = listOf("{}", """{"data":{}}""", """{"msg":"synthetic"}""",
+            """{"success":null}""", """{"success":{}}""", """{"success":[]}""",
+            """{"success":"false","msg":"拒绝"}""", """{"success":1}""",
+            """{"success":false}""", """{"success":false,"msg":[]}""",
+            """{"success":false,"msg":{}}""", """{"success":true,"msg":[]}""",
+            """{"success":true,"data":[]}""", """{"success":true,"data":{"seatReserve":{"seatNum":[]}}}""",
+            "[]", "null", "<html>synthetic</html>", "{")
+        for (kind in ChaoxingSeatKind.entries) for (body in bodies) {
+            val f=Fixture(kind);f.submit={body};f.open(date);f.vm.selectSeat("001")
+            f.vm.reserveSelected();f.await {it.reservationUnknown}
+            assertFalse(f.vm.state.value.reservationMessage!!.contains("未提交"))
+            assertEquals(1,f.posts.get());f.vm.reserveSelected();assertEquals(1,f.posts.get())
+            f.vm.closeRoom();f.vm=ChaoxingSeatViewModel(f.service,kind)
+            f.vm.selectDate(date);f.room(1);f.await {it.usedSeatsLoaded && it.hiddenLoaded}
+            f.vm.selectSeat("001");f.vm.reserveSelected();f.await {it.reservationUnknown}
+            assertEquals(1,f.posts.get())
+        }
+    }
+    @Test fun `known success rejection and post transport failure retain their distinct outcomes`() = runBlocking<Unit> {
+        for(kind in ChaoxingSeatKind.entries) {
+            val ok=Fixture(kind);ok.submit={"""{"success":true,"data":{"seatReserve":{"seatNum":"001"}}}"""}
+            ok.open(date);ok.vm.selectSeat("001");ok.vm.reserveSelected();ok.await {it.reservationSucceeded}
+            assertFalse(ok.vm.state.value.reservationUnknown);assertEquals(1,ok.posts.get())
+            val rejected=Fixture(kind);rejected.submit={"""{"success":false,"msg":"座位已被占用"}"""}
+            rejected.open(date);rejected.vm.selectSeat("001")
+            repeat(2) { rejected.vm.reserveSelected();rejected.await {!it.reserving && it.reservationMessage!=null} }
+            assertFalse(rejected.vm.state.value.reservationUnknown);assertEquals(2,rejected.posts.get())
+            val broken=Fixture(kind);broken.submit={throw IllegalStateException("synthetic post decode failure")}
+            broken.open(date);broken.vm.selectSeat("001");broken.vm.reserveSelected();broken.await {it.reservationUnknown}
+            assertFalse(broken.vm.state.value.reservationMessage!!.contains("未提交"));assertEquals(1,broken.posts.get())
+        }
+    }
+    @Test fun `post cancellation propagates while service keeps the claimed key`() = runBlocking<Unit> {
+        for(kind in ChaoxingSeatKind.entries) {
+            val f=Fixture(kind);f.open(date);f.submit={throw CancellationException("synthetic")}
+            val failure=runCatching{f.service.submitReservation(kind,1,date,480,510,"001")}.exceptionOrNull()
+            assertTrue(failure is CancellationException)
+            assertTrue(f.service.submitReservation(kind,1,date,480,510,"001") is ChaoxingReservationResult.Unknown)
+            assertEquals(1,f.posts.get())
+        }
+    }
+    @Test fun `final occupancy with an unknown room seat fails before posting`() = runBlocking<Unit> {
+        for(kind in ChaoxingSeatKind.entries) {
+            val f=Fixture(kind);f.open(date);f.vm.selectSeat("001")
+            f.used={"""{"success":true,"data":{"seatReserves":[{"seatNum":"outside-room"}]}}"""}
+            f.vm.reserveSelected();f.await {!it.reserving && it.reservationMessage!=null}
+            assertEquals(0,f.posts.get());assertFalse(f.vm.state.value.reservationUnknown)
+        }
+    }
+    @Test fun `duration defaults and start changes are legal in both modes and protocols`() = runBlocking<Unit> {
+        val clock=Clock.fixed(Instant.parse("2026-11-08T00:00:00Z"),CHAOXING_ZONE)
+        for(kind in ChaoxingSeatKind.entries) {
+            val f=Fixture(kind,clock=clock);f.minHours=1.0;f.maxHours=1.5;f.open("2026-11-09")
+            assertEquals(480,f.vm.state.value.selectedStart);assertEquals(540,f.vm.state.value.selectedEnd)
+            f.vm.selectStart(510);f.await {it.usedSeatsLoaded};assertEquals(570,f.vm.state.value.selectedEnd)
+            f.vm.selectEnd(600);f.await {it.usedSeatsLoaded};f.vm.selectStart(540)
+            f.await {it.usedSeatsLoaded};assertEquals(600,f.vm.state.value.selectedEnd)
+            f.vm.selectSeat("001");f.vm.setSeatMode(RoomSeatMode.TIME)
+            assertNull(f.vm.state.value.selectedSeat);assertFalse(f.vm.state.value.usedSeatsLoaded)
+            f.vm.selectStart(600);assertEquals(660,f.vm.state.value.selectedEnd)
+            f.vm.selectEnd(720);assertEquals(660,f.vm.state.value.selectedEnd)
+        }
+    }
+    @Test fun `today past starts and closing window without minimum duration cannot be selected`() = runBlocking<Unit> {
+        val clock=Clock.fixed(Instant.parse("2026-11-08T13:30:01Z"),CHAOXING_ZONE)
+        for(kind in ChaoxingSeatKind.entries) {
+            val f=Fixture(kind,clock=clock);f.minHours=1.0;f.open("2026-11-08",loaded=false)
+            assertNull(f.vm.state.value.selectedStart);assertNull(f.vm.state.value.selectedEnd)
+            assertNotNull(f.vm.state.value.timeUnavailableReason);assertFalse(f.vm.state.value.querying)
+            assertEquals(0,f.usedCalls.get());f.vm.selectStart(480);assertNull(f.vm.state.value.selectedStart)
+            f.vm.setSeatMode(RoomSeatMode.TIME);f.vm.searchSeats();assertEquals(0,f.usedCalls.get())
+        }
+        val early=Fixture(ChaoxingSeatKind.SEAT,clock=Clock.fixed(Instant.parse("2026-11-08T00:00:01Z"),CHAOXING_ZONE))
+        early.minHours=1.0;early.open("2026-11-08")
+        assertEquals(510,early.vm.state.value.selectedStart);assertEquals(570,early.vm.state.value.selectedEnd)
+        early.vm.selectStart(480);assertEquals(510,early.vm.state.value.selectedStart)
     }
 
     @Test fun `both protocols query exact interval and expose future candidates`() = runBlocking<Unit> {

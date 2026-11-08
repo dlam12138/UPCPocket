@@ -4,8 +4,9 @@ import java.security.MessageDigest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.JsonNull
 
 internal data class ChaoxingSelectSecrets(
     val submitEnc: String,
@@ -155,28 +156,39 @@ internal object ChaoxingReservationProtocol {
         if (kind == ChaoxingSeatKind.SEATENGINE) put("wfwEngineEnc", wfwEngineEnc)
     }
 
+    /** External envelopes are untrusted. Missing/wrong types never mean a known rejection. */
     fun parseSubmitResponse(body: String, seatNum: String, day: String): ChaoxingReservationResult {
-        val json = runCatching { Json.parseToJsonElement(body).jsonObject }.getOrNull()
-            ?: return ChaoxingReservationResult.Unknown(
-                "学校返回无法解析的提交结果；请到官方预约记录核对，勿连续重试。",
-            )
-        if (json["success"]?.jsonPrimitive?.booleanOrNull == true) {
-            return ChaoxingReservationResult.Success(seatNum, day)
+        val json = runCatching { Json.parseToJsonElement(body) as? JsonObject }.getOrNull()
+            ?: return unknownChaoxingSubmission()
+        val flag = json["success"] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+        if (flag.isString) return unknownChaoxingSubmission()
+        val success = flag.booleanOrNull ?: return unknownChaoxingSubmission()
+        val message = if ("msg" in json) {
+            val raw = json["msg"] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+            if (!raw.isString) return unknownChaoxingSubmission()
+            raw.contentOrNull?.trim() ?: return unknownChaoxingSubmission()
+        } else null
+        val data = json["data"]
+        if (data != null && data != JsonNull && data !is JsonObject) return unknownChaoxingSubmission()
+        if (data is JsonObject && "seatReserve" in data) {
+            val reserve = data["seatReserve"] as? JsonObject ?: return unknownChaoxingSubmission()
+            for ((key, expected) in listOf("seatNum" to seatNum, "day" to day)) {
+                if (key in reserve) {
+                    val value = reserve[key] as? JsonPrimitive ?: return unknownChaoxingSubmission()
+                    if (!value.isString || value.contentOrNull != expected) return unknownChaoxingSubmission()
+                }
+            }
         }
-        val message = json["msg"]?.jsonPrimitive?.contentOrNull
-            ?.trim()
-            .orEmpty()
-            .ifEmpty { "学校拒绝了预约" }
-        return when {
-            message.contains("验证码") || message.contains("安全验证") ||
-                message.contains("captcha", ignoreCase = true) ->
-                ChaoxingReservationResult.InteractionRequired(
-                    "学校要求安全验证；请在官方页完成本次预约。",
-                )
-            message.contains("截止") || message.contains("不在预约") ||
-                message.contains("预约时间") ->
-                ChaoxingReservationResult.Rejected("当前不在可预约时间：$message")
-            else -> ChaoxingReservationResult.Rejected(message)
-        }
+        if (success) return ChaoxingReservationResult.Success(seatNum, day)
+        // The verified failure envelope is an explicit boolean false plus a textual business message.
+        if (message.isNullOrBlank()) return unknownChaoxingSubmission()
+        return if (message.contains("验证码") || message.contains("安全验证") ||
+            message.contains("captcha", ignoreCase = true)) {
+            ChaoxingReservationResult.InteractionRequired("学校要求安全验证；请在官方页完成本次预约。")
+        } else ChaoxingReservationResult.Rejected(message)
     }
 }
+
+internal fun unknownChaoxingSubmission() = ChaoxingReservationResult.Unknown(
+    "提交结果未知；请到学校记录核对，勿重复提交。",
+)

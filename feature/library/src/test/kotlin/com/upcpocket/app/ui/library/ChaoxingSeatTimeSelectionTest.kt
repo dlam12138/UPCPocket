@@ -19,6 +19,20 @@ class ChaoxingSeatTimeSelectionTest {
         places = listOf(ChaoxingSeatPlace("001", 0f, 0f, 30f, 30f, 0f)),
     )
 
+    @Test fun `date filtering minimum and maximum share one deterministic option derivation`() {
+        val now=java.time.ZonedDateTime.parse("2026-11-08T08:00:00+08:00[Asia/Shanghai]")
+        val d=detail.copy(minDurationMinutes=60,maxDurationMinutes=90)
+        assertEquals(listOf(540,570),chaoxingEndOptions(d,480,"2026-11-08",now))
+        assertEquals(480,chaoxingStartOptions(d,"2026-11-08",now).first())
+        assertEquals(1260,chaoxingStartOptions(d,"2026-11-08",now).last())
+        assertTrue(chaoxingStartOptions(d,"2026-11-07",now).isEmpty())
+        assertEquals(480,chaoxingStartOptions(d,"2026-11-09",now.plusHours(10)).first())
+        assertEquals(510,chaoxingStartOptions(d,"2026-11-08",now.plusSeconds(1)).first())
+        assertTrue(chaoxingStartOptions(d,"2026-11-08",now.withHour(21).withMinute(1)).isEmpty())
+        assertTrue(chaoxingEndOptions(d,481,"2026-11-09",now).isEmpty())
+        assertTrue(chaoxingStartOptions(d.copy(maxDurationMinutes=30),"2026-11-09",now).isEmpty())
+    }
+
     @Test
     fun `start and end options honour open hours and 30 minute step`() {
         val starts = chaoxingStartOptions(detail)

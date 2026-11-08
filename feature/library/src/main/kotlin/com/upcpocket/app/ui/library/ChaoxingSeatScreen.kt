@@ -536,6 +536,9 @@ internal fun ChaoxingSeatDetailContent(
                     }
                 }
             }
+            if (state.seatMode == RoomSeatMode.SEAT && state.timeUnavailableReason != null) {
+                item { CompactNotice("暂无可选时段", state.timeUnavailableReason) }
+            }
             state.hiddenError?.let { item {
                 Text(it, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = onReloadHidden, enabled = !state.hiddenBusy) { Text("重试") }
@@ -579,9 +582,9 @@ internal fun ChaoxingSeatDetailContent(
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (timePart == "start") "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium)
-            val options = if (timePart == "start") chaoxingStartOptions(detail)
-                else state.selectedStart?.let { chaoxingEndOptions(detail, it) }.orEmpty()
-            if (options.isEmpty()) Text("没有可选时间")
+            val options = if (timePart == "start") chaoxingStartOptions(detail, state.selectedDate)
+                else state.selectedStart?.let { chaoxingEndOptions(detail, it, state.selectedDate) }.orEmpty()
+            if (options.isEmpty()) Text(state.timeUnavailableReason ?: "没有可选时间")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 options.forEach { minute -> FilterChip(
                     selected = minute == if (timePart == "start") state.selectedStart else state.selectedEnd,
@@ -601,6 +604,7 @@ internal fun ChaoxingTimeResults(state: ChaoxingSeatUiState, onSelect: (String) 
     val visible = candidates.filter { it.seatNum !in state.hiddenIds }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
+            state.timeUnavailableReason != null -> CompactNotice("暂无可选时段", state.timeUnavailableReason)
             state.querying -> CompactNotice("正在查找", "只查询当前房间。")
             state.detailError != null -> {
                 CompactNotice("查询失败", state.detailError)
@@ -725,30 +729,6 @@ private fun LegendDot(color: Color, label: String) {
         Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(color))
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
-}
-
-internal fun chaoxingStartOptions(detail: ChaoxingSeatRoomDetail): List<Int> {
-    if (detail.timeUnit <= 0) return emptyList()
-    val result = mutableListOf<Int>()
-    var start = detail.startMinute
-    while (start < detail.endMinute) {
-        result += start
-        start += detail.timeUnit
-    }
-    return result
-}
-
-internal fun chaoxingEndOptions(detail: ChaoxingSeatRoomDetail, start: Int): List<Int> {
-    if (detail.timeUnit <= 0 || start < detail.startMinute || start >= detail.endMinute) return emptyList()
-    val result = mutableListOf<Int>()
-    var end = start + detail.timeUnit
-    while (end <= detail.endMinute) {
-        val duration = end - start
-        if ((detail.minDurationMinutes == null || duration >= detail.minDurationMinutes) &&
-            (detail.maxDurationMinutes == null || duration <= detail.maxDurationMinutes)) result += end
-        end += detail.timeUnit
-    }
-    return result
 }
 
 internal fun formatDuration(minutes: Int): String = when {

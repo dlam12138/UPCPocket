@@ -16,6 +16,15 @@ class ChaoxingReservationProtocolTest {
         </body></html>
     """.trimIndent()
 
+    @Test fun `untrusted submit envelope fields always produce an unknown value without throwing`() {
+        val bodies=listOf("{}","[]","null","{","<html>synthetic</html>",
+            """{"success":{}}""", """{"success":[]}""", """{"success":"true"}""",
+            """{"success":null}""", """{"success":false,"msg":[]}""",
+            """{"success":false,"msg":null}""", """{"success":true,"msg":{}}""",
+            """{"success":true,"data":{"seatReserve":[]}}""")
+        bodies.forEach { assertTrue(ChaoxingReservationProtocol.parseSubmitResponse(it,"A01","2026-11-05") is ChaoxingReservationResult.Unknown) }
+    }
+
     @Test
     fun `select page exposes submit enc and engine field without evaluating page`() {
         val secrets = ChaoxingReservationProtocol.parseSelectPage(selectHtml)

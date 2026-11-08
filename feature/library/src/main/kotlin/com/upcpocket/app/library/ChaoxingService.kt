@@ -8,6 +8,7 @@ import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.chaoxing.unknownChaoxingSubmission
 import com.upcpocket.app.data.chaoxing.ChaoxingException
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
 import com.upcpocket.app.data.chaoxing.ChaoxingReservationResult
@@ -415,6 +416,7 @@ class ChaoxingService(
         seatNum: String,
         expectedContext: ChaoxingReadContext? = readContext(),
         selectionCurrent: () -> Boolean = { true },
+        onPostStarted: () -> Unit = {},
     ): ChaoxingReservationResult {
         val current = _session.value ?: throw ChaoxingSessionExpiredException()
         val context = expectedContext ?: throw ChaoxingSessionExpiredException()
@@ -433,13 +435,19 @@ class ChaoxingService(
                         // Only the actual POST boundary claims the key. Preflight/interaction never does.
                         unknownSubmissions += key
                         sent = true
+                        onPostStarted()
                         true
                     }
                 }
             },
-        ) } catch (expired: ChaoxingSessionExpiredException) {
-            signOutIfCurrent(current.cookieHeader, context)
-            throw expired
+        ) } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            // The key remains claimed even when the caller is cancelled after sending.
+            throw cancelled
+        } catch (failure: Exception) {
+            if (sent) unknownChaoxingSubmission() else {
+                if (failure is ChaoxingSessionExpiredException) signOutIfCurrent(current.cookieHeader, context)
+                throw failure
+            }
         }
         if (!valid()) {
             return if (sent) ChaoxingReservationResult.Unknown("登录或选择已变化，提交结果请到学校记录核对。")
