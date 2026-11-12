@@ -36,6 +36,8 @@
 
 ## 当前发布
 
+当前开发应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`，旧 `update.json` / `update.sig` 及已发布资产保持原样。上文旧标识、下文历史发布记录均保留其当时状态。
+
 main 的下一版本开发代码为 **2.0.4 / versionCode 25**，整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐及校园卡原生本人流水；尚未发布。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
 
 当前正式版为 **2.0.3 / versionCode 24**，包含就地引导、空闲教室自动查询、本机待办提醒、首页摘要、四项整页滑动导航，以及唐岛湾按时段找座位/个人隐藏。当前导航为「首页 / 课表 / 待办 / 专注」，胶囊跟随 Pager 进度；上文 M5 三 tab 记录保留为历史。最新图书馆设计与验证见 `docs/design/2.0.3-library-time-search.md`、`docs/releases/2.0.3-library-time-search.md`；正式发布记录见 `docs/releases/2.0.3.md`，APK 与签名更新四件套同批发布；图书馆新增筛选和隐藏本轮仅适配唐岛湾。热力图改造属于另一个项目，本项目保持原样。
@@ -50,7 +52,7 @@ main 的下一版本开发代码为 **2.0.4 / versionCode 25**，整合古镇口
 - 代码改动运行与影响范围匹配的构建和测试。Android 常规验证：`./gradlew :app:assembleDebug :app:testDebugUnitTest`；Windows 使用 `./gradlew.bat`。
 - 纯规范和文档变更检查路径、引用、来源及差异即可，无需重复构建 APK。
 - 本机诊断只写固定枚举、数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止写入账密、Cookie、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息或自由文本。导出必须由用户主动触发，FileProvider 只开放专用导出子目录并临时授权；诊断失败不得影响业务。
-- 应用内更新只允许固定 GitHub 仓库 `dlam12138/UPCPocket` 和内置候选域；清单必须用内置 ECDSA P-256 公钥验签原始 UTF-8 字节，再解析固定字段。不得依赖 GitHub API/PAT、不得让清单决定任意主机/算法、不得把镜像 SHA 文本当真实性、不得自动静默安装或为换签名卸载/清数据。每次发布必须同批提供 APK + `update.json` + `update.sig` + `SHA256SUMS.txt`，公开后不原地替换资产。更新私钥只在仓库外，发布脚本只读环境变量；`src/debug` 受控测试源不得进入 release，release TLS/网络安全配置不得为测试降低。更新 FileProvider 独立且只暴露 `cache/updates/`；最终安装用 PackageInstaller 会话交由系统确认，不静默安装。
+- 应用内更新只允许固定 GitHub 仓库 `dlam12138/UPCPocket` 和内置候选域；清单必须用内置 ECDSA P-256 公钥验签原始 UTF-8 字节，再解析固定字段。不得依赖 GitHub API/PAT、不得让清单决定任意主机/算法、不得把镜像 SHA 文本当真实性、不得自动静默安装或为换签名卸载/清数据。新版每次发布必须同批提供 APK + `update-next.json` + `update-next.sig` + `SHA256SUMS.txt`（旧包历史线路仍用 `update.json` / `update.sig`），公开后不原地替换资产。更新私钥只在仓库外，发布脚本只读环境变量；`src/debug` 受控测试源不得进入 release，release TLS/网络安全配置不得为测试降低。更新 FileProvider 独立且只暴露 `cache/updates/`；最终安装用 PackageInstaller 会话交由系统确认，不静默安装。
 - 交付说明写清改动、实际验证结果与尚未验证的部分；不能把构建成功当作真机或校园接口验证成功。
 
 ## 精简交付规范
@@ -58,7 +60,7 @@ main 的下一版本开发代码为 **2.0.4 / versionCode 25**，整合古镇口
 - **面向用户文案少且具体**：标题、按钮、空态优先短句；不写协议名、实现名、开发者自证、重复作用说明或长期免责声明；技术约束收进现有“数据说明/关于”，不新增入口。失败、离线、缓存、未验证、验证码、清理未完成、结果未知和带后果的确认必须保留。
 - 面向用户的默认最终产物是 **R8 + resource shrink 的已签名 Release APK**；debug APK 只用于开发、视觉夹具和定向测试，不把 60MB+ debug 包当交付。若用户明确要调试包，再单独说明。
 - 保留现有全部功能，优先用 R8/资源收缩减小体积；默认 universal APK，不擅自改 ABI 多包或删功能。用实际 `assembleRelease` 产物报告字节数、SHA-256、签名证书指纹和 ABI；不凭经验承诺“几 MB”。
-- 签名优先复用仓库外合法 keystore。没有 `keystore.properties`/release key 时，release 使用 Android debug keystore，只能标注“**压缩 Release 构建、开发签名**”，不得称为生产/商店包。不得为了换签名而卸载、`pm clear` 或清除用户数据；覆盖安装前比对包名、versionCode 与证书指纹。
+- 新版 Release 固定使用仓库外长期 keystore；缺少有效 `keystore.properties`/release key 时必须构建失败，禁止自动回退 debug 签名。debug 仅用于开发。不得为了换签名而卸载、`pm clear` 或清除用户数据；覆盖安装前比对包名、versionCode 与证书指纹。旧包历史开发签名记录保留原文。
 - `src/debug` 的合成 provider、预览 Activity、调试开关和测试数据不得进入 release manifest/APK；构建后检查 merged manifest 和 APK 条目，不只依赖 source set 约定。
 - R8 后的 RemoteViews、WorkManager、插件发现、序列化、账号恢复、Room/DataStore、WebView 和点击导航需要真实安装冒烟，至少覆盖进程死亡、组件刷新、整卡导航；`assembleRelease` 成功不等于这些路径可用。
 - 已知 `:app:testReleaseUnitTest` 可能因 debug-only `ui-test-manifest` 配置失败；这是测试基础设施问题，不要为此改架构。采用 debug 定向单测 + release 真机/模拟器冒烟，并如实报告未覆盖分支。

@@ -30,9 +30,9 @@ data class UpdateSource(
         }
     }
 
-    fun metadataUrl(): String = "$baseUrl/releases/latest/download/update.json"
+    fun metadataUrl(): String = "$baseUrl/releases/latest/download/update-next.json"
 
-    fun signatureUrl(): String = "$baseUrl/releases/latest/download/update.sig"
+    fun signatureUrl(): String = "$baseUrl/releases/latest/download/update-next.sig"
 
     fun apkUrl(manifest: UpdateManifest): String =
         "$baseUrl/releases/download/${manifest.tag}/${manifest.assetName}"

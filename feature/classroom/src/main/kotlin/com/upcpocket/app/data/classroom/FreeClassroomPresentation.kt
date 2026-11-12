@@ -29,6 +29,27 @@ enum class ClassroomPeriodGroup(
  */
 enum class ClassroomQueryMode { PRESET, CUSTOM }
 
+/** 古镇口卓越教学楼的本地展示分类，不作为学校查询参数。 */
+enum class ZhuoyueWingFilter(val label: String, private val wing: String?) {
+    ALL("全部", null),
+    A("卓越 A", "A"),
+    B("卓越 B", "B"),
+    ;
+
+    private val roomNamePattern = wing?.let { Regex("^卓越\\s*$it\\s*\\d") }
+
+    fun matches(room: FreeClassroomRoom): Boolean = this == ALL ||
+        (room.building == "卓越教学楼" && roomNamePattern!!.containsMatchIn(room.name.trim()))
+}
+
+/** 未识别的名称保留在“全部”；不从不透明教室编码推断分区。 */
+fun FreeClassroomResult.filterZhuoyueWing(filter: ZhuoyueWingFilter): FreeClassroomResult =
+    if (query.campus != FreeClassroomCampus.GUZHENKOU || filter == ZhuoyueWingFilter.ALL) {
+        this
+    } else {
+        copy(rooms = rooms.filter(filter::matches))
+    }
+
 enum class GroupSelectionState { NONE, PARTIAL, ALL }
 
 fun groupSelectionState(selected: Set<Int>, group: ClassroomPeriodGroup): GroupSelectionState {

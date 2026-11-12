@@ -17,6 +17,42 @@ class FreeClassroomPresentationTest {
     )
 
     @Test
+    fun `zhuoyue filters use names and preserve availability and group totals`() {
+        val result = sampleResult(listOf(
+            room("opaque-1", "卓越教学楼", true).copy(name = "卓越A233"),
+            room("opaque-2", "卓越教学楼", false).copy(name = "卓越 A 234"),
+            room("opaque-3", "卓越教学楼", false).copy(name = "卓越B328"),
+            room("ZY-A999", "卓越教学楼", true).copy(name = "未知教室"),
+            room("opaque-4", "其他楼", true).copy(name = "卓越A235"),
+            room("opaque-5", "卓越教学楼", true).copy(name = "卓越AB236"),
+        )).copy(query = query.copy(campus = FreeClassroomCampus.GUZHENKOU))
+
+        assertEquals(result, result.filterZhuoyueWing(ZhuoyueWingFilter.ALL))
+        val a = result.filterZhuoyueWing(ZhuoyueWingFilter.A)
+        assertEquals(listOf("opaque-1", "opaque-2"), a.rooms.map { it.code })
+        assertEquals(1, a.availableRooms.size)
+        val group = a.displayGroups(onlyAvailable = true).single()
+        assertEquals(listOf("opaque-1"), group.rooms.map { it.code })
+        assertEquals(2, group.totalCount)
+        assertEquals(1, group.freeCount)
+        val b = result.filterZhuoyueWing(ZhuoyueWingFilter.B)
+        assertEquals(listOf("opaque-3"), b.rooms.map { it.code })
+        assertTrue(b.availableRooms.isEmpty())
+        assertTrue(b.displayGroups(onlyAvailable = true).isEmpty())
+        assertEquals(result.query, a.query)
+        assertEquals(result.fetchedAt, a.fetchedAt)
+        assertEquals(result.buildings, a.buildings)
+    }
+
+    @Test
+    fun `wing selection does not filter another campus and can have no matches`() {
+        val result = sampleResult(listOf(room("ZY-A999", "卓越教学楼", true)))
+        assertEquals(result, result.filterZhuoyueWing(ZhuoyueWingFilter.A))
+        assertTrue(result.copy(query = query.copy(campus = FreeClassroomCampus.GUZHENKOU))
+            .filterZhuoyueWing(ZhuoyueWingFilter.A).rooms.isEmpty())
+    }
+
+    @Test
     fun `official jiedate groups are five four four`() {
         assertEquals(setOf(1, 2, 3, 4, 5), ClassroomPeriodGroup.MORNING.periods)
         assertEquals(setOf(6, 7, 8, 9), ClassroomPeriodGroup.AFTERNOON.periods)

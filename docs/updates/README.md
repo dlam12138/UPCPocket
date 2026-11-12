@@ -1,6 +1,8 @@
 # 应用内更新
 
-更新器自 **2.0.2 正式版** 提供；当前 **2.0.3（versionCode 24）** 同批发布 APK、签名清单与校验文件。2.0 不含更新器，需手动覆盖安装一次；2.0.1（22）复测包已包含更新器，可检查升级。以下 22→23 受控测试记录为开发时证据，当前发布状态以 [2.0.3 发布记录](../releases/2.0.3.md) 为准。
+更新器自 **2.0.2 正式版** 提供；当前正式旧版 **2.0.3（versionCode 24）** 同批发布 APK、签名清单与校验文件。2.0 不含更新器，需手动覆盖安装一次；2.0.1（22）复测包已包含更新器，可检查升级。以下 22→23 受控测试记录为开发时证据，当前发布状态以 [2.0.3 发布记录](../releases/2.0.3.md) 为准。
+
+当前开发新版为 `com.upcpocket.next`（UPC Pocket 新版）；与旧包独立安装，更新线路分为新版 `update-next.json` / `update-next.sig` 与旧版 `update.json` / `update.sig`，不得用新包覆盖旧包更新资产。以下信任链和发布步骤以新版为准。
 
 ## 用户可见行为
 
@@ -13,7 +15,7 @@
 ## 信任链
 
 1. 固定仓库 `dlam12138/UPCPocket`，固定候选线路：主加速 `gh-proxy.org`、备用 `ghproxy.net`、GitHub 官方。线路只改变传输，不提升信任。
-2. 从同一候选源取 `releases/latest/download/update.json` 与 `update.sig`；对 `update.json` 的**原始 UTF-8 字节**做 `SHA256withECDSA` / ECDSA P-256 验证。
+2. 从同一候选源取 `releases/latest/download/update-next.json` 与 `update-next.sig`；对 `update-next.json` 的**原始 UTF-8 字节**做 `SHA256withECDSA` / ECDSA P-256 验证。
 3. 验签通过后才解析固定字段；拒绝未知字段、非整数 `versionCode`、错误包名、非 `v<versionName>` tag、非 `UPC-Pocket-<versionName>.apk`、越界大小、非小写 SHA-256、3–5 条以外的 notes。
 4. 用清单内的精确 tag/assetName 下载 APK；所有线路必须对应同一大小和哈希。不使用可变化 `latest` APK 链接。
 5. 下载后校验大小、SHA-256、包名、内部 versionCode/versionName、minSdk 与当前安装证书兼容，再交给系统安装器。APK 证书不更换；镜像的 SHA 文本不能替代清单签名。
@@ -23,20 +25,20 @@
 公钥：[`upcpocket-update-public-key.b64`](upcpocket-update-public-key.b64)（DER SubjectPublicKeyInfo 的 Base64）。
 公钥 SHA-256：`cc1b2fbb26e8ae5fba879ac907804edc524a7227ec825daa83e6cffb8ebff774`。
 
-私钥**不在仓库**。发布脚本只从环境变量 `UPCPOCKET_UPDATE_PRIVATE_KEY` 读取本机仓库外路径，不打印私钥内容。该密钥只签更新清单，不是 APK 签名证书；APK 继续使用原开发证书
-`07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281`。
+私钥**不在仓库**。发布脚本只从环境变量 `UPCPOCKET_UPDATE_PRIVATE_KEY` 读取本机仓库外路径，不打印私钥内容。该密钥只签更新清单，不是 APK 签名证书；新版 APK 使用独立长期 Release 证书
+`c8e461698efe19ee6ad5fb635dd28eaf860596caea2b2756efa5ce6b2051a23c`，不与旧包互相覆盖。
 
 ## 清单字段
 
 ```json
 {
   "schemaVersion": 1,
-  "packageName": "com.upcpocket.app",
-  "versionName": "2.0.3",
-  "versionCode": 24,
+  "packageName": "com.upcpocket.next",
+  "versionName": "2.0.4",
+  "versionCode": 25,
   "minSdk": 31,
-  "tag": "v2.0.3",
-  "assetName": "UPC-Pocket-2.0.3.apk",
+  "tag": "v2.0.4",
+  "assetName": "UPC-Pocket-2.0.4.apk",
   "sizeBytes": 0,
   "sha256": "<64 lowercase hex>",
   "publishedAt": "2026-11-07T00:00:00Z",
@@ -55,16 +57,18 @@
 ```powershell
 $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 .\tools\release_update.ps1 `
-  -Apk '<构建产物路径>\UPC-Pocket-2.0.3.apk' `
-  -VersionName '2.0.3' -VersionCode 24 `
+  -Apk '<构建产物路径>\UPC-Pocket-2.0.4.apk' `
+  -VersionName '2.0.4' -VersionCode 25 `
   -NotesPath '<更新说明路径>' `
   -OutputDirectory '<空输出目录>'
 ```
 
 脚本调用 build-tools 的 `aapt2`/`apksigner` 核对包名、versionCode/versionName、minSdk、大小、签名证书，生成：
-`UPC-Pocket-2.0.3.apk`、`update.json`、`update.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
+`UPC-Pocket-2.0.4.apk`、`update-next.json`、`update-next.sig`、`SHA256SUMS.txt`。脚本用内置公钥自校验，存在 `openssl` 时再用独立工具交叉验签。
 
 4. 只有人工确认后才把四个文件上传到同一个 GitHub Release；**不得先公开再原地替换资产**。修复必须提升 versionCode 后重发。不上传私钥、GitHub token 或 R8 mapping。
+
+5. 同仓库新版 Release 若设为 latest，除新版四件套，还必须原字节附带已发布 2.0.3 的 `update.json` / `update.sig`，继续指向 `v2.0.3` 的原 APK 资产；不重写、不重签、不提高旧包清单版本。旧客户端固定请求 latest 下这两个旧文件名，缺失会返回 404。首次新版也可先不设为 latest，此时新版 latest 检查尚不可用，不宣称已上线。本轮仅本地准备，未发布。
 
 ## 受控 E2E（仅 debug）
 

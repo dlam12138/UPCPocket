@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.MainActivity
+import com.upcpocket.app.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -26,6 +27,7 @@ class WidgetIntentsTest {
     fun `widget open target is a fixed allowlist with explicit component`() {
         val intent = WidgetIntents.activityIntent(context, WidgetLaunchTarget.CARD_BALANCE, 9)
         assertEquals(MainActivity::class.java.name, intent.component?.className)
+        assertEquals("com.upcpocket.next", intent.component?.packageName)
         assertEquals(WidgetIntents.ACTION_OPEN_FROM_WIDGET, intent.action)
         assertEquals("CARD_BALANCE", intent.getStringExtra(WidgetIntents.EXTRA_WIDGET_TARGET))
         assertEquals(WidgetLaunchTarget.CARD_BALANCE, WidgetLaunchTarget.fromIntent(intent))
@@ -60,6 +62,7 @@ class WidgetIntentsTest {
     fun `refresh intent is explicit and carries only widget id`() {
         val intent = WidgetIntents.refreshIntent(context, WidgetKind.CARD, 11)
         assertEquals(CardBalanceWidgetProvider::class.java.name, intent.component?.className)
+        assertEquals(BuildConfig.APPLICATION_ID, intent.component?.packageName)
         assertEquals(WidgetKind.CARD.refreshAction, intent.action)
         assertEquals(11, intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1))
         assertFalse(intent.hasExtra("studentId"))

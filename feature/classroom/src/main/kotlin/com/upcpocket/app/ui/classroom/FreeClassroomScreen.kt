@@ -81,7 +81,9 @@ import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.FreeClassroomRoom
 import com.upcpocket.app.data.classroom.GroupSelectionState
 import com.upcpocket.app.data.classroom.NoOpFreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.ZhuoyueWingFilter
 import com.upcpocket.app.data.classroom.displayGroups
+import com.upcpocket.app.data.classroom.filterZhuoyueWing
 import com.upcpocket.app.data.classroom.formatPeriods
 import com.upcpocket.app.data.classroom.groupSelectionState
 import com.upcpocket.app.data.classroom.matches
@@ -111,6 +113,7 @@ fun FreeClassroomScreen(
     val model: FreeClassroomViewModel = viewModel(factory = factory)
 
     var onlyAvailable by rememberSaveable { mutableStateOf(false) }
+    var wingFilter by rememberSaveable(model.campus) { mutableStateOf(ZhuoyueWingFilter.ALL) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showBuildingPicker by rememberSaveable { mutableStateOf(false) }
     var showCustomPeriods by rememberSaveable { mutableStateOf(false) }
@@ -119,7 +122,8 @@ fun FreeClassroomScreen(
     val currentQuery = model.currentQuery()
     // 只展示完整查询键相同的缓存；筛选变了就回到“等待查询”，不把旧条件下的
     // 房间网格当成当前结果。同一键的旧结果可以保留，但必须标出读取时间/失败状态。
-    val displayResult = model.result?.takeIf { it.matches(currentQuery) }
+    val queryResult = model.result?.takeIf { it.matches(currentQuery) }
+    val displayResult = queryResult?.filterZhuoyueWing(wingFilter)
     val buildings = model.result
         ?.takeIf { it.query.campus == model.campus }
         ?.buildings
@@ -217,6 +221,8 @@ fun FreeClassroomScreen(
             item(span = { GridItemSpan(maxLineSpan) }, key = "filter") {
                 ClassroomFilterPanel(
                     model = model,
+                    wingFilter = wingFilter,
+                    onWingFilterChange = { wingFilter = it },
                     onOpenDate = { showDatePicker = true },
                     onOpenBuilding = { showBuildingPicker = true },
                     onOpenCustomPeriods = { showCustomPeriods = true },
@@ -244,6 +250,7 @@ fun FreeClassroomScreen(
                 item(span = { GridItemSpan(maxLineSpan) }, key = "summary") {
                     ResultSummaryCard(
                         result = displayResult,
+                        wingFilter = wingFilter,
                         onlyAvailable = onlyAvailable,
                         onOnlyAvailableChange = { onlyAvailable = it },
                         loading = model.loading,
@@ -253,7 +260,11 @@ fun FreeClassroomScreen(
                 if (displayResult.rooms.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }, key = "empty-directory") {
                         NoticeCard(
-                            "未返回教室目录，不代表全部空闲。请调整日期或教学楼。",
+                            if (queryResult?.rooms?.isNotEmpty() == true && wingFilter != ZhuoyueWingFilter.ALL) {
+                                "暂无${wingFilter.label}教室。"
+                            } else {
+                                "未返回教室目录，不代表全部空闲。请调整日期或教学楼。"
+                            },
                         )
                     }
                 } else {
@@ -325,6 +336,8 @@ private data class RoomDetail(
 @Composable
 private fun ClassroomFilterPanel(
     model: FreeClassroomViewModel,
+    wingFilter: ZhuoyueWingFilter,
+    onWingFilterChange: (ZhuoyueWingFilter) -> Unit,
     onOpenDate: () -> Unit,
     onOpenBuilding: () -> Unit,
     onOpenCustomPeriods: () -> Unit,
@@ -390,6 +403,24 @@ private fun ClassroomFilterPanel(
                 }
                 TextButton(onClick = onOpenCustomPeriods, enabled = filtersEnabled) {
                     Text("自选节次")
+                }
+            }
+
+            if (model.campus == FreeClassroomCampus.GUZHENKOU) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    ZhuoyueWingFilter.entries.forEach { filter ->
+                        FilterChip(
+                            selected = wingFilter == filter,
+                            onClick = { onWingFilterChange(filter) },
+                            enabled = filtersEnabled,
+                            label = { Text(filter.label) },
+                            modifier = Modifier.heightIn(min = 48.dp)
+                                .testTag("classroom_wing_${filter.name}"),
+                        )
+                    }
                 }
             }
 
@@ -483,6 +514,7 @@ private fun QueryErrorCard(
 @Composable
 private fun ResultSummaryCard(
     result: FreeClassroomResult,
+    wingFilter: ZhuoyueWingFilter,
     onlyAvailable: Boolean,
     onOnlyAvailableChange: (Boolean) -> Unit,
     loading: Boolean,
@@ -506,6 +538,10 @@ private fun ResultSummaryCard(
         append(result.query.date)
         append(" · ")
         append(if (result.query.building == "全部") "全部教学楼" else result.query.building)
+        if (result.query.campus == FreeClassroomCampus.GUZHENKOU && wingFilter != ZhuoyueWingFilter.ALL) {
+            append(" · ")
+            append(wingFilter.label)
+        }
         append(" · 第 ")
         append(formatPeriods(result.query.periods))
         append(" 节")

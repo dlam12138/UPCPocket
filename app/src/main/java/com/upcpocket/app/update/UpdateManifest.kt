@@ -53,7 +53,7 @@ object UpdateManifestParser {
     const val MAX_APK_BYTES = 50L * 1024L * 1024L
     const val MIN_APK_BYTES = 256L * 1024L
     const val SCHEMA_VERSION = 1
-    const val PACKAGE_NAME = "com.upcpocket.app"
+    const val PACKAGE_NAME = "com.upcpocket.next"
     private const val MAX_NOTES = 5
     private const val MIN_NOTES = 3
     private const val MAX_NOTE_CHARS = 180

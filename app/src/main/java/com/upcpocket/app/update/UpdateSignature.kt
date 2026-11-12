@@ -10,7 +10,7 @@ import java.util.Base64
 /**
  * 更新清单签名：固定 SHA256withECDSA / P-256。
  *
- * 验证的是 update.json 原始 UTF-8 字节，而不是反序列化再序列化的 JSON。
+ * 验证的是 更新清单原始 UTF-8 字节，而不是反序列化再序列化的 JSON。
  * 签名算法和公钥都由应用内置，清单不能自行选择算法、公钥或下载主机。
  */
 class UpdateSignatureVerifier(publicKeyBase64: String) {

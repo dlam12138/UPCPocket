@@ -10,10 +10,12 @@
 
 [![Release](https://img.shields.io/github/v/release/dlam12138/UPCPocket?style=flat-square&label=Release&color=1B6B4A)](https://github.com/dlam12138/UPCPocket/releases/latest)
 ![Android 12+](https://img.shields.io/badge/Android-12%2B-5278C6?style=flat-square)
-![APK 4.85 MiB](https://img.shields.io/badge/APK-4.85_MiB-1B6B4A?style=flat-square)
+![APK 4.91 MiB](https://img.shields.io/badge/APK-4.91_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**下载 2.0.3 正式版**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [**国内加速下载**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
+[**网盘下载 2.0.4 新版（可选安装）**](https://pan.baidu.com/s/15ulVIs3PrZ2gQlc1gmE9vA?pwd=tvdv) · 提取码：**tvdv**
+
+[继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
 [版本与校验文件](https://github.com/dlam12138/UPCPocket/releases/latest) · [隐私说明](docs/PRIVACY.md) · [反馈问题](https://github.com/dlam12138/UPCPocket/issues)
 
@@ -25,6 +27,14 @@
 
 </div>
 
+## 2.0.4 可选安装公告
+
+**当前 2.0.3 已能满足日常使用，请按需更新。** 因原签名密钥丢失，2.0.4 无法覆盖旧版，现以 **UPC Pocket 新版**（`com.upcpocket.next`）独立安装，可与旧版并存。**旧版数据无法迁移到新版。**
+
+新版需重新登录、设置提醒并添加桌面组件；旧待办、专注历史和设置无法迁移。需要新增功能时，再从上方网盘下载 `UPC-Pocket-2.0.4-next` 中的 APK。若同时使用两版，手动重建任务时请避免重复提醒。
+
+新版使用固定长期 Release 签名；后续新版之间可沿用同一身份覆盖更新。目前仅提供网盘下载，尚未创建 2.0.4 GitHub Release，也未向旧版推送不兼容更新。完整下载说明和校验值见 [2.0.4 安装公告](docs/releases/2.0.4-notice.md)。
+
 ## 常用的，都放在一起
 
 首页、课表、待办、专注四个入口，左右滑动切页，底部胶囊随手势流畅切换。
@@ -33,8 +43,8 @@
 | --- | --- |
 | **校园卡余额与流水** | 保存学校账号，查询本人余额；余额卡内进入原生交易流水，支持分页、按月与收支汇总 |
 | **宿舍电量** | 唐岛湾直接查询，古镇口打开学校页面 |
-| **空闲教室** | 记住上次校区；切换日期、校区和预设时段自动查询，自选节次手动查询 |
-| **图书馆座位** | 三个馆区座位入口；唐岛湾新增按时段找座位与个人隐藏，保留按座位选 |
+| **空闲教室** | 记住上次校区；预设条件自动查询，自选节次手动查询；古镇口支持卓越 A/B 筛选 |
+| **图书馆座位** | 唐岛湾、古镇口东区、求是支持按时段找座位与个人隐藏，保留按座位选 |
 | **课表** | 周日开头的整周视图、今日课程、节次时间；查过的周可离线看 |
 | **待办与提醒** | 快速添加、完成、编辑与删除；可设一次性提醒，首页同步展示近期任务 |
 | **专注** | 番茄钟、专注记录与统计，陪你完成一段学习 |
@@ -49,11 +59,11 @@
 
 ## 三步开始
 
-1. **安装**：下载 APK，支持 Android 12 及以上。旧版可直接覆盖安装，无需卸载。
+1. **安装**：从网盘下载 2.0.4 APK，支持 Android 12 及以上。新版独立安装，可与旧版并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 
-2.0 用户需手动安装一次；2.0.2 及含更新器的 2.0.1 复测版用户，可以在 **设置 → 关于 UPC Pocket → 检查更新** 升级。国内加速由第三方提供，下载困难时可切换官方链接；校验文件随 Release 提供。
+从旧版转用 2.0.4 需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；新版线上更新尚未发布。
 
 ## 更新方便，反馈也方便
 
@@ -65,9 +75,9 @@
 
 这是**非学校官方应用**，校园查询直接访问对应学校服务，不经本项目自建账号服务器转发。
 
-空闲教室反映学校排课，临时占用以现场为准；图书馆候选与最终可约以学校返回和预约记录为准。本轮按时段找座位与个人隐藏**仅适配唐岛湾**，古镇口东区、求是仍沿用原流程。原生预约未进行真实提交验收。待办提醒需通知权限；精确闹钟未授权或系统限制后台时可能延后，系统强行停止后需重新打开应用。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
+空闲教室反映学校排课，临时占用以现场为准；图书馆候选与最终可约以学校返回和预约记录为准。2.0.4 已将按时段找座位与个人隐藏扩展到古镇口东区、求是，真实预约、取消和签到尚未验证。待办提醒需通知权限；精确闹钟未授权或系统限制后台时可能延后，系统强行停止后需重新打开应用。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
 
-安装包约 **4.85 MiB**，保留全部现有功能。为兼容已安装版本，沿用原开发证书，可覆盖安装保留数据。详细验证、已知限制与数据处理见 [2.0.3 发布记录](docs/releases/2.0.3.md) 和 [隐私说明](docs/PRIVACY.md)。
+2.0.4 安装包约 **4.91 MiB**，使用独立长期签名。并存安装、新版自身覆盖保留本地状态、课表组件和诊断分享已在模拟器验证；尚未做本轮真机和校园业务完整回归。详细验证见 [新版验收记录](docs/releases/2.0.4-next-identity.md)，数据处理见 [隐私说明](docs/PRIVACY.md)。
 
 <details>
 <summary><strong>开发与文档</strong></summary>
@@ -94,6 +104,6 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，其他馆区仍保留原流程。
 
-### 下一版本开发
+### 2.0.4 新增内容
 
-2.0.4 / code 25 开发代码已整合超星两馆区布局、按时段找、个人隐藏和校园卡原生流水，尚未正式发布。上方下载、截图与体积仍对应 2.0.3；历史图书馆候选 APK 不包含校园卡流水。详见 [图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md) 与 [流水验收](docs/research/native-card-history.md)。
+2.0.4 / code 25 整合古镇口东区、求是布局与按时段找座位、个人隐藏、校园卡原生本人流水，以及古镇口空闲教室卓越 A/B 筛选。网盘提供独立新版，GitHub 正式 Release 仍为 2.0.3；上文展示的旧截图均已标明版本。历史图书馆候选 APK 不包含流水。详见 [图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md)、[流水验收](docs/research/native-card-history.md) 与 [筛选验收](docs/releases/2.0.4-classroom-filter.md)。

@@ -33,7 +33,7 @@ enum class CheckStage {
 }
 
 /**
- * 检查更新：同一候选源取 update.json + update.sig，先验签原始字节再解析。
+ * 检查更新：同一候选源取 update-next.json + update-next.sig，先验签原始字节再解析。
  *
  * 最近成功源仅改变尝试顺序。某个源返回坏签名/不同步内容时切下一个源；已经验签但
  * 版本过旧的清单不能覆盖本机最高已见版本。公开镜像的 SHA 文本从不作为真实性依据。

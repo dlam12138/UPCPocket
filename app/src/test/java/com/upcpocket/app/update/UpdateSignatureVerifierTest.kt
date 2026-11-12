@@ -31,8 +31,8 @@ class UpdateSignatureVerifierTest {
         assertTrue(verifier.verify(payload, signature))
 
         val parsed = UpdateManifestParser.parse(payload)
-        assertTrue(parsed is ManifestParseResult.Valid)
-        assertTrue((parsed as ManifestParseResult.Valid).manifest.versionCode == 23)
+        // 历史旧包签名仍有效，但新版必须拒绝旧应用身份。
+        assertEquals(ManifestParseResult.Invalid(ManifestError.PACKAGE_NAME), parsed)
     }
 
     @Test
@@ -69,8 +69,8 @@ class UpdateSignatureVerifierTest {
         val verifier = UpdateSignatureVerifier(BuildConfig.UPDATE_PUBLIC_KEY)
         assertTrue(verifier.verify(payload, signature))
         val parsed = UpdateManifestParser.parse(payload)
-        assertTrue(parsed is ManifestParseResult.Valid)
-        assertEquals(22, (parsed as ManifestParseResult.Valid).manifest.versionCode)
+        // 保留真实签名字节，验证密码学兼容性与包名隔离是两个独立边界。
+        assertEquals(ManifestParseResult.Invalid(ManifestError.PACKAGE_NAME), parsed)
     }
 
     @Test

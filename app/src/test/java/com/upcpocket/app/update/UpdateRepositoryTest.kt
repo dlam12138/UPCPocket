@@ -68,10 +68,10 @@ class UpdateRepositoryTest {
         val good = signed(pair)
         val transport = FakeTransport { url, source ->
             if (source.id == "one") {
-                if (url.endsWith("update.json")) good.first
+                if (url.endsWith("update-next.json")) good.first
                 else UpdateTestFixtures.signature(good.first, other.private)
             } else {
-                if (url.endsWith("update.json")) good.first else good.second
+                if (url.endsWith("update-next.json")) good.first else good.second
             }
         }
         val outcome = repository(transport).check(listOf(one, two))
@@ -87,7 +87,7 @@ class UpdateRepositoryTest {
         val good = signed(pair)
         val transport = FakeTransport { url, source ->
             if (source.id == "one") "<html>mirror error</html>".toByteArray()
-            else if (url.endsWith("update.json")) good.first else good.second
+            else if (url.endsWith("update-next.json")) good.first else good.second
         }
         val outcome = repository(transport).check(listOf(one, two))
         assertTrue(outcome is UpdateCheckOutcome.Available)
@@ -116,7 +116,7 @@ class UpdateRepositoryTest {
         val payload = UpdateTestFixtures.manifest(versionName = "2.0.1", versionCode = 22)
         val pairBytes = signed(pair, payload)
         val transport = FakeTransport { url, _ ->
-            if (url.endsWith("update.json")) pairBytes.first else pairBytes.second
+            if (url.endsWith("update-next.json")) pairBytes.first else pairBytes.second
         }
         assertEquals(
             UpdateCheckOutcome.UpToDate,
@@ -134,7 +134,7 @@ class UpdateRepositoryTest {
         store.write(UpdateState(highestVerifiedVersionCode = 23))
         val repository = UpdateRepository(
             transport = FakeTransport { url, _ ->
-                if (url.endsWith("update.json")) bytes.first else bytes.second
+                if (url.endsWith("update-next.json")) bytes.first else bytes.second
             },
             stateStore = store,
             installedVersionCode = 21,
@@ -154,7 +154,7 @@ class UpdateRepositoryTest {
         val payload = UpdateTestFixtures.manifest(minSdk = 99)
         val bytes = signed(pair, payload)
         val transport = FakeTransport { url, _ ->
-            if (url.endsWith("update.json")) bytes.first else bytes.second
+            if (url.endsWith("update-next.json")) bytes.first else bytes.second
         }
         val outcome = repository(transport).check(listOf(source))
         assertTrue(outcome is UpdateCheckOutcome.UnsupportedDevice)
@@ -168,7 +168,7 @@ class UpdateRepositoryTest {
         val payload = UpdateTestFixtures.manifest(packageName = "com.example.app")
         val bytes = signed(pair, payload)
         val transport = FakeTransport { url, _ ->
-            if (url.endsWith("update.json")) bytes.first else bytes.second
+            if (url.endsWith("update-next.json")) bytes.first else bytes.second
         }
         assertEquals(
             UpdateCheckOutcome.Failure(CheckFailure.INVALID_METADATA),
@@ -183,7 +183,7 @@ class UpdateRepositoryTest {
         val payload = UpdateTestFixtures.manifest()
         val signature = UpdateTestFixtures.signature(payload, UpdateTestFixtures.testKeyPair().private)
         val transport = FakeTransport { url, _ ->
-            if (url.endsWith("update.json")) payload else signature
+            if (url.endsWith("update-next.json")) payload else signature
         }
         assertEquals(
             UpdateCheckOutcome.Failure(CheckFailure.SIGNATURE_INVALID),

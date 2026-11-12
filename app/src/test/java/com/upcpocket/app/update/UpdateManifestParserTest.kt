@@ -2,6 +2,7 @@ package com.upcpocket.app.update
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import com.upcpocket.app.BuildConfig
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -10,6 +11,24 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class UpdateManifestParserTest {
+
+    @Test
+    fun newIdentityRejectsOldAppManifest() {
+        assertEquals("com.upcpocket.next", BuildConfig.APPLICATION_ID)
+        assertEquals(BuildConfig.APPLICATION_ID, UpdateManifestParser.PACKAGE_NAME)
+        assertEquals(
+            ManifestParseResult.Invalid(ManifestError.PACKAGE_NAME),
+            UpdateManifestParser.parse(UpdateTestFixtures.manifest(packageName = "com.upcpocket.app")),
+        )
+    }
+
+    @Test
+    fun fixedSourcesUseSeparateNextMetadataChannel() {
+        UpdateSources.production.forEach { source ->
+            assertTrue(source.metadataUrl().endsWith("/dlam12138/UPCPocket/releases/latest/download/update-next.json"))
+            assertTrue(source.signatureUrl().endsWith("/dlam12138/UPCPocket/releases/latest/download/update-next.sig"))
+        }
+    }
 
     @Test
     fun acceptsStrictSupportedManifest() {

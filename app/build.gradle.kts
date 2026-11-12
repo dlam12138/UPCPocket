@@ -51,11 +51,22 @@ val keystoreProps = Properties().apply {
 val releaseStoreFile = keystoreProps.getProperty("storeFile")?.let { file(it) }
 val hasReleaseSigning = releaseStoreFile?.exists() == true
 
-// 微信开放平台移动应用 AppID。没有正式 AppID 时保持空字符串：界面只显示
+// 新版固定使用仓库外长期签名；即使通过聚合任务构建，也禁止 Release 回退开发签名。
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.project.path == ":app" && it.name.contains("Release", ignoreCase = true) }) {
+        require(hasReleaseSigning && listOf("storePassword", "keyAlias", "keyPassword").all {
+            !keystoreProps.getProperty(it).isNullOrBlank()
+        }) {
+            "新版 Release 需要有效的仓库外长期 keystore 和本机 keystore.properties；禁止回退 debug 签名"
+        }
+    }
+}
+
+// 新包名与长期签名需单独注册微信 AppID；不复用旧包的 wechatAppId。未配置时只显示
 // 复制/分享兜底，不发送 SDK 请求，也不伪造“直达成功”。可写在 gitignore 的
-// keystore.properties 或本机 ~/.gradle/gradle.properties（wechatAppId=wx...）。
-val wechatAppId = (keystoreProps.getProperty("wechatAppId")
-    ?: providers.gradleProperty("wechatAppId").orNull)
+// keystore.properties 或本机 ~/.gradle/gradle.properties（wechatNextAppId=wx...）。
+val wechatAppId = (keystoreProps.getProperty("wechatNextAppId")
+    ?: providers.gradleProperty("wechatNextAppId").orNull)
     ?.trim()
     ?.takeIf { it.matches(Regex("wx[0-9a-f]{16}")) }
     .orEmpty()
@@ -67,14 +78,13 @@ plugins {
 }
 
 android {
-    // ⚠️ 包名与应用标识都是 **UPC Pocket**，不是上游的 com.zzupocket.app。
-    // 这是两个不同的应用：改成自己的标识之后，上游的包不会被覆盖安装，
-    // 上游的数据库/令牌文件也不会被本应用读到（两者数据语义完全不同）。
+    // Kotlin/资源命名空间保持不变；新版 applicationId 独立，可与旧版并存。
+    // 两包各自保存账号、数据库、组件及更新状态，不读取或迁移旧包数据。
     namespace = "com.upcpocket.app"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.upcpocket.app"
+        applicationId = "com.upcpocket.next"
         minSdk = 31
         targetSdk = 36
         // 独立应用标识的版本号从 1 开始（与上游的 97 无关，两者互不覆盖）。
@@ -119,9 +129,6 @@ android {
             )
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("upcpocket")
-            } else {
-                logger.lifecycle("⚠️ 未找到 keystore.properties，release 包将使用 debug 签名")
-                signingConfig = signingConfigs.getByName("debug")
             }
         }
     }

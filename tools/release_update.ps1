@@ -1,11 +1,12 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-  生成 UPC Pocket 应用内更新清单、独立签名和人工校验文件。
+  生成 UPC Pocket 新版（com.upcpocket.next）应用内更新清单、独立签名和人工校验文件。
 
 .DESCRIPTION
   只做本地生成与自检，不上传 GitHub Release。APK、清单、签名、SHA256SUMS 必须
-  作为同一次发布的附件一起上传；发布后不要原地替换资产，修复必须提升 versionCode。
+  作为同一次发布的附件一起上传；旧包 update.json/update.sig 保持原样。
+  发布后不要原地替换资产，修复必须提升 versionCode。
 
   私钥路径只从环境变量 UPCPOCKET_UPDATE_PRIVATE_KEY 读取，脚本不打印、不复制私钥。
   公钥文件 docs/updates/upcpocket-update-public-key.b64 与应用内 BuildConfig 同源。
@@ -13,8 +14,8 @@
 .EXAMPLE
   $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
   .\tools\release_update.ps1 `
-    -Apk '<构建目录>\UPC-Pocket-2.0.1.apk' `
-    -VersionName '2.0.1' -VersionCode 22 `
+    -Apk '<构建目录>\UPC-Pocket-2.0.4.apk' `
+    -VersionName '2.0.4' -VersionCode 25 `
     -NotesPath '<更新说明路径>' `
     -OutputDirectory '<空输出目录>'
 #>
@@ -27,7 +28,7 @@ param(
     [Parameter(Mandatory)] [string] $OutputDirectory,
     [string] $Tag = "v$VersionName",
     [string] $PublishedAt,
-    [string] $ExpectedSignerSha256 = '07aaae87a235e3e1e99c364164a0a0774e27d8cbfd4bd68f32c03b31f1d06281',
+    [string] $ExpectedSignerSha256 = 'c8e461698efe19ee6ad5fb635dd28eaf860596caea2b2756efa5ce6b2051a23c',
     # 仅供本机 debug 受控 E2E 使用；正式发布保持默认生产公钥。
     [string] $ExpectedPublicKeyFile = ''
 )
@@ -36,7 +37,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$packageName = 'com.upcpocket.app'
+$packageName = 'com.upcpocket.next'
 $maxApkBytes = 50L * 1024L * 1024L
 $minApkBytes = 256L * 1024L
 $publicKeyFile = Join-Path $repoRoot 'docs\updates\upcpocket-update-public-key.b64'
@@ -207,16 +208,16 @@ if (Test-Path -LiteralPath $OutputDirectory) {
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 }
 $apkDestination = Join-Path $OutputDirectory "UPC-Pocket-$VersionName.apk"
-$manifestPath = Join-Path $OutputDirectory 'update.json'
-$signaturePath = Join-Path $OutputDirectory 'update.sig'
+$manifestPath = Join-Path $OutputDirectory 'update-next.json'
+$signaturePath = Join-Path $OutputDirectory 'update-next.sig'
 Copy-Item -LiteralPath $Apk -Destination $apkDestination
 [IO.File]::WriteAllBytes($manifestPath, $manifestBytes)
 [IO.File]::WriteAllBytes($signaturePath, $signature)
 
 $checksumLines = @(
     "$sha256  UPC-Pocket-$VersionName.apk",
-    "$((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant())  update.json",
-    "$((Get-FileHash -LiteralPath $signaturePath -Algorithm SHA256).Hash.ToLowerInvariant())  update.sig"
+    "$((Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant())  update-next.json",
+    "$((Get-FileHash -LiteralPath $signaturePath -Algorithm SHA256).Hash.ToLowerInvariant())  update-next.sig"
 )
 [IO.File]::WriteAllText(
     (Join-Path $OutputDirectory 'SHA256SUMS.txt'),
@@ -248,6 +249,6 @@ Write-Host "  version    : $VersionName ($VersionCode), minSdk $minSdk"
 Write-Host "  size       : $sizeBytes"
 Write-Host "  sha256     : $sha256"
 Write-Host "  signer     : $signerSha256"
-Write-Host "  update.json: $manifestPath"
-Write-Host "  update.sig : $signaturePath"
+Write-Host "  update-next.json: $manifestPath"
+Write-Host "  update-next.sig : $signaturePath"
 Write-Host '  SHA256SUMS.txt'
