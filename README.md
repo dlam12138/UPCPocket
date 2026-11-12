@@ -93,3 +93,7 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留上游版权与 [MIT 许可证](LICENSE)；悬浮导航的来源与改动见 [移植说明](docs/third-party/ZZUPocket-dock.md)。Android 开发技能的固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
 
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，其他馆区仍保留原流程。
+
+### 下一版本开发
+
+2.0.4 / code 25 开发代码已整合超星两馆区布局、按时段找、个人隐藏和校园卡原生流水，尚未正式发布。上方下载、截图与体积仍对应 2.0.3；历史图书馆候选 APK 不包含校园卡流水。详见 [图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md) 与 [流水验收](docs/research/native-card-history.md)。

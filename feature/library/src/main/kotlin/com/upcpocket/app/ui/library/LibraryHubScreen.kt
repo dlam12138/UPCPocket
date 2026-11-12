@@ -83,14 +83,14 @@ fun LibraryHubScreen(
         ),
         LibraryPlatform(
             title = "东区座位",
-            subtitle = "查看区域与座位",
+            subtitle = "选座与按时段找",
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
         ),
         LibraryPlatform(
             title = "求是座位",
-            subtitle = "查看区域与座位",
+            subtitle = "选座与按时段找",
             icon = Icons.Filled.EventSeat,
             actionLabel = "查看座位",
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },
@@ -165,7 +165,7 @@ fun LibraryHubScreen(
                 Text("打开图书馆官网")
             }
             Text(
-                "唐岛湾可预约和取消；古镇口与求是查看座位，预约和签到在学校页面。",
+                "选择座位与时段，确认预约。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

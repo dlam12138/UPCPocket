@@ -84,6 +84,7 @@ internal class LibraryUi(
             PluginPage(LIBRARY_CHAOXING_SEAT_ROUTE, LIBRARY_PLUGIN_ID) { host ->
                 ChaoxingSeatScreen(
                     service = chaoxingService,
+                    hiddenSeatsStore = hiddenSeatsStore,
                     initialKind = ChaoxingSeatKind.SEAT,
                     onBack = host::back,
                     onOpenLogin = { host.open(LIBRARY_CHAOXING_LOGIN_ROUTE) },
@@ -94,6 +95,7 @@ internal class LibraryUi(
             PluginPage(LIBRARY_CHAOXING_SEATENGINE_ROUTE, LIBRARY_PLUGIN_ID) { host ->
                 ChaoxingSeatScreen(
                     service = chaoxingService,
+                    hiddenSeatsStore = hiddenSeatsStore,
                     initialKind = ChaoxingSeatKind.SEATENGINE,
                     onBack = host::back,
                     onOpenLogin = { host.open(LIBRARY_CHAOXING_LOGIN_ROUTE) },

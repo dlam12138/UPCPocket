@@ -49,10 +49,26 @@ interface LibraryHiddenSeatsStore {
 
     /** 当前房间隐藏数量，用于「隐藏的座位（N）」。 */
     suspend fun count(buildingId: String, roomId: String): Int
+    suspend fun entries(system: String, buildingId: String, roomId: String): List<LibraryHiddenSeat> {
+        require(system == LibraryHiddenSeat.SYSTEM_LIBSEAT)
+        return entries(buildingId, roomId)
+    }
+    suspend fun restore(system: String, buildingId: String, roomId: String, seatId: String): Boolean {
+        require(system == LibraryHiddenSeat.SYSTEM_LIBSEAT)
+        return restore(buildingId, roomId, seatId)
+    }
+    suspend fun restoreAll(system: String, buildingId: String, roomId: String): Boolean {
+        require(system == LibraryHiddenSeat.SYSTEM_LIBSEAT)
+        return restoreAll(buildingId, roomId)
+    }
+
 }
 
 /** 不接入持久层的空实现，供独立合成预览使用。 */
 object NoOpLibraryHiddenSeatsStore : LibraryHiddenSeatsStore {
+    override suspend fun entries(system: String, buildingId: String, roomId: String): List<LibraryHiddenSeat> = emptyList()
+    override suspend fun restore(system: String, buildingId: String, roomId: String, seatId: String): Boolean = true
+    override suspend fun restoreAll(system: String, buildingId: String, roomId: String): Boolean = true
     override suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat> = emptyList()
     override suspend fun hiddenIds(buildingId: String, roomId: String): Set<String> = emptySet()
     override suspend fun hide(entry: LibraryHiddenSeat): Boolean = true
@@ -134,7 +150,11 @@ class DataStoreLibraryHiddenSeatsStore internal constructor(
         false
     }
 
-    override suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat> {
+    override suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat> =
+        entries(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
+
+    override suspend fun entries(system: String, buildingId: String, roomId: String): List<LibraryHiddenSeat> {
+        requireSystem(system)
         // 读取失败（IO 损坏/解码异常）抛出，由 ViewModel 显示「读取失败」而非假空列表。
         val prefs = try {
             store.data.first()
@@ -143,9 +163,8 @@ class DataStoreLibraryHiddenSeatsStore internal constructor(
         } catch (e: Exception) {
             throw IllegalStateException("隐藏座位读取失败", e)
         }
-        val prefix = compositePrefix(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
         return decode(prefs).values
-            .filter { composite(it).startsWith(prefix) }
+            .filter { it.system == system && it.buildingId == buildingId && it.roomId == roomId }
             .map { it.toModel() }
             .sortedBy { it.nameSnapshot }
     }
@@ -154,22 +173,37 @@ class DataStoreLibraryHiddenSeatsStore internal constructor(
         entries(buildingId, roomId).mapTo(linkedSetOf()) { it.seatId }
 
     override suspend fun hide(entry: LibraryHiddenSeat): Boolean {
-        require(entry.system == LibraryHiddenSeat.SYSTEM_LIBSEAT) { "未知来源" }
+        requireSystem(entry.system)
         val stored = entry.toStored()
         return atomicEdit { all -> all[composite(stored)] = stored }
     }
 
     override suspend fun restore(buildingId: String, roomId: String, seatId: String): Boolean =
-        atomicEdit { all ->
-            all.remove("${LibraryHiddenSeat.SYSTEM_LIBSEAT}|$buildingId|$roomId|$seatId")
-        }
+        restore(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId, seatId)
 
-    override suspend fun restoreAll(buildingId: String, roomId: String): Boolean {
-        val prefix = compositePrefix(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
+    override suspend fun restore(system: String, buildingId: String, roomId: String, seatId: String): Boolean {
+        requireSystem(system)
         return atomicEdit { all ->
-            val toRemove = all.keys.filter { it.startsWith(prefix) }
-            toRemove.forEach { all.remove(it) }
+            all.entries.removeAll { (_, v) ->
+                v.system == system && v.buildingId == buildingId && v.roomId == roomId && v.seatId == seatId
+            }
         }
+    }
+
+    override suspend fun restoreAll(buildingId: String, roomId: String): Boolean =
+        restoreAll(LibraryHiddenSeat.SYSTEM_LIBSEAT, buildingId, roomId)
+
+    override suspend fun restoreAll(system: String, buildingId: String, roomId: String): Boolean {
+        requireSystem(system)
+        return atomicEdit { all ->
+            all.entries.removeAll { (_, v) ->
+                v.system == system && v.buildingId == buildingId && v.roomId == roomId
+            }
+        }
+    }
+
+    private fun requireSystem(system: String) {
+        require(system in setOf(LibraryHiddenSeat.SYSTEM_LIBSEAT, "chaoxing-seat", "chaoxing-seatengine"))
     }
 
     override suspend fun count(buildingId: String, roomId: String): Int =

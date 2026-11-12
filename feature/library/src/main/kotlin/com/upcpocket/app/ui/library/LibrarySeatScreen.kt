@@ -1010,23 +1010,33 @@ internal fun TimeSearchBottomBar(
     } else {
         "选择时段"
     }
+    SeatSelectionBottomBar(chosen?.name, summary, state.canConfirmTimeReservation(), onConfirm)
+}
+
+@Composable
+internal fun SeatSelectionBottomBar(
+    selectedName: String?, summary: String, canConfirm: Boolean, onConfirm: () -> Unit,
+    actionLabel: String = "确认预约",
+) {
     Surface(tonalElevation = 2.dp) {
-        Row(
-            Modifier.fillMaxWidth().navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
-            Column(Modifier.weight(1f)) {
-                Text(chosen?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
-                Text(
-                    summary,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            val stacked = maxWidth < 320.dp || androidx.compose.ui.platform.LocalDensity.current.fontScale >= 1.4f
+            @Composable fun Summary() {
+                Column {
+                    Text(selectedName?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
+                    Text(summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-            Button(onClick = onConfirm, enabled = state.canConfirmTimeReservation()) {
-                Text("确认预约")
+            if (stacked) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Summary()
+                    Button(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
+                }
+            } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Box(Modifier.weight(1f)) { Summary() }
+                Button(onClick = onConfirm, enabled = canConfirm) { Text(actionLabel) }
             }
         }
     }
@@ -1112,8 +1122,13 @@ internal fun TimeSearchResults(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimeCandidateRow(
-    candidate: LibrarySeat,
+private fun TimeCandidateRow(candidate: LibrarySeat, selected: Boolean, onSelect: () -> Unit, onHide: () -> Unit) =
+    SeatCandidateRow(candidate.name, candidate.timeSelectable, selected, onSelect, onHide)
+
+@Composable
+internal fun SeatCandidateRow(
+    name: String,
+    selectable: Boolean,
     selected: Boolean,
     onSelect: () -> Unit,
     onHide: () -> Unit,
@@ -1127,7 +1142,7 @@ private fun TimeCandidateRow(
     ) {
         Row(
             Modifier.fillMaxWidth()
-                .clickable(enabled = candidate.timeSelectable, onClick = onSelect)
+                .clickable(enabled = selectable, onClick = onSelect)
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1135,12 +1150,12 @@ private fun TimeCandidateRow(
             androidx.compose.material3.RadioButton(
                 selected = selected,
                 onClick = null,
-                enabled = candidate.timeSelectable,
+                enabled = selectable,
             )
             Column(Modifier.weight(1f)) {
-                Text(candidate.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                Text(name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 val facility = buildList {
-                    if (candidate.type.equals("seat", ignoreCase = true) && candidate.enabled) add("可选")
+                    if (selectable) add("可选")
                 }
                 if (facility.isNotEmpty()) {
                     Text(facility.joinToString(" · "), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1168,34 +1183,43 @@ private fun HiddenSeatsSheet(
     state: LibrarySeatViewModel.UiState,
     vm: LibrarySeatViewModel,
 ) {
+    HiddenSeatManagementSheet(state.hiddenEntries, vm::closeHiddenSheet, vm::restoreHidden, vm::restoreAllHidden)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun HiddenSeatManagementSheet(
+    entries: List<LibraryHiddenSeat>, onClose: () -> Unit,
+    onRestore: (String) -> Unit, onRestoreAll: () -> Unit,
+) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
-        onDismissRequest = vm::closeHiddenSheet,
+        onDismissRequest = onClose,
         sheetState = sheetState,
     ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("隐藏的座位（${state.hiddenEntries.size}）", style = MaterialTheme.typography.titleMedium)
+            Text("隐藏的座位（${entries.size}）", style = MaterialTheme.typography.titleMedium)
             Text(
                 "只在本机隐藏，不影响学校状态。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (state.hiddenEntries.isEmpty()) {
+            if (entries.isEmpty()) {
                 Text("没有隐藏的座位。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                state.hiddenEntries.forEach { entry ->
+                entries.forEach { entry ->
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(entry.nameSnapshot, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = { vm.restoreHidden(entry.seatId) }) { Text("恢复") }
+                        TextButton(onClick = { onRestore(entry.seatId) }) { Text("恢复") }
                     }
                 }
-                OutlinedButton(onClick = vm::restoreAllHidden, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onRestoreAll, modifier = Modifier.fillMaxWidth()) {
                     Text("全部恢复")
                 }
             }

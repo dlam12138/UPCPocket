@@ -61,6 +61,27 @@ class LibraryHiddenSeatsStoreTest {
     }
 
     @Test
+    fun `three systems tenants and rooms stay isolated across concurrent edits`() = runBlocking {
+        val store = DataStoreLibraryHiddenSeatsStore(dataStore)
+        val originals = listOf(
+            entry("r", "same"),
+            entry("r", "same").copy(system = "chaoxing-seat"),
+            entry("r", "same").copy(system = "chaoxing-seatengine"),
+            entry("r", "same").copy(system = "chaoxing-seat", buildingId = "other"),
+            entry("other", "same").copy(system = "chaoxing-seat"),
+        )
+        originals.map { async { assertTrue(store.hide(it)) } }.awaitAll()
+        for (e in originals) assertEquals(listOf(e), store.entries(e.system, e.buildingId, e.roomId))
+        assertTrue(store.restore("chaoxing-seat", "1", "r", "same"))
+        assertTrue(store.entries("chaoxing-seat", "1", "r").isEmpty())
+        assertEquals(listOf(originals[0]), store.entries("1", "r"))
+        assertEquals(listOf(originals[2]), store.entries("chaoxing-seatengine", "1", "r"))
+        assertTrue(store.restoreAll("chaoxing-seatengine", "1", "r"))
+        assertEquals(listOf(originals[3]), store.entries("chaoxing-seat", "other", "r"))
+        assertEquals(listOf(originals[4]), store.entries("chaoxing-seat", "1", "other"))
+    }
+
+    @Test
     fun `hide 后跨新实例重开仍读到同一项`() = runBlocking {
         val store = DataStoreLibraryHiddenSeatsStore(dataStore)
         assertTrue(store.hiddenIds("1", "r1").isEmpty())

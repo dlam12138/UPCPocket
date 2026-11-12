@@ -70,7 +70,9 @@ import com.upcpocket.app.data.library.LibraryTimeSearchResult
 @Composable
 fun LibrarySeatPreviewPage(page: String) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when (page) {
+        when {
+            page.startsWith("cx-") -> ChaoxingProductionPreview(page)
+            else -> when (page) {
             "lib-seat", "lib-time" -> LibSeatPreview(showTime = page == "lib-time")
             "lib-timesearch" -> LibTimeSearchPreview(scenario = 0)
             "lib-timesearch-empty" -> LibTimeSearchPreview(scenario = 1)
@@ -83,6 +85,7 @@ fun LibrarySeatPreviewPage(page: String) {
             "chaoxing-seat", "chaoxing-time" -> ChaoxingSeatPreview(showTime = page == "chaoxing-time")
             else -> LibAreaPreview()
         }
+    }
     }
 }
 
@@ -855,4 +858,47 @@ private fun LibTimeSearchPreview(scenario: Int) {
             }
         }
     }
+}
+
+/** All synthetic inputs; the screen, map, controls, rows, sheets and dialog are production composables. */
+@Composable
+private fun ChaoxingProductionPreview(page: String) {
+    val kind = if (page.contains("engine")) ChaoxingSeatKind.SEATENGINE else ChaoxingSeatKind.SEAT
+    val places = (1..18).map { n -> ChaoxingSeatPlace("%03d".format(n),
+        ((n-1)%6)*65.5f, ((n-1)/6)*80.5f, 45f, 45f, if (n%3==0) 270f else 0f) }
+    val detail = ChaoxingSeatRoomDetail(1,
+        if (page.contains("long")) "合成阅览区 · 三楼东侧靠窗长房间名称与安静学习空间" else "合成阅览区 A",
+        18,30,480,if(page.contains("norange")) 510 else 1320,places, seatRulesKnown=true,
+        minDurationMinutes=if(page.contains("min") || page.contains("norange")) 60 else null,
+        maxDurationMinutes=if(page.contains("min")) 90 else null)
+    val legalStart = chaoxingStartOptions(detail,"2099-11-09").firstOrNull()
+    val legalEnd = legalStart?.let { chaoxingEndOptions(detail,it,"2099-11-09").firstOrNull() }
+    var state by remember(page) { mutableStateOf(ChaoxingSeatUiState(kind=kind,
+        selectedDate="2099-11-09",detail=detail,
+        selectedStart=if(page.contains("min") || page.contains("norange")) legalStart else 840,
+        selectedEnd=if(page.contains("min") || page.contains("norange")) legalEnd else 960,
+        timeUnavailableReason=chaoxingTimeUnavailableReason(detail,"2099-11-09",chaoxingNow()),
+        reservationUnknown=page.contains("unknown"),
+        reservationMessage=if(page.contains("unknown")) "提交结果未知；请到学校记录核对，勿重复提交。" else null,
+        seatMode=if(page.contains("map")) RoomSeatMode.SEAT else RoomSeatMode.TIME,
+        usedSeats=if(page.contains("empty")) places.map{it.seatNum}.toSet() else setOf("002","005"),usedSeatsLoaded=!page.contains("failed") && !page.contains("norange"),
+        detailError=if(page.contains("failed")) "查询失败，请重试。" else null,
+        hiddenLoaded=true,selectedSeat=if(page.contains("confirm")) "006" else null,
+        showHiddenSheet=page.contains("hidden"),
+        hiddenEntries=if(page.contains("hidden") || page.contains("map")) listOf(
+            LibraryHiddenSeat(kind.hiddenSystem,kind.hiddenBuilding,"1","003","003"),
+            LibraryHiddenSeat(kind.hiddenSystem,kind.hiddenBuilding,"1","009","009")) else emptyList())) }
+    fun restore(id:String) { state=state.copy(hiddenEntries=state.hiddenEntries.filterNot {it.seatId==id},undoHidden=null) }
+    ChaoxingSeatDetailContent(state, {}, {},
+        { state=state.copy(seatMode=it,selectedSeat=null,usedSeatsLoaded=false,queryGeneration=state.queryGeneration+1) },
+        { start -> val ends=chaoxingEndOptions(detail,start,state.selectedDate)
+            state=state.copy(selectedStart=start, selectedEnd=state.selectedEnd?.takeIf{it in ends} ?: ends.firstOrNull(),
+                selectedSeat=null,usedSeatsLoaded=false,queryGeneration=state.queryGeneration+1) },
+        { state=state.copy(selectedEnd=it,selectedSeat=null,usedSeatsLoaded=false,queryGeneration=state.queryGeneration+1) },
+        { state=state.copy(usedSeatsLoaded=true,detailError=null) },
+        { state=state.copy(selectedSeat=it) },
+        { id -> val e=LibraryHiddenSeat(kind.hiddenSystem,kind.hiddenBuilding,"1",id,id)
+            state=state.copy(hiddenEntries=state.hiddenEntries+e,selectedSeat=state.selectedSeat?.takeUnless{it==id},undoHidden=e) },
+        { state=state.copy(showHiddenSheet=true) }, {state=state.copy(showHiddenSheet=false)}, ::restore,
+        {state=state.copy(hiddenEntries=emptyList())}, {}, {state=state.copy(undoHidden=null)}, {})
 }
