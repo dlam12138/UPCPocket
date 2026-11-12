@@ -42,6 +42,18 @@ class CardPluginTest {
         assertEquals(0, widgetRefreshes)
     }
 
+    @Test
+    fun `native history is optional and only registered with auth adapter`() {
+        val plugin = CardPlugin(
+            context = ApplicationProvider.getApplicationContext(),
+            account = FakeAccountIdentity(), inputStore = FakeInputStore(), onSnapshotChanged = {},
+            historyAuthenticator = com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator { error("Must not authenticate during assembly") },
+        )
+        val active = PluginRuntime().register(plugin.descriptor) { plugin }.start().plugins
+        assertEquals(setOf("card.balance", "card.history"), plugin.descriptor.capabilities)
+        assertSame(plugin.history, active.capability(CardCapabilities.history))
+    }
+
     private class FakeInputStore : CardInputStore {
         override val studentId: Flow<String> = MutableStateFlow("")
         override suspend fun save(studentId: String) = Unit

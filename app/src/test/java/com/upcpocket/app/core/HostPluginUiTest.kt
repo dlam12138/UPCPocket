@@ -146,6 +146,7 @@ class HostPluginUiTest {
     fun `all plugin pages are registered for host navigation`() {
         assertEquals(
             setOf(
+                "card.history",
                 "power.electricity",
                 "power.tangdaowan",
                 "classroom.free",
@@ -169,7 +170,7 @@ class HostPluginUiTest {
         )
         assertTrue(
             AppGraph.ui.pages.all {
-                it.pluginId.value in setOf("power", "classroom", "library", "focus", "timetable", "todo")
+                it.pluginId.value in setOf("card", "power", "classroom", "library", "focus", "timetable", "todo")
             },
         )
     }
