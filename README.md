@@ -13,7 +13,7 @@
 ![APK 4.91 MiB](https://img.shields.io/badge/APK-4.91_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**网盘下载 2.0.4 新版（可选安装）**](https://pan.baidu.com/s/15ulVIs3PrZ2gQlc1gmE9vA?pwd=tvdv) · 提取码：**tvdv**
+[**下载 2.0.4 新版（可选安装）**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.4/UPC-Pocket-2.0.4.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.4/UPC-Pocket-2.0.4.apk) · [**百度网盘**](https://pan.baidu.com/s/15ulVIs3PrZ2gQlc1gmE9vA?pwd=tvdv)（提取码：**tvdv**）
 
 [继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
@@ -33,7 +33,7 @@
 
 新版需重新登录、设置提醒并添加桌面组件；旧待办、专注历史和设置无法迁移。需要新增功能时，再从上方网盘下载 `UPC-Pocket-2.0.4-next` 中的 APK。若同时使用两版，手动重建任务时请避免重复提醒。
 
-新版使用固定长期 Release 签名；后续新版之间可沿用同一身份覆盖更新。目前仅提供网盘下载，尚未创建 2.0.4 GitHub Release，也未向旧版推送不兼容更新。完整下载说明和校验值见 [2.0.4 安装公告](docs/releases/2.0.4-notice.md)。
+新版使用固定长期 Release 签名；后续新版之间可沿用同一身份覆盖更新。2.0.4 已发布至 GitHub Releases，网盘作为备用下载；旧版更新线路继续保留 2.0.3，不向旧版推送不兼容更新。完整下载说明和校验值见 [2.0.4 安装公告](docs/releases/2.0.4-notice.md)。
 
 ## 常用的，都放在一起
 
@@ -59,11 +59,11 @@
 
 ## 三步开始
 
-1. **安装**：从网盘下载 2.0.4 APK，支持 Android 12 及以上。新版独立安装，可与旧版并存。
+1. **安装**：从上方链接下载 2.0.4 APK，支持 Android 12 及以上。新版独立安装，可与旧版并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 
-从旧版转用 2.0.4 需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；新版线上更新尚未发布。
+从旧版转用 2.0.4 需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；已安装新版 2.0.4 时，检查更新会显示已是最新版。
 
 ## 更新方便，反馈也方便
 
@@ -106,4 +106,4 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 ### 2.0.4 新增内容
 
-2.0.4 / code 25 整合古镇口东区、求是布局与按时段找座位、个人隐藏、校园卡原生本人流水，以及古镇口空闲教室卓越 A/B 筛选。网盘提供独立新版，GitHub 正式 Release 仍为 2.0.3；上文展示的旧截图均已标明版本。历史图书馆候选 APK 不包含流水。详见 [图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md)、[流水验收](docs/research/native-card-history.md) 与 [筛选验收](docs/releases/2.0.4-classroom-filter.md)。
+2.0.4 / code 25 整合古镇口东区、求是布局与按时段找座位、个人隐藏、校园卡原生本人流水，以及古镇口空闲教室卓越 A/B 筛选，现已作为可选独立新版发布；上文展示的旧截图均已标明版本。历史图书馆候选 APK 不包含流水。详见 [2.0.4 发布记录](docs/releases/2.0.4.md)、[图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md)、[流水验收](docs/research/native-card-history.md) 与 [筛选验收](docs/releases/2.0.4-classroom-filter.md)。

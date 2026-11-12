@@ -67,7 +67,7 @@ $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 
 脚本使用 build-tools 的 `aapt2`/`apksigner` 核对新版包名、版本、minSdk、大小和长期 Release 证书，生成 `update-next.json`、`update-next.sig`、`SHA256SUMS.txt`，并在本机自校验；有 `openssl` 时再做一次独立交叉验签。新包固定读取同仓库 latest 下的 `update-next.json` / `update-next.sig`；旧包 `update.json` / `update.sig` 保持原样。它只准备文件，**不上传、不 push、不修改 Release**。每次发布必须把 APK、清单、签名、SHA256SUMS 作为同一次 Release 的附件，公开后不原地替换资产；修复需提升 versionCode 后重发。
 
-同仓库新版 Release 若设为 latest，除新版四件套外，必须原字节附带已发布 2.0.3 的 `update.json` 与 `update.sig`，仍指向 `v2.0.3` 的原 APK 资产；不得重写、重签或提高旧包清单版本。否则旧客户端请求 latest 下的旧文件名会收到 404。首次新版也可先不设为 latest，此时新版 latest 检查尚不可用，不能宣称更新线路已上线。本轮仅本地准备，不执行发布。
+同仓库新版 Release 若设为 latest，除新版四件套外，必须原字节附带已发布 2.0.3 的 `update.json` 与 `update.sig`，仍指向 `v2.0.3` 的原 APK 资产；不得重写、重签或提高旧包清单版本。否则旧客户端请求 latest 下的旧文件名会收到 404。首次新版也可先不设为 latest，此时新版 latest 检查尚不可用，不能宣称更新线路已上线。2.0.4 已按保留旧元数据的方案发布并验证，后续发布继续遵守此规则；见 [发布记录](releases/2.0.4.md)。
 
 受控 E2E 只允许在 `BuildConfig.DEBUG` 且显式传入 `-PupdateTestBase`/`-PupdateTestPublicKey` 的 debug 包中使用，测试源不能进入 release；具体边界见 [应用内更新说明](updates/README.md)。release 的 `UPDATE_TEST_*` 字段为空，且 `BuildConfig.DEBUG=false`，不能借此降低 release TLS 策略。
 

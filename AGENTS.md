@@ -36,9 +36,9 @@
 
 ## 当前发布
 
-当前开发应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`，旧 `update.json` / `update.sig` 及已发布资产保持原样。上文旧标识、下文历史发布记录均保留其当时状态。
+当前发布应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，2.0.4 / versionCode 25 已于 2026-11-12 发布，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`；新版设为 latest 时须原字节附带旧 `update.json` / `update.sig`，保持旧线路指向 2.0.3，旧 Release 资产不变。发布记录见 `docs/releases/2.0.4.md`。上文旧标识、下文历史发布记录均保留其当时状态。
 
-main 的下一版本开发代码为 **2.0.4 / versionCode 25**，整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐及校园卡原生本人流水；尚未发布。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
+本次 **2.0.4 / versionCode 25** 整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐、校园卡原生本人流水及古镇口空闲教室卓越 A/B 筛选。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
 
 当前正式版为 **2.0.3 / versionCode 24**，包含就地引导、空闲教室自动查询、本机待办提醒、首页摘要、四项整页滑动导航，以及唐岛湾按时段找座位/个人隐藏。当前导航为「首页 / 课表 / 待办 / 专注」，胶囊跟随 Pager 进度；上文 M5 三 tab 记录保留为历史。最新图书馆设计与验证见 `docs/design/2.0.3-library-time-search.md`、`docs/releases/2.0.3-library-time-search.md`；正式发布记录见 `docs/releases/2.0.3.md`，APK 与签名更新四件套同批发布；图书馆新增筛选和隐藏本轮仅适配唐岛湾。热力图改造属于另一个项目，本项目保持原样。
 

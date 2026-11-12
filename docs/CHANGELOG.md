@@ -1,8 +1,8 @@
 # 更新与验证
 
-## 2.0.4 可选独立安装 · 网盘提供
+## 2.0.4 可选独立安装 · 2026-11-12
 
-- 通过 [百度网盘](https://pan.baidu.com/s/15ulVIs3PrZ2gQlc1gmE9vA?pwd=tvdv) 提供新版，提取码 `tvdv`。旧版可继续使用，旧版数据无法迁移到新版，请按需更新；新旧包可并存。见 [安装公告](releases/2.0.4-notice.md)。尚未创建 2.0.4 GitHub Release，旧版更新资产保持原样。
+- 已发布 [2.0.4 GitHub Release](https://github.com/dlam12138/UPCPocket/releases/tag/v2.0.4)，[百度网盘](https://pan.baidu.com/s/15ulVIs3PrZ2gQlc1gmE9vA?pwd=tvdv) 为备用下载，提取码 `tvdv`。旧版可继续使用，旧版数据无法迁移到新版，请按需更新；新旧包可并存。见 [安装公告](releases/2.0.4-notice.md) 与 [发布记录](releases/2.0.4.md)。
 
 - 新版独立应用标识 `com.upcpocket.next`，显示名“UPC Pocket 新版”，沿用源码命名空间；与旧包数据、桌面组件分离并可并存。使用独立长期 Release 签名和 `update-next.json` / `update-next.sig` 更新线，不覆盖旧版更新资产、不执行数据迁移。
 
@@ -15,7 +15,7 @@
 - 古镇口东区与求是房间页对齐唐岛湾，默认按座位选；新增按时段找、个人隐藏、撤销及房间隐藏管理。复用生产时段控件、候选行、底部摘要和隐藏面板。
 - 分别核对超星 seat / seatengine 官方完整时段占用查询；不套用 libseat 时间 ID、分页或当前地图状态。严格处理异常、禁用座位与不完整集合。
 - 预检及异步结果绑定账号、会话、房间与查询代次；POST 边界登记防重，结果未知在同进程同会话内跨页面/新 ViewModel 禁止重复提交。预检失败或验证码不登记已发送。
-- versionName 2.0.4 / versionCode 25；通过网盘提供可选独立安装，GitHub 正式 Release 仍为 2.0.3。旧版数据无法迁移，请按需更新。没有真实预约、取消或签到验证，不修改旧版线上更新资产。历史候选验收见 [候选记录](releases/2.0.4-chaoxing-library-parity.md)。
+- versionName 2.0.4 / versionCode 25；可选独立安装。发布新版四件套，并原字节附带旧版 `update.json` / `update.sig`，使 latest 下旧线路仍返回 2.0.3；旧 Release 资产不变。没有真实预约、取消或签到验证。历史候选验收见 [候选记录](releases/2.0.4-chaoxing-library-parity.md)。
 
 ## 2.0.3 正式版 · 2026-11-07
 

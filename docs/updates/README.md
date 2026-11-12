@@ -68,7 +68,7 @@ $env:UPCPOCKET_UPDATE_PRIVATE_KEY = '<仓库外私钥路径>'
 
 4. 只有人工确认后才把四个文件上传到同一个 GitHub Release；**不得先公开再原地替换资产**。修复必须提升 versionCode 后重发。不上传私钥、GitHub token 或 R8 mapping。
 
-5. 同仓库新版 Release 若设为 latest，除新版四件套，还必须原字节附带已发布 2.0.3 的 `update.json` / `update.sig`，继续指向 `v2.0.3` 的原 APK 资产；不重写、不重签、不提高旧包清单版本。旧客户端固定请求 latest 下这两个旧文件名，缺失会返回 404。首次新版也可先不设为 latest，此时新版 latest 检查尚不可用，不宣称已上线。本轮仅本地准备，未发布。
+5. 同仓库新版 Release 若设为 latest，除新版四件套，还必须原字节附带已发布 2.0.3 的 `update.json` / `update.sig`，继续指向 `v2.0.3` 的原 APK 资产；不重写、不重签、不提高旧包清单版本。旧客户端固定请求 latest 下这两个旧文件名，缺失会返回 404。首次新版也可先不设为 latest，此时新版 latest 检查尚不可用，不宣称已上线。2.0.4 已按保留旧元数据的方案公开发布，两条更新线路均已通过官方与主加速下载验签；见 [发布记录](../releases/2.0.4.md)。
 
 ## 受控 E2E（仅 debug）
 
