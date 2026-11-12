@@ -36,6 +36,8 @@
 
 ## 当前发布
 
+main 的下一版本开发代码为 **2.0.4 / versionCode 25**，整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐及校园卡原生本人流水；尚未发布。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
+
 当前正式版为 **2.0.3 / versionCode 24**，包含就地引导、空闲教室自动查询、本机待办提醒、首页摘要、四项整页滑动导航，以及唐岛湾按时段找座位/个人隐藏。当前导航为「首页 / 课表 / 待办 / 专注」，胶囊跟随 Pager 进度；上文 M5 三 tab 记录保留为历史。最新图书馆设计与验证见 `docs/design/2.0.3-library-time-search.md`、`docs/releases/2.0.3-library-time-search.md`；正式发布记录见 `docs/releases/2.0.3.md`，APK 与签名更新四件套同批发布；图书馆新增筛选和隐藏本轮仅适配唐岛湾。热力图改造属于另一个项目，本项目保持原样。
 
 2026-11-06 用户验收通过课表修复、诊断导出与应用内更新，以 **2.0.2 / versionCode 23** 正式发布。2.0.1（21/22）为本地复测候选，不作为独立正式 Release。所有已提交支线成果合入 main；历史阶段文档保留当时状态。
