@@ -45,6 +45,30 @@ class CardHistoryProtocolTest {
         assertEquals("演示消费", result.rows[1].title)
     }
 
+    @Test fun `integral decimal amounts keep exact fen without rounding`() {
+        val result = CardHistoryProtocol.parseRows(
+            sample.replace("\"tranamt\":5000,", "\"tranamt\":5000.0,").replace("\"tranamt\":820,", "\"tranamt\":820.00,"),
+        )
+        assertEquals(5000L, result.rows[0].amountFen)
+        assertEquals(-820L, result.rows[1].amountFen)
+    }
+
+    @Test(expected = IOException::class) fun `fractional amounts are rejected rather than rounded`() {
+        CardHistoryProtocol.parseRows(sample.replace("\"tranamt\":820,", "\"tranamt\":820.5,"))
+    }
+
+    @Test(expected = IOException::class) fun `unknown direction is rejected instead of becoming an expense`() {
+        CardHistoryProtocol.parseRows(sample.replace("\"typeFrom\":\"2\",", "\"typeFrom\":\"3\","))
+    }
+
+    @Test(expected = IOException::class) fun `zero direction is rejected instead of becoming an expense`() {
+        CardHistoryProtocol.parseRows(sample.replace("\"typeFrom\":\"2\",", "\"typeFrom\":\"0\","))
+    }
+
+    @Test(expected = IOException::class) fun `blank direction is rejected instead of becoming an expense`() {
+        CardHistoryProtocol.parseRows(sample.replace("\"typeFrom\":\"2\",", "\"typeFrom\":\"\",",))
+    }
+
     @Test(expected = IOException::class) fun `missing amount never becomes zero`() {
         CardHistoryProtocol.parseRows(sample.replace("\"tranamt\":820,", ""))
     }

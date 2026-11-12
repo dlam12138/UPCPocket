@@ -52,6 +52,20 @@ internal object CardHistoryProtocol {
         if (ids != setOf(expected)) throw IOException("N-ID：登录账号与饭卡页学号不一致，请核对后重试")
     }
 
+    /**
+     * Fen amounts are integers; some deployments serialize them as `820.0`.
+     * Accept only exactly integral values so an unexpected unit is never silently rounded.
+     */
+    fun fen(element: JsonElement?): Long? {
+        val primitive = element as? JsonPrimitive ?: return null
+        if (primitive is JsonNull) return null
+        val text = primitive.content.trim()
+        val whole = text.substringBefore('.')
+        val fraction = text.substringAfter('.', "")
+        if (whole.isEmpty() || fraction.any { it != '0' }) return null
+        return whole.toLongOrNull()
+    }
+
     fun parseRows(body: String): CardHistoryPage {
         val info = data(body)
         val records = info["records"] as? JsonArray ?: throw IOException("N-ROWS：流水结构待核对")
@@ -62,14 +76,17 @@ internal object CardHistoryProtocol {
         val rows = records.map { value ->
             val row = value as? JsonObject ?: throw IOException("N-ROW：流水格式待核对")
             fun field(key: String) = (row[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
-            val amount = field("tranamt").toLongOrNull()?.takeIf { it >= 0 }
+            val amount = fen(row["tranamt"])?.takeIf { it >= 0 }
                 ?: throw IOException("N-MONEY：金额单位待核对")
-            val type = field("typeFrom").takeIf { it.isNotBlank() }
-                ?: throw IOException("N-TYPE：收支方向待核对")
+            val signed = when (field("typeFrom")) {
+                "1" -> amount
+                "2" -> -amount
+                else -> throw IOException("N-TYPE：收支方向待核对")
+            }
             val id = field("orderId").takeIf { it.isNotBlank() } ?: throw IOException("N-ORDER：交易标识缺失")
             val time = field("jndatetimeStr").ifBlank { field("effectdateStr") }
             if (time.isBlank()) throw IOException("N-TIME：交易时间缺失")
-            CardHistoryRow(id, field("resume").ifBlank { "校园卡交易" }, time, if (type == "1") amount else -amount)
+            CardHistoryRow(id, field("resume").ifBlank { "校园卡交易" }, time, signed)
         }
         if (rows.size > total || rows.map { it.id }.distinct().size != rows.size || (rows.isNotEmpty() && pages == 0))
             throw IOException("N-PAGE：流水分页数据不一致")

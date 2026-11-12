@@ -52,6 +52,21 @@ class UpcCardLoginFlowTest {
         assertFalse(requests.last().body.orEmpty().contains("fixture-password"))
     }
 
+    @Test fun `rejected password is submitted once and never retried`() {
+        val requests = mutableListOf<UpcAuthHttpRequest>()
+        val replies = ArrayDeque(listOf(response(302, location = cas), response(body = html), response(body = html)))
+        val flow = UpcCardLoginFlow(object : UpcAuthTransport {
+            override fun execute(request: UpcAuthHttpRequest): UpcAuthHttpResponse {
+                requests += request; return replies.removeFirst()
+            }
+        })
+        val form = flow.begin()
+        assertThrows(CardCasRejected::class.java) { flow.login(form, "2099999999", "fixture-password", "") }
+        assertEquals(3, requests.size)
+        assertEquals(1, requests.count { it.method == "POST" })
+        assertEquals(cas, requests.single { it.method == "POST" }.url)
+    }
+
     @Test fun `external redirect stops before any request to external host`() {
         var calls = 0
         val flow = UpcCardLoginFlow(object : UpcAuthTransport {

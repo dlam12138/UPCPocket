@@ -25,9 +25,12 @@
 
 业务使用 `synjones-auth` 请求头与 `synAccessSource=h5`。分页为 `size/current`；月范围为 `timeFrom/timeTo`。解析 `records/total/pages`，交易字段为 `orderId/resume/tranamt/typeFrom/jndatetimeStr`（或 `effectdateStr`）。不提交其他账号标识来查询他人流水。
 
+同一 Synjones `berserker-search` 平台的多份公开客户端与官方新校园卡前端均以 `typeFrom = "1"` 表示收入、`"2"` 表示支出。本项目只接受这两个已知值；缺失或其他值直接报 `N-TYPE`，不把未知方向默认当作支出。`tranamt` 与汇总 `income/expenses` 以整数分保存，可无损接受 `820` 或 `820.0` 这类整数写法，小数分或其他单位拒绝而不是四舍五入。
+
 ## 验证与边界
 
 - 独立客户端的正常无验证码登录及本人流水已由用户真机验证；这不能替代移植后的本项目真机验收。
-- 本项目验证：`:core:upc-auth:testDebugUnitTest` 49 项通过；`:feature:card:testDebugUnitTest` 71 项通过；`:app:testDebugUnitTest` 99 项中 98 项通过、1 项既有真实更新联网测试跳过。`:app:assembleDebug` 和 `checkModuleBoundaries` 通过。所有新增回放样本为合成数据，不依赖真实账号或校园网络。
-- 本项目移植后的真机登录、深色/大字体视觉与验证码分支尚未验收。验证码/二次验证暂提示无法完成，不自动重试密码。
+- 本项目验证：`:core:upc-auth:testDebugUnitTest` 54 项通过；`:feature:card:testDebugUnitTest` 78 项通过；`:app:testDebugUnitTest` 99 项中 98 项通过、1 项既有真实更新联网测试跳过。`checkModuleBoundaries` 与 R8/resource shrink Release 构建通过；合成数据覆盖已知/未知收支方向、整数与小数金额、单次密码提交、验证码提前停止和迟到结果隔离。所有新增回放样本为合成数据，不依赖真实账号或校园网络。
+- 2026-11-12 在无既有账号的隔离模拟器上，经正常账号设置录入用户授权的本机学校账号，使用 R8 Release 完成本人只读验收：CAS 登录与 `/berserker-base/user` 本人核验通过；全部日期首屏 50/850 条，手动“加载更多”后 100/850 条；2026-10 按月查询 50/103 条，汇总可用；该月有界“加载全部”完成 103/103 条且不显示“加载更多”；搜索零匹配为 0 行、清空后恢复；1.5× 字体下深浅色均显示真实数据行、汇总与遮挡后的账号，文本未越界；删除账号后页面回到“尚未设置可用学校账号”，查询/加载全部均禁用。验收后已删除账号，未卸载应用、未清除既有数据。
+- 真实验收中，空闲后首个只读请求偶尔返回 NETWORK（“学校服务暂时无法连接”），手动再查即成功；客户端保持 `retryOnConnectionFailure(false)`，不自动重试。本次账号未加载全部 850 条，只做了上述单月 3 页的有界“加载全部”。验证码/二次验证未在真实登录中出现，只由合成测试覆盖“停止且不提交/不重试密码”；改密、换号和迟到结果隔离由合成测试覆盖，未用真实账号制造这些状态。
 - 会话和列表仅在内存中保留，没有离线流水、后台轮询或写操作。本改动只增加流水能力，不代表新系统的全部功能均已接入。

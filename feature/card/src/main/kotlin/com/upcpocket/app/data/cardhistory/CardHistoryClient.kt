@@ -97,7 +97,7 @@ class CardHistoryClient(
         val active = requireSession()
         val generation = epoch.get()
         val data = CardHistoryProtocol.data(get("/berserker-search/statistics/turnover/count?" + query(month, 1, 50), active))
-        fun amount(key: String): Long = (data[key] as? JsonPrimitive)?.longOrNull?.takeIf { it >= 0 }
+        fun amount(key: String): Long = CardHistoryProtocol.fen(data[key])?.takeIf { it >= 0 }
             ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
         val result = CardHistorySummary(amount("income"), amount("expenses"))
         checkCurrent(active, generation)

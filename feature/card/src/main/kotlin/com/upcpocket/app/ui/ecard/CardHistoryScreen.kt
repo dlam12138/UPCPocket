@@ -3,6 +3,8 @@ package com.upcpocket.app.ui.ecard
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -17,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** The host already owns native, encrypted school-account settings; this page never reads passwords. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettings: () -> Unit) {
     val owner by client.studentIdentity.collectAsStateWithLifecycle()
@@ -70,9 +73,17 @@ fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettin
     val visible = bound?.takeIf { client.isCurrent(it.owner) && it.month == month }
     val shown = if (visible == null) emptyList() else rows.filter { search.isBlank() || it.title.contains(search.trim(), true) || it.time.contains(search.trim()) }
     fun money(fen: Long) = BigDecimal.valueOf(fen, 2).toPlainString()
-    Scaffold { padding ->
+    Scaffold(topBar = {
+        TopAppBar(
+            title = { Text("交易流水") },
+            navigationIcon = {
+                IconButton(onClick = back) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                }
+            },
+        )
+    }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            item { Row { TextButton(onClick = back) { Text("‹ 返回") }; Text("交易流水", style = MaterialTheme.typography.titleLarge) } }
             item {
                 Text(owner?.studentId?.let(AccountMask::mask) ?: "尚未设置可用学校账号")
                 if (!available) Button(onClick = accountSettings) { Text("前往学校账号设置") }

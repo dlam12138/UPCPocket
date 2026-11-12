@@ -75,6 +75,26 @@ class CardHistoryClientTest {
         catch (error: CardHistoryException) { assertEquals(CardHistoryFailure.ACCOUNT_CHANGED, error.reason) }
         assertFalse(client.hasSession())
     }
+    @Test fun `summary accepts integral decimal fen without rounding`() = runTest {
+        val account = Account(); val client = client(account) { request ->
+            if (request.url.encodedPath == "/berserker-base/user") user
+            else """{"code":200,"data":{"income":5000.0,"expenses":820.00}}"""
+        }
+        client.login()
+        val result = client.summary(YearMonth.of(2026, 2))
+        assertEquals(5000L, result.incomeFen)
+        assertEquals(820L, result.expenseFen)
+    }
+
+    @Test fun `summary rejects fractional fen instead of rounding`() = runTest {
+        val account = Account(); val client = client(account) { request ->
+            if (request.url.encodedPath == "/berserker-base/user") user else """{"code":200,"data":{"income":5000.5,"expenses":820}}"""
+        }
+        client.login()
+        try { client.summary(); fail("Expected protocol error") }
+        catch (error: CardHistoryException) { assertEquals(CardHistoryFailure.PROTOCOL, error.reason) }
+    }
+
     @Test fun `expired envelope clears session instead of returning empty history`() = runTest {
         val account = Account(); val client = client(account) { request ->
             if (request.url.encodedPath == "/berserker-base/user") user else """{"code":401,"data":{}}"""
