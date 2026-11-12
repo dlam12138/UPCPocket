@@ -68,6 +68,12 @@ import com.upcpocket.app.widget.WidgetWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator
+import com.upcpocket.app.data.cardhistory.CardHistoryException
+import com.upcpocket.app.data.cardhistory.CardHistoryFailure
+import com.upcpocket.app.upcauth.UpcCardAuthFailure
+import com.upcpocket.app.upcauth.UpcCardAuthResult
+import com.upcpocket.app.upcauth.UpcCardAuthenticator
 
 /**
  * 宿主手动装配容器。
@@ -142,6 +148,7 @@ object AppGraph {
         // 旧队列在写入前被丢弃。清理失败不能阻塞退出。
         runCatching { diagnostics.clearForAccountChange() }
         var failure: AccountInvalidationFailure? = null
+        activePlugins.capability(CardCapabilities.history)?.clearSession()
         val library = activePlugins.capability(LibraryCapabilities.seat)
         if (library != null) {
             if (!library.signOutForAccountChange()) {
@@ -210,6 +217,19 @@ object AppGraph {
             account = account,
             inputStore = cardInputRepository,
             onSnapshotChanged = { WidgetUpdates.requestCard(appContext) },
+            historyAuthenticator = CardHistoryAuthenticator { identity ->
+                when (val result = UpcCardAuthenticator(account).authenticate(identity.accountId, identity.credentialGeneration.value)) {
+                    is UpcCardAuthResult.Success -> result.token
+                    is UpcCardAuthResult.Failure -> throw CardHistoryException(when (result.reason) {
+                        UpcCardAuthFailure.ACCOUNT_CHANGED -> CardHistoryFailure.ACCOUNT_CHANGED
+                        UpcCardAuthFailure.ACCOUNT_UNAVAILABLE -> CardHistoryFailure.ACCOUNT_UNAVAILABLE
+                        UpcCardAuthFailure.INTERACTION_REQUIRED -> CardHistoryFailure.INTERACTION_REQUIRED
+                        UpcCardAuthFailure.INVALID_CREDENTIALS -> CardHistoryFailure.INVALID_CREDENTIALS
+                        UpcCardAuthFailure.NETWORK_UNAVAILABLE, UpcCardAuthFailure.TLS_ERROR -> CardHistoryFailure.NETWORK
+                        UpcCardAuthFailure.PROTOCOL_ERROR -> CardHistoryFailure.PROTOCOL
+                    })
+                }
+            },
         )
     }
 
