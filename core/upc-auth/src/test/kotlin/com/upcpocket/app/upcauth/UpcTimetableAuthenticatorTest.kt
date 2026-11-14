@@ -45,7 +45,10 @@ class UpcTimetableAuthenticatorTest {
         val transport = FakeTransport { request ->
             when {
                 request.method == "GET" && request.url == UpcTimetableAuthEndpoints.LOGIN_URL ->
-                    htmlResponse(formPage(action = UpcTimetableAuthEndpoints.LOGIN_URL))
+                    htmlResponse(
+                        formPage(action = UpcTimetableAuthEndpoints.LOGIN_URL) +
+                            "<nav>扫码登录 验证码登录</nav><form style=\"display:none\"><input name=\"username_smstoken\"></form>",
+                    )
                 request.method == "POST" -> {
                     posts++
                     htmlResponse(
@@ -60,6 +63,51 @@ class UpcTimetableAuthenticatorTest {
         val result = authenticator(transport).authenticate(accountId, 3)
         assertEquals(UpcAuthFailure.INVALID_CREDENTIALS, (result as UpcAuthResult.Failure).reason)
         assertEquals(1, posts)
+    }
+
+    @Test
+    fun activeSmsFormRequiresInteractionWithoutSubmittingPassword() = runTest {
+        val smsPage = """
+            <form action="${UpcTimetableAuthEndpoints.LOGIN_URL}">
+              <input name="type" value="username_smstoken">
+              <input name="username_smstoken">
+            </form>
+        """.trimIndent()
+        val transport = FakeTransport { request ->
+            if (request.method == "GET") htmlResponse(smsPage)
+            else error("SMS 页面不得提交密码")
+        }
+
+        val result = authenticator(transport).authenticate(accountId, 3)
+        assertEquals(UpcAuthFailure.INTERACTION_REQUIRED, (result as UpcAuthResult.Failure).reason)
+        assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, result.interactionUrl)
+        assertEquals(0, transport.posts)
+    }
+
+    @Test
+    fun deniedOrdinaryLoginFormStillOffersWebLoginWithoutRetry() = runTest {
+        for (deniedMethod in listOf("GET", "POST")) {
+            val transport = FakeTransport { request ->
+                val form = formPage(action = UpcTimetableAuthEndpoints.LOGIN_URL)
+                when {
+                    request.method == "GET" && deniedMethod == "GET" ->
+                        response(403, mapOf("Content-Type" to "text/html; charset=utf-8"), form)
+                    request.method == "GET" -> htmlResponse(form)
+                    request.method == "POST" ->
+                        response(401, mapOf("Content-Type" to "text/html; charset=utf-8"), form)
+                    else -> error("unexpected request")
+                }
+            }
+
+            val result = authenticator(transport).authenticate(accountId, 3)
+            assertEquals(
+                "denied on $deniedMethod",
+                UpcAuthFailure.INTERACTION_REQUIRED,
+                (result as UpcAuthResult.Failure).reason,
+            )
+            assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, result.interactionUrl)
+            assertEquals(1, transport.posts)
+        }
     }
 
     @Test
@@ -281,7 +329,14 @@ class UpcTimetableAuthenticatorTest {
           <input name="type" value="username_password">
           <input name="_eventId" value="submit">
         </form>
-        <div id="captchaParent" style="${if (captcha) "display:block" else "display:none"}">captcha</div>
+        <div id="captchaParent" style="${if (captcha) "display:block" else "display:none"}">
+          ${if (captcha) "" else "<input type=\"hidden\" name=\"captcha\">"}
+        </div>
+        <!-- <input name="captcha"> -->
+        <script>
+          const captchaSelector = "input[name='captcha']";
+          config.captcha = null; config.captcha = false; config.captcha = undefined;
+        </script>
         </body></html>
     """.trimIndent()
 

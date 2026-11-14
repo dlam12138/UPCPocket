@@ -37,11 +37,11 @@ class HostPluginUiTest {
         val entries = AppGraph.ui.entriesFor(UiSurface.HOME_SERVICES)
 
         assertEquals(
-            listOf("power.electricity", "classroom.free", "library.home"),
+            listOf("power.electricity", "classroom.free", "library.home", "shiguang.home", "serviceportal.home"),
             entries.map { it.entryId.value },
         )
         assertEquals(
-            listOf("电费", "空闲教室", "图书馆"),
+            listOf("电费", "空闲教室", "图书馆", "石光", "e站通"),
             entries.map { it.title },
         )
         assertEquals(
@@ -49,11 +49,13 @@ class HostPluginUiTest {
                 "唐岛湾 / 古镇口",
                 "按日期与节次",
                 "三馆座位",
+                "活动与学时",
+                "办事服务",
             ),
             entries.map { it.subtitle },
         )
         assertEquals(
-            listOf("power.electricity", "classroom.free", "library.home"),
+            listOf("power.electricity", "classroom.free", "library.home", "shiguang.home", "serviceportal.home"),
             entries.map { it.route?.value },
         )
         entries.forEach { entry ->
@@ -165,12 +167,14 @@ class HostPluginUiTest {
                 "focus.stats",
                 "timetable.week",
                 "todo.list",
+                "shiguang.home",
+                "serviceportal.home",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),
         )
         assertTrue(
             AppGraph.ui.pages.all {
-                it.pluginId.value in setOf("card", "power", "classroom", "library", "focus", "timetable", "todo")
+                it.pluginId.value in setOf("card", "power", "classroom", "library", "focus", "timetable", "todo", "shiguang", "serviceportal")
             },
         )
     }

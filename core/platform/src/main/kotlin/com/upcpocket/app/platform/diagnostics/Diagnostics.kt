@@ -13,6 +13,8 @@ enum class DiagnosticModule {
     APP,
     TIMETABLE,
     LIBRARY,
+    SERVICE_PORTAL,
+    SHIGUANG,
     CLASSROOM,
     CARD,
     POWER,
@@ -21,8 +23,10 @@ enum class DiagnosticModule {
 
 enum class DiagnosticAction {
     AUTH_START,
+    AUTH_STAGE,
     AUTH_COMPLETE,
     AUTH_INTERACTION,
+    AUTH_STOP,
     WEBVIEW_START,
     WEBVIEW_FINISH,
     WEBVIEW_MAIN_FRAME_ERROR,
@@ -147,6 +151,75 @@ enum class DiagnosticPhase {
     CACHE,
     SESSION,
     AUTH,
+    CREDENTIAL_RESTORE,
+    ENTRY_GET,
+    CAS_GET,
+    CAS_FORM,
+    CAS_POST,
+    CAS_RETURN,
+    BUSINESS_CALLBACK,
+    BUSINESS_SESSION,
+    PERSONAL_VERIFY,
+    SESSION_ADOPT,
+    WEBVIEW_NAVIGATION,
+    WEBVIEW_CALLBACK,
+}
+
+enum class DiagnosticCredentialState {
+    AVAILABLE,
+    UNAVAILABLE,
+    CLEANUP_BLOCKED,
+    GENERATION_CHANGED,
+    CLEANUP_STARTED,
+    CLEANUP_COMPLETE,
+    CLEANUP_FAILED,
+}
+
+enum class DiagnosticChallengeType {
+    NONE,
+    CAPTCHA,
+    SECOND_FACTOR,
+    PASSWORD_FORM,
+    UNKNOWN,
+}
+
+enum class DiagnosticChallengeEvidence {
+    CONFIRMED,
+    ABSENT,
+    UNKNOWN,
+}
+
+enum class DiagnosticServiceParameter {
+    NOT_APPLICABLE,
+    MISSING,
+    PRESENT,
+    MATCH,
+    MISMATCH,
+    DUPLICATE,
+    UNKNOWN,
+}
+
+enum class DiagnosticCallbackState {
+    NOT_APPLICABLE,
+    ACCEPTED,
+    REJECTED,
+    CONSUMED,
+    NOT_CONSUMED,
+    STALE,
+}
+
+enum class DiagnosticNavigationFrame {
+    MAIN,
+    SUB,
+    UNKNOWN,
+}
+
+enum class DiagnosticBindingSource {
+    NONE,
+    PASSWORD,
+    BOUND_SESSION,
+    VERIFIED_WEB,
+    UNKNOWN,
 }
 
 /**
@@ -216,6 +289,62 @@ enum class DiagnosticDetail {
     COMPAT_DUPLICATE_PERIODS,
     COMPAT_INDEX_TERM_SKIPPED,
     COMPAT_INDEX_CURRENT_IGNORED,
+    CREDENTIAL_RECOVERED,
+    CREDENTIAL_UNAVAILABLE,
+    CREDENTIAL_CLEANUP_BLOCKED,
+    CREDENTIAL_GENERATION_CHANGED,
+    CREDENTIAL_CLEANUP_STARTED,
+    CREDENTIAL_CLEANUP_COMPLETE,
+    CREDENTIAL_CLEANUP_FAILED,
+    CAS_FORM_ACCEPTED,
+    CAS_FORM_REJECTED,
+    CAS_FORM_NOT_FOUND,
+    CAS_FORM_PASSWORD_FIELD_MISSING,
+    CAS_FORM_TYPE_FIELD_MISSING,
+    CAS_FORM_TYPE_REJECTED,
+    CAS_FORM_EVENT_FIELD_MISSING,
+    CAS_FORM_EVENT_REJECTED,
+    CAS_FORM_EXECUTION_MISSING,
+    CAS_FORM_EXECUTION_INVALID,
+    CAS_FORM_ACTION_REJECTED,
+    CAS_GET_401_FORM,
+    CAS_GET_403_FORM,
+    CAS_CHALLENGE_CONFIRMED,
+    CAS_CHALLENGE_ABSENT,
+    CAS_POST_EXPLICIT_REJECTION,
+    CAS_POST_UNKNOWN_REJECTION,
+    CAS_RATE_LIMITED,
+    CAS_SERVER_ERROR,
+    CAS_CALLBACK_ACCEPTED,
+    CAS_CALLBACK_REJECTED,
+    SERVICE_PARAMETER_MISSING,
+    SERVICE_PARAMETER_MATCH,
+    SERVICE_PARAMETER_MISMATCH,
+    SERVICE_PARAMETER_DUPLICATE,
+    BUSINESS_CALLBACK_ACCEPTED,
+    BUSINESS_CALLBACK_REJECTED,
+    PERSONAL_IDENTITY_VERIFIED,
+    PERSONAL_IDENTITY_UNVERIFIED,
+    PERSONAL_IDENTITY_MISMATCH,
+    SESSION_REUSED,
+    SESSION_ADOPTED,
+    SESSION_CLEARED,
+    SESSION_REJECTED,
+    WEBVIEW_NAVIGATION_ALLOWED,
+    WEBVIEW_NAVIGATION_BLOCKED,
+    WEBVIEW_NAVIGATION_UPGRADED,
+    WEBVIEW_CALLBACK_CONSUMED,
+    WEBVIEW_CALLBACK_REJECTED,
+    SERVICE_SESSION_MIME_REJECTED,
+    SERVICE_SESSION_BODY_MALFORMED,
+    SERVICE_SESSION_SCHEMA_REJECTED,
+    SERVICE_SESSION_ENVELOPE_ACCEPTED,
+    SERVICE_SESSION_INTERACTION_REQUIRED,
+    SERVICE_SESSION_SERVER_REJECTED,
+    SERVICE_SESSION_COOKIE_NOT_SENT,
+    SHIGUANG_ACTIVITIES_QUERY,
+    SHIGUANG_MINE_QUERY,
+    SHIGUANG_DETAIL_QUERY,
 }
 
 /**
@@ -241,6 +370,15 @@ data class DiagnosticEvent(
     val bodyType: DiagnosticBodyType? = null,
     val responseBytes: Int? = null,
     val itemCount: Int? = null,
+    /** 0 or 1 only; never the submitted value. */
+    val passwordSubmitted: Int? = null,
+    val credentialState: DiagnosticCredentialState? = null,
+    val challengeType: DiagnosticChallengeType? = null,
+    val challengeEvidence: DiagnosticChallengeEvidence? = null,
+    val serviceParameter: DiagnosticServiceParameter? = null,
+    val callbackState: DiagnosticCallbackState? = null,
+    val navigationFrame: DiagnosticNavigationFrame? = null,
+    val bindingSource: DiagnosticBindingSource? = null,
     val timestampEpochMillis: Long = System.currentTimeMillis(),
 ) {
     init {
@@ -252,6 +390,9 @@ data class DiagnosticEvent(
             "responseBytes out of range"
         }
         require(itemCount == null || itemCount in 0..MAX_ITEM_COUNT) { "itemCount out of range" }
+        require(passwordSubmitted == null || passwordSubmitted in 0..1) {
+            "passwordSubmitted must be 0 or 1"
+        }
         require(operationId == null || OPERATION_ID.matches(operationId)) {
             "operationId must be a short lowercase hex id"
         }
@@ -264,10 +405,11 @@ data class DiagnosticEvent(
 
     companion object {
         /**
-         * Additive schema: schema 2 added phase/detail/responseBytes/itemCount;
-         * schema 3 adds fixed media/body categories for response diagnosis.
+         * Additive schema: schema 4 adds fixed authentication stages, reasons and
+         * evidence fields. Older JSONL records remain readable and are re-exported
+         * without interpreting or rewriting fields that the older schema did not know.
          */
-        const val SCHEMA_VERSION = 3
+        const val SCHEMA_VERSION = 4
         const val MAX_FRAMES = 8
         const val MAX_DURATION_MS = 3_600_000L
         const val MAX_DIMENSION_DP = 20_000
@@ -281,6 +423,20 @@ data class DiagnosticEvent(
 /** Host-provided sink. Implementations must enqueue and must not block callers. */
 interface DiagnosticSink {
     fun record(event: DiagnosticEvent)
+}
+
+/** Optional sink contract for dropping diagnostics from work started before an account clear. */
+interface EpochBoundDiagnosticSink : DiagnosticSink {
+    fun captureEpoch(): Long
+    fun record(event: DiagnosticEvent, expectedEpoch: Long?)
+}
+
+/** Explicit operation context passed across one authentication attempt. */
+data class DiagnosticOperation internal constructor(
+    val id: String,
+    val epochToken: Long?,
+) {
+    override fun toString(): String = "DiagnosticOperation(id=$id)"
 }
 
 /**
@@ -297,6 +453,12 @@ object Diagnostics {
 
     fun newOperationId(): String =
         ThreadLocalRandom.current().nextInt().toUInt().toString(16).padStart(8, '0')
+
+    fun beginOperation(): DiagnosticOperation {
+        val activeSink = sink
+        val epoch = (activeSink as? EpochBoundDiagnosticSink)?.captureEpoch()
+        return DiagnosticOperation(newOperationId(), epoch)
+    }
 
     /**
      * Records only if a host sink exists and the fixed event model accepts all
@@ -321,8 +483,17 @@ object Diagnostics {
         bodyType: DiagnosticBodyType? = null,
         responseBytes: Int? = null,
         itemCount: Int? = null,
+        passwordSubmitted: Int? = null,
+        credentialState: DiagnosticCredentialState? = null,
+        challengeType: DiagnosticChallengeType? = null,
+        challengeEvidence: DiagnosticChallengeEvidence? = null,
+        serviceParameter: DiagnosticServiceParameter? = null,
+        callbackState: DiagnosticCallbackState? = null,
+        navigationFrame: DiagnosticNavigationFrame? = null,
+        bindingSource: DiagnosticBindingSource? = null,
+        operation: DiagnosticOperation? = null,
     ): Boolean {
-        if (sink == null) return false
+        val activeSink = sink ?: return false
         val event = runCatching {
             DiagnosticEvent(
                 module = module,
@@ -336,17 +507,29 @@ object Diagnostics {
                 heightDp = heightDp,
                 exceptionType = exceptionType,
                 frames = frames,
-                operationId = operationId,
+                operationId = operation?.id ?: operationId,
                 phase = phase,
                 detail = detail,
                 mediaType = mediaType,
                 bodyType = bodyType,
                 responseBytes = responseBytes,
                 itemCount = itemCount,
+                passwordSubmitted = passwordSubmitted,
+                credentialState = credentialState,
+                challengeType = challengeType,
+                challengeEvidence = challengeEvidence,
+                serviceParameter = serviceParameter,
+                callbackState = callbackState,
+                navigationFrame = navigationFrame,
+                bindingSource = bindingSource,
             )
         }.getOrNull() ?: return false
         return runCatching {
-            sink?.record(event)
+            if (activeSink is EpochBoundDiagnosticSink) {
+                activeSink.record(event, operation?.epochToken)
+            } else {
+                activeSink.record(event)
+            }
             true
         }.getOrDefault(false)
     }
@@ -361,6 +544,7 @@ object Diagnostics {
         operationId: String? = null,
         phase: DiagnosticPhase? = null,
         detail: DiagnosticDetail? = null,
+        operation: DiagnosticOperation? = null,
     ): Boolean = record(
         module = module,
         action = action,
@@ -372,6 +556,7 @@ object Diagnostics {
         operationId = operationId,
         phase = phase,
         detail = detail,
+        operation = operation,
     )
 
     fun classify(failure: Throwable): DiagnosticExceptionType = when {

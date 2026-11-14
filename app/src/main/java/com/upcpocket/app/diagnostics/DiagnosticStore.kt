@@ -12,7 +12,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
-import com.upcpocket.app.platform.diagnostics.DiagnosticSink
+import com.upcpocket.app.platform.diagnostics.EpochBoundDiagnosticSink
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -86,7 +86,7 @@ class DiagnosticStore(
     private val maxExportBytes: Long = MAX_EXPORT_BYTES,
     /** Test seam; production always uses the app's scoped FileProvider. */
     private val uriFactory: ((File) -> Uri)? = null,
-) : DiagnosticSink {
+) : EpochBoundDiagnosticSink {
 
     private val appContext = context.applicationContext
     private val enabled = AtomicBoolean(true)
@@ -118,13 +118,19 @@ class DiagnosticStore(
         worker.interrupt()
     }
 
-    override fun record(event: DiagnosticEvent) {
+    override fun captureEpoch(): Long = epoch.get()
+
+    override fun record(event: DiagnosticEvent) = record(event, expectedEpoch = null)
+
+    override fun record(event: DiagnosticEvent, expectedEpoch: Long?) {
         if (!enabled.get() || closed.get()) return
+        val currentEpoch = epoch.get()
+        if (expectedEpoch != null && expectedEpoch != currentEpoch) return
         if (pending.incrementAndGet() > maxQueue) {
             pending.decrementAndGet()
             return
         }
-        if (!commands.offer(Command.Record(epoch.get(), event))) {
+        if (!commands.offer(Command.Record(currentEpoch, event))) {
             pending.decrementAndGet()
         }
     }
@@ -404,6 +410,7 @@ class DiagnosticStore(
             appendLine("fontScale=${device.fontScale}")
             appendLine("windowDp=${device.windowWidthDp}x${device.windowHeightDp}")
             appendLine("records=${lines.size}")
+            appendLine("authenticationFields=operationId,phase,detail,httpStatus,passwordSubmitted,credentialState,challengeType,challengeEvidence,serviceParameter,callbackState,navigationFrame,bindingSource")
             appendLine("range=${Instant.ofEpochMilli(start)} .. ${Instant.ofEpochMilli(end)}")
             appendLine("limits=last24h/${maxEventBytes}bytes; queue=$maxQueue; exports=$maxExports")
             appendLine()
@@ -433,6 +440,14 @@ class DiagnosticStore(
         val detail = value.optString("detail", "")
         val mediaType = value.optString("mediaType", "")
         val bodyType = value.optString("bodyType", "")
+        val passwordSubmitted = value.optInt("passwordSubmitted", -1)
+        val credentialState = value.optString("credentialState", "")
+        val challengeType = value.optString("challengeType", "")
+        val challengeEvidence = value.optString("challengeEvidence", "")
+        val serviceParameter = value.optString("serviceParameter", "")
+        val callbackState = value.optString("callbackState", "")
+        val navigationFrame = value.optString("navigationFrame", "")
+        val bindingSource = value.optString("bindingSource", "")
         buildString {
             append(module)
             append(' ')
@@ -456,6 +471,38 @@ class DiagnosticStore(
             if (bodyType.isNotBlank()) {
                 append(" body=")
                 append(bodyType)
+            }
+            if (passwordSubmitted in 0..1) {
+                append(" passwordSubmitted=")
+                append(passwordSubmitted)
+            }
+            if (credentialState.isNotBlank()) {
+                append(" credential=")
+                append(credentialState)
+            }
+            if (challengeType.isNotBlank()) {
+                append(" challenge=")
+                append(challengeType)
+            }
+            if (challengeEvidence.isNotBlank()) {
+                append(" challengeEvidence=")
+                append(challengeEvidence)
+            }
+            if (serviceParameter.isNotBlank()) {
+                append(" serviceParameter=")
+                append(serviceParameter)
+            }
+            if (callbackState.isNotBlank()) {
+                append(" callback=")
+                append(callbackState)
+            }
+            if (navigationFrame.isNotBlank()) {
+                append(" frame=")
+                append(navigationFrame)
+            }
+            if (bindingSource.isNotBlank()) {
+                append(" binding=")
+                append(bindingSource)
             }
             if (exception.isNotBlank()) {
                 append(" exception=")
@@ -485,6 +532,14 @@ class DiagnosticStore(
         event.bodyType?.let { value.put("bodyType", it.name) }
         event.responseBytes?.let { value.put("responseBytes", it) }
         event.itemCount?.let { value.put("itemCount", it) }
+        event.passwordSubmitted?.let { value.put("passwordSubmitted", it) }
+        event.credentialState?.let { value.put("credentialState", it.name) }
+        event.challengeType?.let { value.put("challengeType", it.name) }
+        event.challengeEvidence?.let { value.put("challengeEvidence", it.name) }
+        event.serviceParameter?.let { value.put("serviceParameter", it.name) }
+        event.callbackState?.let { value.put("callbackState", it.name) }
+        event.navigationFrame?.let { value.put("navigationFrame", it.name) }
+        event.bindingSource?.let { value.put("bindingSource", it.name) }
         if (event.frames.isNotEmpty()) {
             value.put("frames", JSONArray(event.frames))
         }

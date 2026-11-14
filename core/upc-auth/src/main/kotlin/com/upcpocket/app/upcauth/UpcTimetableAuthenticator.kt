@@ -6,6 +6,16 @@ import com.upcpocket.app.account.SchoolCredentialFailure
 import com.upcpocket.app.account.SchoolCredentialUseResult
 import com.upcpocket.app.account.SchoolLoginCredential
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
+import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
+import com.upcpocket.app.platform.diagnostics.DiagnosticCredentialState
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.util.Locale
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -68,58 +78,133 @@ class UpcTimetableAuthenticator internal constructor(
         expectedAccountId: SchoolAccountId,
         expectedCredentialGeneration: Long,
     ): UpcAuthResult {
+        val operation = Diagnostics.beginOperation()
+        recordUpcAuthDiagnostic(
+            operation,
+            DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.AUTH_START,
+            result = DiagnosticResult.PENDING,
+            phase = DiagnosticPhase.CREDENTIAL_RESTORE,
+            detail = DiagnosticDetail.AUTH_REQUIRED,
+        )
         val result = try {
             credentials.withLoginCredential { credential ->
                 if (credential.accountId != expectedAccountId ||
                     credential.credentialGeneration.value != expectedCredentialGeneration
                 ) {
+                    recordUpcAuthDiagnostic(
+                        operation, DiagnosticModule.TIMETABLE,
+                        action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.BLOCKED,
+                        phase = DiagnosticPhase.CREDENTIAL_RESTORE,
+                        detail = DiagnosticDetail.CREDENTIAL_GENERATION_CHANGED,
+                        reason = DiagnosticReason.ACCOUNT,
+                        credentialState = DiagnosticCredentialState.GENERATION_CHANGED,
+                    )
                     UpcAuthResult.Failure(UpcAuthFailure.ACCOUNT_CHANGED)
                 } else {
-                    performLogin(credential)
+                    recordUpcAuthDiagnostic(
+                        operation, DiagnosticModule.TIMETABLE,
+                        result = DiagnosticResult.OK, phase = DiagnosticPhase.CREDENTIAL_RESTORE,
+                        detail = DiagnosticDetail.CREDENTIAL_RECOVERED,
+                        credentialState = DiagnosticCredentialState.AVAILABLE,
+                    )
+                    performLogin(credential, operation)
                 }
             }
         } catch (cancelled: kotlinx.coroutines.CancellationException) {
             throw cancelled
         } catch (_: Exception) {
+            recordUpcAuthDiagnostic(
+                operation, DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                phase = DiagnosticPhase.CREDENTIAL_RESTORE,
+                detail = DiagnosticDetail.CREDENTIAL_UNAVAILABLE,
+                reason = DiagnosticReason.ACCOUNT,
+                credentialState = DiagnosticCredentialState.UNAVAILABLE,
+            )
             return UpcAuthResult.Failure(UpcAuthFailure.PROTOCOL_ERROR)
         }
         return when (result) {
             is SchoolCredentialUseResult.Success -> result.value
-            is SchoolCredentialUseResult.Failure -> when (result.reason) {
-                SchoolCredentialFailure.CHANGED_DURING_USE ->
-                    UpcAuthResult.Failure(UpcAuthFailure.ACCOUNT_CHANGED)
-                SchoolCredentialFailure.BLOCKED_BY_CLEANUP,
-                SchoolCredentialFailure.NOT_CONFIGURED,
-                SchoolCredentialFailure.UNAVAILABLE,
-                -> UpcAuthResult.Failure(UpcAuthFailure.ACCOUNT_UNAVAILABLE)
+            is SchoolCredentialUseResult.Failure -> {
+                val changed = result.reason == SchoolCredentialFailure.CHANGED_DURING_USE
+                recordUpcAuthDiagnostic(
+                    operation, DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.BLOCKED,
+                    phase = DiagnosticPhase.CREDENTIAL_RESTORE,
+                    detail = when {
+                        changed -> DiagnosticDetail.CREDENTIAL_GENERATION_CHANGED
+                        result.reason == SchoolCredentialFailure.BLOCKED_BY_CLEANUP ->
+                            DiagnosticDetail.CREDENTIAL_CLEANUP_BLOCKED
+                        else -> DiagnosticDetail.CREDENTIAL_UNAVAILABLE
+                    },
+                    reason = DiagnosticReason.ACCOUNT,
+                    credentialState = when {
+                        changed -> DiagnosticCredentialState.GENERATION_CHANGED
+                        result.reason == SchoolCredentialFailure.BLOCKED_BY_CLEANUP ->
+                            DiagnosticCredentialState.CLEANUP_BLOCKED
+                        else -> DiagnosticCredentialState.UNAVAILABLE
+                    },
+                )
+                UpcAuthResult.Failure(
+                    if (changed) UpcAuthFailure.ACCOUNT_CHANGED
+                    else UpcAuthFailure.ACCOUNT_UNAVAILABLE,
+                )
             }
         }
     }
 
     @OptIn(RestrictedSchoolCredentialUse::class)
-    private fun performLogin(credential: SchoolLoginCredential): UpcAuthResult {
-        val login = UpcCasLogin(TIMETABLE_CAS_SERVICE, transport)
+    private fun performLogin(
+        credential: SchoolLoginCredential,
+        operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation,
+    ): UpcAuthResult {
+        val login = UpcCasLogin(
+            TIMETABLE_CAS_SERVICE,
+            transport,
+            operation,
+            DiagnosticModule.TIMETABLE,
+        )
             .login(credential, UpcTimetableAuthEndpoints.LOGIN_URL)
         return when (login) {
             is UpcCasLoginResult.Failure ->
                 UpcAuthResult.Failure(login.reason, login.interactionUrl)
             is UpcCasLoginResult.Callback ->
-                followCallbackAndVerify(login.session, login.url)
+                followCallbackAndVerify(login.session, login.url, operation)
         }
     }
 
     private fun followCallbackAndVerify(
         session: UpcCasHttpSession,
         start: HttpUrl,
+        operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation,
     ): UpcAuthResult {
         var current = start
         repeat(UpcTimetableAuthEndpoints.MAX_REDIRECT_HOPS) {
             if (!isAllowedAppPage(current)) {
+                recordUpcAuthDiagnostic(
+                    operation, DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                    phase = DiagnosticPhase.BUSINESS_CALLBACK,
+                    detail = DiagnosticDetail.BUSINESS_CALLBACK_REJECTED,
+                    reason = DiagnosticReason.POLICY,
+                    callbackState = DiagnosticCallbackState.REJECTED,
+                )
                 return UpcAuthResult.Failure(UpcAuthFailure.PROTOCOL_ERROR)
             }
             val response = try {
                 session.request("GET", current.toString())
             } catch (failure: UpcAuthTransportException) {
+                recordUpcAuthDiagnostic(
+                    operation, DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                    phase = DiagnosticPhase.BUSINESS_CALLBACK,
+                    detail = if (failure.failure == UpcAuthTransportFailure.TLS)
+                        DiagnosticDetail.TRANSPORT_TLS else DiagnosticDetail.TRANSPORT_NETWORK,
+                    reason = if (failure.failure == UpcAuthTransportFailure.TLS)
+                        DiagnosticReason.TLS else DiagnosticReason.NETWORK,
+                    callbackState = DiagnosticCallbackState.NOT_CONSUMED,
+                )
                 return UpcAuthResult.Failure(failure.toAuthFailure())
             }
             if (response.status in 300..399) {
@@ -130,17 +215,46 @@ class UpcTimetableAuthenticator internal constructor(
                 return@repeat
             }
             if (response.status == 401 || response.status == 403) {
+                recordUpcAuthDiagnostic(
+                    operation, DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                    phase = DiagnosticPhase.BUSINESS_CALLBACK,
+                    detail = DiagnosticDetail.RESPONSE_HTTP,
+                    reason = DiagnosticReason.HTTP,
+                    httpStatus = response.status,
+                    callbackState = DiagnosticCallbackState.REJECTED,
+                    bindingSource = DiagnosticBindingSource.PASSWORD,
+                )
                 return UpcAuthResult.Failure(UpcAuthFailure.ACCESS_DENIED)
             }
             if (response.status != 200) {
+                recordUpcAuthDiagnostic(
+                    operation, DiagnosticModule.TIMETABLE,
+                    action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                    phase = DiagnosticPhase.BUSINESS_CALLBACK,
+                    detail = DiagnosticDetail.RESPONSE_HTTP,
+                    reason = DiagnosticReason.HTTP,
+                    httpStatus = response.status,
+                )
                 return UpcAuthResult.Failure(UpcAuthFailure.UPSTREAM_ERROR)
             }
-            return verifyIndexAndExtractCookies(session)
+            recordUpcAuthDiagnostic(
+                operation, DiagnosticModule.TIMETABLE,
+                result = DiagnosticResult.OK, phase = DiagnosticPhase.BUSINESS_CALLBACK,
+                detail = DiagnosticDetail.BUSINESS_CALLBACK_ACCEPTED,
+                httpStatus = response.status,
+                callbackState = DiagnosticCallbackState.ACCEPTED,
+                bindingSource = DiagnosticBindingSource.PASSWORD,
+            )
+            return verifyIndexAndExtractCookies(session, operation)
         }
         return UpcAuthResult.Failure(UpcAuthFailure.PROTOCOL_ERROR)
     }
 
-    private fun verifyIndexAndExtractCookies(session: UpcCasHttpSession): UpcAuthResult {
+    private fun verifyIndexAndExtractCookies(
+        session: UpcCasHttpSession,
+        operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation,
+    ): UpcAuthResult {
         val response = try {
             session.request(
                 "GET",
@@ -152,11 +266,28 @@ class UpcTimetableAuthenticator internal constructor(
                 ),
             )
         } catch (failure: UpcAuthTransportException) {
+            recordUpcAuthDiagnostic(
+                operation, DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                phase = DiagnosticPhase.PERSONAL_VERIFY,
+                detail = if (failure.failure == UpcAuthTransportFailure.TLS)
+                    DiagnosticDetail.TRANSPORT_TLS else DiagnosticDetail.TRANSPORT_NETWORK,
+                reason = if (failure.failure == UpcAuthTransportFailure.TLS)
+                    DiagnosticReason.TLS else DiagnosticReason.NETWORK,
+            )
             return UpcAuthResult.Failure(failure.toAuthFailure())
         }
         if (response.status != 200) {
+            recordUpcAuthDiagnostic(
+                operation, DiagnosticModule.TIMETABLE,
+                action = DiagnosticAction.AUTH_STOP, result = DiagnosticResult.FAIL,
+                phase = DiagnosticPhase.PERSONAL_VERIFY,
+                detail = DiagnosticDetail.RESPONSE_HTTP,
+                reason = DiagnosticReason.HTTP,
+                httpStatus = response.status,
+            )
             return UpcAuthResult.Failure(
-                if (response.status == 401) UpcAuthFailure.INVALID_CREDENTIALS
+                if (response.status == 401 || response.status == 403) UpcAuthFailure.ACCESS_DENIED
                 else UpcAuthFailure.UPSTREAM_ERROR,
             )
         }
@@ -176,6 +307,16 @@ class UpcTimetableAuthenticator internal constructor(
         if (cookies.isEmpty()) {
             return UpcAuthResult.Failure(UpcAuthFailure.UPSTREAM_ERROR)
         }
+        recordUpcAuthDiagnostic(
+            operation, DiagnosticModule.TIMETABLE,
+            action = DiagnosticAction.AUTH_COMPLETE, result = DiagnosticResult.OK,
+            phase = DiagnosticPhase.SESSION_ADOPT,
+            detail = DiagnosticDetail.SESSION_ADOPTED,
+            httpStatus = response.status,
+            itemCount = cookies.size,
+            bindingSource = DiagnosticBindingSource.PASSWORD,
+            callbackState = DiagnosticCallbackState.CONSUMED,
+        )
         return UpcAuthResult.Success(cookies)
     }
 

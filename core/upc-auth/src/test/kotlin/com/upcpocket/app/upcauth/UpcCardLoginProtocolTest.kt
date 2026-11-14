@@ -8,7 +8,7 @@ import org.junit.Test
 class UpcCardLoginProtocolTest {
     private val url = "https://cas.upc.edu.cn/cas/login?service=example"
     private val html = """<form method="post" id="loginForm">
-        <input name="username"><input name="password"><input name="type" value="username_password">
+        <input name="username"><input name="password" type="password"><input name="type" value="username_password">
         <input name="execution" value="example-execution"><input name="_eventId" value="submit"></form>"""
     private val id = "2099999999"
 
@@ -23,10 +23,47 @@ class UpcCardLoginProtocolTest {
         assertEquals("submit", fields["_eventId"])
         assertEquals("username_password", fields["type"])
     }
+    @Test fun `bounded CAS execution above legacy four KiB cap is accepted`() {
+        val execution = "e".repeat(4_097)
+        val form = CardCasProtocol.form(html.replace("example-execution", execution), url)
+        val body = CardCasProtocol.body(form, id, "synthetic-passphrase", "")
+        assertTrue(body.contains("execution=$execution"))
+    }
+    @Test fun `CAS execution above the shared size cap is rejected`() {
+        val oversized = "e".repeat(MAX_CAS_EXECUTION_CHARS + 1)
+        val failure = assertThrows(CardCasFormException::class.java) {
+            CardCasProtocol.form(html.replace("example-execution", oversized), url)
+        }
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDetail.CAS_FORM_EXECUTION_INVALID,
+            failure.diagnosticDetail,
+        )
+        assertFalse(failure.toString().contains(oversized))
+    }
+    @Test fun `CAS execution control characters and foreign action are rejected`() {
+        listOf("\u0001", "\u007f").forEach { control ->
+            val failure = assertThrows(CardCasFormException::class.java) {
+                CardCasProtocol.form(html.replace("example-execution", control), url)
+            }
+            assertEquals(
+                com.upcpocket.app.platform.diagnostics.DiagnosticDetail.CAS_FORM_EXECUTION_INVALID,
+                failure.diagnosticDetail,
+            )
+        }
+        val foreignAction = html.replace(
+            "<form method=\"post\" id=\"loginForm\">",
+            "<form method=\"post\" id=\"loginForm\" action=\"https://evil.example/cas/login?service=example\">",
+        )
+        val failure = assertThrows(CardCasFormException::class.java) { CardCasProtocol.form(foreignAction, url) }
+        assertEquals(
+            com.upcpocket.app.platform.diagnostics.DiagnosticDetail.CAS_FORM_ACTION_REJECTED,
+            failure.diagnosticDetail,
+        )
+    }
     @Test(expected = IOException::class) fun `password form cannot use HTTP`() { CardCasProtocol.form(html, url.replace("https:", "http:")) }
     @Test(expected = IOException::class) fun `changed execution form is rejected`() { CardCasProtocol.form(html.replace("execution", "removed"), url) }
     @Test(expected = IOException::class) fun `captcha cannot be silently skipped`() {
-        val form = CardCasProtocol.form(html + "config.captcha = {id: 'example-id'};", url)
+        val form = CardCasProtocol.form(html + "<script>config.captcha = {id: 'example-id'};</script>", url)
         CardCasProtocol.body(form, id, "example", "")
     }
     @Test fun `CAS service ticket and platform ticket cannot be confused`() {

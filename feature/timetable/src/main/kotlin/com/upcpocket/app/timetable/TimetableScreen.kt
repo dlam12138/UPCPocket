@@ -257,8 +257,8 @@ internal fun TimetableScreen(
         TimetableLoginDialog(
             url = loginUrl!!,
             hint = loginHint,
-            onCookies = { header, operationId, result ->
-                viewModel.adoptInteractiveCookies(header, operationId) { accepted ->
+            onCookies = { header, diagnosticOperation, result ->
+                viewModel.adoptInteractiveCookies(header, diagnosticOperation) { accepted ->
                     if (accepted) {
                         loginVisible = false
                         loginHint = null
@@ -324,7 +324,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("设置学校账号") }
             Text(
-                text = "保存账号不等于验证通过；验证码或二次验证会打开学校网页。",
+                text = "保存账号不等于登录成功；需要时请在学校页面完成登录。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -356,7 +356,7 @@ private fun NoTermsCard() {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("尚未取得学期", style = MaterialTheme.typography.titleMedium)
             Text(
-                "点击右上角刷新重新读取；需要验证时，按上方提示完成学校登录。",
+                "点击右上角刷新重新读取；需要登录时，按上方提示完成登录后继续。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -541,7 +541,7 @@ internal fun ConnectionBanner(
             }
             if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
                 Text(
-                    "点击下方“学校登录”，在学校页面完成验证后继续。",
+                    "在学校页面完成登录后继续。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),

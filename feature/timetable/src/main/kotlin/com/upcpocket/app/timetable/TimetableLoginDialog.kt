@@ -43,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
@@ -114,7 +115,7 @@ internal fun mergeCookieHeadersByTarget(headers: List<String?>): String? {
 fun TimetableLoginDialog(
     url: String,
     hint: String?,
-    onCookies: (String, String, (Boolean) -> Unit) -> Unit,
+    onCookies: (String, DiagnosticOperation, (Boolean) -> Unit) -> Unit,
     onClose: () -> Unit,
 ) {
     val currentOnCookies by rememberUpdatedState(onCookies)
@@ -125,7 +126,7 @@ fun TimetableLoginDialog(
     var pageLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var statusHint by remember { mutableStateOf<String?>(null) }
-    val operationId = remember(generation) { Diagnostics.newOperationId() }
+    val diagnosticOperation = remember(generation) { Diagnostics.beginOperation() }
 
     fun readCookieHeader(): String? = runCatching {
         cookieManager.flush()
@@ -155,7 +156,7 @@ fun TimetableLoginDialog(
         }
         if (auto && !attempted.compareAndSet(false, true)) return
         statusHint = null
-        currentOnCookies(header, operationId) { accepted ->
+        currentOnCookies(header, diagnosticOperation) { accepted ->
             // 自动提交失败后允许后续页面完成/用户点“完成”再试；不循环认证。
             if (!accepted) attempted.set(false)
         }
@@ -198,7 +199,7 @@ fun TimetableLoginDialog(
                     }
                 }
                 Text(
-                    hint ?: "请完成学校登录；验证码按页面提示操作。",
+                    hint ?: "请在学校页面完成登录。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -276,7 +277,7 @@ fun TimetableLoginDialog(
                                                             (System.currentTimeMillis() - it)
                                                                 .coerceAtLeast(0)
                                                         },
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                                 val host = currentUrl?.let {
                                                     runCatching { Uri.parse(it).host }.getOrNull()
@@ -312,7 +313,7 @@ fun TimetableLoginDialog(
                                                             result = DiagnosticResult.BLOCKED,
                                                             reason = DiagnosticReason.POLICY,
                                                             destination = destination,
-                                                            operationId = operationId,
+                                                            operation = diagnosticOperation,
                                                         )
                                                         error = "登录页跳转到了未允许的地址" +
                                                             "（${TimetableLoginPolicy.host(target) ?: "未知"}），已停止加载。"
@@ -325,7 +326,7 @@ fun TimetableLoginDialog(
                                                         result = DiagnosticResult.OK,
                                                         reason = DiagnosticReason.MAIN_FRAME,
                                                         destination = destination,
-                                                        operationId = operationId,
+                                                        operation = diagnosticOperation,
                                                     )
                                                 } else if (!allowed) {
                                                     // 不让未允许的 iframe/子框架继续导航；
@@ -336,7 +337,7 @@ fun TimetableLoginDialog(
                                                         result = DiagnosticResult.BLOCKED,
                                                         reason = DiagnosticReason.SUB_FRAME,
                                                         destination = destination,
-                                                        operationId = operationId,
+                                                        operation = diagnosticOperation,
                                                     )
                                                     return true
                                                 } else {
@@ -346,7 +347,7 @@ fun TimetableLoginDialog(
                                                         result = DiagnosticResult.OK,
                                                         reason = DiagnosticReason.SUB_FRAME,
                                                         destination = destination,
-                                                        operationId = operationId,
+                                                        operation = diagnosticOperation,
                                                     )
                                                 }
                                                 return false
@@ -366,7 +367,7 @@ fun TimetableLoginDialog(
                                                     action = DiagnosticAction.WEBVIEW_SSL_REJECT,
                                                     result = DiagnosticResult.FAIL,
                                                     reason = DiagnosticReason.TLS,
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                             }
 
@@ -388,7 +389,7 @@ fun TimetableLoginDialog(
                                                         request.url.toString(),
                                                     ),
                                                     httpStatus = errorResponse.statusCode,
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                             }
 
@@ -409,7 +410,7 @@ fun TimetableLoginDialog(
                                                     destination = TimetableLoginPolicy.destination(
                                                         request.url.toString(),
                                                     ),
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                             }
 
@@ -426,7 +427,7 @@ fun TimetableLoginDialog(
                                                     action = DiagnosticAction.WEBVIEW_RENDERER_EXIT,
                                                     result = DiagnosticResult.FAIL,
                                                     reason = DiagnosticReason.RENDERER,
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                                 return true
                                             }
@@ -449,7 +450,7 @@ fun TimetableLoginDialog(
                                                 reason = DiagnosticReason.VIEWPORT,
                                                 widthDp = (width / density).roundToInt(),
                                                 heightDp = (height / density).roundToInt(),
-                                                operationId = operationId,
+                                                operation = diagnosticOperation,
                                             )
                                             if (!TimetableLoginPolicy.isAllowedEntry(url)) {
                                                 pageLoading = false
@@ -461,7 +462,7 @@ fun TimetableLoginDialog(
                                                     reason = DiagnosticReason.POLICY,
                                                     destination = TimetableLoginPolicy
                                                         .destination(url),
-                                                    operationId = operationId,
+                                                    operation = diagnosticOperation,
                                                 )
                                                 return
                                             }
@@ -470,7 +471,7 @@ fun TimetableLoginDialog(
                                                 action = DiagnosticAction.WEBVIEW_START,
                                                 result = DiagnosticResult.PENDING,
                                                 destination = TimetableLoginPolicy.destination(url),
-                                                operationId = operationId,
+                                                operation = diagnosticOperation,
                                             )
                                             loadUrl(url)
                                         }

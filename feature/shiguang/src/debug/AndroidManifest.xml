@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name="com.upcpocket.app.shiguang.ShiguangPreviewActivity"
+            android:exported="true" android:label="石光合成预览"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity android:name="com.upcpocket.app.shiguang.ShiguangWebViewFixtureActivity"
+            android:exported="true" android:label="石光网页验证夹具"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+</manifest>

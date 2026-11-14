@@ -5,14 +5,21 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
 import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
+import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
+import com.upcpocket.app.platform.diagnostics.DiagnosticChallengeEvidence
+import com.upcpocket.app.platform.diagnostics.DiagnosticChallengeType
+import com.upcpocket.app.platform.diagnostics.DiagnosticCredentialState
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
 import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.DiagnosticServiceParameter
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.ByteArrayInputStream
 import java.io.File
@@ -65,7 +72,10 @@ class DiagnosticStoreTest {
     fun exportContainsOnlyWhitelistedFieldsAndNoSecretCanary() = runBlocking {
         val store = store()
         Diagnostics.install(store)
-        val failure = RuntimeException("PASSWORD_canary?token=secret")
+        val failure = RuntimeException(
+            "PASSWORD_canary token=secret cookie=COOKIE_canary account=ACCOUNT_canary " +
+                "https://school.example/login?execution=EXECUTION_canary <html>HTML_canary</html>",
+        )
         failure.stackTrace = arrayOf(
             StackTraceElement("com.upcpocket.app.DiagnosticsCanary", "boom", "X.kt", 1),
         )
@@ -91,6 +101,26 @@ class DiagnosticStoreTest {
         )
         assertTrue(
             Diagnostics.record(
+                module = DiagnosticModule.SHIGUANG,
+                action = DiagnosticAction.AUTH_STOP,
+                result = DiagnosticResult.BLOCKED,
+                reason = DiagnosticReason.INTERACTION,
+                httpStatus = 403,
+                operationId = "1a2b3c4d",
+                phase = DiagnosticPhase.CAS_POST,
+                detail = DiagnosticDetail.CAS_POST_UNKNOWN_REJECTION,
+                passwordSubmitted = 1,
+                credentialState = DiagnosticCredentialState.AVAILABLE,
+                challengeType = DiagnosticChallengeType.UNKNOWN,
+                challengeEvidence = DiagnosticChallengeEvidence.UNKNOWN,
+                serviceParameter = DiagnosticServiceParameter.MATCH,
+                callbackState = DiagnosticCallbackState.NOT_CONSUMED,
+                navigationFrame = DiagnosticNavigationFrame.MAIN,
+                bindingSource = DiagnosticBindingSource.PASSWORD,
+            ),
+        )
+        assertTrue(
+            Diagnostics.record(
                 module = DiagnosticModule.TIMETABLE,
                 action = DiagnosticAction.QUERY_FAIL,
                 result = DiagnosticResult.FAIL,
@@ -111,14 +141,24 @@ class DiagnosticStoreTest {
         assertFalse(all.contains("token=secret"))
         assertFalse(all.contains("DiagnosticsCanary.kt"))
         assertTrue(all.contains("com.upcpocket.app.DiagnosticsCanary.boom"))
-        assertTrue(all.contains("\"schemaVersion\":3"))
+        assertTrue(all.contains("\"schemaVersion\":4"))
         assertTrue(all.contains("\"phase\":\"PARSE\""))
         assertTrue(all.contains("\"detail\":\"WEEK_PARSE_ORDER\""))
         assertTrue(all.contains("\"mediaType\":\"JSON\""))
         assertTrue(all.contains("\"bodyType\":\"JSON_OBJECT\""))
         assertTrue(all.contains("\"itemCount\":7"))
         assertTrue(all.contains("\"widthDp\":412"))
+        assertTrue(all.contains("\"module\":\"SHIGUANG\""))
+        assertTrue(all.contains("\"httpStatus\":403"))
+        assertTrue(all.contains("\"detail\":\"CAS_POST_UNKNOWN_REJECTION\""))
+        assertTrue(all.contains("\"passwordSubmitted\":1"))
+        assertTrue(all.contains("\"challengeEvidence\":\"UNKNOWN\""))
+        assertTrue(all.contains("\"callbackState\":\"NOT_CONSUMED\""))
+        assertTrue(all.contains("\"bindingSource\":\"PASSWORD\""))
+        assertTrue(all.contains("authenticationFields=operationId,phase,detail,httpStatus"))
         assertTrue(all.contains("appVersion="))
+        listOf("PASSWORD_canary", "secret", "COOKIE_canary", "ACCOUNT_canary", "EXECUTION_canary", "HTML_canary", "school.example", "<html>")
+            .forEach { assertFalse(all.contains(it)) }
         assertFalse(all.contains("accountId"))
         assertFalse(all.contains("cookie"))
         assertFalse(all.contains("http://"))
@@ -204,6 +244,49 @@ class DiagnosticStoreTest {
         val result = store.export(device()) as DiagnosticExportResult.Success
         assertEquals(1, result.eventCount)
         assertTrue(unzip(result.uri).getValue("events.jsonl").contains("QUERY_START"))
+    }
+
+    @Test
+    fun operationStartedBeforeAccountClearCannotWriteAfterTheEpochChanges() = runBlocking {
+        val store = store()
+        Diagnostics.install(store)
+        val oldOperation = Diagnostics.beginOperation()
+        store.clearForAccountChange()
+        Diagnostics.record(
+            module = DiagnosticModule.SERVICE_PORTAL,
+            action = DiagnosticAction.AUTH_STOP,
+            result = DiagnosticResult.FAIL,
+            phase = DiagnosticPhase.CAS_POST,
+            detail = DiagnosticDetail.CAS_POST_UNKNOWN_REJECTION,
+            operation = oldOperation,
+        )
+        val currentOperation = Diagnostics.beginOperation()
+        Diagnostics.record(
+            module = DiagnosticModule.SERVICE_PORTAL,
+            action = DiagnosticAction.AUTH_START,
+            result = DiagnosticResult.PENDING,
+            phase = DiagnosticPhase.ENTRY_GET,
+            operation = currentOperation,
+        )
+
+        val result = store.export(device()) as DiagnosticExportResult.Success
+        val events = unzip(result.uri).getValue("events.jsonl")
+        assertFalse(events.contains(oldOperation.id))
+        assertTrue(events.contains(currentOperation.id))
+    }
+
+    @Test
+    fun legacySchemaThreeEventRemainsReadableAfterSchemaUpgrade() = runBlocking {
+        val root = File(directory, "root").apply { mkdirs() }
+        File(root, DiagnosticStore.EVENTS_FILE).writeText(
+            """{"schemaVersion":3,"timestampEpochMillis":1700000000000,"module":"TIMETABLE","action":"AUTH_START","result":"PENDING","operationId":"1a2b3c4d","phase":"AUTH"}""",
+        )
+
+        val result = store().export(device()) as DiagnosticExportResult.Success
+        val events = unzip(result.uri).getValue("events.jsonl")
+        assertTrue(events.contains("\"schemaVersion\":3"))
+        assertTrue(events.contains("\"operationId\":\"1a2b3c4d\""))
+        assertTrue(events.contains("\"phase\":\"AUTH\""))
     }
 
     @Test

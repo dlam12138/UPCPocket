@@ -3,6 +3,7 @@ package com.upcpocket.app.card
 import android.content.Context
 import com.upcpocket.app.data.cardhistory.CardHistoryClient
 import com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator
+import com.upcpocket.app.data.cardhistory.CardHistoryInteractiveAuthenticator
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.data.ecard.DirectCardBalanceRepository
 import com.upcpocket.app.data.ecard.DirectCardBalanceStore
@@ -35,6 +36,7 @@ class CardPlugin(
     inputStore: CardInputStore,
     onSnapshotChanged: () -> Unit,
     historyAuthenticator: CardHistoryAuthenticator? = null,
+    interactiveHistoryAuthenticator: CardHistoryInteractiveAuthenticator? = null,
 ) : Plugin, PluginUiContributor {
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
@@ -58,7 +60,9 @@ class CardPlugin(
         onSnapshotChanged = onSnapshotChanged,
     )
 
-    val history: CardHistoryClient? = historyAuthenticator?.let { CardHistoryClient(account, it) }
+    val history: CardHistoryClient? = historyAuthenticator?.let {
+        CardHistoryClient(account, it, interactiveAuthenticator = interactiveHistoryAuthenticator)
+    }
 
     override val pluginId get() = descriptor.id
 

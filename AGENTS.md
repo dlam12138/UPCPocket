@@ -36,6 +36,8 @@
 
 ## 当前发布
 
+2026-11-14 用户已验收 **2.0.5 / versionCode 26**，并授权提交推送、准备标注“重大更新”的 Release。准备阶段使用已验收 APK 原字节，记录见 `docs/releases/2.0.5.md`；GitHub 草稿不等于公开发布，正式版和 latest 在公开前仍保持下述 2.0.4 状态。2.0.5 新增石光与 e站通只读服务，完善流水年月点选、网页登录回退、自动登录和 schema 4 诊断；不得把真实正常登录验证扩写为真实验证码/二次验证、全部设备或校园写操作验收。
+
 当前发布应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，2.0.4 / versionCode 25 已于 2026-11-12 发布，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`；新版设为 latest 时须原字节附带旧 `update.json` / `update.sig`，保持旧线路指向 2.0.3，旧 Release 资产不变。发布记录见 `docs/releases/2.0.4.md`。上文旧标识、下文历史发布记录均保留其当时状态。
 
 本次 **2.0.4 / versionCode 25** 整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐、校园卡原生本人流水及古镇口空闲教室卓越 A/B 筛选。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。

@@ -150,7 +150,7 @@ class TimetableScreenStateTest {
                     state = state(
                         TimetableWeekState.ERROR,
                         connection = TimetableConnection.INTERACTION_REQUIRED,
-                        message = "学校要求验证码或二次验证。",
+                        message = "请在学校页面继续登录。",
                     ),
                     onRetry = {},
                     onOpenAccountSettings = {},
@@ -160,6 +160,7 @@ class TimetableScreenStateTest {
             }
         }
         rule.onNodeWithText("学校登录").performClick()
+        rule.onNodeWithText("在学校页面完成登录后继续。").assertIsDisplayed()
         assertEquals(true, opened)
     }
 

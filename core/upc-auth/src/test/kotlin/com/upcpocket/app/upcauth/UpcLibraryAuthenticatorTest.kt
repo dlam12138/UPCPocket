@@ -261,7 +261,14 @@ class UpcLibraryAuthenticatorTest {
           <input name="type" value="username_password">
           <input name="_eventId" value="submit">
         </form>
-        <div id="captchaParent" style="${if (captcha) "display:block" else "display:none"}">captcha</div>
+        <div id="captchaParent" style="${if (captcha) "display:block" else "display:none"}">
+          ${if (captcha) "" else "<input type=\"hidden\" name=\"captcha\">"}
+        </div>
+        <!-- <input name="captcha"> -->
+        <script>
+          const captchaSelector = "input[name='captcha']";
+          config.captcha = null; config.captcha = false; config.captcha = undefined;
+        </script>
         </body></html>
     """.trimIndent()
 

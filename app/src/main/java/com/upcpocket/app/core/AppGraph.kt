@@ -61,6 +61,12 @@ import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
 import com.upcpocket.app.upcauth.UpcLibraryAuthResult
 import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
 import com.upcpocket.app.upcauth.UpcTimetableAuthenticator
+import com.upcpocket.app.upcauth.UpcShiguangAuthenticator
+import com.upcpocket.app.shiguang.ShiguangPlugin
+import com.upcpocket.app.shiguang.ShiguangCapabilities
+import com.upcpocket.app.upcauth.UpcServicePortalAuthenticator
+import com.upcpocket.app.serviceportal.ServicePortalCapabilities
+import com.upcpocket.app.serviceportal.ServicePortalPlugin
 import com.upcpocket.app.widget.WidgetKind
 import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
@@ -71,9 +77,13 @@ import kotlinx.coroutines.SupervisorJob
 import com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator
 import com.upcpocket.app.data.cardhistory.CardHistoryException
 import com.upcpocket.app.data.cardhistory.CardHistoryFailure
+import com.upcpocket.app.data.cardhistory.CardHistoryInteractiveAuthenticator
+import com.upcpocket.app.data.cardhistory.CardHistoryWebNavigation
 import com.upcpocket.app.upcauth.UpcCardAuthFailure
 import com.upcpocket.app.upcauth.UpcCardAuthResult
 import com.upcpocket.app.upcauth.UpcCardAuthenticator
+import com.upcpocket.app.upcauth.UpcCardWebLoginPolicy
+import com.upcpocket.app.upcauth.UpcCardWebNavigation
 
 /**
  * 宿主手动装配容器。
@@ -148,9 +158,16 @@ object AppGraph {
         // 旧队列在写入前被丢弃。清理失败不能阻塞退出。
         runCatching { diagnostics.clearForAccountChange() }
         var failure: AccountInvalidationFailure? = null
-        activePlugins.capability(CardCapabilities.history)?.clearSession()
+        val shiguangBrowserStopped = activePlugins.capability(ShiguangCapabilities.read)?.invalidateForAccountChange() ?: true
+        val servicePortalStopped = activePlugins.capability(ServicePortalCapabilities.read)?.invalidateForAccountChange() ?: true
+        val cardBrowserStopped = activePlugins.capability(CardCapabilities.history)
+            ?.invalidateForAccountChange() ?: true
+        if (!cardBrowserStopped || !shiguangBrowserStopped || !servicePortalStopped) failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
         val library = activePlugins.capability(LibraryCapabilities.seat)
-        if (library != null) {
+        if (!cardBrowserStopped || !shiguangBrowserStopped || !servicePortalStopped) {
+            // A browser that could not be stopped must not outlive cookie removal. Keep the
+            // account blocked; the invalidation retry will clear shared school cookies later.
+        } else if (library != null) {
             if (!library.signOutForAccountChange()) {
                 failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
             }
@@ -205,6 +222,17 @@ object AppGraph {
             ?: AccountInvalidationResult.Success
     }
 
+    private fun UpcCardAuthResult.Failure.toCardHistoryFailure(): CardHistoryFailure = when (reason) {
+        UpcCardAuthFailure.ACCOUNT_CHANGED -> CardHistoryFailure.ACCOUNT_CHANGED
+        UpcCardAuthFailure.ACCOUNT_UNAVAILABLE -> CardHistoryFailure.ACCOUNT_UNAVAILABLE
+        UpcCardAuthFailure.INTERACTION_REQUIRED -> CardHistoryFailure.INTERACTION_REQUIRED
+        UpcCardAuthFailure.INVALID_CREDENTIALS -> CardHistoryFailure.INVALID_CREDENTIALS
+        UpcCardAuthFailure.NETWORK_UNAVAILABLE, UpcCardAuthFailure.TLS_ERROR -> CardHistoryFailure.NETWORK
+        UpcCardAuthFailure.PROTOCOL_ERROR -> CardHistoryFailure.PROTOCOL
+        UpcCardAuthFailure.ACCESS_DENIED -> CardHistoryFailure.ACCESS_DENIED
+        UpcCardAuthFailure.UPSTREAM_ERROR -> CardHistoryFailure.UPSTREAM
+    }
+
     /**
      * 校园卡余额插件。
      *
@@ -220,15 +248,51 @@ object AppGraph {
             historyAuthenticator = CardHistoryAuthenticator { identity ->
                 when (val result = UpcCardAuthenticator(account).authenticate(identity.accountId, identity.credentialGeneration.value)) {
                     is UpcCardAuthResult.Success -> result.token
-                    is UpcCardAuthResult.Failure -> throw CardHistoryException(when (result.reason) {
-                        UpcCardAuthFailure.ACCOUNT_CHANGED -> CardHistoryFailure.ACCOUNT_CHANGED
-                        UpcCardAuthFailure.ACCOUNT_UNAVAILABLE -> CardHistoryFailure.ACCOUNT_UNAVAILABLE
-                        UpcCardAuthFailure.INTERACTION_REQUIRED -> CardHistoryFailure.INTERACTION_REQUIRED
-                        UpcCardAuthFailure.INVALID_CREDENTIALS -> CardHistoryFailure.INVALID_CREDENTIALS
-                        UpcCardAuthFailure.NETWORK_UNAVAILABLE, UpcCardAuthFailure.TLS_ERROR -> CardHistoryFailure.NETWORK
-                        UpcCardAuthFailure.PROTOCOL_ERROR -> CardHistoryFailure.PROTOCOL
-                    })
+                    is UpcCardAuthResult.Failure -> throw CardHistoryException(result.toCardHistoryFailure())
                 }
+            },
+            interactiveHistoryAuthenticator = object : CardHistoryInteractiveAuthenticator {
+                override val entryUrl: String = UpcCardWebLoginPolicy.entryUrl
+
+                override fun inspectNavigation(
+                    url: String,
+                    method: String,
+                    isMainFrame: Boolean,
+                ): CardHistoryWebNavigation = inspectNavigation(url, method, isMainFrame, null)
+
+                override fun inspectNavigation(
+                    url: String,
+                    method: String,
+                    isMainFrame: Boolean,
+                    operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation?,
+                ): CardHistoryWebNavigation = when (
+                    val decision = UpcCardWebLoginPolicy.inspect(url, method, isMainFrame, operation)
+                ) {
+                    UpcCardWebNavigation.Allow -> CardHistoryWebNavigation.Allow
+                    UpcCardWebNavigation.Block -> CardHistoryWebNavigation.Block
+                    is UpcCardWebNavigation.Upgrade -> CardHistoryWebNavigation.Upgrade(decision.url)
+                    is UpcCardWebNavigation.Complete -> CardHistoryWebNavigation.Complete(decision.url)
+                }
+
+                override suspend fun completeResult(
+                    identity: com.upcpocket.app.account.api.SchoolStudentIdentity,
+                    resultUrl: String,
+                ): String = completeResult(identity, resultUrl, null)
+
+                override suspend fun completeResult(
+                    identity: com.upcpocket.app.account.api.SchoolStudentIdentity,
+                    resultUrl: String,
+                    operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation?,
+                ): String =
+                    when (val result = UpcCardAuthenticator(account).completeWebLoginResult(
+                        identity.accountId,
+                        identity.credentialGeneration.value,
+                        resultUrl,
+                        operation,
+                    )) {
+                        is UpcCardAuthResult.Success -> result.token
+                        is UpcCardAuthResult.Failure -> throw CardHistoryException(result.toCardHistoryFailure())
+                    }
             },
         )
     }
@@ -394,6 +458,15 @@ object AppGraph {
         )
     }
 
+    private val shiguangPlugin: ShiguangPlugin by lazy {
+        val authenticator = UpcShiguangAuthenticator(account)
+        ShiguangPlugin(account = account, authenticator = authenticator, interactiveAuthenticator = authenticator)
+    }
+
+    private val servicePortalPlugin: ServicePortalPlugin by lazy {
+        ServicePortalPlugin(account = account, authenticator = UpcServicePortalAuthenticator(account))
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
@@ -403,6 +476,8 @@ object AppGraph {
             runtime.register(focusPlugin.descriptor) { focusPlugin }
             runtime.register(todoPlugin.descriptor) { todoPlugin }
             runtime.register(timetablePlugin.descriptor) { timetablePlugin }
+            runtime.register(shiguangPlugin.descriptor) { shiguangPlugin }
+            runtime.register(servicePortalPlugin.descriptor) { servicePortalPlugin }
         }
     }
 

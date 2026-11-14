@@ -48,4 +48,6 @@ include(
     ":feature:focus",
     ":feature:timetable",
     ":feature:todo",
+    ":feature:shiguang",
+    ":feature:service-portal",
 )

@@ -3,6 +3,17 @@ package com.upcpocket.app.data.cardhistory
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
+import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame
+import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.IOException
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicLong
@@ -18,7 +29,37 @@ fun interface CardHistoryAuthenticator {
     suspend fun authenticate(identity: SchoolStudentIdentity): String
 }
 
-enum class CardHistoryFailure { ACCOUNT_UNAVAILABLE, ACCOUNT_CHANGED, LOGIN_REQUIRED, NETWORK, PROTOCOL, AUTHENTICATION, INTERACTION_REQUIRED, INVALID_CREDENTIALS }
+private fun recordCardInteractiveDiagnostic(
+    operation: DiagnosticOperation,
+    action: DiagnosticAction,
+    result: DiagnosticResult,
+    phase: DiagnosticPhase,
+    detail: DiagnosticDetail,
+    reason: DiagnosticReason? = null,
+    callbackState: DiagnosticCallbackState? = null,
+    navigationFrame: DiagnosticNavigationFrame? = null,
+    bindingSource: DiagnosticBindingSource? = null,
+) {
+    runCatching {
+        Diagnostics.record(
+            module = DiagnosticModule.CARD,
+            action = action,
+            result = result,
+            reason = reason,
+            phase = phase,
+            detail = detail,
+            operation = operation,
+            callbackState = callbackState,
+            navigationFrame = navigationFrame,
+            bindingSource = bindingSource,
+        )
+    }
+}
+
+enum class CardHistoryFailure {
+    ACCOUNT_UNAVAILABLE, ACCOUNT_CHANGED, LOGIN_REQUIRED, NETWORK, PROTOCOL, AUTHENTICATION,
+    INTERACTION_REQUIRED, INVALID_CREDENTIALS, ACCESS_DENIED, UPSTREAM,
+}
 class CardHistoryException(val reason: CardHistoryFailure) : IOException(reason.name)
 data class CardHistorySummary(val incomeFen: Long, val expenseFen: Long)
 data class BoundCardHistoryPage(val owner: SchoolStudentIdentity, val month: YearMonth?, val current: Int, val data: CardHistoryPage)
@@ -29,15 +70,178 @@ class CardHistoryClient(
     private val authenticator: CardHistoryAuthenticator,
     private val http: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build(),
+    private val interactiveAuthenticator: CardHistoryInteractiveAuthenticator? = null,
 ) {
     private class Session(val owner: SchoolStudentIdentity, val token: String)
+    private class InteractiveState(
+        val id: Long,
+        val owner: SchoolStudentIdentity,
+        val epoch: Long,
+        val operation: DiagnosticOperation,
+    ) {
+        var consumed = false
+        var cancelled = false
+    }
+    private class ActiveWebView(val attemptId: Long, val lease: CardHistoryWebViewLease)
+
     @Volatile private var session: Session? = null
     private val epoch = AtomicLong()
+    private val stateLock = Any()
+    private val attemptIds = AtomicLong()
+    private var interactiveState: InteractiveState? = null
+    private var activeWebView: ActiveWebView? = null
     val studentIdentity get() = account.studentIdentity
     val accountState get() = account.state
+    val supportsInteractiveLogin get() = interactiveAuthenticator != null
     fun hasSession(): Boolean = session?.let { isCurrent(it.owner) } == true
 
-    fun clearSession() { epoch.incrementAndGet(); session = null }
+    fun clearSession() {
+        invalidateState()?.dispose()
+    }
+
+    /** Account invalidation is a barrier: the active browser is destroyed before cookie cleanup. */
+    suspend fun invalidateForAccountChange(): Boolean {
+        val lease = invalidateState() ?: return true
+        val stopped = runCatching { lease.disposeAndAwait() }.getOrDefault(false)
+        if (stopped) synchronized(stateLock) {
+            if (activeWebView?.lease === lease) activeWebView = null
+        }
+        return stopped
+    }
+
+    private fun invalidateState(): CardHistoryWebViewLease? = synchronized(stateLock) {
+        epoch.incrementAndGet()
+        session = null
+        interactiveState?.cancelled = true
+        interactiveState = null
+        activeWebView?.lease
+    }
+
+    fun beginInteractiveLogin(): CardHistoryInteractiveAttempt {
+        val bridge = interactiveAuthenticator
+            ?: throw CardHistoryException(CardHistoryFailure.INTERACTION_REQUIRED)
+        val owner = identity()
+        val generation = epoch.get()
+        val entryUrl = bridge.entryUrl
+        val operation = Diagnostics.beginOperation()
+        recordCardInteractiveDiagnostic(
+            operation, DiagnosticAction.AUTH_START, DiagnosticResult.PENDING,
+            DiagnosticPhase.WEBVIEW_NAVIGATION, DiagnosticDetail.AUTH_REQUIRED,
+            bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+        )
+        if (bridge.inspectNavigation(entryUrl, "GET", true, operation) != CardHistoryWebNavigation.Allow) {
+            recordCardInteractiveDiagnostic(
+                operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.BLOCKED,
+                DiagnosticPhase.WEBVIEW_NAVIGATION, DiagnosticDetail.WEBVIEW_NAVIGATION_BLOCKED,
+                reason = DiagnosticReason.POLICY,
+                navigationFrame = com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame.MAIN,
+                bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+            )
+            throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+        }
+        val previousLease = synchronized(stateLock) { activeWebView?.lease }
+        previousLease?.dispose()
+        val id = attemptIds.incrementAndGet()
+        val next = InteractiveState(id, owner, generation, operation)
+        synchronized(stateLock) {
+            if (activeWebView != null) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            if (epoch.get() != generation || !isCurrent(owner)) {
+                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+            }
+            interactiveState?.cancelled = true
+            interactiveState = next
+        }
+        return CardHistoryInteractiveAttempt(id, entryUrl)
+    }
+
+    fun inspectInteractiveNavigation(url: String, method: String, isMainFrame: Boolean): CardHistoryWebNavigation {
+        val operation = synchronized(stateLock) { interactiveState?.operation }
+        return interactiveAuthenticator?.inspectNavigation(url, method, isMainFrame, operation)
+            ?: CardHistoryWebNavigation.Block
+    }
+
+    fun isInteractiveLoginCurrent(attemptId: Long): Boolean = synchronized(stateLock) {
+        interactiveState?.let { it.id == attemptId && !it.cancelled } == true
+    }
+
+    /** The returned handle unregisters only; the client owns immediate destruction on invalidation. */
+    fun registerInteractiveWebView(attemptId: Long, lease: CardHistoryWebViewLease): AutoCloseable? {
+        val accepted = synchronized(stateLock) {
+            if (interactiveState?.id != attemptId || interactiveState?.cancelled == true || activeWebView != null) {
+                false
+            } else {
+                activeWebView = ActiveWebView(attemptId, lease)
+                true
+            }
+        }
+        if (!accepted) {
+            lease.dispose()
+            return null
+        }
+        return AutoCloseable {
+            synchronized(stateLock) {
+                if (activeWebView?.attemptId == attemptId && activeWebView?.lease === lease) {
+                    activeWebView = null
+                }
+            }
+        }
+    }
+
+    fun cancelInteractiveLogin(attemptId: Long) {
+        synchronized(stateLock) {
+            val active = interactiveState
+            if (active?.id != attemptId) return
+            active.cancelled = true
+            interactiveState = null
+        }
+        synchronized(stateLock) { activeWebView?.takeIf { it.attemptId == attemptId }?.lease }?.dispose()
+    }
+
+    /** Captured results are single-use, then go through the same identity check and session commit as native login. */
+    suspend fun completeInteractiveLogin(attemptId: Long, resultUrl: String): Unit = withContext(Dispatchers.IO) {
+        val bridge = interactiveAuthenticator
+            ?: throw CardHistoryException(CardHistoryFailure.INTERACTION_REQUIRED)
+        val initial = synchronized(stateLock) {
+            interactiveState?.takeIf { it.id == attemptId && !it.cancelled && !it.consumed }
+                ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        }
+        val decision = bridge.inspectNavigation(resultUrl, "GET", true, initial.operation)
+        if (decision !is CardHistoryWebNavigation.Complete || decision.url != resultUrl) {
+            recordCardInteractiveDiagnostic(
+                initial.operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL,
+                DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_REJECTED,
+                reason = DiagnosticReason.POLICY, callbackState = DiagnosticCallbackState.REJECTED,
+                bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+            )
+            throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+        }
+        val state = synchronized(stateLock) {
+            val active = interactiveState
+                ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+            if (active !== initial || active.id != attemptId || active.cancelled || active.consumed) {
+                recordCardInteractiveDiagnostic(
+                    initial.operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.BLOCKED,
+                    DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_REJECTED,
+                    reason = DiagnosticReason.STALE, callbackState = DiagnosticCallbackState.STALE,
+                    bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+                )
+                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+            }
+            active.consumed = true
+            active
+        }
+        recordCardInteractiveDiagnostic(
+            state.operation, DiagnosticAction.AUTH_STAGE, DiagnosticResult.OK,
+            DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_CONSUMED,
+            callbackState = DiagnosticCallbackState.CONSUMED,
+            bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+        )
+        checkInteractiveCurrent(state)
+        val token = bridge.completeResult(state.owner, resultUrl, state.operation)
+        checkInteractiveCurrent(state)
+        verifyAndCommit(state.owner, state.epoch, token, state)
+    }
+
     private fun identity(): SchoolStudentIdentity = account.studentIdentity.value
         ?.takeUnless { account.state.value.blocksPersonalSessions }
         ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_UNAVAILABLE)
@@ -48,14 +252,33 @@ class CardHistoryClient(
         val owner = identity()
         val generation = epoch.get()
         val token = authenticator.authenticate(owner)
+        verifyAndCommit(owner, generation, token)
+    }
+
+    private suspend fun verifyAndCommit(
+        owner: SchoolStudentIdentity,
+        generation: Long,
+        token: String,
+        interactive: InteractiveState? = null,
+    ) {
         val candidate = Session(owner, token)
         CardHistoryProtocol.verifyIdentity(get("/berserker-base/user?synAccessSource=h5", candidate), owner.studentId)
-        if (!isCurrent(owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-        session = candidate
-        if (!isCurrent(owner) || epoch.get() != generation) {
-            session = null
-            throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        synchronized(stateLock) {
+            if (!isCurrent(owner) || epoch.get() != generation ||
+                (interactive != null && (interactiveState !== interactive || interactive.cancelled))
+            ) {
+                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+            }
+            session = candidate
+            if (interactive != null) interactiveState = null
         }
+    }
+
+    private fun checkInteractiveCurrent(state: InteractiveState) {
+        val valid = synchronized(stateLock) {
+            interactiveState === state && !state.cancelled && epoch.get() == state.epoch
+        }
+        if (!valid || !isCurrent(state.owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
     }
 
     suspend fun page(month: YearMonth? = null, current: Int = 1, size: Int = 50): BoundCardHistoryPage = withContext(Dispatchers.IO) {

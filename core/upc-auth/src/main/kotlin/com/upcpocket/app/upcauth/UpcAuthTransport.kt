@@ -16,7 +16,9 @@ internal data class UpcAuthHttpRequest(
     val url: String,
     val headers: Map<String, String> = emptyMap(),
     val body: String? = null,
-)
+) {
+    override fun toString(): String = "UpcAuthHttpRequest([REDACTED])"
+}
 
 internal class UpcAuthHttpResponse(
     val status: Int,

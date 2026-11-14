@@ -22,21 +22,35 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettings: () -> Unit) {
+    CardHistoryScreenContent(client, back, accountSettings)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun CardHistoryScreenContent(
+    client: CardHistoryClient,
+    back: () -> Unit,
+    accountSettings: () -> Unit,
+    syntheticResources: CardHistoryWebResourceProvider? = null,
+) {
     val owner by client.studentIdentity.collectAsStateWithLifecycle()
     val account by client.accountState.collectAsStateWithLifecycle()
     var bound by remember { mutableStateOf<BoundCardHistoryPage?>(null) }
     var rows by remember { mutableStateOf(emptyList<CardHistoryRow>()) }
     var summary by remember { mutableStateOf<CardHistorySummary?>(null) }
     var month by remember { mutableStateOf<YearMonth?>(null) }
-    var monthText by remember { mutableStateOf(YearMonth.now().toString()) }
     var monthDialog by remember { mutableStateOf(false) }
-    var monthError by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var loginAttempt by remember { mutableStateOf<CardHistoryInteractiveAttempt?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val available = owner != null && !account.blocksPersonalSessions
-    LaunchedEffect(owner, account.blocksPersonalSessions) { bound = null; rows = emptyList(); summary = null; message = null }
+    LaunchedEffect(owner, account.blocksPersonalSessions) {
+        loginAttempt?.let { client.cancelInteractiveLogin(it.id) }
+        loginAttempt = null
+        bound = null; rows = emptyList(); summary = null; message = null
+    }
 
     fun query(all: Boolean = false, more: Boolean = false) {
         if (loading || !available) return
@@ -62,12 +76,26 @@ fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettin
                 if (client.isCurrent(expected)) message = when ((error as? CardHistoryException)?.reason) {
                     CardHistoryFailure.AUTHENTICATION -> "学校登录未完成，请检查学校账号。"
                     CardHistoryFailure.INVALID_CREDENTIALS -> "学校未接受账号密码，请在账号设置中核对。"
-                    CardHistoryFailure.INTERACTION_REQUIRED -> "学校要求额外验证，暂时无法完成登录。"
+                    CardHistoryFailure.INTERACTION_REQUIRED -> "请在学校页面继续登录。"
                     CardHistoryFailure.LOGIN_REQUIRED -> "会话已过期，请再点查询重新登录。"
                     CardHistoryFailure.NETWORK -> "学校服务暂时无法连接，请稍后重试。"
+                    CardHistoryFailure.ACCESS_DENIED -> "学校暂不允许登录，请稍后再试。"
+                    CardHistoryFailure.UPSTREAM -> "学校登录服务暂不可用，请稍后重试。"
                     else -> "本次查询未完成，已保留本页先前结果。"
                 }
             } finally { loading = false }
+        }
+    }
+    fun startVerification() {
+        if (!available || loading || loginAttempt != null) return
+        try {
+            loginAttempt = client.beginInteractiveLogin()
+            message = null
+        } catch (error: CardHistoryException) {
+            message = when (error.reason) {
+                CardHistoryFailure.ACCOUNT_CHANGED, CardHistoryFailure.ACCOUNT_UNAVAILABLE -> "学校账号已变化，请重新查询。"
+                else -> "暂时无法打开学校登录页面，请稍后重试。"
+            }
         }
     }
     val visible = bound?.takeIf { client.isCurrent(it.owner) && it.month == month }
@@ -88,12 +116,17 @@ fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettin
                 Text(owner?.studentId?.let(AccountMask::mask) ?: "尚未设置可用学校账号")
                 if (!available) Button(onClick = accountSettings) { Text("前往学校账号设置") }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = month == null, enabled = !loading, onClick = { month = null; bound = null; rows = emptyList(); summary = null }, label = { Text("全部日期") })
-                    FilterChip(selected = month != null, enabled = !loading, onClick = { monthDialog = true; monthError = false }, label = { Text(month?.toString() ?: "按月") })
+                    FilterChip(selected = month == null, enabled = !loading && loginAttempt == null, onClick = { month = null; bound = null; rows = emptyList(); summary = null }, label = { Text("全部日期") })
+                    FilterChip(selected = month != null, enabled = !loading && loginAttempt == null, onClick = { monthDialog = true }, label = { Text(month?.toString() ?: "按月") })
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { query() }, enabled = available && !loading) { Text("登录并查询") }
-                    OutlinedButton(onClick = { query(all = true) }, enabled = available && !loading) { Text("加载全部") }
+                    Button(onClick = { query() }, enabled = available && !loading && loginAttempt == null) { Text("登录并查询") }
+                    OutlinedButton(onClick = { query(all = true) }, enabled = available && !loading && loginAttempt == null) { Text("加载全部") }
+                }
+                if (client.supportsInteractiveLogin) {
+                    OutlinedButton(onClick = ::startVerification, enabled = available && !loading && loginAttempt == null) {
+                        Text("网页登录")
+                    }
                 }
                 if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                 message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
@@ -103,7 +136,7 @@ fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettin
             if (visible != null) {
                 item {
                     Text("已加载 ${rows.size} / ${visible.data.total} 条")
-                    OutlinedTextField(search, { search = it }, label = { Text("搜索已加载记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(search, { search = it }, enabled = !loading && loginAttempt == null, label = { Text("搜索已加载记录") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 items(shown, key = { it.id }) { row -> Card { Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(row.title); Text("${row.time}    ¥ ${if (row.amountFen > 0) "+" else ""}${money(row.amountFen)}")
@@ -112,14 +145,42 @@ fun CardHistoryScreen(client: CardHistoryClient, back: () -> Unit, accountSettin
             }
         }
     }
-    if (monthDialog) AlertDialog(onDismissRequest = { monthDialog = false }, title = { Text("选择月份") }, text = {
-        Column {
-            OutlinedTextField(monthText, { monthText = it; monthError = false }, singleLine = true, label = { Text("YYYY-MM") })
-            if (monthError) Text("请输入有效年月")
-        }
-    }, confirmButton = { TextButton(onClick = {
-        val value = runCatching { YearMonth.parse(monthText) }.getOrNull()
-        if (value == null || value.year !in 2000..9999) monthError = true
-        else { month = value; bound = null; rows = emptyList(); summary = null; monthDialog = false }
-    }) { Text("确定") } }, dismissButton = { TextButton(onClick = { monthDialog = false }) { Text("取消") } })
+    if (monthDialog) CardHistoryMonthDialog(
+        initialMonth = month ?: YearMonth.now(),
+        onDismiss = { monthDialog = false },
+        onConfirm = { value ->
+            if (value != month) {
+                month = value; bound = null; rows = emptyList(); summary = null
+            }
+            monthDialog = false
+        },
+    )
+
+    loginAttempt?.let { attempt ->
+        CardHistoryLoginDialog(
+            client = client,
+            attempt = attempt,
+            syntheticResources = syntheticResources,
+            onSuccess = {
+                loginAttempt = null
+                query()
+            },
+            onFailure = { reason ->
+                loginAttempt = null
+                message = when (reason) {
+                    CardHistoryFailure.ACCOUNT_CHANGED, CardHistoryFailure.ACCOUNT_UNAVAILABLE -> "学校账号已变化，请重新查询。"
+                    CardHistoryFailure.NETWORK -> "学校服务暂时无法连接，请稍后重试。"
+                    CardHistoryFailure.PROTOCOL -> "学校登录结果未通过校验，请重新开始网页登录。"
+                    CardHistoryFailure.INVALID_CREDENTIALS -> "学校未完成登录，请检查账号后重试。"
+                    CardHistoryFailure.ACCESS_DENIED -> "学校暂不允许登录，请稍后再试。"
+                    CardHistoryFailure.UPSTREAM -> "学校登录服务暂不可用，请稍后重试。"
+                    else -> "学校登录没有完成，请重新开始。"
+                }
+            },
+            onClose = {
+                client.cancelInteractiveLogin(attempt.id)
+                loginAttempt = null
+            },
+        )
+    }
 }

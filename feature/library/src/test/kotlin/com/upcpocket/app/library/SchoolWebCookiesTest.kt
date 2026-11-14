@@ -24,6 +24,11 @@ class SchoolWebCookiesTest {
         jar.setCookie("https://cas.upc.edu.cn/cas/login", "CAS_ROOT=synthetic; Path=/; Secure; HttpOnly")
         jar.setCookie("https://cas.upc.edu.cn/cas/login", "CAS_PATH=synthetic; Path=/cas; Secure")
         jar.setCookie("https://cas.upc.edu.cn/cas/login", "CAS_LOGIN=synthetic; Path=/cas/login; Secure")
+        jar.setCookie(
+            "https://mb-xyk.upc.edu.cn/berserker-auth/cas/login/wislearn",
+            "CARD_CALLBACK=synthetic; Path=/berserker-auth/cas/login; Secure",
+        )
+        jar.setCookie("https://mb-xyk.upc.edu.cn/plat/", "CARD_PORTAL=synthetic; Path=/plat/; Secure")
         jar.setCookie("https://libspace.upc.edu.cn/libseat/", "LIB_PATH=synthetic; Path=/libseat/; Secure")
         jar.setCookie(
             "https://libspace.upc.edu.cn/remote/static/sso/login",
@@ -42,17 +47,21 @@ class SchoolWebCookiesTest {
         )
         assertTrue(jar.namesAt("https://libspace.upc.edu.cn/libseat/").contains("LIB_PATH"))
         assertTrue(jar.namesAt("https://libspace.upc.edu.cn/remote/static/sso/login").contains("REMOTE_PATH"))
+        assertTrue(jar.namesAt("https://mb-xyk.upc.edu.cn/berserker-auth/cas/login/wislearn").contains("CARD_CALLBACK"))
+        assertTrue(jar.namesAt("https://mb-xyk.upc.edu.cn/plat/").contains("CARD_PORTAL"))
 
         val cleared = SchoolWebCookies.clearScopes(jar)
 
         assertTrue(
             cleared.containsAll(
-                listOf("CAS_ROOT", "CAS_PATH", "CAS_LOGIN", "LIB_PATH", "REMOTE_PATH", "UPC_DOMAIN"),
+                listOf("CAS_ROOT", "CAS_PATH", "CAS_LOGIN", "CARD_CALLBACK", "CARD_PORTAL", "LIB_PATH", "REMOTE_PATH", "UPC_DOMAIN"),
             ),
         )
         assertFalse(jar.namesAt("https://cas.upc.edu.cn/").contains("CAS_ROOT"))
         assertFalse(jar.namesAt("https://cas.upc.edu.cn/cas").contains("CAS_PATH"))
         assertFalse(jar.namesAt("https://cas.upc.edu.cn/cas/login").contains("CAS_LOGIN"))
+        assertFalse(jar.namesAt("https://mb-xyk.upc.edu.cn/berserker-auth/cas/login/wislearn").contains("CARD_CALLBACK"))
+        assertFalse(jar.namesAt("https://mb-xyk.upc.edu.cn/plat/").contains("CARD_PORTAL"))
         assertFalse(jar.namesAt("https://libspace.upc.edu.cn/libseat/").contains("LIB_PATH"))
         assertFalse(
             jar.namesAt("https://libspace.upc.edu.cn/remote/static/sso/login").contains("REMOTE_PATH"),
@@ -61,6 +70,44 @@ class SchoolWebCookiesTest {
         assertTrue(jar.namesAt("https://example.com/").contains("UNRELATED"))
         assertTrue(jar.namesAt("https://notupc.example/").contains("ALSO_UNRELATED"))
         assertTrue(SchoolWebCookies.collectNames(jar).intersect(cleared).isEmpty())
+    }
+
+    @Test fun `shiguang root callback and nested domain cookies are removed`() {
+        val jar = FakeCookieJar()
+        val paths = listOf("/", "/caslogin.jsp", "/sysmng", "/sysmng/", "/sysmng/login!loginByUserNoForCas.action", "/web", "/web/", "/web/index.html")
+        paths.forEachIndexed { index, path ->
+            jar.setCookie("https://dekt.upc.edu.cn$path", "DEKT$index=synthetic; Path=$path; Secure")
+            jar.setCookie("https://dekt.upc.edu.cn$path", "DOMAIN$index=synthetic; Domain=dekt.upc.edu.cn; Path=$path; Secure")
+        }
+        jar.setCookie("https://example.com/", "OTHER=synthetic; Path=/")
+        val names = SchoolWebCookies.clearScopes(jar)
+        assertEquals(16, names.size)
+        paths.forEach { path -> assertTrue(jar.namesAt("https://dekt.upc.edu.cn$path").isEmpty()) }
+        assertEquals(setOf("OTHER"), jar.namesAt("https://example.com/"))
+    }
+
+    @Test fun `service portal login api and personal queue cookies are removed`() {
+        val jar = FakeCookieJar()
+        val paths = listOf(
+            "/",
+            "/site/login/cas-login",
+            "/v2/site/index",
+            "/api/apps/list",
+            "/api/apps/detail",
+            "/site/message/count",
+            "/site/my-task/todo",
+            "/site/process/inst-list",
+        )
+        paths.forEachIndexed { index, path ->
+            jar.setCookie("https://service.upc.edu.cn$path", "SERVICE$index=synthetic; Path=$path; Secure; HttpOnly")
+        }
+        jar.setCookie("https://example.com/", "OTHER=synthetic; Path=/")
+
+        val names = SchoolWebCookies.clearScopes(jar)
+
+        assertEquals(paths.size, names.size)
+        paths.forEach { path -> assertTrue(jar.namesAt("https://service.upc.edu.cn$path").isEmpty()) }
+        assertEquals(setOf("OTHER"), jar.namesAt("https://example.com/"))
     }
 
     private class FakeCookieJar : SchoolWebCookies.CookieJar {

@@ -5,7 +5,7 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "v0.2.7 (published) / M5 development branch (unreleased)",
+  "release": "UPC Pocket v2.0.4 (published) / v2.0.5 (development, unreleased)",
   "source_references": [
     {
       "id": "upc-mcp",
@@ -16,12 +16,34 @@
     }
   ],
   "verification": {
-    "current_scope": "2026-11-04: user decided to remove all discussion-room/space-booking product features. nspace and reservepc pages/routes/protocols/Services/forms/tenant-context bridge are deleted; current product keeps only libseat, Chaoxing seat, and Chaoxing seatengine. The nspace/reservepc entries below are archived research evidence, not current integrations.",
-    "reference_source_facts": "Timetable protocol and CAS service shape reviewed in the pinned UPC-MCP source and synthetic fixtures.",
-    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. Later the same day M4 completed a real self-account libseat CAS login, app-token/seat-token exchange, /rest/v2/user identity check, and read-only filters/current-reservation calls; no seat layout, booking, cancellation or check-in was executed. A post-review correction added controlled manual-WebView identity binding and session-revision cleanup; it was verified with [REDACTED] Android/JVM tests only and the real CAS was not rerun. No course text, account, credentials, tokens or session values are recorded here. Separately, the six-entry library/space study used six user-authorized local HAR captures: libseat read-only APIs; nspace venue/roomType/date/roomList; seat/seatengine entrance config/index/identity and empty current/near reservations; reservepc two tenants with 8 and 23 reserve items respectively and empty user lists. All captures start from already-authorized pages; no CAS/passport login exchange, token acquisition or write request was captured or executed. M5 follow-up: the nspace entry was verified to redirect to CAS and the independent nspace auth/read-only client was implemented with synthetic protocol/account-isolation tests. On 2026-11-04 user-provided local credentials were used once in a debug test; nspace and libseat reached CAS but the POST returned a 401 login/captcha page. The client now maps that page to INTERACTION_REQUIRED with the school interaction URL instead of ACCESS_DENIED, and no retry or bypass was attempted; identity/read calls did not run. Chaoxing seat/seatengine remain browser fallbacks and reservepc remains blocked by missing stable tenant context. No real booking/cancel/check-in was executed and no credential, cookie or token value is recorded.",
+    "current_scope": "2026-11-14: UPC Pocket v2.0.4 is published and v2.0.5 remains unreleased. e站通 native read-only implementation, independent tests/review, Debug and AndroidTest packaging, module boundaries, signed R8/resource-shrunk Release build and APK audit completed. Final signed Release passed data-preserving installation, public catalog/guide/negative search, offline pagination and one timetable-widget cold-refresh/navigation smoke; real CAS and personal reads remain unverified. The user previously decided to remove discussion-room/space-booking product features; nspace and reservepc pages/routes/protocols/Services/forms/tenant-context bridge are deleted. The nspace/reservepc entries below are archived research evidence, not current integrations.",
+    "reference_source_facts": "Timetable and e站通 protocol/normal CAS service shapes reviewed in the pinned UPC-MCP source; synthetic fixtures cover parser and account semantics.",
+    "actual_validation": "2026-11-03: Android 36 emulator completed a real self-account CAS login and a single read-only timetable index/week request, then displayed the week grid/today section and reopened from offline cache. Later the same day M4 completed a real self-account libseat CAS login, app-token/seat-token exchange, /rest/v2/user identity check, and read-only filters/current-reservation calls; no seat layout, booking, cancellation or check-in was executed. A post-review correction added controlled manual-WebView identity binding and session-revision cleanup; it was verified with [REDACTED] Android/JVM tests only and the real CAS was not rerun. No course text, account, credentials, tokens or session values are recorded here. Separately, the six-entry library/space study used six user-authorized local HAR captures: libseat read-only APIs; nspace venue/roomType/date/roomList; seat/seatengine entrance config/index/identity and empty current/near reservations; reservepc two tenants with 8 and 23 reserve items respectively and empty user lists. All captures start from already-authorized pages; no CAS/passport login exchange, token acquisition or write request was captured or executed. M5 follow-up: the nspace entry was verified to redirect to CAS and the independent nspace auth/read-only client was implemented with synthetic protocol/account-isolation tests. On 2026-11-04 user-provided local credentials were used once in a debug test; nspace and libseat reached CAS but the POST returned a 401 login/captcha page. The client now maps that page to INTERACTION_REQUIRED with the school interaction URL instead of ACCESS_DENIED, and no retry or bypass was attempted; identity/read calls did not run. Chaoxing seat/seatengine remain browser fallbacks and reservepc remains blocked by missing stable tenant context. No real booking/cancel/check-in was executed and no credential, cookie or token value is recorded. On 2026-11-12, UPC Pocket 2.0.5 development added a restricted manual WebView fallback for card-history authentication with synthetic policy/protocol/session tests; no real captcha page or school account was used to validate this branch. On 2026-11-14, e站通 final scoped tests totalled 499 cases: 497 passed, 2 explicit live-network tests skipped, no failure/error. The final three-module run executed 370 cases; unchanged auth tests contributed 129. Debug and AndroidTest packaging, boundaries and signed R8/resource shrink Release passed. An Android-only PatternSyntaxException from (?U) was reproduced with a synthetic instrumentation probe and fixed by explicit Unicode White_Space code-point scanning. Public catalog and local page 2 rendered on Android; a single guide request returned a visible network error. No credential, protected CAS or personal endpoint was used. Final installation/public-path evidence is recorded in docs/releases/2.0.5-development.md. The final signed APK was installed with matching certificate/version and unchanged firstInstallTime; its pulled bytes matched the build and delivery copy. One manual guide refresh and one manual search recheck succeeded after preserved network failures. Clearing search restored 194 public items, offline pagination reached page 2/10, and same-query offline refresh retained results with an explicit error. Ordinary background process death and one production timetable-widget cold refresh/whole-card navigation were exercised without an account.",
     "formal_authorization": "Not an official client and no official authorization is claimed. The user reports contact with the school; only the user's own account was used for read-only validation."
   },
   "entries": [
+    {
+      "id": "shiguang",
+      "name": "石光（第二课堂）",
+      "campus": null,
+      "url": "https://dekt.upc.edu.cn",
+      "official_source": "https://youth.upc.edu.cn/_t2058/2026/1025/c11148a504265/page.htm",
+      "source_reference": "upc-mcp@948f5f21ad7a12fd94b53403a07ac867209f7700",
+      "authentication": "Normal UPC CAS; registered service retains http://dekt.upc.edu.cn/caslogin.jsp bytes while Android network requests require HTTPS; personal data requires verified self identity",
+      "integration": "development_native_read_only_candidate",
+      "verification": "2026-11-13 validation-2: one Debug instrumentation run using final production core/feature passed normal CAS self-identity verification, 10 first-page activities, one detail, five personal modules and 10 first-page participations. Temporary input and target test account were removed; original encrypted credential bytes unchanged. Signed Release passed account-free entry/four-tab/cold-start/existing-widget smoke only. First PROTOCOL failure and prior candidates retained; no single repair is claimed as its cause. Full real search/pagination, captcha, natural expiry, unverified identity and real Release login remain unverified. No registration, cancellation, check-in or import. Unpublished candidate; sessions/results stay in memory."
+    },
+    {
+      "id": "service_portal",
+      "name": "e站通",
+      "campus": null,
+      "url": "https://service.upc.edu.cn/",
+      "official_source": "https://nic.upc.edu.cn/",
+      "source_reference": "upc-mcp@948f5f21ad7a12fd94b53403a07ac867209f7700",
+      "authentication": "UPC CAS through the controlled account adapter; returned business cookies and results are bound to the account id and credential generation",
+      "integration": "development_native_read_only_candidate",
+      "verification": "2026-11-14: native catalog search, guide, personal pending tasks and in-progress applications implemented, with memory-only results and no business writes. Account/generation/epoch ownership, bounded recovery, error handling and guide URL/ticket/private-attachment redaction passed scoped tests and independent review. Portal tests 44/44; auth/library/app final results and full evidence are recorded in docs/releases/2.0.5-development.md. Debug/AndroidTest packaging, boundaries, signed R8/resource shrink Release and actual APK manifest/DEX/TLS/license/ABI/signature audits passed. Android rejected the old (?U) pattern; explicit Unicode code-point splitting fixed public catalog rendering, and local page 2 was observed. The first native guide request returned a network failure and was not counted as content success. Captcha/secondary verification returns INTERACTION_REQUIRED without adopting browser Cookies because no reliable resumable ownership context exists. Real CAS/SSO/challenge, natural expiry and personal queries remain unverified; final Release device results are recorded in the development note. Final signed Release public guide loaded after one manual refresh; a synthetic nonmatching search succeeded after one manual recheck, clearing restored the catalog, and local page 2 remained usable offline. First failures were retained. Search explicitly reloads the full catalog before local filtering; only pagination reuses the in-memory catalog. Final installed APK matched delivery bytes, and account-free process/widget smoke passed. No real personal query or authentication success is claimed."
+    },
     {
       "id": "free_classroom",
       "name": "空闲教室",
@@ -96,6 +118,15 @@
       "campus": null,
       "url": "http://jhzf.upc.edu.cn:20081/wechat/callinterface/getCardInfo.html",
       "integration": "native_read_only_balance"
+    },
+    {
+      "id": "campus_card_history",
+      "name": "校园卡本人只读流水",
+      "campus": null,
+      "url": "https://mb-xyk.upc.edu.cn/berserker-auth/cas/redirect/wislearn?targetUrl=https%3A%2F%2Fmb-xyk.upc.edu.cn%2Fplat%2F%3Fname%3DloginTransit",
+      "authentication": "UPC CAS with native credential login; 2.0.5 development adds a restricted manual WebView for captcha or additional verification",
+      "integration": "native_read_only_history_with_web_login_fallback",
+      "verification": "Native self-account read-only history was verified for 2.0.4. The 2.0.5 WebView branch has synthetic URL-policy, result parsing, and attempt/identity tests only; a real captcha challenge and actual WebView navigation are not yet verified."
     },
     {
       "id": "timetable",

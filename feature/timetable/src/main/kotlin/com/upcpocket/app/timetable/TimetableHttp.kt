@@ -6,6 +6,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
 import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
@@ -180,6 +181,7 @@ class TimetableApi internal constructor(
     suspend fun getIndex(
         cookies: List<TimetableCookie>,
         operationId: String? = null,
+        diagnosticOperation: DiagnosticOperation? = null,
     ): TimetableIndex {
         val response = request(
             method = "GET",
@@ -191,7 +193,7 @@ class TimetableApi internal constructor(
         } catch (failure: TimetableParseException) {
             throw response.failure(failure.code, failure.detail)
         }
-        recordMimeMismatch(response, operationId)
+        recordMimeMismatch(response, operationId, diagnosticOperation)
         return parsed
     }
 
@@ -200,6 +202,7 @@ class TimetableApi internal constructor(
         term: TimetableTerm,
         week: Int,
         operationId: String? = null,
+        diagnosticOperation: DiagnosticOperation? = null,
     ): TimetableWeek {
         val body = listOf(
             "year" to term.year,
@@ -219,7 +222,7 @@ class TimetableApi internal constructor(
         } catch (failure: TimetableParseException) {
             throw response.failure(failure.code, failure.detail)
         }
-        recordMimeMismatch(response, operationId)
+        recordMimeMismatch(response, operationId, diagnosticOperation)
         return parsed
     }
 
@@ -244,8 +247,15 @@ class TimetableApi internal constructor(
         )
     }
 
-    private fun recordMimeMismatch(response: Payload, operationId: String?) {
+    private fun recordMimeMismatch(
+        response: Payload,
+        operationId: String?,
+        diagnosticOperation: DiagnosticOperation?,
+    ) {
         if (!response.mimeMismatch) return
+        val boundOperation = diagnosticOperation?.takeIf {
+            operationId == null || it.id == operationId
+        }
         Diagnostics.record(
             module = DiagnosticModule.TIMETABLE,
             action = DiagnosticAction.QUERY_CHANGED,
@@ -258,6 +268,7 @@ class TimetableApi internal constructor(
             bodyType = response.bodyType,
             responseBytes = response.bytes,
             operationId = operationId,
+            operation = boundOperation,
         )
     }
 

@@ -12,6 +12,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.EpochBoundDiagnosticSink
 import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticSink
@@ -596,6 +597,83 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun lateAuthenticationCompletionIsDroppedAfterAccountClearAdvancesDiagnosticEpoch() = runTest {
+        val sink = EpochDiagnosticSink()
+        val authStarted = CompletableDeferred<Unit>()
+        val releaseAuth = CompletableDeferred<Unit>()
+        auth.beforeReturn = {
+            authStarted.complete(Unit)
+            releaseAuth.await()
+        }
+        Diagnostics.install(sink)
+        try {
+            val service = service(ProgrammedTransport { error("transport must not run after account clear") })
+            val opening = launch { service.open() }
+            withTimeout(5_000) { authStarted.await() }
+
+            val authStart = sink.events.single { it.action == DiagnosticAction.AUTH_START }
+            assertNotNull(authStart.operationId)
+            sink.clearForAccountChange()
+            assertTrue(service.invalidateForAccount(AccountDataScope.SESSIONS_ONLY))
+            releaseAuth.complete(Unit)
+            opening.join()
+
+            assertFalse(
+                sink.events.any {
+                    it.action == DiagnosticAction.AUTH_COMPLETE &&
+                        it.operationId == authStart.operationId
+                },
+            )
+        } finally {
+            releaseAuth.complete(Unit)
+            auth.beforeReturn = {}
+            Diagnostics.install(null)
+        }
+    }
+
+    @Test
+    fun queryAndMimeDiagnosticsAreDroppedWhenAccountClearsDuringIndexResponse() = runTest {
+        seedCacheAndSession()
+        val requestStarted = CompletableDeferred<Unit>()
+        val releaseResponse = CompletableDeferred<Unit>()
+        val transport = ProgrammedTransport { request ->
+            if (request.method == "GET") {
+                requestStarted.complete(Unit)
+                releaseResponse.await()
+                json(indexFixture(), "text/html")
+            } else {
+                error("week request must not run after account clear")
+            }
+        }
+        val sink = EpochDiagnosticSink()
+        Diagnostics.install(sink)
+        try {
+            val service = service(transport)
+            val opening = launch { service.open() }
+            withTimeout(5_000) { requestStarted.await() }
+
+            val queryStart = sink.events.single {
+                it.action == DiagnosticAction.QUERY_START && it.phase == DiagnosticPhase.INDEX
+            }
+            val operationId = queryStart.operationId!!
+            val eventCountBeforeClear = sink.events.size
+            sink.clearForAccountChange()
+            assertTrue(service.invalidateForAccount(AccountDataScope.SESSIONS_ONLY))
+            releaseResponse.complete(Unit)
+            opening.join()
+
+            assertTrue(
+                sink.events.drop(eventCountBeforeClear).none { it.operationId == operationId },
+            )
+            assertFalse(sink.events.any { it.detail == DiagnosticDetail.RESPONSE_MIME_MISMATCH })
+            assertFalse(sink.events.any { it.detail == DiagnosticDetail.STALE_DISCARDED })
+        } finally {
+            releaseResponse.complete(Unit)
+            Diagnostics.install(null)
+        }
+    }
+
+    @Test
     fun accountSwitchDuringWeekRequestDiscardsOldResult() = runTest {
         val gate = CompletableDeferred<Unit>()
         val started = CompletableDeferred<Unit>()
@@ -1032,6 +1110,7 @@ class TimetableServiceTest {
 
     private inner class FakeAuthenticator : TimetableAuthenticator {
         var calls = 0
+        var beforeReturn: suspend () -> Unit = {}
         var result: UpcAuthResult = UpcAuthResult.Success(
             listOf(
                 UpcAuthCookie(
@@ -1051,7 +1130,27 @@ class TimetableServiceTest {
             expectedCredentialGeneration: Long,
         ): UpcAuthResult {
             calls++
+            beforeReturn()
             return result
+        }
+    }
+
+    private class EpochDiagnosticSink : EpochBoundDiagnosticSink {
+        var epoch = 0L
+        val events = mutableListOf<DiagnosticEvent>()
+
+        override fun captureEpoch(): Long = epoch
+
+        override fun record(event: DiagnosticEvent) {
+            events += event
+        }
+
+        override fun record(event: DiagnosticEvent, expectedEpoch: Long?) {
+            if (expectedEpoch == null || expectedEpoch == epoch) events += event
+        }
+
+        fun clearForAccountChange() {
+            epoch++
         }
     }
 

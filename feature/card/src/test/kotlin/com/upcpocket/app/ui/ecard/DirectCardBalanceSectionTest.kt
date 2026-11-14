@@ -190,6 +190,7 @@ class DirectCardBalanceSectionTest {
         val service = service(account, directory = directory)
         render(service)
 
+        waitEnabled("card_query")
         rule.onNodeWithTag("card_query").performClick()
         rule.waitUntil(5_000) {
             rule.onAllNodesWithTag("card_snapshot").fetchSemanticsNodes().isNotEmpty()

@@ -20,6 +20,9 @@ import kotlinx.coroutines.withContext
 object SchoolWebCookies {
     private val hosts = listOf(
         "https://cas.upc.edu.cn",
+        "https://mb-xyk.upc.edu.cn",
+        "https://dekt.upc.edu.cn",
+        "https://service.upc.edu.cn",
         "https://libspace.upc.edu.cn",
         "https://app.upc.edu.cn",
         "https://i.upc.edu.cn",
@@ -29,6 +32,7 @@ object SchoolWebCookies {
     /**
      * 已核实入口及其父路径：
      * - CAS `/cas/login` 与登录 iframe `/cas/cas/login-*.html`；
+     * - 校园卡 `/berserker-auth/cas/redirect/wislearn`、回调与 `/plat/` 登录结果；
      * - 图书馆 `/libseat/`、`/remote/static/sso/login`、
      *   `/remote/static/casAuth/getServiceByVerifyTicket/casLogin`；
      * - 空闲教室 `/freeclass/...` 与常见学校平台 `/site`、`/uc`。
@@ -42,6 +46,27 @@ object SchoolWebCookies {
         "/cas/cas/",
         "/cas/cas/login-mobile.html",
         "/cas/cas/login-normal.html",
+        "/caslogin.jsp",
+        "/sysmng",
+        "/sysmng/",
+        "/sysmng/login!loginByUserNoForCas.action",
+        "/web",
+        "/web/",
+        "/web/index.html",
+        "/berserker-auth",
+        "/berserker-auth/",
+        "/berserker-auth/cas",
+        "/berserker-auth/cas/",
+        "/berserker-auth/cas/redirect",
+        "/berserker-auth/cas/redirect/wislearn",
+        "/berserker-auth/cas/login",
+        "/berserker-auth/cas/login/wislearn",
+        "/berserker-auth/oauth",
+        "/berserker-auth/oauth/token",
+        "/plat",
+        "/plat/",
+        "/campus-card",
+        "/campus-card/",
         "/libseat",
         "/libseat/",
         "/remote",
@@ -64,6 +89,32 @@ object SchoolWebCookies {
         "/freeclass/wap/default/all",
     )
 
+    /** e站通 uses service-specific API paths; probe them only on its verified business host. */
+    private val servicePortalPaths = listOf(
+        "/api",
+        "/api/",
+        "/api/apps",
+        "/api/apps/",
+        "/api/apps/list",
+        "/api/apps/detail",
+        "/site",
+        "/site/",
+        "/site/login",
+        "/site/login/",
+        "/site/login/cas-login",
+        "/site/message",
+        "/site/message/count",
+        "/site/my-task",
+        "/site/my-task/todo",
+        "/site/process",
+        "/site/process/inst-list",
+        "/v2",
+        "/v2/",
+        "/v2/site",
+        "/v2/site/",
+        "/v2/site/index",
+    )
+
     private data class Scope(val baseUrl: String, val host: String, val path: String) {
         val url: String get() = baseUrl + path
     }
@@ -71,7 +122,7 @@ object SchoolWebCookies {
     private val scopes = hosts.flatMap { baseUrl ->
         val host = URI(baseUrl).host ?: error("学校 Cookie 作用域缺少 host")
         paths.map { path -> Scope(baseUrl, host, path) }
-    }
+    } + servicePortalPaths.map { path -> Scope("https://service.upc.edu.cn", "service.upc.edu.cn", path) }
 
     internal interface CookieJar {
         fun getCookie(url: String): String?
