@@ -3,6 +3,7 @@ package com.upcpocket.app.ui.classroom
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -27,13 +28,15 @@ class ClassroomPreviewActivity : ComponentActivity() {
         val scenario = intent.getStringExtra("scenario").orEmpty()
         val largeFont = intent.getBooleanExtra("largeFont", false)
         val dark = intent.getBooleanExtra("dark", false)
+        val promo = intent.getBooleanExtra("promo", false)
+        if (promo) enableEdgeToEdge()
         var calls = 0
         val repository = FreeClassroomRepository { query ->
             calls++
             if (scenario == "failed" && calls > 1) {
                 throw IOException("学校服务暂时不可用，请稍后重试")
             }
-            previewResult(query, empty = scenario == "empty")
+            previewResult(query, empty = scenario == "empty", promo = promo)
         }
         setContent {
             val baseDensity = LocalDensity.current
@@ -50,8 +53,17 @@ class ClassroomPreviewActivity : ComponentActivity() {
     }
 }
 
-private fun previewResult(query: FreeClassroomQuery, empty: Boolean): FreeClassroomResult {
-    val allRooms = if (empty) emptyList() else when (query.campus) {
+private fun previewResult(query: FreeClassroomQuery, empty: Boolean, promo: Boolean): FreeClassroomResult {
+    val allRooms = if (empty) emptyList() else if (promo) listOf(
+        room("promotion-101", "南教 101", "南教", query, available = true),
+        room("promotion-102", "南教 102", "南教", query, available = true),
+        room("promotion-103", "南教 103", "南教", query, available = false),
+        room("promotion-104", "南教 104", "南教", query, available = true),
+        room("promotion-201", "东教 201", "东教", query, available = true),
+        room("promotion-202", "东教 202", "东教", query, available = false),
+        room("promotion-203", "东教 203", "东教", query, available = true),
+        room("promotion-204", "东教 204", "东教", query, available = true),
+    ) else when (query.campus) {
         FreeClassroomCampus.TANGDAOWAN -> listOf(
             room("fixture-tw-101", "合成教室 101", "合成教学楼 A", query, available = true),
             room("fixture-tw-102", "合成教室 102", "合成教学楼 A", query, available = false),
@@ -65,8 +77,8 @@ private fun previewResult(query: FreeClassroomQuery, empty: Boolean): FreeClassr
         )
     }
     val rooms = if (query.building == "全部") allRooms else allRooms.filter { it.building == query.building }
-    val buildings = listOf("全部", "合成教学楼 A", "合成教学楼 B", "卓越教学楼", "实验教学楼")
-    return FreeClassroomResult(query, buildings, rooms, Instant.parse("2026-11-15T02:00:00Z"))
+    val buildings = if (promo) listOf("全部", "南教", "东教") else listOf("全部", "合成教学楼 A", "合成教学楼 B", "卓越教学楼", "实验教学楼")
+    return FreeClassroomResult(query, buildings, rooms, if (promo) Instant.now() else Instant.parse("2026-11-15T02:00:00Z"))
 }
 
 private fun room(

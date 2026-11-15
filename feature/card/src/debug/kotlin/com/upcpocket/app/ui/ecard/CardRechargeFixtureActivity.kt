@@ -4,12 +4,14 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -27,6 +29,9 @@ import com.upcpocket.app.data.cardrecharge.RechargePending
 import com.upcpocket.app.data.cardrecharge.RechargePendingStore
 import com.upcpocket.app.data.cardrecharge.RechargeResponse
 import com.upcpocket.app.data.cardrecharge.RechargeTransport
+import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.ui.theme.UpcPocketTheme
 import java.net.URLEncoder
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.*
@@ -44,6 +49,8 @@ class CardRechargeFixtureActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val promo = intent.getBooleanExtra("promo", false)
+        if (promo) enableEdgeToEdge()
         val account = object : SchoolAccountStudentIdentityReader {
             override val state = MutableStateFlow(SchoolAccountState(SchoolAccountStatus.SAVED_UNVERIFIED, AccountGeneration(1)))
             override val studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(
@@ -99,6 +106,7 @@ class CardRechargeFixtureActivity : ComponentActivity() {
             override fun isAvailable() = !intent.getBooleanExtra("no_wechat", false)
             override fun launch(uri: String): Boolean {
                 CardRechargeProtocol.wechatUri(uri)
+                if (promo) return false // Promotion captures never launch another Activity.
                 launchCount++
                 updateCounts()
                 startActivity(Intent(this@CardRechargeFixtureActivity, CardRechargePaymentFixtureActivity::class.java))
@@ -106,13 +114,17 @@ class CardRechargeFixtureActivity : ComponentActivity() {
             }
         }
         setContent {
-            MaterialTheme {
+            val content: @Composable () -> Unit = {
                 Column(Modifier.fillMaxSize()) {
-                    Text("充值合成演示 · 不联网")
-                    Text(counts)
+                    if (!promo) {
+                        Text("充值合成演示 · 不联网")
+                        Text(counts)
+                    }
                     CardRechargeScreen(service, { finish() }, {}, launcher)
                 }
             }
+            if (promo) UpcPocketTheme(darkMode = DarkMode.LIGHT, preset = ThemePreset.BLUE) { content() }
+            else MaterialTheme { content() }
         }
     }
 

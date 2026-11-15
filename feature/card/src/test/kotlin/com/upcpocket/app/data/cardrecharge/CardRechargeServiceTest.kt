@@ -35,6 +35,7 @@ class CardRechargeServiceTest {
         var authentications=0;var createPosts=0;var payPosts=0
         var statusRequests=0;var expireOn:String?=null;var businessAuthCode=401
         var maximum="500";var min="1";var flag="00000000";var status="0"
+        var nullLimits=false;var frontMaximum:String?=null
         var failPay=false;var changeOnCreate=false;var failCreate=false
         var onCreate:()->Unit={}
         val order="1234567890123"
@@ -49,9 +50,15 @@ class CardRechargeServiceTest {
         val transport=RechargeTransport { url,fields,token ->
             val body=when {
                 url.contains("/berserker-base/user") -> user
-                url.contains("/frontInfo?") -> if(expireOn=="prepare") expired() else envelope(obj("getFrontConfig" to """{"recharge":"401"}""","getEcardConfig" to """{"type":"2"}"""))
+                url.contains("/frontInfo?") -> if(expireOn=="prepare") expired() else envelope(obj("getFrontConfig" to buildJsonObject {
+                    put("recharge","401");frontMaximum?.let {put("rechargeMaxAmount",it)}
+                }.toString(),"getEcardConfig" to """{"type":"2"}"""))
                 url.contains("/queryCard?") -> envelope(buildJsonObject {put("card",buildJsonArray {add(obj("sno" to "2099999999","account" to "100001","lostflag" to "0","freezeflag" to "0"))})})
-                url.contains("/singleFeeitem?") -> buildJsonObject {put("feeitem",obj("retain_money" to min,"maxmoney" to maximum,"flag" to flag,"layout" to "20,50,200"))}.toString()
+                url.contains("/singleFeeitem?") -> buildJsonObject {put("feeitem",buildJsonObject {
+                    put("retain_money",if(nullLimits) JsonNull else JsonPrimitive(min))
+                    put("maxmoney",if(nullLimits) JsonNull else JsonPrimitive(maximum))
+                    put("flag",flag);put("layout","20,50,200")
+                })}.toString()
                 url==CardRechargeProtocol.SIGNER_SOURCE -> "confirm(){let t={appid:\"12345\"};e=Object(o[\"a\"])(e,\"12345\",\"${"A".repeat(32)}\",\"SHA256\");s.action=\"/charge/order/thirdOrder\"}"
                 url.endsWith("/thirdOrder") -> {
                     createPosts++
@@ -91,6 +98,28 @@ class CardRechargeServiceTest {
         val f=Fixture();f.service.open();f.maximum="200"
         assertNull(f.service.submit("200.01"));assertEquals(0,f.createPosts);assertNull(f.store.value)
         assertEquals("200",f.service.state.value.rules!!.maximum.toPlainString())
+    }
+    @Test fun `null bounds and absent front cap prepare without making any write`()=runTest {
+        val f=Fixture();f.nullLimits=true;f.service.open()
+        val rules=f.service.state.value.rules!!
+        assertEquals("0.01",rules.minimum.toPlainString());assertEquals("9999",rules.maximum.toPlainString())
+        assertEquals("20",f.service.validateAmount("20"))
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts);assertNull(f.store.value)
+        assertNull(f.service.submit("9999.01"))
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts);assertNull(f.store.value)
+    }
+    @Test fun `live optional front cap is refreshed before any order marker or POST`()=runTest {
+        val f=Fixture();f.nullLimits=true;f.frontMaximum="400";f.service.open()
+        assertEquals("400",f.service.state.value.rules!!.maximum.toPlainString())
+        f.frontMaximum="100"
+        assertNull(f.service.submit("100.01"))
+        assertEquals("100",f.service.state.value.rules!!.maximum.toPlainString())
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts);assertNull(f.store.value)
+    }
+    @Test fun `malformed refreshed bounds cannot fall back or create a pending order`()=runTest {
+        val f=Fixture();f.service.open();f.maximum="NaN"
+        assertNull(f.service.submit("20"))
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts);assertNull(f.store.value)
     }
     @Test fun `confirmed submission creates once then produces a one-time automatic handoff`()=runTest {
         val f=Fixture();f.service.open()

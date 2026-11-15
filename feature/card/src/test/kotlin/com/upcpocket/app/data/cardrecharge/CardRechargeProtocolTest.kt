@@ -121,6 +121,11 @@ class CardRechargeProtocolTest {
     private fun rules(flag:String="00000000",layout:String="20,50,200",min:String="1",max:String="500") = CardRechargeProtocol.rules(buildJsonObject {
         put("retain_money",min);put("maxmoney",max);put("layout",layout);put("flag",flag)
     })
+    private fun configuredRules(min:JsonElement?=JsonNull,max:JsonElement?=JsonNull,front:JsonElement?=null,flag:String="00000000") =
+        CardRechargeProtocol.rules(buildJsonObject {
+            min?.let {put("retain_money",it)};max?.let {put("maxmoney",it)}
+            put("layout","20,50,200");put("flag",flag)
+        },buildJsonObject {front?.let {put("rechargeMaxAmount",it)}})
     @Test fun `school min and max replace the experimental twenty yuan cap`() {
         val rule=rules()
         assertEquals("500",rule.amount("500.00"));assertEquals("1",rule.amount("1"))
@@ -137,11 +142,58 @@ class CardRechargeProtocolTest {
         failure("P-AMOUNT") { rule.amount("20.5") }
         assertEquals("30",rule.amount("30.00"))
     }
-    @Test fun `missing or malformed school limits never create a fallback maximum`() {
-        failure("P-FEE-CONFIG") { CardRechargeProtocol.rules(buildJsonObject { put("retain_money",1);put("flag","00000000") }) }
+    @Test fun `null fee bounds use the official input defaults without changing entered amount grammar`() {
+        val rule=configuredRules()
+        assertEquals("0.01",rule.minimum.toPlainString());assertEquals("9999",rule.maximum.toPlainString())
+        assertEquals("0.01",rule.amount("0.01"));assertEquals("9999",rule.amount("9999"))
+        listOf("0","9999.01","1.000","1e1").forEach {failure("P-AMOUNT") {rule.amount(it)}}
+    }
+    @Test fun `absent empty and zero fee bounds have the same no-front input defaults`() {
+        for(value in listOf(null,JsonNull,JsonPrimitive(""),JsonPrimitive(0),JsonPrimitive("0.00"))) {
+            val rule=configuredRules(min=value,max=value)
+            assertEquals("0.01",rule.minimum.toPlainString());assertEquals("9999",rule.maximum.toPlainString())
+        }
+    }
+    @Test fun `explicit fee bounds override the optional front maximum`() {
+        val rule=configuredRules(min=JsonPrimitive("5"),max=JsonPrimitive("120"),front=JsonPrimitive("50"))
+        assertEquals("5",rule.amount("5"));assertEquals("120",rule.amount("120"))
+        listOf("4.99","120.01").forEach {failure("P-AMOUNT") {rule.amount(it)}}
+    }
+    @Test fun `missing fee maximum preserves front configuration and its integer conversion`() {
+        for(value in listOf(null,JsonNull,JsonPrimitive(""),JsonPrimitive(0))) {
+            val rule=configuredRules(max=value,front=JsonPrimitive("200.75"))
+            assertEquals("200",rule.maximum.toPlainString());assertEquals("200",rule.amount("200"))
+            failure("P-AMOUNT") {rule.amount("200.01")}
+        }
+        assertEquals("9999",configuredRules(front=JsonPrimitive("0")).maximum.toPlainString())
+    }
+    @Test fun `string zero fee maximum follows the official override before the input default`() {
+        val rule=configuredRules(max=JsonPrimitive("0.00"),front=JsonPrimitive("100"))
+        assertEquals("9999",rule.maximum.toPlainString())
+    }
+    @Test fun `config trailing zeroes are exact decimals without relaxing submitted cent precision`() {
+        val rule=configuredRules(min=JsonPrimitive("0.0100"),max=Json.parseToJsonElement("500.0000"))
+        assertEquals("0.01",rule.minimum.toPlainString());assertEquals("500",rule.maximum.toPlainString())
+        assertEquals("500",rule.amount("500.00"))
+        failure("P-AMOUNT") {rule.amount("500.0000")}
+    }
+    @Test fun `malformed typed or negative configuration never becomes an unrestricted default`() {
+        val invalid=listOf<JsonElement>(JsonPrimitive(true),JsonPrimitive(false),buildJsonObject {},buildJsonArray {},
+            JsonPrimitive("NaN"),JsonPrimitive("Infinity"),JsonPrimitive("-1"),JsonPrimitive("1e3"),
+            JsonPrimitive("20oops"),JsonPrimitive(" 20"),JsonPrimitive("20 "),JsonPrimitive("0.001"))
+        for(value in invalid) {
+            failure("P-FEE-CONFIG") {configuredRules(min=value)}
+            failure("P-FEE-CONFIG") {configuredRules(max=value)}
+            failure("P-FEE-CONFIG") {configuredRules(front=value)}
+        }
         failure("P-FEE-CONFIG") { rules(min="500",max="20") }
-        failure("P-FEE-CONFIG") { rules(max="NaN") }
         failure("P-FEE-CONFIG") { rules(flag="00000001",layout="") }
+    }
+    @Test fun `official default bounds preserve integer and preset-only restrictions`() {
+        val integer=configuredRules(flag="00000002")
+        assertEquals("1",integer.amount("1"));failure("P-AMOUNT") {integer.amount("0.01")}
+        val presets=configuredRules(flag="00000001")
+        assertEquals("20",presets.amount("20"));failure("P-AMOUNT") {presets.amount("30")}
     }
     @Test fun `above school maximum is rejected before any post`() {
         var calls=0

@@ -3,6 +3,7 @@ package com.upcpocket.app.timetable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,12 +41,14 @@ class TimetablePreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val dark = intent.getBooleanExtra("dark", false)
         val homeToday = intent.getBooleanExtra("homeToday", false)
+        val promo = intent.getBooleanExtra("promo", false)
+        if (promo) enableEdgeToEdge()
         setContent {
             UpcPocketTheme(
                 darkMode = if (dark) DarkMode.DARK else DarkMode.LIGHT,
                 preset = ThemePreset.BLUE,
             ) {
-                PreviewContent(homeToday)
+                PreviewContent(homeToday, promo)
             }
         }
     }
@@ -53,7 +56,7 @@ class TimetablePreviewActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PreviewContent(homeToday: Boolean) {
+private fun PreviewContent(homeToday: Boolean, promo: Boolean) {
     var selected by remember { mutableStateOf<TimetableMeeting?>(null) }
     val term = TimetableTerm(
         year = "2026-2027",
@@ -62,8 +65,26 @@ private fun PreviewContent(homeToday: Boolean) {
         totalWeeks = 19,
         label = "2026-2027 秋季",
     )
-    val dates = (0..6).map { LocalDate.parse("2026-11-01").plusDays(it.toLong()) }
-    val meetings = previewMeetings(dates)
+    val sunday = if (promo) LocalDate.now(TIMETABLE_ZONE)
+        .with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.SUNDAY))
+        else LocalDate.parse("2026-11-01")
+    val dates = (0..6).map { sunday.plusDays(it.toLong()) }
+    val meetings = previewMeetings(dates).let { items ->
+        if (promo) items.filterNot { it.courseName == "概率论与数理统计" }.map { meeting ->
+            val (start, end) = when (meeting.startPeriod to meeting.endPeriod) {
+                5 to 6 -> 6 to 7
+                7 to 8, 9 to 10 -> 8 to 9
+                11 to 12 -> 10 to 11
+                else -> meeting.startPeriod to meeting.endPeriod
+            }
+            val normalized = meeting.copy(
+                courseName = if (meeting.courseName.startsWith("大学英语视听说")) "大学英语" else meeting.courseName,
+                startPeriod = start, endPeriod = end, periods = (start..end).toList(),
+                sourcePeriods = (start..end).toList(), courseTime = null,
+            )
+            normalized.copy(courseTime = UpcTimetableSchedule.label(normalized))
+        } else items
+    }
     val colorSlots = remember(meetings) {
         TimetableColorStore.inMemory().assign(
             accountId = "preview-01",
@@ -79,7 +100,7 @@ private fun PreviewContent(homeToday: Boolean) {
         terms = listOf(term),
         selectedYear = term.year,
         selectedTerm = term.term,
-        selectedWeek = 10,
+        selectedWeek = if (promo) (java.time.temporal.ChronoUnit.WEEKS.between(term.startDay, sunday) + 1).toInt() else 10,
         weekDates = dates,
         meetings = meetings,
         courseColorSlots = colorSlots,
@@ -116,7 +137,7 @@ private fun PreviewContent(homeToday: Boolean) {
                 title = {
                     Column {
                         Text("课表")
-                        Text(
+                        if (!promo) Text(
                             "视觉预览 · 不是真实学期",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -134,7 +155,7 @@ private fun PreviewContent(homeToday: Boolean) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
+            if (!promo) Text(
                 text = "本地预览 · 以下课程、教师与地点均为合成内容，仅用于 M5 视觉验收；" +
                     "不读取账号、不写入缓存、不发起网络请求。",
                 style = MaterialTheme.typography.labelSmall,
@@ -162,6 +183,24 @@ private fun PreviewContent(homeToday: Boolean) {
     selected?.let { meeting ->
         CourseDetailBottomSheet(meeting = meeting, onDismiss = { selected = null })
     }
+}
+
+/** Debug bridge for the real HomeScreen; the two meetings are synthetic and never cached. */
+@Composable
+fun PromotionTodaySection() {
+    val today = LocalDate.now(TIMETABLE_ZONE)
+    val meetings = remember(today) { listOf(
+        previewMeeting("高等数学 A", today.dayOfWeek.value, 1, 2, today, "李老师", "南教 101", "08:00–09:35"),
+        previewMeeting("程序设计基础", today.dayOfWeek.value, 6, 7, today, "陈老师", "实验楼 302", "14:00–15:35"),
+    ) }
+    val colors = remember(meetings) { TimetableColorStore.inMemory().assign(
+        "promotion", "2026-2027|1", meetings.map(::courseColorKey),
+    ) }
+    TodayPanel(state = TimetableTodayUiState(
+        accountEpoch = 1, accountSavedUnverified = true, accountBlocked = false,
+        today = today, todayMeetings = meetings, todayCourseColorSlots = colors,
+        todayState = TimetableTodayState.READY, todayLoaded = true,
+    ), onCourseClick = {}, showDate = false)
 }
 
 private fun previewMeetings(dates: List<LocalDate>): List<TimetableMeeting> = listOf(

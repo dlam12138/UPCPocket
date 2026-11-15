@@ -10,10 +10,10 @@
 
 [![Release](https://img.shields.io/github/v/release/dlam12138/UPCPocket?style=flat-square&label=Release&color=1B6B4A)](https://github.com/dlam12138/UPCPocket/releases/latest)
 ![Android 12+](https://img.shields.io/badge/Android-12%2B-5278C6?style=flat-square)
-![APK 5.24 MiB](https://img.shields.io/badge/APK-5.24_MiB-1B6B4A?style=flat-square)
+![APK 5.34 MiB](https://img.shields.io/badge/APK-5.34_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**下载 2.0.5 重大更新**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.5/UPC-Pocket-2.0.5.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.5/UPC-Pocket-2.0.5.apk) · [**百度网盘**](https://pan.baidu.com/s/1Rj7KHRGnL6_jadTusIXIPg?pwd=a5be)（提取码：**a5be**）
+[**下载 2.0.6（待公开）**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk)
 
 [继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
@@ -27,13 +27,23 @@
 
 </div>
 
-## 2.0.5 重大更新
+## 2.0.6 · 更顺手的校园日常
 
-**2.0.5 已正式发布。** 新增石光活动、学分学时与参与记录，e站通事项搜索、指南、本人待处理/在办；完善流水年月点选、学校验证回退、四项校园服务自动登录与登录诊断。
+**用户验收已通过，已授权正式发布，当前待公开。** 今日课程置顶，待办和常用服务更紧凑；优化课表、空闲教室与查询结果，图书馆登录默认折叠，学校账号保存状态简化为“已保存”。新增本人校园卡微信充值：**输入金额 → 点击充值 → 拉起微信**。
 
-已安装新版 2.0.4 时，可在应用内检查更新，或直接覆盖安装，保留本机数据。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
+正式公开后，已安装新版 2.0.4/2.0.5 可在应用内检查更新，或直接覆盖安装，保留本机数据；2.0.6 旧候选请手动下载正式包覆盖。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
 
-新版沿用固定长期 Release 签名；旧版更新线路继续保留 2.0.3。百度网盘分享文件夹为 `release-2.0.5`。完整更新与校验值见 [2.0.5 发布记录](docs/releases/2.0.5.md)，可转发的文案见 [更新公告](docs/releases/2.0.5-notice.md)。
+新版沿用固定长期 Release 签名；旧版更新线路继续保留 2.0.3。完整更新与校验值见 [2.0.6 发布记录](docs/releases/2.0.6.md)，可转发的文案见 [更新公告](docs/releases/2.0.6-notice.md)。
+
+<div align="center">
+<img src="docs/images/2.0.6/promo/01-home.png" width="230" alt="2.0.6 首页：今日课程与紧凑待办，合成演示数据" />
+<img src="docs/images/2.0.6/promo/02-timetable.png" width="230" alt="2.0.6 课表周网格，合成演示数据" />
+<img src="docs/images/2.0.6/promo/03-classroom.png" width="230" alt="2.0.6 空闲教室，合成演示数据" />
+<br />
+<img src="docs/images/2.0.6/promo/04-recharge.png" width="230" alt="2.0.6 微信充值页面，合成账号与金额" />
+<img src="docs/images/2.0.6/promo/05-todo.png" width="230" alt="2.0.6 待办页面，合成演示数据" />
+<br /><sub>真实页面，合成演示数据；不含个人校园记录。<a href="docs/images/2.0.6/promo/README.md">图片说明</a></sub>
+</div>
 
 ## 常用的，都放在一起
 
@@ -41,31 +51,26 @@
 
 | 功能 | 日常怎么用 |
 | --- | --- |
-| **校园卡余额、流水与充值** | 查询本人余额与流水；2.0.6 候选新增原生充值，输入金额后点击充值即可唤起微信 |
+| **校园卡余额、流水与充值** | 查询本人余额与流水；原生微信充值，输入金额后点击充值即可唤起微信 |
 | **石光第二课堂** | 搜索活动、查看详情，查询五模块学分学时与本人参与记录；本页分类筛选、隐藏已结束 |
 | **e站通** | 搜索事项、阅读办事指南，查询本人待处理与在办 |
 | **宿舍电量** | 唐岛湾直接查询，古镇口打开学校页面 |
-| **空闲教室** | 记住上次校区；预设条件自动查询，自选节次手动查询；古镇口支持卓越 A/B 筛选 |
+| **空闲教室** | 紧凑常用条件与详细筛选、楼栋/房间结果；预设自动查询，自选手动查询，古镇口支持卓越 A/B |
 | **图书馆座位** | 唐岛湾、古镇口东区、求是支持按时段找座位与个人隐藏，保留按座位选 |
-| **课表** | 周日开头的整周视图、今日课程、节次时间；查过的周可离线看 |
+| **课表** | 周日开头的整周视图、首页今日课程与节次时间；查过的周可离线看 |
 | **待办与提醒** | 快速添加、完成、编辑与删除；可设一次性提醒，首页同步展示近期任务 |
 | **专注** | 番茄钟、专注记录与统计，陪你完成一段学习 |
 | **桌面组件** | 今日课表、校园卡、电量；默认 2×2，课表可拉宽至 4×2 |
 
 支持浅色、深色与主题配色。课表、流水与石光支持转到学校页面继续登录；更新和诊断报告集中在关于页。
 
-<div align="center">
-<img src="docs/images/home-2.0.3.png" width="300" alt="2.0.3 首页待办摘要与四项滑动导航，合成演示数据" />
-<br /><sub>2.0.3 首页待办摘要与滑动导航，合成演示数据。</sub>
-</div>
-
 ## 三步开始
 
-1. **安装**：从上方链接下载 2.0.5 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4，也可与旧版 2.0.3 并存。
+1. **安装**：正式公开后从上方链接下载 2.0.6 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4/2.0.5，也可与旧版 2.0.3 并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 
-从旧版 2.0.3 转用新版需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；已安装新版 2.0.4 时，可在关于页检查更新到 2.0.5。
+从旧版 2.0.3 转用新版需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；已安装新版 2.0.4/2.0.5 时，可在关于页检查更新。
 
 ## 更新方便，反馈也方便
 
@@ -79,7 +84,7 @@
 
 空闲教室反映学校排课，临时占用以现场为准；图书馆候选与最终可约以学校返回和预约记录为准。2.0.4 已将按时段找座位与个人隐藏扩展到古镇口东区、求是，真实预约、取消和签到尚未验证。待办提醒需通知权限；精确闹钟未授权或系统限制后台时可能延后，系统强行停止后需重新打开应用。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
 
-2.0.5 安装包约 **5.24 MiB**，使用独立长期签名。最终 Release 已在 API 36 模拟器用真实账号完成课表、流水、石光、e站通自动登录和本人只读查询，用户已确认验收通过；真实验证码、二次验证与完整设备矩阵仍未实测。石光与 e站通本次提供只读查询，报名、签到和事项提交仍请使用学校官方平台。验证范围见 [发布记录](docs/releases/2.0.5.md)，数据处理见 [隐私说明](docs/PRIVACY.md)。
+2.0.6 安装包约 **5.34 MiB**，使用独立长期签名，用户已验收。开发侧完成充值真实只读准备、定向测试及最终 Release 空账号/组件冷启动检查，未独立执行真实下单、微信付款或到账。石光与 e站通保持只读，报名、签到和事项提交请使用学校官方平台。验证范围见 [发布记录](docs/releases/2.0.6.md)，数据处理见 [隐私说明](docs/PRIVACY.md)。
 
 <details>
 <summary><strong>开发与文档</strong></summary>
@@ -96,7 +101,7 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 [构建指南](docs/BUILD.md) · [项目文档](docs/README.md) · [开发规范](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
 
-研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值为尚未发布的 2.0.6 候选能力，见 [集成记录](docs/releases/2.0.6-card-recharge.md)。
+研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值的来源、实现与验证见 [集成记录](docs/releases/2.0.6-card-recharge.md)。
 
 </details>
 
@@ -104,8 +109,10 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留上游版权与 [MIT 许可证](LICENSE)；悬浮导航的来源与改动见 [移植说明](docs/third-party/ZZUPocket-dock.md)。Android 开发技能的固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
 
-感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，其他馆区仍保留原流程。
+感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，2.0.4 扩展到古镇口东区和求是。
+
+感谢 [PR #5 作者](https://github.com/dlam12138/UPCPocket/pull/5) 贡献校园卡原生微信充值实现，集成时保留原作者归属，并简化操作与补齐验证。
 
 ### 2.0.4 新增内容
 
-2.0.4 / code 25 整合古镇口东区、求是布局与按时段找座位、个人隐藏、校园卡原生本人流水，以及古镇口空闲教室卓越 A/B 筛选，现已作为可选独立新版发布；上文展示的旧截图均已标明版本。历史图书馆候选 APK 不包含流水。详见 [2.0.4 发布记录](docs/releases/2.0.4.md)、[图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md)、[流水验收](docs/research/native-card-history.md) 与 [筛选验收](docs/releases/2.0.4-classroom-filter.md)。
+2.0.4 / code 25 整合古镇口东区、求是布局与按时段找座位、个人隐藏、校园卡原生本人流水，以及古镇口空闲教室卓越 A/B 筛选，现已作为可选独立新版发布。历史图书馆候选 APK 不包含流水。详见 [2.0.4 发布记录](docs/releases/2.0.4.md)、[图书馆验收](docs/releases/2.0.4-chaoxing-library-parity.md)、[流水验收](docs/research/native-card-history.md) 与 [筛选验收](docs/releases/2.0.4-classroom-filter.md)。

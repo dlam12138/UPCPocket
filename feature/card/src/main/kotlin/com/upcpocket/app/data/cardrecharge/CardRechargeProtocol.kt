@@ -2,6 +2,7 @@ package com.upcpocket.app.data.cardrecharge
 
 import java.io.IOException
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.net.URI
 import java.net.URLDecoder
 import java.security.MessageDigest
@@ -24,7 +25,7 @@ internal data class RechargePrepared(val feeItem: String, val account: String, v
     override fun toString() = "RechargePrepared([REDACTED])"
 }
 
-/** School values are yuan; neither a test cap nor a guessed fallback is used. */
+/** Yuan input bounds follow the school's UI configuration, including its documented defaults. */
 data class RechargeRules(val minimum: BigDecimal, val maximum: BigDecimal, val presets: List<BigDecimal>, val presetOnly: Boolean, val integerOnly: Boolean) {
     fun amount(value: String): String {
         val amount = CardRechargeProtocol.amount(value)
@@ -46,15 +47,30 @@ internal object CardRechargeProtocol {
         if (decimal <= BigDecimal.ZERO) throw RechargeFailure("P-AMOUNT")
         return decimal.stripTrailingZeros().toPlainString()
     }
-    fun rules(item: JsonObject): RechargeRules {
-        fun bound(key: String): BigDecimal {
-            val raw = field(item, key)
-            if (!raw.matches(Regex("(?:0|[1-9][0-9]{0,10})(?:\\.[0-9]{1,2})?"))) throw RechargeFailure("P-FEE-CONFIG")
-            return BigDecimal(raw)
+    fun rules(item: JsonObject, front: JsonObject = JsonObject(emptyMap())): RechargeRules {
+        fun configured(value: JsonElement?): BigDecimal? {
+            if (value == null || value === JsonNull) return null
+            val primitive = value as? JsonPrimitive ?: throw RechargeFailure("P-FEE-CONFIG")
+            val raw = primitive.content
+            if (primitive.isString && raw.isEmpty()) return null
+            // Configuration can contain extra decimal zeroes; entered amounts remain strictly cents.
+            if (!raw.matches(Regex("(?:0|[1-9][0-9]{0,10})(?:\\.[0-9]{1,32})?"))) throw RechargeFailure("P-FEE-CONFIG")
+            val number = BigDecimal(raw).stripTrailingZeros()
+            if (number.scale() > 2) throw RechargeFailure("P-FEE-CONFIG")
+            return number
         }
-        val minimum = bound("retain_money")
-        val maximum = bound("maxmoney")
-        if (minimum < BigDecimal.ZERO || maximum <= BigDecimal.ZERO || minimum > maximum) throw RechargeFailure("P-FEE-CONFIG")
+        val minimum = configured(item["retain_money"])?.takeIf { it > BigDecimal.ZERO } ?: BigDecimal("0.01")
+        // Official mount uses parseInt(front.rechargeMaxAmount), then feeitem overrides it.
+        val frontMaximum = configured(front["rechargeMaxAmount"])?.setScale(0, RoundingMode.DOWN)
+        val feeValue = item["maxmoney"]
+        val feeMaximum = configured(feeValue)
+        val configuredMaximum = if (feeMaximum == null ||
+            feeMaximum.compareTo(BigDecimal.ZERO) == 0 && (feeValue as? JsonPrimitive)?.isString != true
+        ) frontMaximum else feeMaximum
+        // JS skips numeric zero, but string "0" overwrites the front cap before the UI fallback.
+        // These are official input defaults, not a guarantee that the server accepts the amount.
+        val maximum = configuredMaximum?.takeIf { it > BigDecimal.ZERO } ?: BigDecimal("9999")
+        if (minimum > maximum) throw RechargeFailure("P-FEE-CONFIG")
         val flag = field(item, "flag")
         if (flag.length < 8 || flag[7] !in "012") throw RechargeFailure("P-FEE-CONFIG")
         val onlyPresets = flag[7] == '1'

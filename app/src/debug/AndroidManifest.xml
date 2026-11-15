@@ -42,6 +42,12 @@
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
 
+        <!-- Only fixed display options and in-memory synthetic data; never merged into Release. -->
+        <activity
+            android:name=".debug.PromotionPreviewActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
         <!-- debug-only todo probe; explicit adb broadcasts only, never release. -->
         <receiver
             android:name=".debug.TodoProbeReceiver"

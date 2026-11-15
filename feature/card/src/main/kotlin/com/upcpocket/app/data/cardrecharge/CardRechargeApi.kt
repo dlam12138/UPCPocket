@@ -100,7 +100,7 @@ internal class CardRechargeApi(
         val item = CardRechargeProtocol.json(get("/charge/feeitem/singleFeeitem?feeitemid=$fee",session))
         if (item["feeitem"] !is JsonObject) throw RechargeFailure("P-FEE-CONFIG")
         val script = request(CardRechargeProtocol.SIGNER_SOURCE).takeIf { it.status == 200 }?.body ?: throw RechargeFailure("P-SIGN-DOWNLOAD")
-        return RechargePrepared(fee,account,CardRechargeProtocol.signer(script),CardRechargeProtocol.rules(item["feeitem"]!!.jsonObject))
+        return RechargePrepared(fee,account,CardRechargeProtocol.signer(script),CardRechargeProtocol.rules(item["feeitem"]!!.jsonObject,settings))
     }
     private fun signed(signer: RechargeSigner, fields: Map<String,String>) = signer.sign(fields,
         LocalDateTime.now(ZoneId.of("Asia/Shanghai")).format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss")),
