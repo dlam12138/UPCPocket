@@ -13,7 +13,7 @@
 ![APK 5.34 MiB](https://img.shields.io/badge/APK-5.34_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**下载 2.0.6（待公开）**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk)
+[**下载 2.0.6**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk)
 
 [继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
@@ -29,9 +29,9 @@
 
 ## 2.0.6 · 更顺手的校园日常
 
-**用户验收已通过，已授权正式发布，当前待公开。** 今日课程置顶，待办和常用服务更紧凑；优化课表、空闲教室与查询结果，图书馆登录默认折叠，学校账号保存状态简化为“已保存”。新增本人校园卡微信充值：**输入金额 → 点击充值 → 拉起微信**。
+**2.0.6 已于 2026-11-15 正式发布并设为 latest。** 今日课程置顶，待办和常用服务更紧凑；优化课表、空闲教室与查询结果，图书馆登录默认折叠，学校账号保存状态简化为“已保存”。新增本人校园卡微信充值：**输入金额 → 点击充值 → 拉起微信**。
 
-正式公开后，已安装新版 2.0.4/2.0.5 可在应用内检查更新，或直接覆盖安装，保留本机数据；2.0.6 旧候选请手动下载正式包覆盖。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
+已安装新版 2.0.4/2.0.5 可在应用内检查更新，或直接覆盖安装，保留本机数据；2.0.6 旧候选请手动下载正式包覆盖。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
 
 新版沿用固定长期 Release 签名；旧版更新线路继续保留 2.0.3。完整更新与校验值见 [2.0.6 发布记录](docs/releases/2.0.6.md)，可转发的文案见 [更新公告](docs/releases/2.0.6-notice.md)。
 
@@ -66,7 +66,7 @@
 
 ## 三步开始
 
-1. **安装**：正式公开后从上方链接下载 2.0.6 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4/2.0.5，也可与旧版 2.0.3 并存。
+1. **安装**：从上方链接下载 2.0.6 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4/2.0.5，也可与旧版 2.0.3 并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 

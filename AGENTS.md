@@ -36,7 +36,7 @@
 
 ## 当前发布
 
-2026-11-15 用户已验收 **2.0.6 / versionCode 27 candidate4**，并明确授权提交、推送及公开 Release；当前为发布准备态，公开结果以 `docs/releases/2.0.6.md` 实际补记为准。沿用已验收 APK 原字节（5,596,216 bytes，SHA-256 `38debce7078480254b08a24d377d48f3675a9195c8fcaccfa4859b460d9b02c1`），正式命名 `UPC-Pocket-2.0.6.apk`，不得重编。当前下载只提供 GitHub 与 gh-proxy；六附件同批准备，旧版两个更新文件原字节保留。推广图使用真实页面与合成数据，详情见 `docs/images/2.0.6/promo/README.md`。用户验收与开发侧真实只读准备分别记录，不能扩写为开发侧已独立完成真实下单、微信付款或到账。下列 candidate2/3/4 段落保留当时开发现场，当前状态以正式记录为准。
+2026-11-15 用户验收 **2.0.6 / versionCode 27 candidate4** 并授权后，已于上海时间 **18:48:33** 正式公开 `v2.0.6` 并设为 latest；`main` 与 tag 的发布提交为 `e03a2a1a38f738f0da10f699dffb778095f40537`，记录见 `docs/releases/2.0.6.md`。沿用已验收 APK 原字节（5,596,216 bytes，SHA-256 `38debce7078480254b08a24d377d48f3675a9195c8fcaccfa4859b460d9b02c1`），正式命名 `UPC-Pocket-2.0.6.apk`，不得重编。当前下载只提供 GitHub 与 gh-proxy；六附件同批公开，旧版两个更新文件原字节保留。推广图使用真实页面与合成数据，详情见 `docs/images/2.0.6/promo/README.md`。用户验收与开发侧真实只读准备分别记录，不能扩写为开发侧已独立完成真实下单、微信付款或到账。下列 candidate2/3/4 段落保留当时开发现场，当前状态以正式记录为准。
 
 2026-11-15 后续按用户要求将 [PR #5](https://github.com/dlam12138/UPCPocket/pull/5) 的本人校园卡微信充值纳入同一 **2.0.6 / 27** 本地候选：正常路径为「输入金额 → 点击充值 → 拉起微信」，不再叠加金额确认；保留动态学校额度、待查订单防重、账号代次与未知结果恢复。充值是本轮新增的校园写操作实现，不能套用下文首批界面更新的只读验证结论。已完成定向测试（412 通过、1 跳过）、独立审查、Lint、R8/资源收缩签名 candidate3 及保留数据覆盖安装；修复业务会话失效和订单标记提交确认，实际证据见 `docs/releases/2.0.6-card-recharge.md`。当前未发布，真实微信付款与到账未验证。
 
@@ -44,9 +44,9 @@
 
 2026-11-15 的 **2.0.6 界面与交互更新已实现并生成本地签名交付候选，尚未发布**，需求入口见 `docs/design/2.0.6-ui-refresh.md`，实际证据见 `docs/releases/2.0.6-development.md`。工程候选为 2.0.6 / versionCode 27，已完成定向测试、独立审查、Lint、R8/资源收缩构建及保留数据覆盖安装；公开版本仍为下述 2.0.5。今日课程已移至首页顶部，待办与服务收紧，课表/查询页/设置优化，空闲教室为重点；专注不改。图书馆登录默认一行、点击展开。账号页及共用设置摘要按用户新要求删除固定「尚未验证」、改为「已保存」，保存成功提示同步简化；这覆盖上文 M1 的旧展示文案要求，内部状态及独立业务认证不迁移，不得改称「已登录」或「学校认证通过」。设备检查范围、已知边界与待用户视觉验收状态以开发记录为准，不把本地候选当作正式发布。
 
-2026-11-14 用户已验收并授权正式推送 **2.0.5 / versionCode 26**，现已标注“重大更新”公开发布并设为 latest。沿用已验收 APK 原字节，六件附件同批公开、旧版更新元数据原字节保留；记录见 `docs/releases/2.0.5.md`，社交平台文案见 `docs/releases/2.0.5-notice.md`。2.0.5 新增石光与 e站通只读服务，完善流水年月点选、网页登录回退、自动登录和 schema 4 诊断；不得把真实正常登录验证扩写为真实验证码/二次验证、全部设备或校园写操作验收。
+2026-11-14 用户已验收并授权正式推送 **2.0.5 / versionCode 26**，当时标注“重大更新”公开发布并设为 latest，现由 2.0.6 接续。沿用已验收 APK 原字节，六件附件同批公开、旧版更新元数据原字节保留；记录见 `docs/releases/2.0.5.md`，社交平台文案见 `docs/releases/2.0.5-notice.md`。2.0.5 新增石光与 e站通只读服务，完善流水年月点选、网页登录回退、自动登录和 schema 4 诊断；不得把真实正常登录验证扩写为真实验证码/二次验证、全部设备或校园写操作验收。
 
-当前发布应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，2.0.5 / versionCode 26 于 2026-11-14 发布，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`；新版设为 latest 时须原字节附带旧 `update.json` / `update.sig`，保持旧线路指向 2.0.3，旧 Release 资产不变。发布记录见 `docs/releases/2.0.5.md`；此前 2.0.4 的发布记录见 `docs/releases/2.0.4.md`。上文旧标识、下文历史发布记录均保留其当时状态。
+当前发布应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，2.0.6 / versionCode 27 于 2026-11-15 发布，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`；新版设为 latest 时须原字节附带旧 `update.json` / `update.sig`，保持旧线路指向 2.0.3，旧 Release 资产不变。当前发布记录见 `docs/releases/2.0.6.md`；此前记录见 `docs/releases/2.0.5.md`、`docs/releases/2.0.4.md`。上文旧标识、下文历史发布记录均保留其当时状态。
 
 本次 **2.0.4 / versionCode 25** 整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐、校园卡原生本人流水及古镇口空闲教室卓越 A/B 筛选。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
 
