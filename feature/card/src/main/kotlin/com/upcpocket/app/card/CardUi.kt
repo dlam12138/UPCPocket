@@ -1,5 +1,7 @@
 package com.upcpocket.app.card
 
+import com.upcpocket.app.data.cardrecharge.CardRechargeService
+import com.upcpocket.app.ui.ecard.CardRechargeScreen
 import com.upcpocket.app.data.cardhistory.CardHistoryClient
 import com.upcpocket.app.ui.ecard.CardHistoryScreen
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -20,11 +22,16 @@ import com.upcpocket.app.ui.ecard.DirectCardBalanceSection
 internal class CardUi(
     private val service: CardBalanceService,
     private val history: CardHistoryClient? = null,
+    private val recharge: CardRechargeService? = null,
 ) : PluginUiContributor {
 
     override val pluginId = CARD_PLUGIN_ID
 
     override fun contribute(registry: PluginUiRegistry) {
+        val rechargeRoute = PluginRouteId.parse("card.recharge")
+        recharge?.let { client -> registry.addPage(PluginPage(rechargeRoute,CARD_PLUGIN_ID) { host ->
+            CardRechargeScreen(client,host::back,host::openSchoolAccountSettings)
+        }) }
         val route = PluginRouteId.parse("card.history")
         history?.let { client -> registry.addPage(PluginPage(route, CARD_PLUGIN_ID) { host ->
             CardHistoryScreen(client, host::back, host::openSchoolAccountSettings)
@@ -40,6 +47,7 @@ internal class CardUi(
                     service = service,
                     onOpenAccountSettings = host::openSchoolAccountSettings,
                     onOpenHistory = history?.let { { host.open(route) } },
+                    onOpenRecharge = recharge?.let { { host.open(rechargeRoute) } },
                 )
             },
         )

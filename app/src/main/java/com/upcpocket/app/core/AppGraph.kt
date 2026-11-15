@@ -14,6 +14,7 @@ import com.upcpocket.app.account.api.AccountInvalidationRequest
 import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.card.CardBalanceService
+import com.upcpocket.app.data.cardrecharge.CardRechargeService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
@@ -158,6 +159,10 @@ object AppGraph {
         // 旧队列在写入前被丢弃。清理失败不能阻塞退出。
         runCatching { diagnostics.clearForAccountChange() }
         var failure: AccountInvalidationFailure? = null
+        val recharge = activePlugins.capability(CardCapabilities.recharge)
+        val rechargeCleared = if (recharge != null) recharge.invalidateForAccountChange(request.scope)
+            else request.scope != AccountDataScope.PERSONAL_DATA || CardRechargeService.clearStoredData(appContext.noBackupFilesDir)
+        if (!rechargeCleared) failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
         val shiguangBrowserStopped = activePlugins.capability(ShiguangCapabilities.read)?.invalidateForAccountChange() ?: true
         val servicePortalStopped = activePlugins.capability(ServicePortalCapabilities.read)?.invalidateForAccountChange() ?: true
         val cardBrowserStopped = activePlugins.capability(CardCapabilities.history)
