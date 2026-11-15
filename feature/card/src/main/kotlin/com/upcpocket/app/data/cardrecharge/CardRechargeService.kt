@@ -57,8 +57,9 @@ class CardRechargeService internal constructor(
                 throw error
             }
         }
-    private fun begin(): Pair<SchoolStudentIdentity,Long>? = synchronized(lock) {
+    private fun begin(expectedOwner:SchoolStudentIdentity?=null): Pair<SchoolStudentIdentity,Long>? = synchronized(lock) {
         val owner=history.studentIdentity.value ?: return null
+        if(expectedOwner!=null && owner!=expectedOwner) return null
         if(mutable.value.busy || !history.isCurrent(owner)) return null
         if(mutable.value.owner!=owner) { prepared=null;mutable.value=CardRechargeState(owner=owner) }
         mutable.value=mutable.value.copy(owner=owner,busy=true,message=null)
@@ -108,8 +109,9 @@ class CardRechargeService internal constructor(
     internal fun validateAmount(raw:String): String = synchronized(lock) {
         (prepared ?: throw RechargeFailure("P-CONFIG")).rules.amount(raw)
     }
-    internal suspend fun submit(raw:String): RechargeHandoff? {
-        val (owner,generation)=begin() ?: return null
+    internal suspend fun submit(raw:String, expectedOwner:SchoolStudentIdentity?=studentIdentity.value): RechargeHandoff? {
+        val requestOwner=expectedOwner ?: return null
+        val (owner,generation)=begin(requestOwner) ?: return null
         try {
             return withContext(NonCancellable + Dispatchers.IO) {
                 withSession(owner,generation) { session ->
@@ -132,7 +134,7 @@ class CardRechargeService internal constructor(
                     val uri=client.pay(session,config,pending) { method -> synchronized(lock) {
                         check(owner,generation);pending=pending.copy(payId=method);store.save(pending);mutable.value=mutable.value.copy(pending=pending)
                     } }
-                    publish(owner,generation) { it.copy(busy=false,message="返回后将查询学校订单状态。") }
+                    publish(owner,generation) { it.copy(busy=false,message="请在微信完成支付，返回后可查询状态。") }
                     RechargeHandoff(uri) { synchronized(lock) { current(owner,generation) && mutable.value.pending?.attemptId==pending.attemptId && runCatching { session.checkCurrent() }.isSuccess } }
                 }
             }
@@ -155,7 +157,7 @@ class CardRechargeService internal constructor(
                         val terminal=result==RechargeStatus.SUCCEEDED
                         if(terminal) store.remove(pending)
                         mutable.value=mutable.value.copy(busy=false,pending=if(terminal)null else pending,recoveryRequired=!terminal,message=when(result) {
-                            RechargeStatus.SUCCEEDED -> "充值支付成功，按学校说明在 POS 刷卡写入卡账户。"
+                            RechargeStatus.SUCCEEDED -> "学校已确认支付成功。"
                             RechargeStatus.FAILED -> "学校显示交易失败，请核对微信账单。"
                             RechargeStatus.EXPIRED -> "订单已超时，请核对微信账单。"
                             RechargeStatus.UNKNOWN -> "学校尚未确认结果，请稍后刷新状态。"

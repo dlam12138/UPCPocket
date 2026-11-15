@@ -28,11 +28,12 @@ internal interface RechargePendingStore {
 internal class EncryptedRechargePendingStore(
     private val directory: File,
     private val crypto: ByteCrypto = KeystoreAesGcmCrypto("upcpocket.card-recharge.v1"),
+    private val atomicFiles: (File) -> AtomicFile = { AtomicFile(it) },
 ) : RechargePendingStore {
-    private fun file(owner: SchoolStudentIdentity): AtomicFile = AtomicFile(File(directory,
+    private fun file(owner: SchoolStudentIdentity): AtomicFile = atomicFiles(File(directory,
         CardRechargeProtocol.hash(owner.accountId.value + ":" + owner.studentId) + ".enc"))
-    @Synchronized override fun read(owner: SchoolStudentIdentity): RechargePending? {
-        val file = file(owner)
+    @Synchronized override fun read(owner: SchoolStudentIdentity): RechargePending? = read(file(owner), owner)
+    private fun read(file: AtomicFile, owner: SchoolStudentIdentity): RechargePending? {
         if (!file.baseFile.exists() && !File(file.baseFile.path + ".bak").exists()) return null
         try {
             val bytes = file.openRead().use { it.readBytes().also { bytes -> if(bytes.size > 32768) throw RechargeFailure("P-PENDING-STORE") } }
@@ -48,8 +49,17 @@ internal class EncryptedRechargePendingStore(
         try {
             val encrypted = crypto.encrypt(plain)
             val stream = file.startWrite()
-            try { stream.write(encrypted); file.finishWrite(stream) }
+            try {
+                stream.write(encrypted)
+                // AtomicFile.finishWrite can log sync/rename failures and return normally.
+                // Observe descriptor sync failures ourselves, then verify the committed base.
+                stream.fd.sync()
+                file.finishWrite(stream)
+            }
             catch(error: Exception) { file.failWrite(stream); throw error }
+            // Every field matters: later saves add orderId/payId to the SAME attempt.
+            // A failed acknowledgement retains the previous marker; never delete it here.
+            if (read(file, record.owner) != record) throw RechargeFailure("P-PENDING-STORE")
         } catch (_: Exception) { throw RechargeFailure("P-PENDING-STORE") }
         finally { plain.fill(0) }
     }

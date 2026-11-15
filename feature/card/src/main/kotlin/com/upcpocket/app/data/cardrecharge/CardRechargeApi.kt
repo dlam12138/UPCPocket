@@ -65,6 +65,16 @@ internal class CardRechargeApi(
         checkCurrent()
         if (response.status in setOf(401,403)) throw RechargeFailure("P-LOGIN")
         if (response.status !in setOf(200,301,302,303)) throw RechargeFailure("P-HTTP")
+        // A school session may expire inside an HTTP 200 envelope. Invalidate its lease,
+        // but never replay this request (in particular a create/pay POST).
+        val origin = URI(url)
+        if (response.status == 200 && token != null && origin.scheme == "https" &&
+            origin.host == "mb-xyk.upc.edu.cn" && origin.port in setOf(-1,443) && origin.rawUserInfo == null) {
+            val code = runCatching {
+                (Json.parseToJsonElement(response.body).jsonObject["code"] as? JsonPrimitive)?.intOrNull
+            }.getOrNull()
+            if (code in setOf(401,403)) throw RechargeFailure("P-LOGIN")
+        }
         return response
     }
     private fun get(path: String, session: CardRechargeSession): String {

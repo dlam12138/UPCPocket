@@ -280,7 +280,7 @@ fun AboutScreen(onBack: () -> Unit) {
             GlassCard(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Bullet("验证码、网络或设备限制可能导致学校页面不可用。")
-                    Bullet("校园服务只提供查看与预约，不提供编辑、提醒、充值或自动抢座。")
+                    Bullet("校园卡支持本人充值，付款在微信确认；课表不提供编辑、导出或提醒。")
                 }
             }
 

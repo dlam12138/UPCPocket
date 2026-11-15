@@ -1,6 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <activity
+            android:name="com.upcpocket.app.ui.ecard.CardRechargeFixtureActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="com.upcpocket.app.ui.ecard.CardRechargePaymentFixtureActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
         <!-- Synthetic HTML and fake identity only; absent from Release. -->
         <activity
             android:name="com.upcpocket.app.ui.ecard.CardHistoryWebViewFixtureActivity"
