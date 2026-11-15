@@ -1,6 +1,9 @@
 package com.upcpocket.app.card
 
 import android.content.Context
+import com.upcpocket.app.data.cardrecharge.CardRechargeService
+import com.upcpocket.app.data.cardrecharge.EncryptedRechargePendingStore
+import java.io.File
 import com.upcpocket.app.data.cardhistory.CardHistoryClient
 import com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator
 import com.upcpocket.app.data.cardhistory.CardHistoryInteractiveAuthenticator
@@ -19,6 +22,7 @@ import com.upcpocket.app.plugin.ui.PluginUiRegistry
 object CardCapabilities {
     val balance = capabilityKey<CardBalanceService>("card.balance")
     val history = capabilityKey<CardHistoryClient>("card.history")
+    val recharge = capabilityKey<CardRechargeService>("card.recharge")
 }
 
 /** 稳定插件 ID；不能随 Kotlin 类名或页面标题变化。 */
@@ -44,7 +48,7 @@ class CardPlugin(
         version = "1.0.0",
         capabilities = buildSet {
             add(CardCapabilities.balance.id)
-            if (historyAuthenticator != null) add(CardCapabilities.history.id)
+            if (historyAuthenticator != null) { add(CardCapabilities.history.id);add(CardCapabilities.recharge.id) }
         },
     )
 
@@ -64,13 +68,18 @@ class CardPlugin(
         CardHistoryClient(account, it, interactiveAuthenticator = interactiveHistoryAuthenticator)
     }
 
+    val recharge: CardRechargeService? = history?.let {
+        CardRechargeService(it, EncryptedRechargePendingStore(File(context.applicationContext.noBackupFilesDir,"card-recharge")))
+    }
+
     override val pluginId get() = descriptor.id
 
-    override fun contribute(registry: PluginUiRegistry) = CardUi(service, history).contribute(registry)
+    override fun contribute(registry: PluginUiRegistry) = CardUi(service, history, recharge).contribute(registry)
 
     override fun capabilities(): List<PluginCapability> =
         buildList {
             add(PluginCapability(CardCapabilities.balance, service))
             history?.let { add(PluginCapability(CardCapabilities.history, it)) }
+            recharge?.let { add(PluginCapability(CardCapabilities.recharge, it)) }
         }
 }

@@ -64,6 +64,12 @@ class CardHistoryException(val reason: CardHistoryFailure) : IOException(reason.
 data class CardHistorySummary(val incomeFen: Long, val expenseFen: Long)
 data class BoundCardHistoryPage(val owner: SchoolStudentIdentity, val month: YearMonth?, val current: Int, val data: CardHistoryPage)
 
+internal class CardRechargeSession(val owner: SchoolStudentIdentity, val token: String, private val valid: () -> Boolean, private val expire: () -> Unit = {}) {
+    fun checkCurrent() { if (!valid()) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED) }
+    fun expireIfCurrent() = expire()
+    override fun toString() = "CardRechargeSession([REDACTED])"
+}
+
 /** Only fixed HTTPS, read-only endpoints; a session is checked against the current account generation. */
 class CardHistoryClient(
     private val account: SchoolAccountStudentIdentityReader,
@@ -325,6 +331,27 @@ class CardHistoryClient(
         val result = CardHistorySummary(amount("income"), amount("expenses"))
         checkCurrent(active, generation)
         result
+    }
+
+    /** Restricted to this feature's recharge adapter; no credential or token reaches a page. */
+    internal suspend fun <T> withRechargeSession(block: suspend (CardRechargeSession) -> T): T {
+        if (!hasSession()) login()
+        val active = requireSession()
+        val generation = epoch.get()
+        val lease = CardRechargeSession(active.owner, active.token, valid = {
+            synchronized(stateLock) { session === active && epoch.get() == generation && isCurrent(active.owner) }
+        }, expire = {
+            synchronized(stateLock) {
+                if(session === active && epoch.get() == generation && isCurrent(active.owner)) {
+                    session=null
+                    epoch.incrementAndGet()
+                }
+            }
+        })
+        lease.checkCurrent()
+        val result = block(lease)
+        lease.checkCurrent()
+        return result
     }
 
     private fun requireSession(): Session {

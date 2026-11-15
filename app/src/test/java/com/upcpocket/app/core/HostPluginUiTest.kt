@@ -153,6 +153,7 @@ class HostPluginUiTest {
         assertEquals(
             setOf(
                 "card.history",
+                "card.recharge",
                 "power.electricity",
                 "power.tangdaowan",
                 "classroom.free",

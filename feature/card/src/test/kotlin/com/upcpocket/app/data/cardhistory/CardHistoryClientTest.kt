@@ -269,4 +269,19 @@ class CardHistoryClientTest {
         assertFalse(client.isInteractiveLoginCurrent(attempt.id))
     }
 
+    @Test fun `expired recharge lease cannot clear a newer same-account login`() = runTest {
+        val account=Account();var auth=0
+        val client=CardHistoryClient(account,CardHistoryAuthenticator { "fixture-${++auth}" },OkHttpClient.Builder().addInterceptor { chain ->
+            Response.Builder().request(chain.request()).protocol(Protocol.HTTP_1_1).code(200).message("OK")
+                .body(user.toResponseBody("application/json".toMediaType())).build()
+        }.build())
+        try {
+            client.withRechargeSession { old -> client.login();old.expireIfCurrent() }
+            fail("Old lease must not publish")
+        } catch(error:CardHistoryException) { assertEquals(CardHistoryFailure.ACCOUNT_CHANGED,error.reason) }
+        assertTrue(client.hasSession())
+        client.withRechargeSession { assertEquals("fixture-2",it.token) }
+        assertEquals(2,auth)
+    }
+
 }

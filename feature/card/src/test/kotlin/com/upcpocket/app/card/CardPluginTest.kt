@@ -50,8 +50,9 @@ class CardPluginTest {
             historyAuthenticator = com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator { error("Must not authenticate during assembly") },
         )
         val active = PluginRuntime().register(plugin.descriptor) { plugin }.start().plugins
-        assertEquals(setOf("card.balance", "card.history"), plugin.descriptor.capabilities)
+        assertEquals(setOf("card.balance", "card.history", "card.recharge"), plugin.descriptor.capabilities)
         assertSame(plugin.history, active.capability(CardCapabilities.history))
+        assertSame(plugin.recharge, active.capability(CardCapabilities.recharge))
     }
 
     private class FakeInputStore : CardInputStore {

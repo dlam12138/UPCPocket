@@ -61,6 +61,7 @@ fun DirectCardBalanceSection(
     onOpenAccountSettings: () -> Unit,
     modifier: Modifier = Modifier,
     onOpenHistory: (() -> Unit)? = null,
+    onOpenRecharge: (() -> Unit)? = null,
 ) {
     val status by service.bindingStatus.collectAsStateWithLifecycle(
         initialValue = service.bindingStatus(),
@@ -153,7 +154,10 @@ fun DirectCardBalanceSection(
                 )
             }
 
-            onOpenHistory?.let { open -> TextButton(onClick = open) { Text("交易流水") } }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                onOpenHistory?.let { open -> TextButton(onClick = open) { Text("交易流水") } }
+                onOpenRecharge?.let { open -> TextButton(onClick = open) { Text("充值") } }
+            }
 
             visibleSnapshot?.let { data ->
                 BalanceSnapshot(
