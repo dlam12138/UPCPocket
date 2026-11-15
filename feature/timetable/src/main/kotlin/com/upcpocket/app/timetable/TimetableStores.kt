@@ -9,6 +9,7 @@ import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Base64
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -230,6 +231,19 @@ data class TimetableCache(
         }
 }
 
+/** 本机课表缓存读取结果；缺失、无效内容与文件访问失败不能合并成空课表。 */
+sealed interface TimetableCacheReadResult {
+    data object Missing : TimetableCacheReadResult
+
+    data class Available(val cache: TimetableCache) : TimetableCacheReadResult
+
+    data object Corrupted : TimetableCacheReadResult
+
+    data object WrongAccount : TimetableCacheReadResult
+
+    data object Unreadable : TimetableCacheReadResult
+}
+
 /**
  * 账号归属的已成功教学周缓存。
  *
@@ -248,27 +262,51 @@ class TimetableCacheStore internal constructor(
     private val file = File(directory, TimetableStorage.CACHE_FILE)
     private val lock = Any()
 
-    fun load(accountId: String): TimetableCache = synchronized(lock) {
-        val bytes = TimetableStorage.readAtomic(
-            file,
-            TimetableStorage.MAX_CACHE_BYTES,
-        ) ?: return TimetableCache(null, emptyList())
+    fun load(accountId: String): TimetableCache = when (val result = loadResult(accountId)) {
+        is TimetableCacheReadResult.Available -> result.cache
+        TimetableCacheReadResult.Missing,
+        TimetableCacheReadResult.Corrupted,
+        TimetableCacheReadResult.WrongAccount,
+        TimetableCacheReadResult.Unreadable,
+        -> TimetableCache(null, emptyList())
+    }
+
+    fun loadResult(accountId: String): TimetableCacheReadResult = synchronized(lock) {
+        val bytes = try {
+            if (!file.exists()) return@synchronized TimetableCacheReadResult.Missing
+            if (!file.isFile) return@synchronized TimetableCacheReadResult.Unreadable
+            if (file.length() > TimetableStorage.MAX_CACHE_BYTES) {
+                return@synchronized TimetableCacheReadResult.Corrupted
+            }
+            file.readBytes()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return@synchronized TimetableCacheReadResult.Unreadable
+        }
+        if (bytes.size > TimetableStorage.MAX_CACHE_BYTES) {
+            return@synchronized TimetableCacheReadResult.Corrupted
+        }
         try {
             val parsed = json.decodeFromString(
                 TimetableCacheFile.serializer(),
                 bytes.toString(Charsets.UTF_8),
             )
+            if (parsed.accountId != accountId) {
+                return@synchronized TimetableCacheReadResult.WrongAccount
+            }
             if (parsed.format != TimetableStorage.CACHE_FORMAT ||
                 parsed.version != TimetableStorage.VERSION ||
-                parsed.accountId != accountId ||
                 parsed.cachedAtEpochMillis <= 0
             ) {
-                return TimetableCache(null, emptyList())
+                return@synchronized TimetableCacheReadResult.Corrupted
             }
             val weeks = parsed.weeks.filter { it.complete }
-            TimetableCache(parsed.index, weeks)
+            TimetableCacheReadResult.Available(TimetableCache(parsed.index, weeks))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
-            TimetableCache(null, emptyList())
+            TimetableCacheReadResult.Corrupted
         }
     }
 

@@ -13,6 +13,7 @@ import com.upcpocket.app.data.classroom.FreeClassroomQuery
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.NoOpFreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.matches
 import com.upcpocket.app.data.classroom.toggleGroup
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
@@ -20,6 +21,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.IOException
+import java.net.SocketException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import java.time.Clock
@@ -159,6 +161,32 @@ internal class FreeClassroomViewModel(
     }
 
     /**
+     * 原子应用详细筛选草稿。
+     *
+     * 楼栋选择和自选节次都只改变条件，不触发查询。楼栋单独变化保留当前模式；
+     * 节次变化或用户明确确认自选节次时切入自选模式，即使集合恰好与当前预设相同。
+     */
+    fun applyFilters(
+        buildingValue: String,
+        periodValues: Set<Int>,
+        customPeriodsExplicitlySelected: Boolean = false,
+    ) {
+        if (restoringCampus) return
+        val normalizedPeriods = periodValues.filter { it in 1..13 }.toSet()
+        val normalizedBuilding = buildingValue.takeIf(String::isNotBlank) ?: "全部"
+        val buildingChanged = building != normalizedBuilding
+        val periodsChanged = periods != normalizedPeriods
+        val enterCustomMode = periodsChanged || customPeriodsExplicitlySelected
+        if (!buildingChanged && !periodsChanged && (!enterCustomMode || mode == ClassroomQueryMode.CUSTOM)) return
+
+        if (buildingChanged || periodsChanged) invalidateInFlight()
+        building = normalizedBuilding
+        periods = normalizedPeriods
+        if (enterCustomMode) mode = ClassroomQueryMode.CUSTOM
+        if (buildingChanged || periodsChanged) error = null
+    }
+
+    /**
      * 点击上午/下午/晚上等快捷组。
      *
      * 预设模式下按原有规则叠加/取消整组；自定义模式下点击快捷组表示切回预设，
@@ -228,6 +256,9 @@ internal class FreeClassroomViewModel(
         searchJob = viewModelScope.launch {
             try {
                 val fresh = repository.query(query)
+                if (!fresh.matches(query)) {
+                    throw IOException("学校返回结果与查询条件不一致，请稍后重试")
+                }
                 if (id == requestSeq) {
                     result = fresh
                     lastSuccessfulQuery = fresh.query
@@ -276,19 +307,29 @@ internal class FreeClassroomViewModel(
                         DiagnosticResult.TIMEOUT,
                     )
                 }
-            } catch (failed: IOException) {
+            } catch (_: SocketException) {
                 if (id == requestSeq) {
-                    error = failed.message ?: "查询失败，请检查网络后重试"
+                    error = "无法连接学校服务，请检查网络后重试"
                     recordQueryFailure(
                         operationId,
                         started,
                         DiagnosticReason.NETWORK,
-                        failed,
+                        null,
+                    )
+                }
+            } catch (failed: IOException) {
+                if (id == requestSeq) {
+                    error = failed.classroomMessage()
+                    recordQueryFailure(
+                        operationId,
+                        started,
+                        failed.classroomReason(),
+                        null,
                     )
                 }
             } catch (failed: Exception) {
                 if (id == requestSeq) {
-                    error = "查询失败，请检查网络或稍后重试"
+                    error = "学校查询暂未完成，请稍后重试"
                     recordQueryFailure(
                         operationId,
                         started,
@@ -347,4 +388,24 @@ internal class FreeClassroomViewModel(
             )
         }
     }
+}
+
+private fun IOException.classroomMessage(): String = when (message) {
+    "学校服务暂时不可用，请稍后重试" -> "学校服务暂时不可用，请稍后重试"
+    "学校响应过大，请稍后重试" -> "学校响应过大，请稍后重试"
+    "学校未返回有效查询结果，请稍后重试" -> "学校未返回有效结果，请稍后重试"
+    "学校返回格式已变化，请稍后重试" -> "学校结果格式暂不可确认，请稍后重试"
+    "学校返回结果与查询条件不一致，请稍后重试" -> "学校返回结果与查询条件不一致，请重试"
+    "请选择教学楼" -> "请选择教学楼"
+    "请选择 1–13 节中的至少一节" -> "请选择 1–13 节中的至少一节"
+    else -> "学校结果暂不可确认，请稍后重试"
+}
+
+private fun IOException.classroomReason(): DiagnosticReason = when (message) {
+    "学校服务暂时不可用，请稍后重试" -> DiagnosticReason.HTTP
+    "学校响应过大，请稍后重试",
+    "学校未返回有效查询结果，请稍后重试",
+    "学校返回格式已变化，请稍后重试",
+    "学校返回结果与查询条件不一致，请稍后重试" -> DiagnosticReason.SCHEMA
+    else -> DiagnosticReason.SCHEMA
 }

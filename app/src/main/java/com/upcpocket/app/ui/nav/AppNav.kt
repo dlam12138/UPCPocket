@@ -320,6 +320,7 @@ fun AppNav(
                                 when (page) {
                                     0 -> HomeScreen(
                                         serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
+                                        timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
                                         cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
                                         todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
                                         sectionHost = sectionHost,

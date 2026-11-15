@@ -28,7 +28,6 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -86,6 +85,9 @@ fun TodoScreen(store: TodoStore) {
     var showCompleted by rememberSaveable { mutableStateOf(false) }
     var editorTask by remember { mutableStateOf<TodoTask?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var completionOverrides by remember {
+        mutableStateOf(emptyMap<String, TodoCompletionOverride>())
+    }
     val pendingOpenTask by store.pendingOpenTask.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
@@ -93,6 +95,10 @@ fun TodoScreen(store: TodoStore) {
             delay(60_000)
             now = System.currentTimeMillis()
         }
+    }
+    LaunchedEffect(tasks, completionOverrides) {
+        val reconciled = reconcileTodoCompletionOverrides(tasks, completionOverrides)
+        if (reconciled != completionOverrides) completionOverrides = reconciled
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val previous = access
@@ -107,6 +113,82 @@ fun TodoScreen(store: TodoStore) {
     val incomplete = remember(tasks, now) { TodoOrdering.incomplete(tasks, now) }
     val completed = remember(tasks) { TodoOrdering.completed(tasks) }
     val hasReminders = tasks.any { !it.completed && it.reminderAt != null }
+
+    fun toggleCompletion(task: TodoTask) {
+        if (task.id in completionOverrides) return
+        val desiredCompleted = !task.completed
+        completionOverrides = completionOverrides + (
+            task.id to TodoCompletionOverride(
+                revision = task.revision + 1,
+                completed = desiredCompleted,
+            )
+        )
+        scope.launch {
+            val updated = try {
+                store.setCompletedIfRevision(
+                    task.id,
+                    task.revision,
+                    completed = desiredCompleted,
+                )
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                completionOverrides = completionOverrides - task.id
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            if (updated == null) {
+                completionOverrides = completionOverrides - task.id
+                return@launch
+            }
+            completionOverrides = completionOverrides + (
+                task.id to TodoCompletionOverride(
+                    revision = updated.revision,
+                    completed = desiredCompleted,
+                )
+            )
+            if (!desiredCompleted) return@launch
+
+            val result = snackbar.showSnackbar(
+                message = "已完成",
+                actionLabel = "撤销",
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                completionOverrides = completionOverrides + (
+                    updated.id to TodoCompletionOverride(
+                        revision = updated.revision + 1,
+                        completed = false,
+                    )
+                )
+                val undone = try {
+                    store.setCompletedIfRevision(
+                        updated.id,
+                        updated.revision,
+                        completed = false,
+                    )
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    completionOverrides = completionOverrides - updated.id
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                if (undone == null) {
+                    completionOverrides = completionOverrides - updated.id
+                    snackbar.showSnackbar(
+                        message = "待办已变化，无法撤销",
+                        duration = SnackbarDuration.Short,
+                    )
+                } else {
+                    completionOverrides = completionOverrides + (
+                        updated.id to TodoCompletionOverride(
+                            revision = undone.revision,
+                            completed = false,
+                        )
+                    )
+                }
+            }
+        }
+    }
 
     // 通知点击后只消费确实存在的任务；列表尚未加载或页面只是 Pager 预加载时保留
     // pending，等页面稳定活动后再打开编辑器。
@@ -159,7 +241,7 @@ fun TodoScreen(store: TodoStore) {
             ),
         ) {
             if (hasReminders && (access.hasNotificationIssue || access.hasExactAlarmIssue)) {
-                item(key = "reminder_banner") {
+                item(key = "reminder_banner", contentType = "reminder_banner") {
                     TodoReminderBanner(
                         access = access,
                         onNotificationSettings = { openNotificationSettings(context) },
@@ -169,28 +251,31 @@ fun TodoScreen(store: TodoStore) {
             }
 
             if (incomplete.isEmpty()) {
-                item(key = "empty") {
+                item(key = "empty", contentType = "empty") {
                     EmptyTodoState(onAdd = {
                         editorTask = null
                         adding = true
                     })
                 }
             } else {
-                items(incomplete, key = { "open-${it.id}" }) { task ->
+                items(
+                    items = incomplete,
+                    key = { it.id },
+                    contentType = { "todo_task" },
+                ) { task ->
                     TodoRow(
                         task = task,
                         now = now,
-                        onToggle = { scope.launch { store.setCompleted(task.id, !task.completed) } },
+                        completionOverride = { completionOverrides[task.id]?.completed },
+                        modifier = Modifier.animateItem(),
+                        onToggle = { toggleCompletion(task) },
                         onEdit = { editorTask = task },
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
                     )
                 }
             }
 
             if (completed.isNotEmpty()) {
-                item(key = "completed_header") {
+                item(key = "completed_header", contentType = "completed_header") {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -212,13 +297,17 @@ fun TodoScreen(store: TodoStore) {
                     }
                 }
                 if (showCompleted) {
-                    items(completed, key = { "done-${it.id}" }) { task ->
+                    items(
+                        items = completed,
+                        key = { it.id },
+                        contentType = { "todo_task" },
+                    ) { task ->
                         TodoRow(
                             task = task,
                             now = now,
-                            onToggle = {
-                                scope.launch { store.setCompleted(task.id, !task.completed) }
-                            },
+                            completionOverride = { completionOverrides[task.id]?.completed },
+                            modifier = Modifier.animateItem(),
+                            onToggle = { toggleCompletion(task) },
                             onEdit = { editorTask = task },
                         )
                     }
@@ -253,17 +342,11 @@ fun TodoScreen(store: TodoStore) {
 
 @Composable
 private fun EmptyTodoState(onAdd: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(top = 48.dp, bottom = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("暂无待办", style = MaterialTheme.typography.titleMedium)
-        Text(
-            "只记标题和可选提醒，完成后自动收进已完成。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Text("暂无待办", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
         TextButton(onClick = onAdd) { Text("添加一条") }
     }
 }
@@ -272,12 +355,16 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
 private fun TodoRow(
     task: TodoTask,
     now: Long,
+    completionOverride: () -> Boolean?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val completed = task.completed
+    val override = completionOverride()
+    val pending = override != null
+    val completed = override ?: task.completed
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
             .testTag("todo_row_${task.id}"),
@@ -285,7 +372,8 @@ private fun TodoRow(
     ) {
         Checkbox(
             checked = completed,
-            onCheckedChange = { onToggle() },
+            onCheckedChange = { if (!pending) onToggle() },
+            enabled = !pending,
             modifier = Modifier.semantics {
                 contentDescription = if (completed) {
                     "标记未完成：${task.title}"

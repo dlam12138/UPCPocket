@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.plugin.ui.PluginSectionHost
@@ -57,11 +58,31 @@ fun TodoHomeSection(
     val scope = rememberCoroutineScope()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var adding by remember { mutableStateOf(false) }
+    var completionOverrides by remember {
+        mutableStateOf(emptyMap<String, TodoCompletionOverride>())
+    }
+    var pendingUndo by remember { mutableStateOf<PendingCompletionUndo?>(null) }
+    var undoMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
             delay(60_000)
             now = System.currentTimeMillis()
+        }
+    }
+    LaunchedEffect(pendingUndo) {
+        val pending = pendingUndo ?: return@LaunchedEffect
+        delay(5_000)
+        if (pendingUndo == pending) pendingUndo = null
+    }
+    LaunchedEffect(tasks, completionOverrides) {
+        val reconciled = reconcileTodoCompletionOverrides(tasks, completionOverrides)
+        if (reconciled != completionOverrides) completionOverrides = reconciled
+    }
+    LaunchedEffect(undoMessage) {
+        if (undoMessage != null) {
+            delay(3_000)
+            undoMessage = null
         }
     }
 
@@ -71,7 +92,7 @@ fun TodoHomeSection(
     val incompleteCount = tasks.count { !it.completed }
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp)) {
+        Column(Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -98,9 +119,71 @@ fun TodoHomeSection(
                 }
             }
 
+            pendingUndo?.let { pending ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 40.dp)
+                        .testTag("todo_home_undo"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "已完成",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        onClick = {
+                            if (pendingUndo == pending) pendingUndo = null
+                            undoMessage = null
+                            completionOverrides = completionOverrides + (
+                                pending.taskId to TodoCompletionOverride(
+                                    revision = pending.revision + 1,
+                                    completed = false,
+                                )
+                            )
+                            scope.launch {
+                                val undone = try {
+                                    store.setCompletedIfRevision(
+                                        pending.taskId,
+                                        pending.revision,
+                                        completed = false,
+                                    )
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    completionOverrides = completionOverrides - pending.taskId
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                if (undone == null) {
+                                    completionOverrides = completionOverrides - pending.taskId
+                                    undoMessage = "待办已变化，无法撤销"
+                                } else {
+                                    completionOverrides = completionOverrides + (
+                                        pending.taskId to TodoCompletionOverride(
+                                            revision = undone.revision,
+                                            completed = false,
+                                        )
+                                    )
+                                }
+                            }
+                        },
+                    ) { Text("撤销") }
+                }
+            }
+            undoMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+
             if (summary.isEmpty()) {
                 Row(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -109,15 +192,51 @@ fun TodoHomeSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { adding = true }) { Text("添加") }
                 }
             } else {
                 summary.forEachIndexed { index, task ->
                     HomeTodoRow(
                         task = task,
                         now = now,
+                        completionState = completionOverrides[task.id]?.completed ?: task.completed,
+                        isPending = task.id in completionOverrides,
                         onToggle = {
-                            scope.launch { store.setCompleted(task.id, !task.completed) }
+                            if (task.id in completionOverrides) return@HomeTodoRow
+                            completionOverrides = completionOverrides + (
+                                task.id to TodoCompletionOverride(
+                                    revision = task.revision + 1,
+                                    completed = true,
+                                )
+                            )
+                            scope.launch {
+                                val completed = try {
+                                    store.setCompletedIfRevision(
+                                        task.id,
+                                        task.revision,
+                                        completed = true,
+                                    )
+                                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                    completionOverrides = completionOverrides - task.id
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    null
+                                }
+                                if (completed == null) {
+                                    completionOverrides = completionOverrides - task.id
+                                    undoMessage = "待办已变化，未能完成"
+                                    return@launch
+                                }
+                                completionOverrides = completionOverrides + (
+                                    task.id to TodoCompletionOverride(
+                                        revision = completed.revision,
+                                        completed = true,
+                                    )
+                                )
+                                pendingUndo = PendingCompletionUndo(
+                                    taskId = completed.id,
+                                    revision = completed.revision,
+                                )
+                            }
                         },
                         onOpen = { host.open(TODO_ROUTE) },
                     )
@@ -145,6 +264,8 @@ fun TodoHomeSection(
 private fun HomeTodoRow(
     task: TodoTask,
     now: Long,
+    completionState: Boolean,
+    isPending: Boolean,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
 ) {
@@ -153,8 +274,9 @@ private fun HomeTodoRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Checkbox(
-            checked = false,
-            onCheckedChange = { onToggle() },
+            checked = completionState,
+            onCheckedChange = { if (!isPending) onToggle() },
+            enabled = !isPending,
             modifier = Modifier.semantics {
                 contentDescription = "完成：${task.title}"
                 role = Role.Checkbox
@@ -171,6 +293,12 @@ private fun HomeTodoRow(
                 task.title,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 1,
+                textDecoration = if (completionState) TextDecoration.LineThrough else null,
+                color = if (completionState) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
             )
             task.reminderAt?.let { reminder ->
                 Text(
@@ -186,3 +314,8 @@ private fun HomeTodoRow(
         }
     }
 }
+
+private data class PendingCompletionUndo(
+    val taskId: String,
+    val revision: Int,
+)

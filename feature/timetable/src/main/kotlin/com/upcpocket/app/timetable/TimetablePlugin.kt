@@ -10,10 +10,12 @@ import com.upcpocket.app.plugin.api.capabilityKey
 import com.upcpocket.app.plugin.ui.PluginBottomNav
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
+import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
+import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 
 object TimetableCapabilities {
@@ -69,6 +71,20 @@ internal class TimetableUi(
             PluginPage(TIMETABLE_ROUTE, TIMETABLE_PLUGIN_ID) { host ->
                 TimetableScreen(
                     service = service,
+                    onOpenAccountSettings = host::openSchoolAccountSettings,
+                )
+            },
+        )
+        registry.addSection(
+            PluginSection(
+                entryId = UiEntryId.parse("timetable.today"),
+                pluginId = TIMETABLE_PLUGIN_ID,
+                surface = UiSurface.HOME_TIMETABLE,
+                order = 0,
+            ) { host ->
+                TimetableHomeSection(
+                    service = service,
+                    onOpenTimetable = { host.open(TIMETABLE_ROUTE) },
                     onOpenAccountSettings = host::openSchoolAccountSettings,
                 )
             },

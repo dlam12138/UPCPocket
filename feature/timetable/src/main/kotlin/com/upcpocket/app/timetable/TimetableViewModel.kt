@@ -23,14 +23,13 @@ class TimetableViewModel(
         started = true
         operation = viewModelScope.launch {
             service.open()
-            service.refreshToday()
         }
     }
 
     fun refresh() = run { service.refresh() }
 
-    fun refreshToday() {
-        viewModelScope.launch { service.refreshToday() }
+    fun restoreTodayFromCache() {
+        viewModelScope.launch { service.restoreTodayFromCache() }
     }
 
     fun selectTerm(term: TimetableTerm) = run { service.selectTerm(term) }

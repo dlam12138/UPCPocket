@@ -235,7 +235,11 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             TextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         else -> LazyColumn {
-                            items(buildings) { option ->
+                            items(
+                                items = buildings,
+                                key = { it },
+                                contentType = { "building" },
+                            ) { option ->
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
@@ -342,9 +346,9 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 supportingText = {
                     Text(
                         when {
-                            building.isBlank() -> "先选择上方楼号，再填写房间号。"
-                            room.isBlank() -> "填写完整房间号后，点击下方“查询”。"
-                            else -> "输入已保留，点击下方“查询”更新电量。清除记录也会清除组件数据。"
+                            building.isBlank() -> "先选楼号，再填房间号。"
+                            room.isBlank() -> "填写房间号后查询。"
+                            else -> "当前目标：$building · ${room.trim()}。清除记录也会清除组件数据。"
                         },
                     )
                 },
@@ -385,6 +389,17 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
+                            when {
+                                loading -> "更新中 · 保留上次结果"
+                                error != null -> "更新失败 · 上次读取"
+                                else -> "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                    .withZone(ZoneId.systemDefault())
+                                    .format(Instant.ofEpochMilli(value.fetchedAt))
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
                             text = value.kwh + " 度",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.SemiBold,
@@ -395,13 +410,6 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                 .filter { it.isNotBlank() }
                                 .joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                        Text(
-                            text = "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                                .withZone(ZoneId.systemDefault())
-                                .format(Instant.ofEpochMilli(value.fetchedAt)),
-                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }

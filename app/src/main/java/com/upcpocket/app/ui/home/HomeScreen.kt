@@ -1,6 +1,5 @@
 package com.upcpocket.app.ui.home
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,24 +14,26 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.upcpocket.app.plugin.ui.PluginEntry
@@ -44,17 +45,18 @@ import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.nav.filledIcon
+import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
 
 private val CAMPUS_ZONE = ZoneId.of("Asia/Shanghai")
 
 private data class QuickAction(
     val title: String,
-    val subtitle: String,
     val icon: ImageVector,
     val onClick: () -> Unit,
 )
@@ -69,6 +71,7 @@ private data class QuickAction(
 @Composable
 fun HomeScreen(
     serviceEntries: List<PluginEntry>,
+    timetableSections: List<PluginSection>,
     cardSections: List<PluginSection>,
     todoSections: List<PluginSection>,
     sectionHost: PluginSectionHost,
@@ -76,19 +79,16 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenOfficialWeb: () -> Unit,
 ) {
-    val today = LocalDate.now(CAMPUS_ZONE)
+    val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
     val dateLabel = today.format(
         DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
     )
-    val greeting = greet(LocalTime.now(CAMPUS_ZONE))
-
     val actions = buildList {
         serviceEntries.forEach { entry ->
             add(
                 QuickAction(
                     title = entry.title,
-                    subtitle = entry.subtitle,
                     icon = entry.icon.filledIcon(),
                     onClick = { entry.route?.let(onOpenRoute) },
                 ),
@@ -97,7 +97,6 @@ fun HomeScreen(
         add(
             QuickAction(
                 title = "校园网页",
-                subtitle = "课表 · 教室 · 图书馆",
                 icon = Icons.Outlined.Public,
                 onClick = onOpenOfficialWeb,
             ),
@@ -120,9 +119,17 @@ fun HomeScreen(
             Header(
                 eyebrow = "UPC POCKET",
                 date = dateLabel,
-                greeting = greeting,
                 onOpenSettings = onOpenSettings,
             )
+
+            if (timetableSections.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                timetableSections.forEach { section ->
+                    androidx.compose.runtime.key(section.entryId) {
+                        section.content(sectionHost)
+                    }
+                }
+            }
 
             if (todoSections.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
@@ -184,10 +191,23 @@ fun HomeScreen(
 }
 
 @Composable
+private fun rememberCampusDate(): LocalDate {
+    var today by remember { mutableStateOf(LocalDate.now(CAMPUS_ZONE)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = ZonedDateTime.now(CAMPUS_ZONE)
+            val nextDate = now.toLocalDate().plusDays(1).atStartOfDay(CAMPUS_ZONE)
+            delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
+            today = LocalDate.now(CAMPUS_ZONE)
+        }
+    }
+    return today
+}
+
+@Composable
 private fun Header(
     eyebrow: String,
     date: String,
-    greeting: String,
     onOpenSettings: () -> Unit,
 ) {
     Row(
@@ -207,19 +227,14 @@ private fun Header(
             )
             Text(
                 text = date,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            Text(
-                text = greeting,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
-        Spacer(Modifier.width(8.dp))
-        FilledTonalIconButton(
+        androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+        androidx.compose.material3.FilledTonalIconButton(
             onClick = onOpenSettings,
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(48.dp),
         ) {
             Icon(
                 imageVector = Icons.Outlined.Settings,
@@ -235,53 +250,30 @@ private fun ServiceTile(
     action: QuickAction,
     modifier: Modifier = Modifier,
 ) {
-    GlassCard(
-        modifier = modifier
-            .heightIn(min = 132.dp)
-            .clickable(onClick = action.onClick),
+    Surface(
+        onClick = action.onClick,
+        modifier = modifier.heightIn(min = 56.dp),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(verticalAlignment = Alignment.Top) {
-                IconBadge(
-                    icon = action.icon,
-                    contentDescription = null,
-                    size = 38.dp,
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = action.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = action.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            IconBadge(
+                icon = action.icon,
+                contentDescription = null,
+                size = 32.dp,
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(
+                text = action.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
-}
-
-private fun greet(time: LocalTime): String = when (time.hour) {
-    in 0..4 -> "夜深了"
-    in 5..10 -> "早上好"
-    in 11..12 -> "中午好"
-    in 13..17 -> "下午好"
-    else -> "晚上好"
 }

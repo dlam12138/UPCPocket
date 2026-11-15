@@ -2,16 +2,23 @@ package com.upcpocket.app.timetable
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.printToLog
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -52,10 +59,8 @@ class TimetableScreenStateTest {
         meetings: List<TimetableMeeting> = emptyList(),
         message: String? = null,
         connection: TimetableConnection = TimetableConnection.CONNECTED,
-        todayLoaded: Boolean = false,
-        todayMeetings: List<TimetableMeeting> = emptyList(),
     ): TimetableUiState = TimetableUiState(
-        accountStatusLabel = "20••••01 · 已保存，尚未验证",
+        accountStatusLabel = "20••••01 · 已保存",
         maskedAccount = "20••••01",
         accountSavedUnverified = true,
         connection = connection,
@@ -67,11 +72,24 @@ class TimetableScreenStateTest {
         meetings = meetings,
         weekState = weekState,
         weekFetchedAtEpochMillis = 1_700_000_000_000,
-        today = LocalDate.now(ZoneId.of("Asia/Shanghai")),
-        todayMeetings = todayMeetings,
-        todayLoaded = todayLoaded,
         message = message,
         canRetry = true,
+    )
+
+    private fun todayState(
+        status: TimetableTodayState = TimetableTodayState.NOT_SYNCED,
+        loaded: Boolean = false,
+        meetings: List<TimetableMeeting> = emptyList(),
+        message: String? = null,
+    ): TimetableTodayUiState = TimetableTodayUiState(
+        accountEpoch = 1,
+        accountSavedUnverified = true,
+        accountBlocked = false,
+        today = LocalDate.now(ZoneId.of("Asia/Shanghai")),
+        todayMeetings = meetings,
+        todayState = status,
+        todayMessage = message,
+        todayLoaded = loaded,
     )
 
     @Test
@@ -120,12 +138,12 @@ class TimetableScreenStateTest {
         rule.setContent {
             MaterialTheme {
                 TodayPanel(
-                    state(TimetableWeekState.READY, todayLoaded = false),
+                    state = todayState(),
                     onCourseClick = {},
                 )
             }
         }
-        rule.onNodeWithText("今天还没有查询。").assertIsDisplayed()
+        rule.onNodeWithText("今日课表尚未同步。").assertIsDisplayed()
     }
 
     @Test
@@ -133,12 +151,36 @@ class TimetableScreenStateTest {
         rule.setContent {
             MaterialTheme {
                 TodayPanel(
-                    state(TimetableWeekState.READY, todayLoaded = true),
+                    state = todayState(
+                        loaded = true,
+                        status = TimetableTodayState.EMPTY,
+                    ),
                     onCourseClick = {},
                 )
             }
         }
-        rule.onNodeWithText("今天没有排课").assertIsDisplayed()
+        rule.onNodeWithText("今天没有排课。").assertIsDisplayed()
+    }
+
+    @Test
+    fun todayCacheFailureKeepsFailureCopyAndOffersTimetableAction() {
+        var opened = false
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(
+                        status = TimetableTodayState.READ_ERROR,
+                        message = "本机课表读取失败，请前往课表页重试。",
+                    ),
+                    onCourseClick = {},
+                    onOpenTimetable = { opened = true },
+                )
+            }
+        }
+
+        rule.onNodeWithText("本机课表读取失败，请前往课表页重试。").assertIsDisplayed()
+        rule.onNodeWithText("去课表").performClick()
+        assertEquals(true, opened)
     }
 
     @Test
@@ -175,12 +217,53 @@ class TimetableScreenStateTest {
             sectionsSource = "lessArr_split_noncontiguous",
         )
         rule.setContent {
-            MaterialTheme { CourseDetailDialog(meeting = split, onDismiss = {}) }
+            MaterialTheme { CourseDetailBottomSheet(meeting = split, onDismiss = {}) }
         }
-        rule.onNodeWithText("第1节、第3节").assertIsDisplayed()
+        val expandSheet = SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)
+        rule.waitForIdle()
+        val expandNodes = rule.onAllNodes(expandSheet, useUnmergedTree = true)
+            .fetchSemanticsNodes()
+        check(expandNodes.size <= 1) { "Expected at most one course sheet expand action" }
+        if (expandNodes.isNotEmpty()) {
+            rule.onNode(expandSheet, useUnmergedTree = true)
+                .performSemanticsAction(SemanticsActions.Expand)
+            rule.waitForIdle()
+        } else {
+            rule.onRoot(useUnmergedTree = true).printToLog("TimetableSheetUnmergedTree")
+        }
+        rule.onNodeWithText("第1节、第3节").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("教师").assertExists()
         rule.onNodeWithText("地点").assertExists()
         rule.onAllNodesWithText("未提供").assertCountEquals(4)
+    }
+
+    @Test
+    fun courseSelectionRequiresCurrentCourseAndAccountEpoch() {
+        val current = meeting.copy(courseId = "course-1")
+        val selected = current.selection(accountEpoch = 4)
+
+        assertEquals(current, resolveMeetingSelection(selected, 4, listOf(current)))
+        assertNull(resolveMeetingSelection(selected, 5, listOf(current)))
+        assertNull(resolveMeetingSelection(selected, 4, emptyList()))
+    }
+
+    @Test
+    fun courseSelectionResolvesLatestFieldsFromCurrentWeekOrTodayData() {
+        val initiallySelected = meeting.copy(
+            courseId = "course-1",
+            courseType = "选修",
+            sourcePeriods = listOf(6, 7),
+            weekLabel = "8",
+        )
+        val selected = initiallySelected.selection(accountEpoch = 4)
+        val updated = initiallySelected.copy(
+            courseType = "必修",
+            sourcePeriods = listOf(6, 7, 8),
+            weekLabel = "8、9",
+        )
+
+        assertEquals(initiallySelected.instanceId, updated.instanceId)
+        assertEquals(updated, resolveMeetingSelection(selected, 4, listOf(updated)))
     }
 
     @Test

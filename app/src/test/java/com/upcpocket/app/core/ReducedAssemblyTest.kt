@@ -93,6 +93,9 @@ class ReducedAssemblyTest {
         val ui = assembly.snapshot
         assertTrue(assembly.diagnostics.isEmpty())
         assertTrue(ui.sectionsFor(UiSurface.HOME_CARD).isEmpty())
+        assertTrue(ui.sectionsFor(UiSurface.HOME_TIMETABLE).isEmpty())
+        assertTrue(ui.bottomNav.none { it.entryId.value == "timetable.tab" })
+        assertTrue(ui.pages.none { it.routeId.value == "timetable.week" })
         assertEquals(
             listOf("power.electricity", "classroom.free", "library.home"),
             ui.entriesFor(UiSurface.HOME_SERVICES).map { it.entryId.value },

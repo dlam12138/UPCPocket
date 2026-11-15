@@ -224,7 +224,6 @@ private fun LibAreaPreview() {
             onBuilding = {},
             onDate = {},
             onFloor = {},
-            onRefresh = {},
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("可预约区域", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)

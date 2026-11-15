@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
@@ -213,6 +214,11 @@ fun ServicePortalScreen(
                             keyboard?.hide()
                             service.search(keyword)
                         },
+                        onClearSearch = {
+                            keyword = ""
+                            keyboard?.hide()
+                            service.search("")
+                        },
                         onPage = service::pageSearch,
                         onOpen = service::openGuide,
                     )
@@ -245,6 +251,7 @@ private fun ServiceListContent(
     onKeywordChange: (String) -> Unit,
     scroll: LazyListState,
     onSearch: () -> Unit,
+    onClearSearch: () -> Unit,
     onPage: (Int) -> Unit,
     onOpen: (ServicePortalItem) -> Unit,
 ) {
@@ -262,7 +269,15 @@ private fun ServiceListContent(
                 label = { Text("事项名称或部门") },
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { onSearch() }),
-                trailingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (keyword.isNotEmpty()) {
+                        IconButton(onClick = onClearSearch, enabled = !state.busy) {
+                            Icon(Icons.Outlined.Close, contentDescription = "清空并搜索")
+                        }
+                    } else {
+                        Icon(Icons.Outlined.Search, contentDescription = null)
+                    }
+                },
             )
             Button(onClick = onSearch, enabled = !state.busy) { Text("搜索") }
         }
@@ -281,15 +296,25 @@ private fun ServiceListContent(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (state.busy) {
+                    item(key = "updating", contentType = "status") {
+                        Text("正在更新 · 保留上次结果", style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
                 item(key = "scope") {
                     Text(
-                        if (page.scope == ServicePortalScope.ACCOUNT) "当前账号可见目录 · ${page.total} 项" else "公开目录 · ${page.total} 项",
+                        buildString {
+                            append(if (page.scope == ServicePortalScope.ACCOUNT) "当前账号可见目录" else "公开目录")
+                            append(" · 第 ${page.page} 页 · ${page.total} 项")
+                            if (state.keyword.isNotBlank()) append(" · ${state.keyword}")
+                        },
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     )
                 }
-                items(page.items, key = ServicePortalItem::rowKey) { item ->
+                items(page.items, key = ServicePortalItem::rowKey, contentType = { "service" }) { item ->
                     Card(Modifier.fillMaxWidth().clickable { onOpen(item) }) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -366,7 +391,7 @@ private fun TodoListContent(
                 if (!page.completeForPage) Text("本页结果可能不完整。", style = MaterialTheme.typography.bodySmall)
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
-            items(page.items, key = ServicePortalTodo::rowKey) { item ->
+            items(page.items, key = ServicePortalTodo::rowKey, contentType = { "todo" }) { item ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名事项" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -420,7 +445,7 @@ private fun ApplicationListContent(
                 if (!page.completeForPage) Text("本页结果可能不完整。", style = MaterialTheme.typography.bodySmall)
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
-            items(page.items, key = ServicePortalApplication::rowKey) { item ->
+            items(page.items, key = ServicePortalApplication::rowKey, contentType = { "application" }) { item ->
                 Card(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名申请" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)

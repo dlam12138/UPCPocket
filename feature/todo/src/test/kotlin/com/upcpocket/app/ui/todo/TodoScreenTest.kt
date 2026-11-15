@@ -19,6 +19,7 @@ import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
@@ -63,6 +64,43 @@ class TodoScreenTest {
         rule.onNodeWithText("B").performClick()
         rule.waitForIdle()
         assertEquals(TODO_ROUTE, host.opened)
+    }
+
+    @Test
+    fun `home completion undo is immediate and only reopens the same revision`() {
+        val store = FakeTodoStore(listOf(task("Open", createdAt = 10)))
+        rule.setContent {
+            MaterialTheme { TodoHomeSection(store = store, host = FakeHost()) }
+        }
+
+        rule.onNodeWithContentDescription("完成：Open").performClick()
+        rule.waitUntil(5_000) { store.current.single().completed }
+        rule.onNodeWithTag("todo_home_undo").assertIsDisplayed()
+        assertEquals(1, store.revisionUpdates)
+
+        rule.onNodeWithText("撤销").performClick()
+        rule.waitUntil(5_000) { !store.current.single().completed }
+        assertEquals(3, store.current.single().revision)
+        assertEquals(2, store.revisionUpdates)
+    }
+
+    @Test
+    fun `full list completion offers revision guarded undo`() {
+        val store = FakeTodoStore(listOf(task("Open", createdAt = 10)))
+        val completionGate = CompletableDeferred<Unit>()
+        store.completionGate = completionGate
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithContentDescription("标记完成：Open").performClick()
+        rule.onNodeWithContentDescription("标记未完成：Open").assertIsDisplayed()
+        assertTrue(!store.current.single().completed)
+        completionGate.complete(Unit)
+        rule.waitUntil(5_000) { store.current.single().completed }
+        rule.onNodeWithText("撤销").assertIsDisplayed().performClick()
+        rule.waitUntil(5_000) { !store.current.single().completed }
+
+        assertEquals(3, store.current.single().revision)
+        assertEquals(2, store.revisionUpdates)
     }
 
     @Test
@@ -141,6 +179,8 @@ class TodoScreenTest {
             notificationsEnabled = true,
             exactAlarmsAllowed = true,
         )
+        var revisionUpdates = 0
+        var completionGate: CompletableDeferred<Unit>? = null
 
         override fun reminderAccess(): TodoReminderAccess = access
 
@@ -181,6 +221,25 @@ class TodoScreenTest {
                 }
             }
             return true
+        }
+
+        override suspend fun setCompletedIfRevision(
+            id: String,
+            revision: Int,
+            completed: Boolean,
+        ): TodoTask? {
+            completionGate?.also { completionGate = null }?.await()
+            val currentTask = state.value.firstOrNull { it.id == id } ?: return null
+            if (currentTask.revision != revision || currentTask.completed == completed) return null
+            val updated = currentTask.copy(
+                completed = completed,
+                completedAt = if (completed) 2_000 else null,
+                updatedAt = 2_000,
+                revision = currentTask.revision + 1,
+            )
+            revisionUpdates++
+            state.value = state.value.map { if (it.id == id) updated else it }
+            return updated
         }
 
         override suspend fun delete(id: String): TodoTask? {

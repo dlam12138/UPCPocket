@@ -5,6 +5,7 @@ import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.data.TodoTaskDao
 import com.upcpocket.app.todo.data.TodoTaskEntity
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -63,6 +64,93 @@ class TodoServiceTest {
         assertTrue(harness.repository.byId(task.id)!!.completed)
         assertNull(harness.scheduler.scheduled[task.id])
         assertNull(harness.notifier.active[task.id])
+    }
+
+    @Test
+    fun `concurrent completion writes once and revision guarded undo restores reminders`() = runTest {
+        val harness = Harness()
+        val reminderAt = harness.now + 60_000
+        val task = harness.service.add("A", reminderAt)
+        val revision = harness.repository.byId(task.id)!!.revision
+
+        val results = coroutineScope {
+            listOf(
+                async { harness.service.setCompletedIfRevision(task.id, revision, true) },
+                async { harness.service.setCompletedIfRevision(task.id, revision, true) },
+            ).map { it.await() }
+        }
+
+        val completed = results.single { it != null }!!
+        assertEquals(2, harness.repository.byId(task.id)!!.revision)
+        assertNull(harness.scheduler.scheduled[task.id])
+        val reopened = harness.service.setCompletedIfRevision(
+            task.id,
+            completed.revision,
+            false,
+        )!!
+        assertFalse(reopened.completed)
+        assertNull(harness.service.setCompletedIfRevision(task.id, completed.revision, false))
+        val current = harness.repository.byId(task.id)!!
+        assertEquals(reminderAt, current.reminderAt)
+        assertEquals(current.revision, harness.scheduler.scheduled[task.id]?.revision)
+    }
+
+    @Test
+    fun `started completion and undo finish reminder coordination after caller cancellation`() = runTest {
+        val harness = Harness()
+        val reminderAt = harness.now + 60_000
+        val task = harness.service.add("A", reminderAt)
+        val initialRevision = harness.repository.byId(task.id)!!.revision
+
+        val (completeReadStarted, releaseCompleteRead) = harness.dao.pauseNextById()
+        val completing = async {
+            harness.service.setCompletedIfRevision(task.id, initialRevision, true)
+        }
+        completeReadStarted.await()
+        completing.cancel()
+        releaseCompleteRead.complete(Unit)
+        assertTrue(runCatching { completing.await() }.exceptionOrNull() is CancellationException)
+
+        val completed = harness.repository.byId(task.id)!!
+        assertTrue(completed.completed)
+        assertNull(harness.scheduler.scheduled[task.id])
+        assertNull(harness.notifier.active[task.id])
+
+        val (undoReadStarted, releaseUndoRead) = harness.dao.pauseNextById()
+        val undoing = async {
+            harness.service.setCompletedIfRevision(task.id, completed.revision, false)
+        }
+        undoReadStarted.await()
+        undoing.cancel()
+        releaseUndoRead.complete(Unit)
+        assertTrue(runCatching { undoing.await() }.exceptionOrNull() is CancellationException)
+
+        val reopened = harness.repository.byId(task.id)!!
+        assertFalse(reopened.completed)
+        assertEquals(reminderAt, reopened.reminderAt)
+        assertEquals(reopened.revision, harness.scheduler.scheduled[task.id]?.revision)
+        assertEquals(reminderAt, harness.scheduler.scheduled[task.id]?.atMillis)
+        assertNull(harness.notifier.active[task.id])
+    }
+
+    @Test
+    fun `completion undo cannot overwrite edits or resurrect deleted task`() = runTest {
+        val harness = Harness()
+        val task = harness.service.add("A", harness.now + 60_000)
+        val completed = harness.service.setCompletedIfRevision(
+            task.id,
+            harness.repository.byId(task.id)!!.revision,
+            true,
+        )!!
+        harness.service.edit(task.id, "B", task.reminderAt)
+
+        assertNull(harness.service.setCompletedIfRevision(task.id, completed.revision, false))
+        assertEquals("B", harness.repository.byId(task.id)!!.title)
+
+        val current = harness.repository.byId(task.id)!!
+        harness.service.delete(task.id)
+        assertNull(harness.service.setCompletedIfRevision(task.id, current.revision, false))
+        assertNull(harness.repository.byId(task.id))
     }
 
     @Test
@@ -212,6 +300,16 @@ class TodoServiceTest {
     private class FakeTodoDao : TodoTaskDao {
         private val state = MutableStateFlow<List<TodoTaskEntity>>(emptyList())
         var allGate: CompletableDeferred<Unit>? = null
+        private var nextByIdStarted: CompletableDeferred<Unit>? = null
+        private var nextByIdGate: CompletableDeferred<Unit>? = null
+
+        fun pauseNextById(): Pair<CompletableDeferred<Unit>, CompletableDeferred<Unit>> {
+            val started = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            nextByIdStarted = started
+            nextByIdGate = gate
+            return started to gate
+        }
 
         override fun observeAll(): Flow<List<TodoTaskEntity>> = state
 
@@ -220,14 +318,24 @@ class TodoServiceTest {
             return state.value
         }
 
-        override suspend fun byId(id: String): TodoTaskEntity? =
-            state.value.firstOrNull { it.id == id }
+        override suspend fun byId(id: String): TodoTaskEntity? {
+            nextByIdStarted?.also { nextByIdStarted = null }?.complete(Unit)
+            nextByIdGate?.also { nextByIdGate = null }?.await()
+            return state.value.firstOrNull { it.id == id }
+        }
 
         override suspend fun upsert(task: TodoTaskEntity) {
             state.value = state.value.filterNot { it.id == task.id } + task
         }
 
-        override suspend fun delete(id: String): Int = mutate(id) { null }
+        override suspend fun delete(id: String): Int {
+            val current = state.value
+            val remaining = current.filterNot { it.id == id }
+            val affectedRows = current.size - remaining.size
+            if (affectedRows == 0) return 0
+            state.value = remaining
+            return affectedRows
+        }
 
         override suspend fun updateContent(
             id: String,
@@ -256,6 +364,24 @@ class TodoServiceTest {
                 completedAt = completedAt,
                 updatedAt = now,
                 revision = it.revision + 1,
+            )
+        }
+
+        override suspend fun setCompletedIfRevision(
+            id: String,
+            revision: Int,
+            completed: Boolean,
+            completedAt: Long?,
+            now: Long,
+        ): Int = mutate(id) { current ->
+            if (current.revision != revision || current.completed == completed) {
+                return@mutate null
+            }
+            current.copy(
+                completed = completed,
+                completedAt = completedAt,
+                updatedAt = now,
+                revision = current.revision + 1,
             )
         }
 

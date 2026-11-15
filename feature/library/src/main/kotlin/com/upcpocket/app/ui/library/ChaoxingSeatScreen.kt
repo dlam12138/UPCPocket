@@ -139,21 +139,11 @@ fun ChaoxingSeatScreen(
                 title = {
                     Column {
                         Text("超星座位")
-                        Text(
-                            state.kind.campusLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { vm.refresh() }, enabled = !state.busy) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
                     }
                 },
             )
@@ -164,7 +154,7 @@ fun ChaoxingSeatScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            item {
+            item(contentType = "filters") {
                 ChaoxingFilterPanel(
                     state = state,
                     onKind = vm::selectKind,
@@ -172,7 +162,7 @@ fun ChaoxingSeatScreen(
                 )
             }
             if (session == null) {
-                item {
+                item(contentType = "login_gate") {
                     GlassCard {
                         Column(
                             Modifier.padding(16.dp),
@@ -241,22 +231,22 @@ fun ChaoxingSeatScreen(
                     }
                 }
             } else {
-                if (state.busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                if (state.busy) item(contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 state.error?.let { message ->
-                    item {
+                    item(contentType = "error") {
                         CompactNotice("暂时无法读取", message)
                         TextButton(onClick = vm::refresh, enabled = !state.busy) { Text("重试") }
                     }
                 }
                 if (state.detailBusy) {
-                    item {
+                    item(contentType = "detail_loading") {
                         Row(
                             Modifier.fillMaxWidth().padding(20.dp),
                             horizontalArrangement = Arrangement.Center,
                         ) { CircularProgressIndicator() }
                     }
                 }
-                item {
+                item(contentType = "area_summary") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "区域",
@@ -269,24 +259,27 @@ fun ChaoxingSeatScreen(
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        IconButton(onClick = vm::refresh, enabled = !state.busy) {
+                            Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
+                        }
                     }
                 }
                 if (!state.busy && state.error == null && state.rooms.isEmpty()) {
-                    item {
+                    item(contentType = "empty") {
                         CompactNotice(
                             "没有区域",
                             "换个日期再试；这不代表有座。",
                         )
                     }
                 }
-                items(state.rooms, key = { it.id }) { room ->
+                items(state.rooms, key = { it.id }, contentType = { "area" }) { room ->
                     ChaoxingAreaRow(
                         room = room,
                         selectedDate = state.selectedDate,
                         onClick = { vm.openRoom(room) },
                     )
                 }
-                item {
+                item(contentType = "official_page") {
                     OutlinedButton(
                         onClick = { openChaoxingOfficial(context, state.officialUrl) },
                         modifier = Modifier.fillMaxWidth(),
@@ -296,7 +289,7 @@ fun ChaoxingSeatScreen(
                         Text("学校预约页")
                     }
                 }
-                item {
+                item(contentType = "reservation_note") {
                     Text(
                         "可提交预约；签到在学校页面完成。",
                         style = MaterialTheme.typography.labelSmall,
@@ -320,6 +313,11 @@ internal fun ChaoxingFilterPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Text(
+            "校区",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -333,6 +331,11 @@ internal fun ChaoxingFilterPanel(
                 )
             }
         }
+        Text(
+            "日期",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -515,11 +518,11 @@ internal fun ChaoxingSeatDetailContent(
         LazyColumn(Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item(contentType = "seat_mode_controls") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
                 FilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
             } }
-            item {
+            item(contentType = "time_controls") {
                 if (state.seatMode == RoomSeatMode.TIME) {
                     TimeRangeControls(state.selectedStart?.let(::formatMinute), state.selectedEnd?.let(::formatMinute),
                         { timePart = "start" }, { timePart = "end" }, onSearch,
@@ -537,30 +540,30 @@ internal fun ChaoxingSeatDetailContent(
                 }
             }
             if (state.seatMode == RoomSeatMode.SEAT && state.timeUnavailableReason != null) {
-                item { CompactNotice("暂无可选时段", state.timeUnavailableReason) }
+                item(contentType = "time_unavailable") { CompactNotice("暂无可选时段", state.timeUnavailableReason) }
             }
-            state.hiddenError?.let { item {
+            state.hiddenError?.let { item(contentType = "hidden_error") {
                 Text(it, color = MaterialTheme.colorScheme.error)
                 TextButton(onClick = onReloadHidden, enabled = !state.hiddenBusy) { Text("重试") }
             } }
-            state.reservationMessage?.let { item { CompactNotice(if (state.reservationUnknown) "提交结果未知" else "预约状态", it) } }
+            state.reservationMessage?.let { item(contentType = "reservation_status") { CompactNotice(if (state.reservationUnknown) "提交结果未知" else "预约状态", it) } }
             if (state.seatMode == RoomSeatMode.TIME) {
-                item { ChaoxingTimeResults(state, onSelect, onHide, onSearch) }
+                item(contentType = "time_results") { ChaoxingTimeResults(state, onSelect, onHide, onSearch) }
             } else {
-                if (state.querying) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-                state.detailError?.let { item {
+                if (state.querying) item(contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                state.detailError?.let { item(contentType = "detail_error") {
                     CompactNotice("查询失败", it)
                     TextButton(onClick = onSearch) { Text("重试") }
                 } }
-                item { FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                item(contentType = "seat_legend") { FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LegendDot(MaterialTheme.colorScheme.primary, "可选")
                     LegendDot(MaterialTheme.colorScheme.error, if (state.usedSeatsLoaded) "已用" else "已用未知")
                     LegendDot(MaterialTheme.colorScheme.tertiary, "已选")
                     if (state.hiddenIds.isNotEmpty()) LegendDot(MaterialTheme.colorScheme.outline, "已隐藏")
                 } }
-                item { ChaoxingSeatMap(detail.places, state.usedSeats, state.usedSeatsLoaded,
+                item(contentType = "seat_map") { ChaoxingSeatMap(detail.places, state.usedSeats, state.usedSeatsLoaded,
                     state.selectedSeat, onSelect, state.hiddenIds, onHide, detail.disabledSeatNums) }
-                state.selectedSeat?.let { seat -> item {
+                state.selectedSeat?.let { seat -> item(contentType = "selected_seat") {
                     TextButton(onClick = { onHide(seat) }, enabled = !state.hiddenBusy) { Text("隐藏座位 $seat") }
                 } }
             }

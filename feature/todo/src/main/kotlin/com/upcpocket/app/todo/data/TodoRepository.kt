@@ -38,6 +38,19 @@ class TodoRepository(
         return byId(id)
     }
 
+    suspend fun setCompletedIfRevision(
+        id: String,
+        revision: Int,
+        completed: Boolean,
+        now: Long,
+    ): TodoTask? {
+        val completedAt = now.takeIf { completed }
+        if (dao.setCompletedIfRevision(id, revision, completed, completedAt, now) == 0) {
+            return null
+        }
+        return byId(id)
+    }
+
     suspend fun completeIfRevision(id: String, revision: Int, now: Long): TodoTask? {
         if (dao.completeIfRevision(id, revision, now) == 0) return null
         return byId(id)

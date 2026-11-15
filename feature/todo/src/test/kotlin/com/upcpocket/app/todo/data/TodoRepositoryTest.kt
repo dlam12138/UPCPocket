@@ -52,6 +52,70 @@ class TodoRepositoryTest {
     }
 
     @Test
+    fun `completion undo is compare and set and never restores an old row`() = runBlocking {
+        val db = inMemory()
+        val repository = TodoRepository(db.taskDao())
+        val task = sampleTask()
+        repository.insert(task)
+
+        val completed = repository.setCompletedIfRevision(
+            id = task.id,
+            revision = task.revision,
+            completed = true,
+            now = 200,
+        )!!
+        assertTrue(completed.completed)
+        assertEquals(2, completed.revision)
+        assertNull(
+            repository.setCompletedIfRevision(
+                task.id,
+                task.revision,
+                completed = true,
+                now = 201,
+            ),
+        )
+
+        val edited = repository.updateContent(
+            id = task.id,
+            title = "后续编辑",
+            reminderAt = task.reminderAt,
+            firedAt = null,
+            now = 300,
+        )!!
+        assertNull(
+            repository.setCompletedIfRevision(
+                task.id,
+                completed.revision,
+                completed = false,
+                now = 400,
+            ),
+        )
+        assertEquals("后续编辑", repository.byId(task.id)!!.title)
+        assertTrue(repository.byId(task.id)!!.completed)
+
+        repository.insert(sampleTask(id = "22222222-2222-4222-8222-222222222222"))
+        val toDelete = repository.byId("22222222-2222-4222-8222-222222222222")!!
+        val deletedCompleted = repository.setCompletedIfRevision(
+            toDelete.id,
+            toDelete.revision,
+            completed = true,
+            now = 500,
+        )!!
+        repository.delete(toDelete.id)
+        assertNull(
+            repository.setCompletedIfRevision(
+                deletedCompleted.id,
+                deletedCompleted.revision,
+                completed = false,
+                now = 600,
+            ),
+        )
+        assertNull(repository.byId(deletedCompleted.id))
+        assertEquals(3, edited.revision)
+        db.close()
+    }
+
+    @Test
     fun `delete and restore keeps the same library task and a new revision`() = runBlocking {
         val db = inMemory()
         val repository = TodoRepository(db.taskDao())
@@ -96,8 +160,10 @@ class TodoRepositoryTest {
         TodoDatabase::class.java,
     ).allowMainThreadQueries().build()
 
-    private fun sampleTask() = TodoTask(
-        id = "11111111-1111-4111-8111-111111111111",
+    private fun sampleTask(
+        id: String = "11111111-1111-4111-8111-111111111111",
+    ) = TodoTask(
+        id = id,
         title = "买牛奶",
         completed = false,
         createdAt = 100,

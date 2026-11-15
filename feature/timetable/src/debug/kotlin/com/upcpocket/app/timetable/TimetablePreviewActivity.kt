@@ -39,12 +39,13 @@ class TimetablePreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dark = intent.getBooleanExtra("dark", false)
+        val homeToday = intent.getBooleanExtra("homeToday", false)
         setContent {
             UpcPocketTheme(
                 darkMode = if (dark) DarkMode.DARK else DarkMode.LIGHT,
                 preset = ThemePreset.BLUE,
             ) {
-                PreviewContent()
+                PreviewContent(homeToday)
             }
         }
     }
@@ -52,7 +53,7 @@ class TimetablePreviewActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PreviewContent() {
+private fun PreviewContent(homeToday: Boolean) {
     var selected by remember { mutableStateOf<TimetableMeeting?>(null) }
     val term = TimetableTerm(
         year = "2026-2027",
@@ -62,7 +63,6 @@ private fun PreviewContent() {
         label = "2026-2027 秋季",
     )
     val dates = (0..6).map { LocalDate.parse("2026-11-01").plusDays(it.toLong()) }
-    val today = LocalDate.parse("2026-11-04")
     val meetings = previewMeetings(dates)
     val colorSlots = remember(meetings) {
         TimetableColorStore.inMemory().assign(
@@ -85,8 +85,27 @@ private fun PreviewContent() {
         courseColorSlots = colorSlots,
         weekState = TimetableWeekState.READY,
         weekFetchedAtEpochMillis = 1_760_000_000_000,
-        today = today,
-        todayMeetings = meetings.filter { it.date == today },
+    )
+    val homeDate = LocalDate.now(TIMETABLE_ZONE)
+    val homeMeetings = meetings.take(3).mapIndexed { index, meeting ->
+        val start = index * 2 + 1
+        meeting.copy(
+            weekday = homeDate.dayOfWeek.value,
+            startPeriod = start,
+            endPeriod = start + 1,
+            periods = (start..start + 1).toList(),
+            sourcePeriods = (start..start + 1).toList(),
+            date = homeDate,
+        )
+    }
+    val homeState = TimetableTodayUiState(
+        accountEpoch = 1,
+        accountSavedUnverified = true,
+        accountBlocked = false,
+        today = homeDate,
+        todayMeetings = homeMeetings,
+        todayCourseColorSlots = colorSlots,
+        todayState = TimetableTodayState.READY,
         todayLoaded = true,
     )
 
@@ -128,13 +147,20 @@ private fun PreviewContent() {
                     )
                     .padding(12.dp),
             )
-            TermAndWeekHeader(state = state, onSelectTerm = {}, onSelectWeek = {})
-            WeekPanel(state = state, onCourseClick = { selected = it })
-            TodayPanel(state = state, onCourseClick = { selected = it })
+            if (homeToday) {
+                TodayPanel(
+                    state = homeState,
+                    showDate = false,
+                    onCourseClick = { selected = it },
+                )
+            } else {
+                TermAndWeekHeader(state = state, onSelectTerm = {}, onSelectWeek = {})
+                WeekPanel(state = state, onCourseClick = { selected = it })
+            }
         }
     }
     selected?.let { meeting ->
-        CourseDetailDialog(meeting = meeting, onDismiss = { selected = null })
+        CourseDetailBottomSheet(meeting = meeting, onDismiss = { selected = null })
     }
 }
 

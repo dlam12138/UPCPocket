@@ -293,7 +293,7 @@ private fun LibrarySeatAreaContent(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (filters == null) {
-            item {
+            item(contentType = "area_notice") {
                 CompactNotice(
                     title = if (state.error == null) "正在读取馆区" else "馆区读取失败",
                     body = state.error ?: if (state.loading) "请稍候。" else "暂时没有拿到馆区/日期。",
@@ -303,17 +303,16 @@ private fun LibrarySeatAreaContent(
                 }
             }
         } else {
-            item {
+            item(contentType = "area_filters") {
                 CompactFilterPanel(
                     state = state,
                     filters = filters,
                     onBuilding = onBuilding,
                     onDate = onDate,
                     onFloor = onFloor,
-                    onRefresh = onRefresh,
                 )
             }
-            item {
+            item(contentType = "area_summary") {
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -333,26 +332,29 @@ private fun LibrarySeatAreaContent(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    IconButton(onClick = onRefresh, enabled = !state.loading) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
+                    }
                 }
             }
             if (state.loading) {
-                item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+                item(contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             }
             state.error?.let { message ->
-                item {
+                item(contentType = "error") {
                     CompactNotice("暂时无法读取", message)
                     TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
                 }
             }
             if (!state.loading && state.error == null && visible.isEmpty()) {
-                item {
+                item(contentType = "empty") {
                     CompactNotice(
                         "没有可预约区域",
                         "没有可预约区域，请换日期或楼层。",
                     )
                 }
             }
-            items(visible, key = { it.roomId }) { room ->
+            items(visible, key = { it.roomId }, contentType = { "seat_room" }) { room ->
                 SeatRoomRow(room = room, onClick = { onRoom(room) })
             }
         }
@@ -366,7 +368,6 @@ internal fun CompactFilterPanel(
     onBuilding: (LibraryBuilding) -> Unit,
     onDate: (String) -> Unit,
     onFloor: (Int?) -> Unit,
-    onRefresh: () -> Unit,
 ) {
     Column(
         Modifier
@@ -376,13 +377,7 @@ internal fun CompactFilterPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("馆区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = onRefresh, enabled = !state.loading) {
-                Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
-            }
-        }
+        Text("馆区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -448,7 +443,7 @@ private fun LibrarySeatReservationContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
+        item(contentType = "reservation_summary") {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("我的预约", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
@@ -464,13 +459,13 @@ private fun LibrarySeatReservationContent(
             }
         }
         state.reservationsError?.let { message ->
-            item {
+            item(contentType = "reservation_error") {
                 CompactNotice("预约状态读取失败", message)
                 TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
             }
         }
         if (state.reservations.isEmpty()) {
-            item {
+            item(contentType = "reservation_empty") {
                 CompactNotice(
                     "当前没有预约记录",
                     if (state.reservationsUpdatedAt != null) "当前没有进行中的预约。"
@@ -478,7 +473,11 @@ private fun LibrarySeatReservationContent(
                 )
             }
         } else {
-            items(state.reservations, key = { it.id }) { reservation ->
+            items(
+                state.reservations,
+                key = { it.id },
+                contentType = { "reservation" },
+            ) { reservation ->
                 ReservationCard(
                     reservation = reservation,
                     enabled = !state.loading && state.reservationsError == null,
@@ -487,7 +486,7 @@ private fun LibrarySeatReservationContent(
                 )
             }
         }
-        item {
+        item(contentType = "reservation_note") {
             Text(
                 "取消后以学校记录为准。",
                 style = MaterialTheme.typography.labelSmall,
@@ -700,7 +699,7 @@ private fun LibrarySeatDetailPage(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                item {
+                item(contentType = "seat_mode_controls") {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -718,7 +717,7 @@ private fun LibrarySeatDetailPage(
                     }
                 }
                 seatModeContent(state, vm, seat, room)
-                item {
+                item(contentType = "seat_mode_notice") {
                     state.notice?.let { notice ->
                         Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                     }
@@ -795,7 +794,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
     seat: LibrarySeat?,
     room: LibraryRoom?,
 ) {
-    item {
+    item(contentType = "seat_time_summary") {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
@@ -822,12 +821,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
         }
     }
     state.error?.let { message ->
-        item { CompactNotice("座位操作未完成", message) }
+        item(contentType = "seat_operation_error") { CompactNotice("座位操作未完成", message) }
     }
-    item {
+    item(contentType = "seat_legend") {
         SeatLegend(hiddenCount = state.hiddenSeatIds.size)
     }
-    item {
+    item(contentType = "seat_map") {
         if (state.loading && state.layout == null) {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
@@ -845,7 +844,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
             } ?: CompactNotice("没有座位布局", "学校未返回该区域的座位布局，不能显示虚构平面图。")
         }
     }
-    item {
+    item(contentType = "seat_help") {
         Text(
             "点可用座位选择；长按可隐藏；布局可横向、纵向滑动。",
             style = MaterialTheme.typography.labelSmall,
@@ -904,7 +903,7 @@ internal fun LibraryTimeSearchContent(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        item {
+        item(contentType = "time_mode_controls") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = state.seatMode == RoomSeatMode.SEAT,
@@ -918,7 +917,7 @@ internal fun LibraryTimeSearchContent(
                 )
             }
         }
-        item {
+        item(contentType = "time_range_controls") {
             TimeRangeControls(
                 begin = state.timeBegin,
                 finish = state.timeFinish,
@@ -930,7 +929,7 @@ internal fun LibraryTimeSearchContent(
                 querying = state.timeResult?.querying == true,
             )
         }
-        item {
+        item(contentType = "time_results") {
             TimeSearchResults(
                 state = state,
                 onSelect = onSelect,
@@ -939,7 +938,7 @@ internal fun LibraryTimeSearchContent(
                 onLoadMore = onLoadMore,
             )
         }
-        item {
+        item(contentType = "time_notice") {
             state.notice?.let { notice ->
                 Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }

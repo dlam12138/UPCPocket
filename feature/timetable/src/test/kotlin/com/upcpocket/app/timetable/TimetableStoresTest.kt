@@ -115,6 +115,31 @@ class TimetableStoresTest {
     }
 
     @Test
+    fun cacheReadResultDistinguishesMissingCorruptUnreadableAndAvailable() {
+        val store = TimetableCacheStore(directory)
+        val cacheFile = File(directory, TimetableStorage.CACHE_FILE)
+
+        assertEquals(TimetableCacheReadResult.Missing, store.loadResult("acct_synthetic_1"))
+
+        cacheFile.writeText("{broken")
+        assertEquals(TimetableCacheReadResult.Corrupted, store.loadResult("acct_synthetic_1"))
+
+        assertTrue(cacheFile.delete())
+        assertTrue(cacheFile.mkdir())
+        assertEquals(TimetableCacheReadResult.Unreadable, store.loadResult("acct_synthetic_1"))
+
+        assertTrue(cacheFile.deleteRecursively())
+        val index = index()
+        assertTrue(store.save("acct_synthetic_1", index, week(index.terms.first(), 8, false), 1_000))
+        assertTrue(store.loadResult("acct_synthetic_1") is TimetableCacheReadResult.Available)
+        assertEquals(
+            TimetableCacheReadResult.WrongAccount,
+            store.loadResult("acct_synthetic_2"),
+        )
+        assertNull(store.load("acct_synthetic_2").index)
+    }
+
+    @Test
     fun hostLevelClearWorksWithoutActivePlugin() {
         val context = androidx.test.core.app.ApplicationProvider
             .getApplicationContext<android.content.Context>()

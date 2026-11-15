@@ -4,8 +4,10 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.account.api.AccountGeneration
@@ -86,6 +88,33 @@ class ServicePortalScreenTest {
         rule.onNodeWithText("此页暂无事项").assertIsDisplayed()
         rule.onNodeWithText("回到第一页").assertIsDisplayed().performClick()
         rule.runOnIdle { assertEquals(1, requestedPage) }
+    }
+
+    @Test
+    fun clearingSearchRunsOneUnfilteredCatalogQuery() {
+        val service = ServicePortalService(SyntheticAccount(), SyntheticAuthenticator(), SyntheticApi(), serviceScope)
+        rule.setContent {
+            MaterialTheme {
+                ServicePortalScreen(service, onBack = {}, onOpenAccountSettings = {})
+            }
+        }
+        rule.waitUntil(timeoutMillis = 5_000) {
+            !service.state.value.busy && service.state.value.results?.items?.isNotEmpty() == true
+        }
+
+        rule.onNodeWithText("事项名称或部门").performTextInput("没有这项")
+        rule.onNodeWithText("搜索").performClick()
+        rule.waitUntil(timeoutMillis = 5_000) {
+            !service.state.value.busy && service.state.value.keyword == "没有这项"
+        }
+        rule.onNodeWithText("没有匹配事项").assertIsDisplayed()
+
+        rule.onNodeWithContentDescription("清空并搜索").performClick()
+        rule.waitUntil(timeoutMillis = 5_000) {
+            !service.state.value.busy && service.state.value.keyword.isEmpty() &&
+                service.state.value.results?.items?.isNotEmpty() == true
+        }
+        rule.onNodeWithText("合成办事事项").assertIsDisplayed()
     }
 
     private class SyntheticAccount : SchoolAccountReferenceReader {

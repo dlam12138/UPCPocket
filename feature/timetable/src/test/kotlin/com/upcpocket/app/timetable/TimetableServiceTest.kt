@@ -25,11 +25,14 @@ import com.upcpocket.app.upcauth.UpcTimetableAuthEndpoints
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
@@ -38,6 +41,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -102,19 +106,336 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun refreshTodayRestoresPersistedCacheWithoutOpeningOrQueryingNetwork() = runTest {
+        seedTodayCache()
+        val transport = ProgrammedTransport { error("today refresh must stay cache-only") }
+        val service = service(transport)
+
+        service.restoreTodayFromCache()
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(today, service.todayState.value.today)
+        assertEquals(
+            listOf("今日示例课程"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+        assertEquals(now, service.todayState.value.todayFetchedAtEpochMillis)
+        assertNull(service.state.value.selectedWeek)
+        assertEquals(0, transport.count("GET"))
+        assertEquals(0, transport.count("POST"))
+
+        val weekState = service.state.value
+        service.restoreTodayFromCache()
+        assertSame(weekState, service.state.value)
+    }
+
+    @Test
+    fun restoreTodayFindsActualDateAcrossWeekBoundaryWhenIndexWeekIsStale() = runTest {
+        today = LocalDate.parse("2026-11-01")
+        val term = index().terms.first { it.term == "1" }
+        val staleIndex = index().copy(currentWeek = 8)
+        assertTrue(
+            cacheStore.save(
+                ACCOUNT_ID,
+                staleIndex,
+                cachedWeekForToday(term, weekNumber = 8, courseName = "上周课程"),
+                now,
+            ),
+        )
+        assertTrue(
+            cacheStore.save(
+                ACCOUNT_ID,
+                staleIndex,
+                cachedWeekForToday(term, weekNumber = 9, courseName = "跨周今日课程"),
+                now + 1,
+            ),
+        )
+        val service = service(ProgrammedTransport { error("cache restore must not query") })
+
+        service.restoreTodayFromCache()
+        val widget = service.readWidgetSnapshot()
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(
+            listOf("跨周今日课程"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+        assertEquals(TimetableWidgetStatus.OK, widget.status)
+        assertEquals(listOf("跨周今日课程"), widget.courses.map { it.name })
+    }
+
+    @Test
+    fun restoreTodayFindsCachedWeekFromNewTermWhenIndexStillPointsToOldTerm() = runTest {
+        today = LocalDate.parse("2026-11-01")
+        val current = index().terms.first { it.term == "1" }
+        val prior = current.copy(
+            year = "2025-2026",
+            term = "2",
+            startDay = LocalDate.parse("2025-02-23"),
+            totalWeeks = 18,
+            label = "旧学期",
+        )
+        val staleIndex = TimetableIndex(
+            terms = listOf(prior),
+            currentYear = prior.year,
+            currentTerm = prior.term,
+            currentWeek = prior.totalWeeks,
+        )
+        val actualWeek = cachedWeekForToday(
+            current,
+            weekNumber = 9,
+            courseName = "新学期今日课程",
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, staleIndex, actualWeek, now))
+        val service = service(ProgrammedTransport { error("cache restore must not query") })
+
+        service.restoreTodayFromCache()
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(
+            listOf("新学期今日课程"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+    }
+
+    @Test
+    fun conflictingCachedTermsDoNotChooseAnArbitraryTodayWeek() = runTest {
+        today = LocalDate.parse("2026-11-01")
+        val template = index().terms.first { it.term == "1" }
+        val weekStart = today.minusDays((today.dayOfWeek.value % 7).toLong())
+        val termA = template.copy(
+            year = "2025-2026",
+            term = "2",
+            startDay = weekStart,
+            totalWeeks = 8,
+            label = "冲突学期 A",
+        )
+        val termB = template.copy(
+            year = "2026-2027",
+            term = "1",
+            startDay = weekStart,
+            totalWeeks = 8,
+            label = "冲突学期 B",
+        )
+        val noCurrentTerm = TimetableIndex(terms = listOf(termA, termB))
+        assertTrue(
+            cacheStore.save(
+                ACCOUNT_ID,
+                noCurrentTerm,
+                cachedWeekForToday(termA, weekNumber = 1, courseName = "冲突课程 A"),
+                now,
+            ),
+        )
+        assertTrue(
+            cacheStore.save(
+                ACCOUNT_ID,
+                noCurrentTerm,
+                cachedWeekForToday(termB, weekNumber = 1, courseName = "冲突课程 B"),
+                now + 1,
+            ),
+        )
+        val service = service(ProgrammedTransport { error("cache restore must not query") })
+
+        service.restoreTodayFromCache()
+
+        assertEquals(TimetableTodayState.READ_ERROR, service.todayState.value.todayState)
+        assertEquals(
+            "本机课表在今天存在冲突，请前往课表页刷新。",
+            service.todayState.value.todayMessage,
+        )
+        assertTrue(service.todayState.value.todayMeetings.isEmpty())
+        assertEquals(TimetableWidgetStatus.NEEDS_SYNC, service.readWidgetSnapshot().status)
+    }
+
+    @Test
+    fun refreshTodayDistinguishesCorruptCacheFromUnsyncedCache() = runTest {
+        val service = service(ProgrammedTransport { error("today refresh must stay cache-only") })
+        service.restoreTodayFromCache()
+        assertEquals(TimetableTodayState.NOT_SYNCED, service.todayState.value.todayState)
+
+        File(directory, TimetableStorage.CACHE_FILE).writeText("{broken")
+        service.restoreTodayFromCache()
+        assertEquals(TimetableTodayState.READ_ERROR, service.todayState.value.todayState)
+        assertEquals("本机课表读取失败，请前往课表页重试。", service.todayState.value.todayMessage)
+
+        val index = index()
+        assertTrue(
+            cacheStore.save(
+                OTHER_REFERENCE.accountId.value,
+                index,
+                cachedWeek(index.terms.first(), "其他账号课程"),
+                now,
+            ),
+        )
+        service.restoreTodayFromCache()
+        assertEquals(TimetableTodayState.READ_ERROR, service.todayState.value.todayState)
+        assertEquals("本机课表缓存与当前账号不匹配。", service.todayState.value.todayMessage)
+    }
+
+    @Test
+    fun refreshTodayWaitsForAccountRestoreAndThenReadsCache() = runTest {
+        seedTodayCache()
+        account.setLoading()
+        val service = service(ProgrammedTransport { error("today refresh must stay cache-only") })
+        val reading = async { service.refreshToday() }
+
+        yield()
+        assertEquals(TimetableTodayState.ACCOUNT_RESTORING, service.todayState.value.todayState)
+        account.publish(REFERENCE)
+        withTimeout(5_000) { reading.await() }
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+    }
+
+    @Test
+    fun refreshTodayStopsAfterBoundedAccountRestoreWait() = runTest {
+        account.setLoading()
+        val transport = ProgrammedTransport { error("account restore timeout must not query") }
+        val service = service(transport)
+        val reading = launch { service.refreshToday() }
+
+        runCurrent()
+        testScheduler.advanceTimeBy(3_001)
+        runCurrent()
+        reading.join()
+
+        assertEquals(TimetableTodayState.ACCOUNT_RESTORING, service.todayState.value.todayState)
+        assertEquals(0, transport.count("GET"))
+        assertEquals(0, transport.count("POST"))
+    }
+
+    @Test
+    fun refreshTodayKeepsIndependentDateWhenViewingAnotherWeek() = runTest {
+        seedTodayCache()
+        val transport = ProgrammedTransport {
+            throw TimetableTransportException(TimetableTransportFailure.NETWORK)
+        }
+        val service = service(transport)
+        service.open()
+        service.selectWeek(9)
+        assertEquals(9, service.state.value.selectedWeek)
+        val requestCount = transport.count("GET") + transport.count("POST")
+
+        service.refreshToday()
+
+        assertEquals(9, service.state.value.selectedWeek)
+        assertEquals(today, service.todayState.value.today)
+        assertEquals(
+            listOf("今日示例课程"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+        assertEquals(requestCount, transport.count("GET") + transport.count("POST"))
+    }
+
+    @Test
+    fun refreshTodayRejectsLateCachePublicationAfterAccountInvalidation() = runTest {
+        seedTodayCache()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport { error("today refresh must stay cache-only") },
+            commitBarrier = { operation ->
+                if (operation == "today-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        val reading = launch { service.refreshToday() }
+        withTimeout(5_000) { entered.await() }
+
+        assertTrue(service.invalidateForAccount(AccountDataScope.PERSONAL_DATA))
+        release.complete(Unit)
+        reading.join()
+
+        assertTrue(service.todayState.value.todayMeetings.isEmpty())
+        assertEquals(TimetableTodayState.ACCOUNT_BLOCKED, service.todayState.value.todayState)
+    }
+
+    @Test
+    fun lateDiskRestoreCannotReplaceMoreRecentOnlineTodayData() = runTest {
+        today = LocalDate.parse("2026-10-26")
+        seedTodayCache(courseName = "旧缓存课程")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport(indexAndWeekHandler()),
+            commitBarrier = { operation ->
+                if (operation == "today-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        val reading = launch { service.restoreTodayFromCache() }
+        withTimeout(5_000) { entered.await() }
+
+        service.open()
+        assertEquals(listOf("示例课程A"), service.todayState.value.todayMeetings.map { it.courseName })
+        release.complete(Unit)
+        reading.join()
+
+        assertEquals(listOf("示例课程A"), service.todayState.value.todayMeetings.map { it.courseName })
+    }
+
+    @Test
+    fun lateMissingCacheReadCannotReplaceOnlineTodayData() = runTest {
+        today = LocalDate.parse("2026-10-26")
+        assertTrue(cacheStore.clear())
+        assertLateTodayReadCannotReplaceOnlineResult(this)
+    }
+
+    @Test
+    fun lateCorruptCacheReadCannotReplaceOnlineTodayData() = runTest {
+        today = LocalDate.parse("2026-10-26")
+        File(directory, TimetableStorage.CACHE_FILE).writeText("{broken")
+        assertLateTodayReadCannotReplaceOnlineResult(this)
+    }
+
+    @Test
+    fun restoreTodayDoesNotCarryYesterdayCoursesAcrossShanghaiMidnight() = runTest {
+        seedTodayCache()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport { error("cache restore must not query") },
+            commitBarrier = { operation ->
+                if (operation == "today-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        val reading = launch { service.restoreTodayFromCache() }
+        withTimeout(5_000) { entered.await() }
+        val yesterday = today
+        today = yesterday.plusDays(1)
+        release.complete(Unit)
+        reading.join()
+
+        assertEquals(yesterday, service.todayState.value.today)
+        assertEquals(TimetableTodayState.READING_CACHE, service.todayState.value.todayState)
+
+        service.restoreTodayFromCache()
+        assertEquals(today, service.todayState.value.today)
+        assertEquals(TimetableTodayState.EMPTY, service.todayState.value.todayState)
+        assertTrue(service.todayState.value.todayMeetings.isEmpty())
+    }
+
+    @Test
     fun viewingAnotherWeekKeepsActualToday() = runTest {
         val transport = ProgrammedTransport(indexAndWeekHandler())
         val service = service(transport)
         service.open()
-        val today = service.state.value.today
-        val todayMeetings = service.state.value.todayMeetings
-        assertTrue(service.state.value.todayLoaded)
+        val today = service.todayState.value.today
+        val todayMeetings = service.todayState.value.todayMeetings
+        assertTrue(service.todayState.value.todayLoaded)
 
         service.selectWeek(9)
         assertEquals(9, service.state.value.selectedWeek)
-        assertEquals(today, service.state.value.today)
-        assertEquals(todayMeetings, service.state.value.todayMeetings)
-        assertTrue(service.state.value.todayLoaded)
+        assertEquals(today, service.todayState.value.today)
+        assertEquals(todayMeetings, service.todayState.value.todayMeetings)
+        assertTrue(service.todayState.value.todayLoaded)
     }
 
     @Test
@@ -478,8 +799,11 @@ class TimetableServiceTest {
         service.open()
         assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
         assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
-        assertTrue(service.state.value.todayLoaded)
-        assertEquals(listOf("示例课程A"), service.state.value.todayMeetings.map { it.courseName })
+        assertTrue(service.todayState.value.todayLoaded)
+        assertEquals(
+            listOf("示例课程A"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
         assertEquals(
             "示例课程A",
             cacheStore.load(ACCOUNT_ID).week(index().terms.first(), 8)!!
@@ -988,6 +1312,94 @@ class TimetableServiceTest {
         )
     }
 
+    private fun seedTodayCache(
+        cacheIndex: TimetableIndex = index(),
+        weekNumber: Int = cacheIndex.currentWeek ?: 8,
+        courseName: String = "今日示例课程",
+    ) {
+        val term = cacheIndex.terms.first { it.term == "1" }
+        val start = term.startDay.plusWeeks((weekNumber - 1).toLong())
+        val dates = (0..6).map { start.plusDays(it.toLong()) }
+        val meeting = TimetableMeeting(
+            courseName = courseName,
+            weekday = today.dayOfWeek.value,
+            startPeriod = 6,
+            endPeriod = 7,
+            periods = listOf(6, 7),
+            sourcePeriods = listOf(6, 7),
+            weeks = listOf(weekNumber),
+            weekLabel = weekNumber.toString(),
+            teacher = "教师甲",
+            location = "教学楼 A-101",
+            sectionsSource = "lessArr",
+            date = today,
+        )
+        assertTrue(
+            cacheStore.save(
+                ACCOUNT_ID,
+                cacheIndex,
+                TimetableWeek(term, weekNumber, dates, listOf(meeting), now),
+                now,
+            ),
+        )
+    }
+
+    private fun cachedWeekForToday(
+        term: TimetableTerm,
+        weekNumber: Int,
+        courseName: String,
+    ): TimetableWeek {
+        val start = term.startDay.plusWeeks((weekNumber - 1).toLong())
+        val dates = (0..6).map { start.plusDays(it.toLong()) }
+        val meetingDate = today.takeIf { it in dates } ?: dates.first()
+        val meeting = TimetableMeeting(
+            courseName = courseName,
+            weekday = meetingDate.dayOfWeek.value,
+            startPeriod = 6,
+            endPeriod = 7,
+            periods = listOf(6, 7),
+            sourcePeriods = listOf(6, 7),
+            weeks = listOf(weekNumber),
+            weekLabel = weekNumber.toString(),
+            teacher = "教师甲",
+            location = "教学楼 A-101",
+            sectionsSource = "lessArr",
+            date = meetingDate,
+        )
+        return TimetableWeek(term, weekNumber, dates, listOf(meeting), now)
+    }
+
+    private suspend fun assertLateTodayReadCannotReplaceOnlineResult(scope: CoroutineScope) {
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport(indexAndWeekHandler()),
+            commitBarrier = { operation ->
+                if (operation == "today-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        val reading = scope.launch { service.restoreTodayFromCache() }
+        withTimeout(5_000) { entered.await() }
+
+        service.open()
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(
+            listOf("示例课程A"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+        release.complete(Unit)
+        reading.join()
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(
+            listOf("示例课程A"),
+            service.todayState.value.todayMeetings.map { it.courseName },
+        )
+    }
+
     private fun cachedWeek(term: TimetableTerm, courseName: String): TimetableWeek {
         val dates = (0..6).map { term.startDay.plusDays(7L * 7 + it.toLong()) }
         return TimetableWeek(
@@ -1105,6 +1517,11 @@ class TimetableServiceTest {
                 maskedAccount = "20••••02",
                 savedAtEpochMillis = 1,
             )
+        }
+
+        fun setLoading() {
+            _reference.value = null
+            _state.value = SchoolAccountState(status = SchoolAccountStatus.LOADING)
         }
     }
 

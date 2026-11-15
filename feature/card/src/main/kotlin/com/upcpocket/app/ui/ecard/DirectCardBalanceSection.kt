@@ -66,6 +66,9 @@ fun DirectCardBalanceSection(
         initialValue = service.bindingStatus(),
     )
     val snapshot by service.snapshot.collectAsStateWithLifecycle(initialValue = null)
+    val visibleSnapshot = snapshot?.takeIf { value ->
+        status.binding?.let(value::belongsTo) == true
+    }
 
     var loading by remember { mutableStateOf(true) }
     var querying by remember { mutableStateOf(false) }
@@ -152,12 +155,12 @@ fun DirectCardBalanceSection(
 
             onOpenHistory?.let { open -> TextButton(onClick = open) { Text("交易流水") } }
 
-            snapshot?.let { data ->
+            visibleSnapshot?.let { data ->
                 BalanceSnapshot(
                     data = data,
                     fresh = fresh,
+                    updating = querying,
                     failed = error != null,
-                    bindingGeneration = status.binding?.credentialGeneration?.value,
                 )
             }
 
@@ -193,7 +196,7 @@ fun DirectCardBalanceSection(
                             )
                             Spacer(Modifier.width(8.dp))
                         }
-                        Text(if (querying) "正在读取…" else if (snapshot == null) "查询余额" else "刷新余额")
+                        Text(if (querying) "正在读取…" else if (visibleSnapshot == null) "查询余额" else "刷新余额")
                     }
                     OutlinedButton(
                         onClick = onOpenAccountSettings,
@@ -291,14 +294,13 @@ private fun BindingStatus(
 private fun BalanceSnapshot(
     data: DirectCardSnapshot,
     fresh: Boolean,
+    updating: Boolean,
     failed: Boolean,
-    bindingGeneration: Long?,
 ) {
-    val currentCredential = bindingGeneration == data.credentialGeneration
     val label = when {
+        updating -> "更新中 · 保留上次余额"
         failed -> "更新失败 · 上次余额"
-        fresh && currentCredential -> "刚刚更新"
-        !currentCredential -> "账号已更新，余额待刷新"
+        fresh -> "刚刚更新"
         else -> "上次读取"
     }
     Surface(

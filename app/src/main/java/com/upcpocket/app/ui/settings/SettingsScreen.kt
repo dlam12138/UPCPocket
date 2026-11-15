@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
@@ -26,6 +26,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -39,7 +40,6 @@ import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
-import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
 
 /**
@@ -89,72 +89,45 @@ fun SettingsScreen(
 
             SectionHeader(
                 title = "校园",
-                modifier = Modifier.padding(top = 18.dp, bottom = 2.dp),
+                modifier = Modifier.padding(top = 14.dp, bottom = 0.dp),
             )
-            if (schoolSections.isNotEmpty()) {
-                GlassCard(Modifier.fillMaxWidth()) {
-                    Column {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            IconBadge(
-                                icon = Icons.AutoMirrored.Outlined.MenuBook,
-                                contentDescription = null,
-                                size = 38.dp,
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text("图书馆登录", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "使用学校账号；可记住登录",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        schoolSections.forEach { section ->
-                            androidx.compose.runtime.key(section.entryId) {
-                                section.content(sectionHost)
-                            }
-                        }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                schoolSections.forEach { section ->
+                    androidx.compose.runtime.key(section.entryId) {
+                        section.content(sectionHost)
                     }
                 }
-            }
-            GlassCard(Modifier.fillMaxWidth()) {
-                Column {
-                    NavigationRow(
-                        title = "桌面组件",
-                        subtitle = "校园卡 / 电量 / 课表",
-                        icon = Icons.Outlined.Widgets,
-                        onClick = onOpenWidgets,
-                    )
-                    SettingsDivider()
-                    NavigationRow(
-                        title = "校园官方网页",
-                        subtitle = "课表、教室、图书馆",
-                        icon = Icons.Outlined.Public,
-                        onClick = onOpenOfficialWeb,
-                    )
+                GlassCard(Modifier.fillMaxWidth()) {
+                    Column {
+                        SettingsNavigationRow(
+                            title = "桌面组件",
+                            icon = Icons.Outlined.Widgets,
+                            onClick = onOpenWidgets,
+                        )
+                        SettingsDivider()
+                        SettingsNavigationRow(
+                            title = "校园官方网页",
+                            icon = Icons.Outlined.Public,
+                            onClick = onOpenOfficialWeb,
+                        )
+                    }
                 }
             }
 
             SectionHeader(
-                title = "个性化",
-                modifier = Modifier.padding(top = 18.dp, bottom = 2.dp),
+                title = "应用",
+                modifier = Modifier.padding(top = 14.dp, bottom = 0.dp),
             )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
-                    NavigationRow(
+                    SettingsNavigationRow(
                         title = "配色与深色模式",
-                        subtitle = "跟随壁纸或内置配色",
                         icon = Icons.Filled.Palette,
                         onClick = onOpenAppearance,
                     )
                     SettingsDivider()
-                    NavigationRow(
+                    SettingsNavigationRow(
                         title = "关于 UPC Pocket",
-                        subtitle = "使用指南、版本与来源",
                         icon = Icons.Filled.Info,
                         onClick = onOpenAbout,
                     )
@@ -173,28 +146,68 @@ private fun AccountCard(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconBadge(
                 icon = Icons.Filled.AccountCircle,
                 contentDescription = null,
-                size = 44.dp,
+                size = 38.dp,
             )
             Spacer(Modifier.width(12.dp))
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                Text("学校账号", style = MaterialTheme.typography.titleMedium)
+                Text("学校账号", style = MaterialTheme.typography.titleSmall)
                 Text(
                     text = state.summaryText(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
+                    color = if (state.cleanupRequired || state.errorCode != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = if (state.cleanupRequired || state.errorCode != null) 2 else 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsNavigationRow(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconBadge(icon = icon, contentDescription = null, size = 36.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,

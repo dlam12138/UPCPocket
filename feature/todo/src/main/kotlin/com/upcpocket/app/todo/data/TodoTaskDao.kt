@@ -63,6 +63,24 @@ interface TodoTaskDao {
     @Query(
         """
         UPDATE todo_tasks
+        SET completed = :completed,
+            completedAt = :completedAt,
+            updatedAt = :now,
+            revision = revision + 1
+        WHERE id = :id AND revision = :revision AND completed != :completed
+        """,
+    )
+    suspend fun setCompletedIfRevision(
+        id: String,
+        revision: Int,
+        completed: Boolean,
+        completedAt: Long?,
+        now: Long,
+    ): Int
+
+    @Query(
+        """
+        UPDATE todo_tasks
         SET completed = 1,
             completedAt = :now,
             updatedAt = :now,

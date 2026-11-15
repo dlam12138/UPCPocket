@@ -24,14 +24,16 @@ class TimetableWeekLayoutTest {
 
     @Test
     fun `portrait week panel keeps monday through sunday on screen without horizontal drag`() {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        val weekStart = today.minusDays((today.dayOfWeek.value % 7).toLong())
         val term = TimetableTerm(
             year = "2026-2027",
             term = "1",
-            startDay = LocalDate.parse("2026-09-06"),
+            startDay = weekStart.minusWeeks(9),
             totalWeeks = 19,
             label = "2026-2027 秋季",
         )
-        val dates = (0..6).map { LocalDate.parse("2026-11-01").plusDays(it.toLong()) }
+        val dates = (0..6).map { weekStart.plusDays(it.toLong()) }
         val state = TimetableUiState(
             accountSavedUnverified = true,
             connection = TimetableConnection.CONNECTED,
@@ -42,7 +44,6 @@ class TimetableWeekLayoutTest {
             weekDates = dates,
             meetings = emptyList(),
             weekState = TimetableWeekState.READY,
-            today = LocalDate.parse("2026-11-04"),
         )
 
         rule.setContent {
@@ -54,6 +55,7 @@ class TimetableWeekLayoutTest {
         listOf("周日", "周一", "周二", "周三", "周四", "周五", "周六").forEach { label ->
             rule.onNodeWithText(label).assertIsDisplayed()
         }
+        rule.onNodeWithText("${today.monthValue}/${today.dayOfMonth}").assertIsDisplayed()
         val sundayLeft = rule.onNodeWithText("周日").fetchSemanticsNode().boundsInRoot.left
         val mondayLeft = rule.onNodeWithText("周一").fetchSemanticsNode().boundsInRoot.left
         assertTrue("周日必须排在周一左侧", sundayLeft < mondayLeft)

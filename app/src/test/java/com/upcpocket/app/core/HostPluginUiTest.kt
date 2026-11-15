@@ -114,6 +114,10 @@ class HostPluginUiTest {
             AppGraph.ui.sectionsFor(UiSurface.HOME_TODO).map { it.entryId.value },
         )
         assertEquals(
+            listOf("timetable.today"),
+            AppGraph.ui.sectionsFor(UiSurface.HOME_TIMETABLE).map { it.entryId.value },
+        )
+        assertEquals(
             listOf("library.account.section"),
             AppGraph.ui.sectionsFor(UiSurface.MORE_SCHOOL).map { it.entryId.value },
         )

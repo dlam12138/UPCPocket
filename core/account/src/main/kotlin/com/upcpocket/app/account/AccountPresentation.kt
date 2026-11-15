@@ -4,16 +4,28 @@ import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 
-/** 「更多」入口与设置页共用的脱敏状态文案；不包含账号、密码或异常原文。 */
-fun SchoolAccountState.summaryText(): String = when (status) {
-    SchoolAccountStatus.LOADING -> "正在读取账号…"
-    SchoolAccountStatus.NOT_CONFIGURED -> "未设置"
-    SchoolAccountStatus.SAVED_UNVERIFIED ->
-        "已保存，尚未验证${maskedAccount?.let { " · $it" }.orEmpty()}"
-    SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存账号"
-    SchoolAccountStatus.SWITCHING -> "正在切换账号"
-    SchoolAccountStatus.UPDATING -> "正在更新账号"
-    SchoolAccountStatus.REMOVING -> "正在删除账号"
+/** 账号页与设置页共用的脱敏状态文案；不包含账号、密码或异常原文。 */
+fun SchoolAccountState.summaryText(): String {
+    val errorMessage = errorCode?.userMessage()
+    if (cleanupRequired) {
+        return when {
+            errorMessage == null -> "清理未完成，请重试。"
+            errorCode == SchoolAccountErrorCode.CLEANUP_FAILED -> errorMessage
+            else -> "清理未完成 · $errorMessage"
+        }
+    }
+    if (errorMessage != null) return errorMessage
+
+    return when (status) {
+        SchoolAccountStatus.LOADING -> "正在读取账号…"
+        SchoolAccountStatus.NOT_CONFIGURED -> "未设置"
+        SchoolAccountStatus.SAVED_UNVERIFIED ->
+            "已保存${maskedAccount?.let { " · $it" }.orEmpty()}"
+        SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存账号"
+        SchoolAccountStatus.SWITCHING -> "正在切换账号"
+        SchoolAccountStatus.UPDATING -> "正在更新账号"
+        SchoolAccountStatus.REMOVING -> "正在删除账号"
+    }
 }
 
 fun SchoolAccountErrorCode.userMessage(): String = when (this) {

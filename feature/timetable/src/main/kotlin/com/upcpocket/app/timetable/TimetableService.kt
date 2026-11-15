@@ -3,6 +3,7 @@ package com.upcpocket.app.timetable
 import com.upcpocket.app.account.api.AccountDataScope
 import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
+import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
@@ -35,6 +36,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.first
+
+private const val ACCOUNT_RESTORE_BUDGET_MS = 3_000L
 
 /**
  * 课表只读业务服务。
@@ -60,12 +65,16 @@ class TimetableService(
 ) {
     private val _state = MutableStateFlow(TimetableUiState())
     val state: StateFlow<TimetableUiState> = _state.asStateFlow()
+    private val _todayState = MutableStateFlow(TimetableTodayUiState())
+    val todayState: StateFlow<TimetableTodayUiState> = _todayState.asStateFlow()
 
     private val operationMutex = Mutex()
     private val authMutex = Mutex()
     private val commitMutex = Mutex()
+    private val colorMutex = Mutex()
     private val businessEpoch = AtomicLong(0)
     private val selectionEpoch = AtomicLong(0)
+    private val todayReadGeneration = AtomicLong(0)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val adopting = AtomicLong(0)
     private var currentBinding: SchoolAccountReference? = null
@@ -101,6 +110,12 @@ class TimetableService(
         val binding: SchoolAccountReference,
         val businessEpoch: Long,
         val diagnosticOperation: DiagnosticOperation,
+    )
+
+    private data class TodayReadVersion(
+        val businessEpoch: Long,
+        val generation: Long,
+        val date: LocalDate,
     )
 
     private class ServiceFailure(
@@ -164,40 +179,105 @@ class TimetableService(
     }
 
     /**
-     * 按真实上海日期重算今日卡片；只读当前教学周的本地缓存，不遍历整学期、不发起网络。
-     * 跨日后如果当前周尚未缓存，今日状态回到“尚未同步”，不会继续展示昨天的课。
+     * 按上海实际日期从本机缓存恢复今日课程，不调用 open()、不查询学校接口，也不改变
+     * 正在查看的学期/周。账号启动恢复有界等待；缓存磁盘读取在 IO dispatcher 完成。
      */
-    suspend fun refreshToday() {
-        val binding = bindingOrNull() ?: return
-        val today = todayProvider()
-        val index = lastIndex
-        val currentTerm = index?.current()
-        val currentWeek = index?.currentWeek
-        val cached = withContext(ioDispatcher) { cacheStore.load(binding.accountId.value) }
-        val week = if (currentTerm != null && currentWeek != null) {
-            cached.week(currentTerm, currentWeek)
-        } else {
-            null
+    suspend fun refreshToday() = restoreTodayFromCache()
+
+    suspend fun restoreTodayFromCache() {
+        if (account.state.value.status == SchoolAccountStatus.LOADING) {
+            publishTodayAccountState()
+            withTimeoutOrNull(ACCOUNT_RESTORE_BUDGET_MS) {
+                account.state.first { it.status != SchoolAccountStatus.LOADING }
+            }
+            if (account.state.value.status == SchoolAccountStatus.LOADING) {
+                publishTodayAccountState()
+                return
+            }
         }
-        commitMutex.withLock {
-            if (!isBindingCurrent(binding)) return@withLock
-            if (week != null && week.dates.contains(today)) {
-                publishTodayLocked(week, today)
-            } else {
-                _state.update {
-                    val sameDay = it.today == today
-                    it.copy(
-                        today = today,
-                        todayMeetings = if (sameDay) it.todayMeetings else emptyList(),
-                        todayLoaded = sameDay && it.todayLoaded,
-                        todayFetchedAtEpochMillis = if (sameDay) {
-                            it.todayFetchedAtEpochMillis
-                        } else {
-                            null
-                        },
-                    )
+
+        val binding = bindingOrNull()
+        if (binding == null) {
+            publishTodayAccountState()
+            return
+        }
+        val readVersion = commitMutex.withLock {
+            if (!isBindingCurrent(binding)) return@withLock null
+            // A cold-start account can finish restoring just before its collector adopts the
+            // new reference. Adopt it here before capturing businessEpoch so this cache-only
+            // read is not mistaken for stale work on its first attempt.
+            applyAccountStateLocked(account.state.value)
+            if (!isBindingCurrent(binding)) return@withLock null
+            val today = todayProvider()
+            val version = TodayReadVersion(
+                businessEpoch = businessEpoch.get(),
+                generation = todayReadGeneration.incrementAndGet(),
+                date = today,
+            )
+            _todayState.update { current ->
+                val sameDay = current.today == today
+                current.copy(
+                    today = today,
+                    todayMeetings = if (sameDay) current.todayMeetings else emptyList(),
+                    todayCourseColorSlots = if (sameDay) {
+                        current.todayCourseColorSlots
+                    } else {
+                        emptyMap()
+                    },
+                    todayState = TimetableTodayState.READING_CACHE,
+                    todayMessage = null,
+                    accountEpoch = accountEpochValue,
+                    accountSavedUnverified = true,
+                    accountBlocked = false,
+                    todayLoaded = sameDay && current.todayLoaded,
+                    todayFetchedAtEpochMillis = if (sameDay) {
+                        current.todayFetchedAtEpochMillis
+                    } else {
+                        null
+                    },
+                )
+            }
+            version
+        } ?: return
+
+        val cached = withContext(ioDispatcher) {
+            cacheStore.loadResult(binding.accountId.value)
+        }
+        commitBarrier("today-cache")
+        val requested = resolveTodayCache(cached, readVersion.date)
+        val colors = requested.week?.let { week ->
+            colorMutex.withLock {
+                if (!isBindingCurrent(binding) ||
+                    businessEpoch.get() != readVersion.businessEpoch ||
+                    todayReadGeneration.get() != readVersion.generation
+                ) {
+                    emptyMap()
+                } else {
+                    withContext(ioDispatcher) {
+                        runCatching {
+                            colorStore.assign(
+                                accountId = binding.accountId.value,
+                                termKey = "${week.term.year}|${week.term.term}",
+                                identities = week.meetings.map(::courseColorKey).distinct(),
+                            )
+                        }.getOrDefault(emptyMap())
+                    }
                 }
             }
+        }.orEmpty()
+        commitMutex.withLock {
+            if (!isBindingCurrent(binding) ||
+                businessEpoch.get() != readVersion.businessEpoch ||
+                todayReadGeneration.get() != readVersion.generation ||
+                todayProvider() != readVersion.date
+            ) {
+                return@withLock
+            }
+            publishTodayLocked(
+                resolution = requested,
+                today = readVersion.date,
+                colorSlots = colors,
+            )
         }
     }
 
@@ -220,26 +300,23 @@ class TimetableService(
             ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NO_ACCOUNT, null)
         val today = todayProvider()
         val cache = cacheStore.load(binding.accountId.value)
-        val index = cache.index
-            ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
-        val term = index.current()
-            ?: index.terms.firstOrNull { candidate ->
-                val end = candidate.startDay.plusWeeks(candidate.totalWeeks.toLong()).minusDays(1)
-                today in candidate.startDay..end
+        val week = when (val coverage = findCachedWeekCoveringDate(cache, today)) {
+            is CachedWeekCoverage.Found -> coverage.week
+            CachedWeekCoverage.Conflict ->
+                return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
+            CachedWeekCoverage.Missing -> {
+                val index = cache.index
+                    ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
+                val inTerm = index.terms.any { it.contains(today) }
+                return TimetableWidgetSnapshot(
+                    if (inTerm) {
+                        TimetableWidgetStatus.NEEDS_SYNC
+                    } else {
+                        TimetableWidgetStatus.OUTSIDE_TERM
+                    },
+                    today,
+                )
             }
-            ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.OUTSIDE_TERM, today)
-        val end = term.startDay.plusWeeks(term.totalWeeks.toLong()).minusDays(1)
-        if (today !in term.startDay..end) {
-            return TimetableWidgetSnapshot(TimetableWidgetStatus.OUTSIDE_TERM, today)
-        }
-        val currentWeek = index.currentWeek
-            ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
-        // TimetableCacheStore 只返回 complete 周；不完整/部分周按需同步处理，
-        // 不把缺课当成“今天无课”。
-        val week = cache.week(term, currentWeek)
-            ?: return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
-        if (!week.dates.contains(today)) {
-            return TimetableWidgetSnapshot(TimetableWidgetStatus.NEEDS_SYNC, today)
         }
         val slots = runCatching {
             colorStore.assign(
@@ -275,16 +352,130 @@ class TimetableService(
         )
     }
 
-    private fun publishTodayLocked(week: TimetableWeek, today: LocalDate) {
-        if (!week.dates.contains(today)) return
-        _state.update {
+    private data class TodayCacheResolution(
+        val state: TimetableTodayState,
+        val week: TimetableWeek? = null,
+        val meetings: List<TimetableMeeting> = emptyList(),
+        val message: String? = null,
+    )
+
+    private sealed interface CachedWeekCoverage {
+        data object Missing : CachedWeekCoverage
+
+        data class Found(val week: TimetableWeek) : CachedWeekCoverage
+
+        data object Conflict : CachedWeekCoverage
+    }
+
+    private fun resolveTodayCache(
+        result: TimetableCacheReadResult,
+        today: LocalDate,
+    ): TodayCacheResolution {
+        return when (result) {
+            TimetableCacheReadResult.Missing ->
+                TodayCacheResolution(TimetableTodayState.NOT_SYNCED)
+            TimetableCacheReadResult.Corrupted,
+            TimetableCacheReadResult.Unreadable,
+            -> TodayCacheResolution(
+                state = TimetableTodayState.READ_ERROR,
+                message = "本机课表读取失败，请前往课表页重试。",
+            )
+            TimetableCacheReadResult.WrongAccount -> TodayCacheResolution(
+                state = TimetableTodayState.READ_ERROR,
+                message = "本机课表缓存与当前账号不匹配。",
+            )
+            is TimetableCacheReadResult.Available -> {
+                val cache = result.cache
+                val week = when (val coverage = findCachedWeekCoveringDate(cache, today)) {
+                    CachedWeekCoverage.Conflict -> return TodayCacheResolution(
+                        state = TimetableTodayState.READ_ERROR,
+                        message = "本机课表在今天存在冲突，请前往课表页刷新。",
+                    )
+                    CachedWeekCoverage.Missing -> {
+                        val inTerm = cache.index?.terms.orEmpty().any { it.contains(today) }
+                        return TodayCacheResolution(
+                            if (inTerm || cache.index == null) {
+                                TimetableTodayState.NOT_SYNCED
+                            } else {
+                                TimetableTodayState.OUTSIDE_TERM
+                            },
+                        )
+                    }
+                    is CachedWeekCoverage.Found -> coverage.week
+                }
+                val meetings = week.meetings
+                    .filter { it.date == today }
+                    .sortedWith(meetingComparator())
+                TodayCacheResolution(
+                    state = if (meetings.isEmpty()) {
+                        TimetableTodayState.EMPTY
+                    } else {
+                        TimetableTodayState.READY
+                    },
+                    week = week,
+                    meetings = meetings,
+                )
+            }
+        }
+    }
+
+    private fun findCachedWeekCoveringDate(
+        cache: TimetableCache,
+        date: LocalDate,
+    ): CachedWeekCoverage {
+        val matchingWeeks = cache.weeks.filter { week ->
+            date in week.dates
+        }
+        if (matchingWeeks.isEmpty()) return CachedWeekCoverage.Missing
+
+        val weeksByTerm = matchingWeeks.groupBy { it.term.year to it.term.term }
+        // week.dates is the coverage source. Term ranges and the cached current term only
+        // disambiguate overlapping candidates; currentWeek is deliberately never consulted.
+        val datedTerms = weeksByTerm.filterValues { weeks ->
+            weeks.any { it.term.contains(date) }
+        }.keys
+        val indexedTerm = cache.index?.current()
+            ?.takeIf { it.contains(date) }
+            ?.let { it.year to it.term }
+        val selectedTerm = when {
+            datedTerms.size == 1 -> datedTerms.single()
+            datedTerms.size > 1 -> indexedTerm?.takeIf { it in datedTerms }
+                ?: return CachedWeekCoverage.Conflict
+            indexedTerm != null && indexedTerm in weeksByTerm -> indexedTerm
+            weeksByTerm.size == 1 -> weeksByTerm.keys.single()
+            else -> return CachedWeekCoverage.Conflict
+        }
+        val selectedWeeks = weeksByTerm.getValue(selectedTerm)
+        if (selectedWeeks.map { it.week }.distinct().size > 1) {
+            return CachedWeekCoverage.Conflict
+        }
+        val fetchedAt = selectedWeeks.maxOf { it.fetchedAtEpochMillis }
+        val newestWeeks = selectedWeeks.filter { it.fetchedAtEpochMillis == fetchedAt }.distinct()
+        // Equal timestamps with different contents have no safe freshness ordering.
+        if (newestWeeks.size > 1) return CachedWeekCoverage.Conflict
+        return CachedWeekCoverage.Found(newestWeeks.single())
+    }
+
+    private fun TimetableTerm.contains(date: LocalDate): Boolean {
+        val end = startDay.plusWeeks(totalWeeks.toLong()).minusDays(1)
+        return date in startDay..end
+    }
+
+    private fun publishTodayLocked(
+        resolution: TodayCacheResolution,
+        today: LocalDate,
+        colorSlots: Map<String, Int>,
+    ) {
+        _todayState.update {
             it.copy(
                 today = today,
-                todayMeetings = week.meetings
-                    .filter { meeting -> meeting.date == today }
-                    .sortedWith(meetingComparator()),
-                todayLoaded = true,
-                todayFetchedAtEpochMillis = week.fetchedAtEpochMillis,
+                todayMeetings = resolution.meetings,
+                todayCourseColorSlots = colorSlots,
+                todayState = resolution.state,
+                todayMessage = resolution.message,
+                todayLoaded = resolution.state == TimetableTodayState.READY ||
+                    resolution.state == TimetableTodayState.EMPTY,
+                todayFetchedAtEpochMillis = resolution.week?.fetchedAtEpochMillis,
             )
         }
     }
@@ -657,6 +848,7 @@ class TimetableService(
         commitMutex.withLock {
             businessEpoch.incrementAndGet()
             selectionEpoch.incrementAndGet()
+            todayReadGeneration.incrementAndGet()
             accountEpochValue += 1
             explicitSelection = false
             interactiveContext = null
@@ -674,10 +866,6 @@ class TimetableService(
                     courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
                     weekFetchedAtEpochMillis = null,
-                    today = null,
-                    todayMeetings = emptyList(),
-                    todayLoaded = false,
-                    todayFetchedAtEpochMillis = null,
                     connection = TimetableConnection.IDLE,
                     message = null,
                     interactionUrl = null,
@@ -685,6 +873,14 @@ class TimetableService(
                     canRetry = false,
                 )
             }
+            _todayState.value = TimetableTodayUiState(
+                accountEpoch = accountEpochValue,
+                accountSavedUnverified = false,
+                accountBlocked = true,
+                today = todayProvider(),
+                todayState = TimetableTodayState.ACCOUNT_BLOCKED,
+                todayMessage = "学校账号正在切换，今日课程已隐藏。",
+            )
             val sessionCleared = withContext(ioDispatcher) { sessionStore.clear() }
             val cacheCleared = if (scope == AccountDataScope.PERSONAL_DATA) {
                 withContext(ioDispatcher) { cacheStore.clear() }
@@ -692,7 +888,9 @@ class TimetableService(
                 true
             }
             val colorsCleared = if (scope == AccountDataScope.PERSONAL_DATA) {
-                withContext(ioDispatcher) { colorStore.clear() }
+                colorMutex.withLock {
+                    withContext(ioDispatcher) { colorStore.clear() }
+                }
             } else {
                 true
             }
@@ -1485,14 +1683,8 @@ class TimetableService(
     private fun publishWeekLocked(week: TimetableWeek) {
         val today = todayProvider()
         val colorSlots = colorSlotsFor(week)
-        val todayInWeek = week.dates.contains(today)
-        val todayMeetings = if (todayInWeek) {
-            week.meetings.filter { it.date == today }.sortedWith(meetingComparator())
-        } else {
-            emptyList()
-        }
+        publishTodayFromWeekLocked(week, today, colorSlots)
         _state.update {
-            val sameDay = it.today == today
             it.copy(
                 terms = termsOf(lastIndex).ifEmpty { it.terms },
                 selectedYear = week.term.year,
@@ -1507,22 +1699,6 @@ class TimetableService(
                     TimetableWeekState.READY
                 },
                 weekFetchedAtEpochMillis = week.fetchedAtEpochMillis,
-                today = today,
-                todayMeetings = if (todayInWeek) {
-                    todayMeetings
-                } else if (sameDay) {
-                    it.todayMeetings
-                } else {
-                    emptyList()
-                },
-                todayLoaded = if (todayInWeek) true else sameDay && it.todayLoaded,
-                todayFetchedAtEpochMillis = if (todayInWeek) {
-                    week.fetchedAtEpochMillis
-                } else if (sameDay) {
-                    it.todayFetchedAtEpochMillis
-                } else {
-                    null
-                },
                 connection = TimetableConnection.CONNECTED,
                 message = null,
                 interactionUrl = null,
@@ -1536,14 +1712,8 @@ class TimetableService(
     private fun publishCachedWeekLocked(week: TimetableWeek) {
         val today = todayProvider()
         val colorSlots = colorSlotsFor(week)
-        val todayInWeek = week.dates.contains(today)
-        val todayMeetings = if (todayInWeek) {
-            week.meetings.filter { it.date == today }.sortedWith(meetingComparator())
-        } else {
-            emptyList()
-        }
+        publishTodayFromWeekLocked(week, today, colorSlots)
         _state.update {
-            val sameDay = it.today == today
             it.copy(
                 selectedYear = week.term.year,
                 selectedTerm = week.term.term,
@@ -1557,27 +1727,43 @@ class TimetableService(
                     TimetableWeekState.CACHED
                 },
                 weekFetchedAtEpochMillis = week.fetchedAtEpochMillis,
-                today = today,
-                todayMeetings = if (todayInWeek) {
-                    todayMeetings
-                } else if (sameDay) {
-                    it.todayMeetings
-                } else {
-                    emptyList()
-                },
-                todayLoaded = if (todayInWeek) true else sameDay && it.todayLoaded,
-                todayFetchedAtEpochMillis = if (todayInWeek) {
-                    week.fetchedAtEpochMillis
-                } else if (sameDay) {
-                    it.todayFetchedAtEpochMillis
-                } else {
-                    null
-                },
                 message = null,
                 interactionUrl = null,
                 isBusy = false,
                 canRetry = true,
                 accountBlocked = false,
+            )
+        }
+    }
+
+    private fun publishTodayFromWeekLocked(
+        week: TimetableWeek,
+        today: LocalDate,
+        colorSlots: Map<String, Int>,
+    ) {
+        if (today !in week.dates) return
+        // This helper runs under commitMutex. Advance before publishing so any in-flight
+        // cache-only read cannot later replace a newer online result for the same date.
+        todayReadGeneration.incrementAndGet()
+        val meetings = week.meetings
+            .filter { it.date == today }
+            .sortedWith(meetingComparator())
+        _todayState.update {
+            it.copy(
+                accountEpoch = accountEpochValue,
+                accountSavedUnverified = true,
+                accountBlocked = false,
+                today = today,
+                todayMeetings = meetings,
+                todayCourseColorSlots = colorSlots,
+                todayState = if (meetings.isEmpty()) {
+                    TimetableTodayState.EMPTY
+                } else {
+                    TimetableTodayState.READY
+                },
+                todayMessage = null,
+                todayLoaded = true,
+                todayFetchedAtEpochMillis = week.fetchedAtEpochMillis,
             )
         }
     }
@@ -1781,14 +1967,14 @@ class TimetableService(
             state.cleanupRequired || state.blocksPersonalSessions -> "学校账号正在清理或切换"
             state.status == SchoolAccountStatus.NOT_CONFIGURED -> "未设置学校账号"
             state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存学校账号"
-            else -> state.maskedAccount?.let { "$it · 已保存，尚未验证" }
-                ?: "学校账号已保存，尚未验证"
+            else -> state.maskedAccount?.let { "$it · 已保存" } ?: "已保存"
         }
         val previous = currentBinding
         if (reference == null) {
             if (previous != null) {
                 businessEpoch.incrementAndGet()
                 selectionEpoch.incrementAndGet()
+                todayReadGeneration.incrementAndGet()
                 accountEpochValue += 1
             }
             currentBinding = null
@@ -1820,10 +2006,6 @@ class TimetableService(
                     meetings = emptyList(),
                     weekState = TimetableWeekState.NOT_QUERIED,
                     weekFetchedAtEpochMillis = null,
-                    today = null,
-                    todayMeetings = emptyList(),
-                    todayLoaded = false,
-                    todayFetchedAtEpochMillis = null,
                     message = when {
                         state.status == SchoolAccountStatus.LOADING ->
                             "正在恢复本机账号；完成前不会查询个人课表。"
@@ -1838,6 +2020,7 @@ class TimetableService(
                     canRetry = false,
                 )
             }
+            publishTodayUnavailableLocked(state)
             return
         }
         if (previous?.accountId != reference.accountId ||
@@ -1845,6 +2028,7 @@ class TimetableService(
         ) {
             businessEpoch.incrementAndGet()
             selectionEpoch.incrementAndGet()
+            todayReadGeneration.incrementAndGet()
             accountEpochValue += 1
             explicitSelection = false
             lastIndex = null
@@ -1861,15 +2045,18 @@ class TimetableService(
                     courseColorSlots = emptyMap(),
                     weekState = TimetableWeekState.NOT_QUERIED,
                     weekFetchedAtEpochMillis = null,
-                    today = null,
-                    todayMeetings = emptyList(),
-                    todayLoaded = false,
-                    todayFetchedAtEpochMillis = null,
                     interactionUrl = null,
                     isBusy = false,
                     message = null,
                 )
             }
+            _todayState.value = TimetableTodayUiState(
+                accountEpoch = accountEpochValue,
+                accountSavedUnverified = true,
+                accountBlocked = false,
+                today = todayProvider(),
+                todayState = TimetableTodayState.NOT_SYNCED,
+            )
         }
         currentBinding = reference
         _state.update {
@@ -1885,10 +2072,56 @@ class TimetableService(
                 },
             )
         }
+        _todayState.update {
+            it.copy(
+                accountEpoch = accountEpochValue,
+                accountSavedUnverified = state.isCredentialSaved,
+                accountBlocked = false,
+            )
+        }
     }
 
     private suspend fun publishAccountState() {
         commitMutex.withLock { applyAccountStateLocked(account.state.value) }
+    }
+
+    private suspend fun publishTodayAccountState() {
+        commitMutex.withLock {
+            if (bindingOrNull() != null) return@withLock
+            publishTodayUnavailableLocked(account.state.value)
+        }
+    }
+
+    private fun publishTodayUnavailableLocked(state: SchoolAccountState) {
+        todayReadGeneration.incrementAndGet()
+        val todayState = when {
+            state.status == SchoolAccountStatus.LOADING ->
+                TimetableTodayState.ACCOUNT_RESTORING
+            state.blocksPersonalSessions -> TimetableTodayState.ACCOUNT_BLOCKED
+            else -> TimetableTodayState.ACCOUNT_REQUIRED
+        }
+        val message = when {
+            state.status == SchoolAccountStatus.LOADING ->
+                "正在恢复学校账号。"
+            state.cleanupRequired && state.errorCode in setOf(
+                SchoolAccountErrorCode.CLEANUP_FAILED,
+                SchoolAccountErrorCode.CLEANUP_REQUIRED,
+            ) -> "账号清理未完成，今日课程已隐藏。"
+            state.blocksPersonalSessions ->
+                "学校账号正在清理或切换，今日课程暂不可用。"
+            state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION ->
+                "学校账号密文不可用，请重新保存。"
+            else -> "请先保存学校账号。"
+        }
+        _todayState.value = TimetableTodayUiState(
+            accountEpoch = accountEpochValue,
+            accountSavedUnverified = state.isCredentialSaved,
+            accountBlocked = state.blocksPersonalSessions ||
+                state.status == SchoolAccountStatus.LOADING,
+            today = todayProvider(),
+            todayState = todayState,
+            todayMessage = message,
+        )
     }
 
     private fun parseCookieHeader(header: String): List<TimetableCookie> =

@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,19 +47,24 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.account.api.SchoolAccountController
+import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
 import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.ui.components.GlassCard
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -75,11 +84,18 @@ fun SchoolAccountScreen(
     val state by accounts.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val view = LocalView.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+    val accountFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
+    val confirmFocusRequester = remember { FocusRequester() }
 
     var accountInput by remember { mutableStateOf("") }
     var passwordInput by remember { mutableStateOf("") }
     var confirmInput by remember { mutableStateOf("") }
+    var accountError by remember { mutableStateOf<String?>(null) }
+    var passwordError by remember { mutableStateOf<String?>(null) }
+    var confirmError by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var messageIsError by remember { mutableStateOf(false) }
@@ -120,36 +136,50 @@ fun SchoolAccountScreen(
         if (busy) return
         message = null
         messageIsError = false
+        accountError = null
+        passwordError = null
+        confirmError = null
         val currentSaved = state.status == SchoolAccountStatus.SAVED_UNVERIFIED
         val accountToUse = accountInput.trim().takeIf { it.isNotEmpty() }
         if (accountToUse == null && !currentSaved) {
             clearSecrets()
-            message = "请输入学校账号。"
-            messageIsError = true
+            accountError = "请输入学校账号。"
+            accountFocusRequester.requestFocus()
             return
         }
         if (passwordInput.isEmpty()) {
             clearSecrets()
-            message = "请输入密码。"
-            messageIsError = true
+            passwordError = "请输入密码。"
+            passwordFocusRequester.requestFocus()
             return
         }
         if (passwordInput != confirmInput) {
-            message = "两次输入的密码不一致。"
-            messageIsError = true
             clearSecrets()
+            confirmError = "两次输入的密码不一致。"
+            confirmFocusRequester.requestFocus()
             return
         }
         val secret = passwordInput.toCharArray()
         accountInput = ""
         clearSecrets()
+        keyboardController?.hide()
         busy = true
         scope.launch {
-            val result = accounts.save(accountToUse, secret)
-            busy = false
+            val result = try {
+                accounts.save(accountToUse, secret)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                SchoolAccountWriteResult.Failure(
+                    SchoolAccountErrorCode.STORAGE_FAILED,
+                )
+            } finally {
+                secret.fill('\u0000')
+                busy = false
+            }
             when (result) {
                 SchoolAccountWriteResult.Success -> {
-                    message = "已保存，尚未验证。返回课表后，点击右上角刷新。"
+                    message = "已保存"
                     messageIsError = false
                 }
                 is SchoolAccountWriteResult.Failure -> {
@@ -221,6 +251,8 @@ fun SchoolAccountScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .consumeWindowInsets(padding)
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
@@ -237,7 +269,7 @@ fun SchoolAccountScreen(
                     Text(
                         text = state.summaryText(),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (state.errorCode != null) {
+                        color = if (state.errorCode != null || state.cleanupRequired) {
                             MaterialTheme.colorScheme.error
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -254,13 +286,6 @@ fun SchoolAccountScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.testTag("account_student_binding"),
-                        )
-                    }
-                    state.errorCode?.let {
-                        Text(
-                            text = it.userMessage(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
                         )
                     }
                 }
@@ -302,51 +327,100 @@ fun SchoolAccountScreen(
                 }
             }
 
-            OutlinedTextField(
-                value = accountInput,
-                onValueChange = { accountInput = it },
-                label = {
-                    Text(
-                        if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED) {
-                            "学校账号（可留空）"
-                        } else {
-                            "学校账号"
+            GlassCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("登录信息", style = MaterialTheme.typography.titleSmall)
+                    OutlinedTextField(
+                        value = accountInput,
+                        onValueChange = {
+                            accountInput = it
+                            accountError = null
                         },
+                        label = {
+                            Text(
+                                if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED) {
+                                    "学校账号（可留空）"
+                                } else {
+                                    "学校账号"
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        isError = accountError != null,
+                        supportingText = accountError?.let { error ->
+                            { Text(error) }
+                        },
+                        enabled = !busy,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(
+                            onNext = { passwordFocusRequester.requestFocus() },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(accountFocusRequester)
+                            .testTag("account_input"),
                     )
-                },
-                singleLine = true,
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth().testTag("account_input"),
-            )
 
-            OutlinedTextField(
-                value = passwordInput,
-                onValueChange = { passwordInput = it },
-                label = { Text("密码") },
-                singleLine = true,
-                enabled = !busy,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrectEnabled = false,
-                ),
-                supportingText = { Text("加密保存在本机。") },
-                modifier = Modifier.fillMaxWidth().testTag("password_input"),
-            )
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = {
+                            passwordInput = it
+                            passwordError = null
+                        },
+                        label = { Text("密码") },
+                        singleLine = true,
+                        isError = passwordError != null,
+                        supportingText = passwordError?.let { error ->
+                            { Text(error) }
+                        },
+                        enabled = !busy,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Next,
+                            autoCorrectEnabled = false,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onNext = { confirmFocusRequester.requestFocus() },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(passwordFocusRequester)
+                            .testTag("password_input"),
+                    )
 
-            OutlinedTextField(
-                value = confirmInput,
-                onValueChange = { confirmInput = it },
-                label = { Text("确认密码") },
-                singleLine = true,
-                enabled = !busy,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Password,
-                    autoCorrectEnabled = false,
-                ),
-                modifier = Modifier.fillMaxWidth().testTag("confirm_input"),
-            )
+                    OutlinedTextField(
+                        value = confirmInput,
+                        onValueChange = {
+                            confirmInput = it
+                            confirmError = null
+                        },
+                        label = { Text("确认密码") },
+                        singleLine = true,
+                        isError = confirmError != null,
+                        supportingText = confirmError?.let { error ->
+                            { Text(error) }
+                        },
+                        enabled = !busy,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                            autoCorrectEnabled = false,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { submit() },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(confirmFocusRequester)
+                            .testTag("confirm_input"),
+                    )
+                }
+            }
 
             if (message != null) {
                 Text(
@@ -375,16 +449,10 @@ fun SchoolAccountScreen(
                     Icon(Icons.Filled.Lock, contentDescription = null)
                 }
                 Text(
-                    text = "保存",
+                    text = if (busy) "正在保存…" else "保存",
                     modifier = Modifier.padding(start = 8.dp),
                 )
             }
-
-            Text(
-                text = "密码加密保存在本机，不进入系统备份。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
 
             if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED ||
                 state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION

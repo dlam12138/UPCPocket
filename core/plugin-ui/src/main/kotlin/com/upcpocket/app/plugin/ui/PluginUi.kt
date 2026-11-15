@@ -56,12 +56,13 @@ value class PluginRouteId private constructor(val value: String) {
 /**
  * 宿主决定入口最终出现在哪个栏目；插件只声明稳定归属。
  *
- * M5 不再挂载“更多”页，因此宿主当前只读取 [HOME_SERVICES]、[HOME_CARD]、
- * [HOME_TODO] 和 [MORE_SCHOOL]（设置里的图书馆登录区）。[MORE_LEARNING] 保留枚举值，
- * 避免旧插件源级编译中断；它不再产生可点入口，课表/待办/专注分别贡献底部 tab。
+ * M5 不再挂载“更多”页，因此宿主当前读取首页区块、服务入口，以及 [MORE_SCHOOL]
+ * （设置里的图书馆登录区）。[MORE_LEARNING] 保留枚举值，避免旧插件源级编译中断；
+ * 它不再产生可点入口，课表/待办/专注分别贡献底部 tab。
  */
 enum class UiSurface {
     HOME_SERVICES,
+    HOME_TIMETABLE,
     HOME_CARD,
     HOME_TODO,
     MORE_LEARNING,

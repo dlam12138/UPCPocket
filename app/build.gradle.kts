@@ -91,10 +91,10 @@ android {
         // 轻量版在 0.1.10（code 11）之上递增，保证覆盖安装不会触发降级。
         // 第二步在 0.2.0（code 12）之上继续递增；第三步 0.2.2 / code 14；
         // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
-        // 2.0.5 开发候选：校园卡流水验证码 WebView；基于已发布 2.0.4（25）。
+        // 2.0.6 界面与交互更新；基于已发布 2.0.5（26）。
         // 仅本机受控安装验收可显式传 e2eVersionCode/e2eVersionName，且构建脚本拒绝 Release。
-        versionCode = e2eVersionCode ?: 26
-        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.5"
+        versionCode = e2eVersionCode ?: 27
+        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.6"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
         buildConfigField("String", "UPDATE_PUBLIC_KEY", buildConfigString(updatePublicKey))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -230,4 +230,7 @@ dependencies {
     // "旧行有没有被清掉"用纯函数测不出来（见 ScheduleRepositoryPlanKindTest）。
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

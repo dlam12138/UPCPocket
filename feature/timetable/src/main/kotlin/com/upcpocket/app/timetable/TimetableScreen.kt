@@ -45,6 +45,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,6 +61,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,8 +81,10 @@ import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.StatusPill
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
@@ -114,37 +119,33 @@ internal fun TimetableScreen(
     LaunchedEffect(active) {
         if (active) viewModel.start()
     }
-    var detail by remember { mutableStateOf<TimetableMeeting?>(null) }
+    var detail by remember { mutableStateOf<TimetableMeetingSelection?>(null) }
     var loginVisible by remember { mutableStateOf(false) }
     var loginUrl by remember { mutableStateOf<String?>(null) }
     var loginHint by remember { mutableStateOf<String?>(null) }
     var loginEpoch by remember { mutableLongStateOf(0L) }
     var infoVisible by remember { mutableStateOf(false) }
-    val visibleDetail = detail?.takeIf { selected ->
-        state.meetings.any { it.instanceId == selected.instanceId }
+    val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked) {
+        resolveMeetingSelection(detail, state.accountEpoch, state.meetings)
+    } else {
+        null
     }
 
     LaunchedEffect(
         state.accountEpoch,
         state.accountBlocked,
         state.accountSavedUnverified,
+        state.meetings,
     ) {
         if (state.accountBlocked || !state.accountSavedUnverified) {
             detail = null
             loginVisible = false
             loginHint = null
             viewModel.cancelInteractiveLogin()
+        } else if (detail != null && visibleDetail == null) {
+            detail = null
         }
     }
-    LaunchedEffect(
-        state.accountEpoch,
-        state.selectedYear,
-        state.selectedTerm,
-        state.selectedWeek,
-    ) {
-        detail = null
-    }
-
     fun beginWebLogin() {
         viewModel.beginInteractiveLogin { url ->
             if (url != null) {
@@ -226,21 +227,23 @@ internal fun TimetableScreen(
                     NoTermsCard()
                 }
             } else {
-                // 固定页头 → 紧凑选择条 → 今日课程 → 周网格。大段声明收进说明按钮。
+                // 页面以学期/周选择和周网格为主；今日课程由插件贡献到首页。
                 TermAndWeekHeader(
                     state = state,
                     onSelectTerm = viewModel::selectTerm,
                     onSelectWeek = viewModel::selectWeek,
                 )
-                TodayPanel(state, onCourseClick = { detail = it })
-                WeekPanel(state, onCourseClick = { detail = it })
+                WeekPanel(
+                    state,
+                    onCourseClick = { detail = it.selection(state.accountEpoch) },
+                )
             }
             Spacer(Modifier.height(2.dp))
         }
     }
 
     visibleDetail?.let { meeting ->
-        CourseDetailDialog(meeting = meeting, onDismiss = { detail = null })
+        CourseDetailBottomSheet(meeting = meeting, onDismiss = { detail = null })
     }
     if (infoVisible) {
         TimetableInfoDialog(
@@ -274,6 +277,71 @@ internal fun TimetableScreen(
                 loginHint = null
             },
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TimetableHomeSection(
+    service: TimetableService,
+    onOpenTimetable: () -> Unit,
+    onOpenAccountSettings: () -> Unit,
+) {
+    val state by service.todayState.collectAsStateWithLifecycle()
+    val active = LocalPluginPageActive.current
+    var detail by remember { mutableStateOf<TimetableMeetingSelection?>(null) }
+    var actualToday by remember { mutableStateOf(LocalDate.now(TIMETABLE_ZONE)) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = ZonedDateTime.now(TIMETABLE_ZONE)
+            val nextDate = now.toLocalDate().plusDays(1).atStartOfDay(TIMETABLE_ZONE)
+            delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
+            actualToday = LocalDate.now(TIMETABLE_ZONE)
+        }
+    }
+
+    // 首页激活或账号代次变化时恢复一次本机缓存；时钟只由 TodayPanel 在 UI 本地更新。
+    LaunchedEffect(
+        active,
+        state.accountEpoch,
+    ) {
+        if (!active) return@LaunchedEffect
+        service.restoreTodayFromCache()
+    }
+
+    val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked &&
+        state.today == actualToday
+    ) {
+        resolveMeetingSelection(detail, state.accountEpoch, state.todayMeetings)
+    } else {
+        null
+    }
+    LaunchedEffect(
+        state.accountEpoch,
+        state.accountBlocked,
+        state.accountSavedUnverified,
+        state.today,
+        actualToday,
+        state.todayMeetings,
+    ) {
+        if (state.accountBlocked || !state.accountSavedUnverified ||
+            state.today != actualToday ||
+            (detail != null && visibleDetail == null)
+        ) {
+            detail = null
+        }
+    }
+
+    TodayPanel(
+        state = state,
+        showDate = false,
+        onCourseClick = { detail = it.selection(state.accountEpoch) },
+        onOpenTimetable = onOpenTimetable,
+        onOpenAccountSettings = onOpenAccountSettings,
+    )
+    visibleDetail?.let { meeting ->
+        CourseDetailBottomSheet(meeting = meeting, onDismiss = { detail = null })
     }
 }
 
@@ -669,7 +737,7 @@ private fun EmptyWeekHint(text: String) {
 private val SLOT_HEIGHT = 44.dp
 private const val PERIODS = 14
 private val PERIOD_COLUMN_WIDTH = 48.dp
-private val DAY_HEADER_HEIGHT = 38.dp
+private val DAY_HEADER_HEIGHT = 40.dp
 private val MIN_DAY_WIDTH = 38.dp
 
 @Composable
@@ -677,6 +745,15 @@ private fun WeekGrid(
     state: TimetableUiState,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
+    var actualToday by remember { mutableStateOf(LocalDate.now(TIMETABLE_ZONE)) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = ZonedDateTime.now(TIMETABLE_ZONE)
+            val nextDate = now.toLocalDate().plusDays(1).atStartOfDay(TIMETABLE_ZONE)
+            delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
+            actualToday = LocalDate.now(TIMETABLE_ZONE)
+        }
+    }
     val view = remember(state.weekDates, state.meetings) {
         runCatching { buildTimetableWeekView(state.weekDates, state.meetings) }.getOrNull()
     } ?: return
@@ -746,7 +823,7 @@ private fun WeekGrid(
                 DayColumn(
                     date = date,
                     width = dayWidth,
-                    isToday = date == state.today,
+                    isToday = date == actualToday,
                     known = date in view.knownDates,
                     meetings = byDate[date].orEmpty(),
                     colorSlots = state.courseColorSlots,
@@ -780,7 +857,7 @@ private fun DayColumn(
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(
                     if (isToday) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                     } else {
                         Color.Transparent
                     },
@@ -826,25 +903,34 @@ private fun DayColumn(
                 .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
                 .background(
                     if (isToday) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.08f)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerLow
                     },
                 ),
         ) {
-            Column(Modifier.fillMaxSize()) {
-                repeat(PERIODS) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(SLOT_HEIGHT)
-                            .border(
-                                0.5.dp,
-                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
-                            ),
-                    )
-                }
-            }
+            val gridLine = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .drawBehind {
+                        val stroke = 0.5.dp.toPx()
+                        for (period in 2 until PERIODS step 2) {
+                            val y = SLOT_HEIGHT.toPx() * period
+                            drawLine(
+                                color = gridLine,
+                                start = Offset(0f, y),
+                                end = Offset(size.width, y),
+                                strokeWidth = stroke,
+                            )
+                        }
+                    }
+                    .border(
+                        0.5.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp),
+                    ),
+            )
             if (!known) {
                 Text(
                     "课程未同步",
@@ -925,8 +1011,11 @@ private fun DayColumn(
 
 @Composable
 internal fun TodayPanel(
-    state: TimetableUiState,
+    state: TimetableTodayUiState,
     onCourseClick: (TimetableMeeting) -> Unit,
+    showDate: Boolean = true,
+    onOpenTimetable: (() -> Unit)? = null,
+    onOpenAccountSettings: (() -> Unit)? = null,
 ) {
     val today = state.today
     var todayNow by remember { mutableStateOf(java.time.LocalDate.now(TIMETABLE_ZONE)) }
@@ -953,34 +1042,92 @@ internal fun TodayPanel(
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("今日课程", style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    "${todayNow.monthValue}月${todayNow.dayOfMonth}日 " +
-                        weekdayLabel(todayNow.dayOfWeek.value),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.weight(1f))
-                if (state.todayLoaded && state.todayFetchedAtEpochMillis != null) {
+                if (showDate) {
+                    Spacer(Modifier.width(8.dp))
                     Text(
-                        formatFetchedAt(state.todayFetchedAtEpochMillis),
+                        "${todayNow.monthValue}月${todayNow.dayOfMonth}日 " +
+                            weekdayLabel(todayNow.dayOfWeek.value),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                if (matchesActualToday && state.todayLoaded &&
+                    state.todayFetchedAtEpochMillis != null
+                ) {
+                    Text(
+                        "更新于 ${formatFetchedAt(state.todayFetchedAtEpochMillis)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            when {
-                !state.todayLoaded || !matchesActualToday -> Text(
-                    "今天还没有查询。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            when (state.todayState) {
+                TimetableTodayState.ACCOUNT_RESTORING -> TodayStatus(
+                    text = state.todayMessage ?: "正在恢复学校账号。",
                 )
-                state.todayMeetings.isEmpty() -> Text(
-                    "今天没有排课",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                TimetableTodayState.ACCOUNT_REQUIRED -> TodayStatus(
+                    text = state.todayMessage ?: "请先保存学校账号。",
+                    actionLabel = "学校账号",
+                    action = onOpenAccountSettings,
                 )
-                else -> state.todayMeetings.forEach { meeting ->
+                TimetableTodayState.ACCOUNT_BLOCKED -> TodayStatus(
+                    text = state.todayMessage ?: "学校账号暂不可用。",
+                    actionLabel = "学校账号",
+                    action = onOpenAccountSettings,
+                )
+                TimetableTodayState.READING_CACHE -> TodayStatus(
+                    text = if (matchesActualToday) {
+                        "正在读取本机课表…"
+                    } else {
+                        "今日课表尚未同步。"
+                    },
+                    actionLabel = if (matchesActualToday) null else "去课表",
+                    action = if (matchesActualToday) null else onOpenTimetable,
+                )
+                TimetableTodayState.NOT_SYNCED -> TodayStatus(
+                    text = "今日课表尚未同步。",
+                    actionLabel = "去课表",
+                    action = onOpenTimetable,
+                )
+                TimetableTodayState.OUTSIDE_TERM -> if (!matchesActualToday) {
+                    TodayStatus(
+                        text = "今日课表尚未同步。",
+                        actionLabel = "去课表",
+                        action = onOpenTimetable,
+                    )
+                } else {
+                    TodayStatus(
+                        text = "今天不在已同步学期内。",
+                        actionLabel = "查看课表",
+                        action = onOpenTimetable,
+                    )
+                }
+                TimetableTodayState.READ_ERROR -> TodayStatus(
+                    text = if (matchesActualToday) {
+                        state.todayMessage ?: "本机课表读取失败。"
+                    } else {
+                        "今日课表尚未同步。"
+                    },
+                    actionLabel = "去课表",
+                    action = onOpenTimetable,
+                )
+                TimetableTodayState.EMPTY -> if (!state.todayLoaded || !matchesActualToday) {
+                    TodayStatus(
+                        text = "今日课表尚未同步。",
+                        actionLabel = "去课表",
+                        action = onOpenTimetable,
+                    )
+                } else {
+                    TodayStatus(text = "今天没有排课。")
+                }
+                TimetableTodayState.READY -> if (!state.todayLoaded || !matchesActualToday) {
+                    TodayStatus(
+                        text = "今日课表尚未同步。",
+                        actionLabel = "去课表",
+                        action = onOpenTimetable,
+                    )
+                } else state.todayMeetings.forEach { meeting ->
                     val range = ranges[meeting]
                     val ended = range != null && range.endMinute <= nowMinute
                     val isCurrent = meeting == current
@@ -988,16 +1135,20 @@ internal fun TodayPanel(
                     Row(
                         Modifier
                             .fillMaxWidth()
+                            .heightIn(min = 48.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { onCourseClick(meeting) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.Top,
                     ) {
-                        val tone = courseTone(meeting, state.courseColorSlots[courseColorKey(meeting)])
+                        val tone = courseTone(
+                            meeting,
+                            state.todayCourseColorSlots[courseColorKey(meeting)],
+                        )
                         Box(
                             Modifier
                                 .width(4.dp)
-                                .height(34.dp)
+                                .height(32.dp)
                                 .background(tone.container, RoundedCornerShape(2.dp)),
                         )
                         Spacer(Modifier.width(8.dp))
@@ -1010,9 +1161,7 @@ internal fun TodayPanel(
                                     meeting.courseName,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false),
+                                    modifier = Modifier.weight(1f),
                                 )
                                 when {
                                     isCurrent -> TodayTag("上课中", MaterialTheme.colorScheme.primary)
@@ -1027,8 +1176,6 @@ internal fun TodayPanel(
                                 ).joinToString(" · "),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         if (ended) {
@@ -1046,6 +1193,30 @@ internal fun TodayPanel(
 }
 
 @Composable
+private fun TodayStatus(
+    text: String,
+    actionLabel: String? = null,
+    action: (() -> Unit)? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (actionLabel != null && action != null) {
+            TextButton(
+                onClick = action,
+                modifier = Modifier.heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(actionLabel)
+            }
+        }
+    }
+}
+
+@Composable
 private fun TodayTag(text: String, color: Color) {
     Text(
         text,
@@ -1056,67 +1227,70 @@ private fun TodayTag(text: String, color: Color) {
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun CourseDetailDialog(
+internal fun CourseDetailBottomSheet(
     meeting: TimetableMeeting,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(meeting.courseName)
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(meeting.courseName, style = MaterialTheme.typography.titleLarge)
+            Text(
+                "${meeting.date} ${weekdayLabel(meeting.weekday)} · ${periodLabel(meeting)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            StatusPill(
+                text = "${meeting.weekLabel} 周",
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+            HorizontalDivider(
+                Modifier.padding(vertical = 2.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            )
+            DetailLine("日期", "${meeting.date} ${weekdayLabel(meeting.weekday)}")
+            DetailLine("节次", meeting.sourcePeriodsLabel())
+            DetailLine("周次", meeting.weekLabel)
+            DetailLine("教师", meeting.teacher ?: "未提供")
+            DetailLine("地点", meeting.location ?: "未提供")
+            DetailLine(
+                "上课时间",
+                UpcTimetableSchedule.label(meeting) ?: "时间待确认",
+            )
+            DetailLine("课程类型", meeting.courseType ?: "未提供")
+            DetailLine("课程编号", meeting.courseId ?: "未提供")
+            if (meeting.sourcePeriods.size != meeting.periods.size) {
                 Text(
-                    "${meeting.date} ${weekdayLabel(meeting.weekday)} · ${periodLabel(meeting)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        },
-        text = {
-            Column(
-                Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    StatusPill(
-                        text = "${meeting.weekLabel} 周",
-                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                }
-                HorizontalDivider(
-                    Modifier.padding(vertical = 2.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                )
-                DetailLine("日期", "${meeting.date} ${weekdayLabel(meeting.weekday)}")
-                DetailLine("节次", meeting.sourcePeriodsLabel())
-                DetailLine("周次", meeting.weekLabel)
-                DetailLine("教师", meeting.teacher ?: "未提供")
-                DetailLine("地点", meeting.location ?: "未提供")
-                DetailLine(
-                    "上课时间",
-                    UpcTimetableSchedule.label(meeting) ?: "时间待确认",
-                )
-                DetailLine("课程类型", meeting.courseType ?: "未提供")
-                DetailLine("课程编号", meeting.courseId ?: "未提供")
-                if (meeting.sourcePeriods.size != meeting.periods.size) {
-                    Text(
-                        "原始节次不连续，网格分段显示。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
-                Text(
-                    "时间以学校作息为准；13–14 节暂无官方时刻时显示“时间待确认”。",
+                    "原始节次不连续，网格分段显示。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
-    )
+            Text(
+                "1–12 节按学校作息；13–14 节暂无官方时刻。",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .heightIn(min = 48.dp),
+            ) {
+                Text("关闭")
+            }
+        }
+    }
 }
 
 @Composable

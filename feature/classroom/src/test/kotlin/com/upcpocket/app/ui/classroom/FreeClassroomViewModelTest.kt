@@ -9,6 +9,7 @@ import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.matches
 import java.io.IOException
+import java.net.SocketException
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -24,6 +25,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -219,6 +221,60 @@ class FreeClassroomViewModelTest {
     }
 
     @Test
+    fun `explicit custom confirmation keeps custom mode when periods equal the preset`() = runTest(dispatcher) {
+        val queries = mutableListOf<FreeClassroomQuery>()
+        val vm = viewModel(
+            repository = FreeClassroomRepository { query ->
+                queries += query
+                result(query)
+            },
+        )
+        runCurrent()
+        assertEquals(1, queries.size)
+
+        vm.applyFilters(
+            buildingValue = "全部",
+            periodValues = ClassroomPeriodGroup.MORNING.periods,
+            customPeriodsExplicitlySelected = true,
+        )
+        runCurrent()
+        assertEquals(ClassroomQueryMode.CUSTOM, vm.mode)
+        assertEquals(1, queries.size)
+
+        vm.moveDate(1)
+        runCurrent()
+        assertEquals(1, queries.size)
+
+        vm.search()
+        runCurrent()
+        assertEquals(2, queries.size)
+        assertEquals(vm.date, queries.last().date)
+        assertEquals(ClassroomPeriodGroup.MORNING.periods, queries.last().periods)
+    }
+
+    @Test
+    fun `building only filter keeps preset auto query mode`() = runTest(dispatcher) {
+        val queries = mutableListOf<FreeClassroomQuery>()
+        val vm = viewModel(
+            repository = FreeClassroomRepository { query ->
+                queries += query
+                result(query)
+            },
+        )
+        runCurrent()
+
+        vm.applyFilters("东廊", ClassroomPeriodGroup.MORNING.periods)
+        assertEquals(ClassroomQueryMode.PRESET, vm.mode)
+        assertEquals(1, queries.size)
+
+        vm.moveDate(1)
+        runCurrent()
+        assertEquals(2, queries.size)
+        assertEquals("东廊", queries.last().building)
+        assertEquals(vm.date, queries.last().date)
+    }
+
+    @Test
     fun `late old response cannot overwrite a newer campus query`() = runTest(dispatcher) {
         val first = CompletableDeferred<FreeClassroomResult>()
         val second = CompletableDeferred<FreeClassroomResult>()
@@ -273,6 +329,90 @@ class FreeClassroomViewModelTest {
         assertNull(vm.error)
         assertEquals(vm.currentQuery(), vm.result?.query)
         assertTrue(vm.result!!.matches(vm.currentQuery()))
+    }
+
+    @Test
+    fun `atomic detail filter waits for one explicit manual query`() = runTest(dispatcher) {
+        val queries = mutableListOf<FreeClassroomQuery>()
+        val vm = viewModel(
+            repository = FreeClassroomRepository { query ->
+                queries += query
+                result(query)
+            },
+        )
+        runCurrent()
+        val previous = vm.result
+
+        vm.applyFilters("东廊", setOf(2, 3, 6))
+        runCurrent()
+
+        assertEquals(1, queries.size)
+        assertEquals("东廊", vm.building)
+        assertEquals(setOf(2, 3, 6), vm.periods)
+        assertEquals(ClassroomQueryMode.CUSTOM, vm.mode)
+        assertEquals(previous, vm.result)
+        assertFalse(vm.result!!.matches(vm.currentQuery()))
+
+        vm.search()
+        runCurrent()
+        assertEquals(2, queries.size)
+        assertEquals(vm.currentQuery(), queries.last())
+        assertTrue(vm.result!!.matches(vm.currentQuery()))
+    }
+
+    @Test
+    fun `same query refresh failure preserves the timestamped result`() = runTest(dispatcher) {
+        var calls = 0
+        val vm = viewModel(
+            repository = FreeClassroomRepository { query ->
+                calls++
+                if (calls == 2) throw IOException("学校服务暂时不可用，请稍后重试")
+                result(query)
+            },
+        )
+        runCurrent()
+        val previous = vm.result
+        assertNotNull(previous)
+
+        vm.search()
+        runCurrent()
+
+        assertEquals(previous, vm.result)
+        assertNotNull(vm.error)
+        assertFalse(vm.loading)
+    }
+
+    @Test
+    fun `repository result for a different query is rejected`() = runTest(dispatcher) {
+        val vm = viewModel(
+            repository = FreeClassroomRepository { query -> result(query.copy(date = query.date.plusDays(1))) },
+        )
+        runCurrent()
+
+        assertNull(vm.result)
+        assertTrue(vm.error?.contains("查询条件") == true)
+    }
+
+    @Test
+    fun `unknown io failure is shown as an unconfirmed school result without raw detail`() = runTest(dispatcher) {
+        val vm = viewModel(
+            repository = FreeClassroomRepository { throw IOException("synthetic response payload detail") },
+        )
+        runCurrent()
+
+        assertEquals("学校结果暂不可确认，请稍后重试", vm.error)
+        assertFalse(vm.error!!.contains("synthetic"))
+    }
+
+    @Test
+    fun `socket failure is reported as network unavailable`() = runTest(dispatcher) {
+        val vm = viewModel(
+            repository = FreeClassroomRepository { throw SocketException("synthetic socket detail") },
+        )
+        runCurrent()
+
+        assertEquals("无法连接学校服务，请检查网络后重试", vm.error)
+        assertFalse(vm.error!!.contains("synthetic"))
     }
 
     @Test

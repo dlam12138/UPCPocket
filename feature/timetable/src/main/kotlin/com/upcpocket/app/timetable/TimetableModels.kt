@@ -125,6 +125,30 @@ data class TimetableMeeting(
     fun sourcePeriodsLabel(): String = sourcePeriods.joinToString("、") { "第${it}节" }
 }
 
+data class TimetableMeetingSelection(
+    val courseId: String?,
+    val instanceId: String,
+    val accountEpoch: Long,
+)
+
+internal fun TimetableMeeting.selection(accountEpoch: Long): TimetableMeetingSelection =
+    TimetableMeetingSelection(
+        courseId = courseId,
+        instanceId = instanceId,
+        accountEpoch = accountEpoch,
+    )
+
+internal fun resolveMeetingSelection(
+    selection: TimetableMeetingSelection?,
+    accountEpoch: Long,
+    meetings: List<TimetableMeeting>,
+): TimetableMeeting? {
+    val selected = selection?.takeIf { it.accountEpoch == accountEpoch } ?: return null
+    return meetings.firstOrNull {
+        it.courseId == selected.courseId && it.instanceId == selected.instanceId
+    }
+}
+
 /**
  * 已接受的源数据兼容差异。只记录规则，不保存课程字段值。
  *
@@ -189,6 +213,33 @@ enum class TimetableWeekState {
     ERROR,
 }
 
+/** 首页今日课程的本机缓存状态，与课表页当前查看的周互不依赖。 */
+enum class TimetableTodayState {
+    ACCOUNT_RESTORING,
+    ACCOUNT_REQUIRED,
+    ACCOUNT_BLOCKED,
+    READING_CACHE,
+    NOT_SYNCED,
+    OUTSIDE_TERM,
+    READY,
+    EMPTY,
+    READ_ERROR,
+}
+
+/** 首页今日课程状态独立于周查询，避免只读缓存恢复触发宿主的周组件观察器。 */
+data class TimetableTodayUiState(
+    val accountEpoch: Long = 0,
+    val accountSavedUnverified: Boolean = false,
+    val accountBlocked: Boolean = true,
+    val today: LocalDate? = null,
+    val todayMeetings: List<TimetableMeeting> = emptyList(),
+    val todayCourseColorSlots: Map<String, Int> = emptyMap(),
+    val todayState: TimetableTodayState = TimetableTodayState.ACCOUNT_RESTORING,
+    val todayMessage: String? = "正在恢复学校账号。",
+    val todayLoaded: Boolean = false,
+    val todayFetchedAtEpochMillis: Long? = null,
+)
+
 data class TimetableUiState(
     val accountStatusLabel: String = "",
     val accountEpoch: Long = 0,
@@ -205,11 +256,6 @@ data class TimetableUiState(
     val courseColorSlots: Map<String, Int> = emptyMap(),
     val weekState: TimetableWeekState = TimetableWeekState.NOT_QUERIED,
     val weekFetchedAtEpochMillis: Long? = null,
-    val today: LocalDate? = null,
-    val todayMeetings: List<TimetableMeeting> = emptyList(),
-    val todayLoaded: Boolean = false,
-    /** 今日卡片实际使用的缓存/查询时间；查其他教学周时不会跟着变。 */
-    val todayFetchedAtEpochMillis: Long? = null,
     val message: String? = null,
     val interactionUrl: String? = null,
     val isBusy: Boolean = false,

@@ -71,33 +71,28 @@ fun ElectricityScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             GlassCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("唐岛湾校区", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "楼号 + 房间号查询",
+                        "楼号与房间号 · 无需登录",
                         style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "无需登录",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Button(
                         onClick = onOpenTangdaowan,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    ) { Text("查询电量") }
+                    ) { Text("查剩余电量") }
                 }
             }
 
             GlassCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("古镇口校区", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "在学校页面查询",
+                        "使用学校页面查询",
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(

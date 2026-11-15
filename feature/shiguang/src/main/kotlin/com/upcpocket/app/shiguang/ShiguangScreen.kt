@@ -255,16 +255,34 @@ private fun BrowseContent(
             }
         }
 
+        if (page != null && !isMine) {
+            item(key = "applied-search", contentType = "status") {
+                Text(
+                    if (keyword.trim() != state.keyword) {
+                        "当前仍显示已查询结果 · 搜索后更新"
+                    } else {
+                        "第 ${page.page} 页 · 本页筛选"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
         if (page != null) {
             when {
-                page.items.isEmpty() && isMine -> item(key = "empty") { EmptyState("暂无参与记录") }
-                !isMine && visibleActivities.isEmpty() -> item(key = "empty") {
-                    EmptyState("本页暂无符合条件的活动")
+                page.items.isEmpty() && isMine -> item(key = "empty", contentType = "empty") { EmptyState("暂无参与记录") }
+                !isMine && page.items.isEmpty() -> item(key = "empty", contentType = "empty") {
+                    EmptyState(if (state.keyword.isBlank()) "暂无活动" else "没有匹配的活动")
+                }
+                !isMine && visibleActivities.isEmpty() -> item(key = "filtered-empty", contentType = "empty") {
+                    EmptyState("本页没有符合筛选的活动")
                 }
             }
             items(
                 items = if (isMine) page.items else visibleActivities,
                 key = { "${it.kind}-${it.id}" },
+                contentType = { "activity" },
             ) { activity ->
                 ActivityCard(
                     activity = activity,
@@ -357,7 +375,6 @@ private fun PageHeader(
     ) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text("第二课堂", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (supportsInteractiveLogin) {
             ShiguangInteractiveLoginAction(state, onInteractiveLogin)
@@ -405,10 +422,10 @@ private fun ActivityCard(activity: ShiguangActivity, enabled: Boolean, onClick: 
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
                 activity.title,
                 style = MaterialTheme.typography.titleMedium,
@@ -535,8 +552,8 @@ internal fun DetailContent(
     LazyColumn(
         state = scroll,
         modifier = modifier,
-        contentPadding = PaddingValues(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "title") {
             Text(state.detail?.title ?: state.selected?.title.orEmpty(), style = MaterialTheme.typography.headlineSmall,
@@ -566,10 +583,10 @@ internal fun DetailContent(
 private fun DetailGroup(title: String, fields: Map<String, String>) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
             fields.forEach { (label, value) ->

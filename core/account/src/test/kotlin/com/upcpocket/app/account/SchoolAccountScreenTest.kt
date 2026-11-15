@@ -5,12 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,7 +43,7 @@ class SchoolAccountScreenTest {
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun saveSuccessShowsUnverifiedAndClearsPasswordFields() {
+    fun saveSuccessShowsSavedAndClearsPasswordFields() {
         val controller = FakeController()
         rule.setContent {
             UpcPocketTheme {
@@ -57,8 +61,7 @@ class SchoolAccountScreenTest {
             rule.onAllNodesWithTag("account_message").fetchSemanticsNodes().isNotEmpty()
         }
 
-        rule.onNodeWithTag("account_message").assertTextContains("已保存，尚未验证", substring = true)
-        rule.onNodeWithTag("account_message").assertTextContains("返回课表后，点击右上角刷新", substring = true)
+        rule.onNodeWithTag("account_message").assertTextEquals("已保存")
         assertPasswordCleared("password_input")
         assertPasswordCleared("confirm_input")
         assertEquals("20260001", controller.lastAccount)
@@ -97,7 +100,7 @@ class SchoolAccountScreenTest {
     }
 
     @Test
-    fun alreadySavedStateIsRenderedAsUnverifiedNotLoggedIn() {
+    fun alreadySavedStateUsesSavedWordingAndKeepsMaskedAccount() {
         val controller = FakeController().apply {
             state.value = SchoolAccountState(
                 status = SchoolAccountStatus.SAVED_UNVERIFIED,
@@ -114,11 +117,79 @@ class SchoolAccountScreenTest {
             }
         }
 
-        rule.onNodeWithTag("account_status").assertTextContains("已保存，尚未验证", substring = true)
+        rule.onNodeWithTag("account_status").assertTextContains("已保存", substring = true)
+        assertFalse(
+            rule.onNodeWithTag("account_status")
+                .fetchSemanticsNode()
+                .config
+                .getOrNull(SemanticsProperties.Text)
+                .orEmpty()
+                .joinToString { it.text }
+                .contains("尚未验证"),
+        )
         rule.onNodeWithTag("account_status").assertTextContains("2026***01", substring = true)
         rule.onNodeWithTag("account_student_binding")
             .assertTextContains("20••••01", substring = true)
         rule.onNodeWithTag("account_status").assertIsDisplayed()
+    }
+
+    @Test
+    fun savedStateWithoutVisibleAccountUsesOnlySavedLabel() {
+        val controller = FakeController().apply {
+            state.value = SchoolAccountState(
+                status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                generation = AccountGeneration(3),
+                savedAtEpochMillis = 1_700_000_000_000,
+            )
+        }
+        rule.setContent {
+            UpcPocketTheme {
+                SchoolAccountScreen(accounts = controller, onBack = {})
+            }
+        }
+
+        rule.onNodeWithTag("account_status").assertTextEquals("已保存")
+    }
+
+    @Test
+    fun imeAdvancesAcrossFieldsAndDoneValidatesMissingAccount() {
+        val controller = FakeController()
+        rule.setContent {
+            UpcPocketTheme {
+                SchoolAccountScreen(accounts = controller, onBack = {})
+            }
+        }
+
+        rule.onNodeWithTag("account_input").performImeAction()
+        rule.onNodeWithTag("password_input").assertIsFocused()
+        rule.onNodeWithTag("password_input").performImeAction()
+        rule.onNodeWithTag("confirm_input").assertIsFocused()
+        rule.onNodeWithTag("confirm_input").performImeAction()
+
+        rule.onNodeWithText("请输入学校账号。").assertIsDisplayed()
+        rule.onNodeWithTag("account_input").assertIsFocused()
+        assertPasswordCleared("password_input")
+        assertPasswordCleared("confirm_input")
+    }
+
+    @Test
+    fun requiredFieldsShowInlineErrors() {
+        val controller = FakeController()
+        rule.setContent {
+            UpcPocketTheme {
+                SchoolAccountScreen(accounts = controller, onBack = {})
+            }
+        }
+
+        rule.onNodeWithTag("save_account").performScrollTo().performClick()
+        rule.onNodeWithText("请输入学校账号。").assertIsDisplayed()
+        controller.state.value = SchoolAccountState(
+            status = SchoolAccountStatus.SAVED_UNVERIFIED,
+            generation = AccountGeneration(2),
+        )
+        rule.onNodeWithTag("save_account").performScrollTo().performClick()
+        rule.onNodeWithText("请输入密码。").assertIsDisplayed()
+        rule.onNodeWithTag("confirm_input").assertIsDisplayed()
     }
 
     @Test

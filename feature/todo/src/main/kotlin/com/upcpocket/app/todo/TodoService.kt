@@ -12,12 +12,14 @@ import com.upcpocket.app.todo.reminder.TodoReminderAccessProvider
 import com.upcpocket.app.todo.reminder.TodoReminderPlan
 import com.upcpocket.app.todo.reminder.TodoReminderPlanner
 import java.util.UUID
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 interface TodoStore {
     val tasks: Flow<List<TodoTask>>
@@ -30,6 +32,13 @@ interface TodoStore {
     suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean
 
     suspend fun setCompleted(id: String, completed: Boolean): Boolean
+
+    /** Revision compare-and-set for a user toggle and its undo path. */
+    suspend fun setCompletedIfRevision(
+        id: String,
+        revision: Int,
+        completed: Boolean,
+    ): TodoTask?
 
     suspend fun delete(id: String): TodoTask?
 
@@ -163,12 +172,17 @@ class TodoService internal constructor(
 
     override suspend fun setCompleted(id: String, completed: Boolean): Boolean =
         mutex.withLock {
-            val updated = repository.setCompleted(id, completed, clock()) ?: return@withLock false
-            alarms.cancel(id)
-            notifier.cancel(id)
-            if (!updated.completed) reconcileLocked(updated)
-            true
+            val current = repository.byId(id) ?: return@withLock false
+            setCompletedLocked(id, current.revision, completed) != null
         }
+
+    override suspend fun setCompletedIfRevision(
+        id: String,
+        revision: Int,
+        completed: Boolean,
+    ): TodoTask? = mutex.withLock {
+        setCompletedLocked(id, revision, completed)
+    }
 
     override suspend fun delete(id: String): TodoTask? = mutex.withLock {
         val deleted = repository.delete(id) ?: return@withLock null
@@ -282,6 +296,25 @@ class TodoService internal constructor(
             }
             TodoReminderPlan.Nothing -> alarms.cancel(task.id)
         }
+    }
+
+    // The caller may leave its Compose scope after Room commits. Keep the CAS and
+    // matching Alarm/notification reconciliation together before propagating cancellation.
+    private suspend fun setCompletedLocked(
+        id: String,
+        revision: Int,
+        completed: Boolean,
+    ): TodoTask? = withContext(NonCancellable) {
+        val updated = repository.setCompletedIfRevision(
+            id = id,
+            revision = revision,
+            completed = completed,
+            now = clock(),
+        ) ?: return@withContext null
+        alarms.cancel(id)
+        notifier.cancel(id)
+        if (!updated.completed) reconcileLocked(updated)
+        updated
     }
 
     private suspend fun fireLocked(taskId: String, expectedRevision: Int, now: Long) {
