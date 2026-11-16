@@ -9,8 +9,8 @@ import androidx.work.WorkManager
 /**
  * 一次性的组件刷新任务。
  *
- * 只有用户点击刷新按钮才会入队；AppWidgetProvider 的 onUpdate / onEnabled / resize /
- * 应用启动都只渲染本地缓存，不隐式联网，也没有周期任务（updatePeriodMillis=0）。
+ * 电量按钮及旧版本已发出的点击继续使用此入口；校园卡自动取数与课表本地重绘
+ * 由 WidgetAutoRefresh 管理独立周期任务（updatePeriodMillis 仍为 0）。
  *
  * 同一类型使用唯一任务名；广播层 tryBegin 已合并连续点击，不会并发打学校接口。
  * 这里用 REPLACE 保证换号后即使旧任务尚在取消/收尾，新绑定的一次刷新也不会被

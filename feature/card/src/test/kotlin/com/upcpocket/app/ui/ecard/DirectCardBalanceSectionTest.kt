@@ -114,7 +114,8 @@ class DirectCardBalanceSectionTest {
         rule.waitUntil(5_000) {
             rule.onAllNodesWithTag("card_snapshot").fetchSemanticsNodes().isNotEmpty()
         }
-        rule.onNodeWithText("123.45", substring = true).assertExists()
+        rule.onNodeWithText("130.23", substring = true).assertExists()
+        rule.onNodeWithText("过渡余额 6.78 元").assertExists()
         rule.onNodeWithText("刚刚更新", substring = true).assertExists()
         assertEquals(listOf(id), requested)
 
@@ -178,7 +179,7 @@ class DirectCardBalanceSectionTest {
             rule.onAllNodesWithTag("card_error").fetchSemanticsNodes().isNotEmpty()
         }
         rule.onNodeWithText("更新失败", substring = true).assertExists()
-        rule.onNodeWithText("123.45", substring = true).assertExists()
+        rule.onNodeWithText("130.23", substring = true).assertExists()
         // 失败仍显示同一账号的历史值，且不能把本次失败当成新快照。
         rule.onNodeWithTag("card_binding_status").assertTextContains("20••••99", substring = true)
     }

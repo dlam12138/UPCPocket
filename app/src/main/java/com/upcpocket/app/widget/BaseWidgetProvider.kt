@@ -8,7 +8,7 @@ import android.content.Intent
 import com.upcpocket.app.core.AppGraph
 
 /**
- * 两个组件的共同入口。
+ * 三个组件的共同入口。
  *
  * 安全：
  *  - manifest 里 `exported=false`，自定义刷新广播只接受本应用显式 PendingIntent；
@@ -17,8 +17,8 @@ import com.upcpocket.app.core.AppGraph
  *
  * 刷新语义：
  *  - onUpdate / onEnabled / resize / 应用启动只渲染缓存；
- *  - 只有点击刷新才入队一次性 WorkManager 任务；
- *  - 校园卡已绑定但无成功快照时仍可点击查询；无绑定/清理中只打开应用，不发空请求。
+ *  - 有实例时保留校园卡周期取数与课表周期本地重绘，电量保持手动刷新；
+ *  - 旧版本已经发出的刷新 PendingIntent 保留兼容，目标仍由当前绑定决定。
  */
 abstract class BaseWidgetProvider : AppWidgetProvider() {
 
@@ -30,6 +30,7 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
         appWidgetIds: IntArray,
     ) {
         WidgetUpdates.updateKindNow(context, kind)
+        WidgetAutoRefresh.reconcile(context)
     }
 
     override fun onAppWidgetOptionsChanged(
@@ -43,10 +44,12 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         WidgetUpdates.updateKindNow(context, kind)
+        WidgetAutoRefresh.reconcile(context)
     }
 
     override fun onDisabled(context: Context) {
         WidgetWork.cancel(context, kind)
+        WidgetAutoRefresh.cancel(context, kind)
         WidgetStateStore(context).clear(kind)
     }
 
@@ -55,6 +58,7 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
             .getAppWidgetIds(ComponentName(context, kind.providerClass))
         if (remaining.isEmpty()) {
             WidgetWork.cancel(context, kind)
+            WidgetAutoRefresh.cancel(context, kind)
             WidgetStateStore(context).clear(kind)
         }
     }

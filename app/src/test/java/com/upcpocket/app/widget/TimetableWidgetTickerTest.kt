@@ -6,12 +6,62 @@ import com.upcpocket.app.timetable.TimetableWidgetStatus
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import java.util.UUID
 import org.junit.Test
 
 class TimetableWidgetTickerTest {
 
     private val zone = ZoneId.of("Asia/Shanghai")
     private val now = ZonedDateTime.of(2026, 11, 5, 12, 30, 0, 0, zone)
+
+    @Test
+    fun `same boundary redraw does not reset its delay`() {
+        val plan = TimetableTickSchedule()
+        val id = UUID.randomUUID()
+        assertTrue(plan.shouldSchedule(1000L))
+        plan.scheduled(id, 1000L)
+        assertFalse(plan.shouldSchedule(1000L))
+        assertTrue(plan.shouldSchedule(2000L))
+    }
+
+    @Test
+    fun `account restore redraw defers continuation to running boundary`() {
+        val plan = TimetableTickSchedule()
+        val id = UUID.randomUUID()
+        plan.scheduled(id, 1000L)
+        assertTrue(plan.begin(id))
+        assertFalse(plan.shouldSchedule(2000L))
+        assertTrue(plan.finish(id))
+        assertTrue(plan.shouldSchedule(2000L))
+        plan.scheduled(UUID.randomUUID(), 2000L)
+        assertFalse(plan.finish(id))
+    }
+
+    @Test
+    fun `removed or replaced boundary cannot append a stale successor`() {
+        val plan = TimetableTickSchedule()
+        val old = UUID.randomUUID()
+        plan.scheduled(old, 1000L)
+        assertTrue(plan.begin(old))
+        plan.clear()
+        assertFalse(plan.finish(old))
+        plan.scheduled(UUID.randomUUID(), 2000L)
+        assertFalse(plan.begin(old))
+        assertFalse(plan.finish(old))
+    }
+
+    @Test
+    fun `persisted boundary can resume in a fresh process and continue once`() {
+        val plan = TimetableTickSchedule()
+        val id = UUID.randomUUID()
+        assertTrue(plan.begin(id))
+        assertFalse(plan.shouldSchedule(2000L))
+        assertTrue(plan.finish(id))
+        assertTrue(plan.shouldSchedule(2000L))
+        assertFalse(plan.finish(id))
+    }
 
     private fun course(start: Int, end: Int) = TimetableWidgetCourse(
         name = "合成课程",

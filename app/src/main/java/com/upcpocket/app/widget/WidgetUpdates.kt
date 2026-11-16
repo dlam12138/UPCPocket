@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
  * 文案分别由 `CardWidgetRenderer`、`PowerWidgetRenderer` 渲染。这里不再认识
  * 两个业务模型。
  *
- * - 只有用户点击刷新才入队任务；已绑定但无历史余额也允许点击查询；
+ * - 校园卡自动取数、课表本地重绘由独立任务调度，电量仍由用户点击刷新；
  * - 页面查询成功 / 清除后由插件回调 [requestCard] / [requestPower]；
  * - 账号状态变化由宿主触发 [requestCard]，先撤下旧身份数值再等待新查询；
  * - AppWidgetProvider 的 onUpdate / resize 调用 [updateKindNow]，只读本地缓存，不联网。
@@ -87,11 +87,11 @@ object WidgetUpdates {
         AppGraph.timetableServiceOrNull?.readWidgetSnapshot()
 
     /** 只读缓存，供 BroadcastReceiver 主线程快速渲染；不做网络请求、不迁移旧文件。 */
-    fun updateKindNow(context: Context, kind: WidgetKind) {
+    fun updateKindNow(context: Context, kind: WidgetKind, scheduleTicker: Boolean = true) {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
         if (ids.isEmpty()) {
-            if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
+            if (kind == WidgetKind.TIMETABLE && scheduleTicker) TimetableWidgetTicker.schedule(appContext)
             return
         }
         when (kind) {
@@ -111,7 +111,7 @@ object WidgetUpdates {
             }
             WidgetKind.TIMETABLE -> publishTimetable(appContext)
         }
-        if (kind == WidgetKind.TIMETABLE) TimetableWidgetTicker.schedule(appContext)
+        if (kind == WidgetKind.TIMETABLE && scheduleTicker) TimetableWidgetTicker.schedule(appContext)
     }
 
     suspend fun updateKind(context: Context, kind: WidgetKind) {
@@ -198,7 +198,6 @@ object WidgetUpdates {
         refreshing = refreshing,
         failed = failed,
         openApp = { WidgetIntents.openApp(context, WidgetLaunchTarget.CARD_BALANCE, widgetId) },
-        refresh = { WidgetIntents.refresh(context, WidgetKind.CARD, widgetId) },
     )
 
     private fun renderPower(
@@ -260,11 +259,6 @@ object WidgetUpdates {
                     openIntent = WidgetIntents.openApp(
                         context,
                         WidgetLaunchTarget.TIMETABLE,
-                        id,
-                    ),
-                    refreshIntent = WidgetIntents.refresh(
-                        context,
-                        WidgetKind.TIMETABLE,
                         id,
                     ),
                 ),

@@ -120,6 +120,9 @@ class DirectCardBalanceTest {
         val result = DirectCardBalanceProtocol.parse(body(), id, 123)
         assertEquals("123.45", result.balanceText)
         assertEquals("6.78", result.transitionText)
+        assertEquals("130.23", result.totalBalanceText)
+        assertEquals("0.30", DirectCardBalanceProtocol.parse(body("10", "20"), id, 123).totalBalanceText)
+        assertEquals("0.99", DirectCardBalanceProtocol.parse(body("100", "-1"), id, 123).totalBalanceText)
         assertEquals("-0.01", DirectCardBalanceProtocol.parse(body("-1"), id, 123).balanceText)
         assertEquals("0.00", DirectCardBalanceProtocol.parse(body("0", "0"), id, 123).transitionText)
     }

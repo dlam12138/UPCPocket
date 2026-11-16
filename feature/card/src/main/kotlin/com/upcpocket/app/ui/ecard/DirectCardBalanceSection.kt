@@ -140,7 +140,7 @@ fun DirectCardBalanceSection(
         ) {
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("余额", style = MaterialTheme.typography.titleMedium)
+                    Text("总余额", style = MaterialTheme.typography.titleMedium)
                     BindingStatus(
                         availability = status.availability,
                         maskedStudentId = status.binding?.studentId?.let(AccountMask::mask).orEmpty(),
@@ -251,7 +251,8 @@ fun DirectCardBalanceSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "余额来自学校校园卡接口；接口使用 HTTP 明文传输，学号和金额可能被同网段看到。" +
+                        "总余额包含卡内余额与过渡余额。添加校园卡组件后约每 30 分钟自动更新，系统省电时可能延迟。" +
+                            "余额来自学校校园卡接口；接口使用 HTTP 明文传输，学号和金额可能被同网段看到。" +
                             "缓存保存在本机应用私有目录，不参与备份，未单独加密。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -325,14 +326,14 @@ private fun BalanceSnapshot(
             )
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = "${data.balanceText} 元",
+                    text = "${data.totalBalanceText} 元",
                     style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
             Text(
                 text = "过渡余额 ${data.transitionText} 元",
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
             val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")

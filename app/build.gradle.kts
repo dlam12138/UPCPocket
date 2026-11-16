@@ -208,7 +208,7 @@ dependencies {
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.wechat.sdk)
 
-    // 桌面小组件：只有用户点刷新时才入队一次性联网任务；没有周期任务，也没有后台轮询。
+    // 桌面组件：校园卡只读周期更新、课表本地时刻重绘，以及电量手动刷新。
     implementation(libs.androidx.work.runtime.ktx)
 
     // 已移除的上游依赖，当前功能不需要：

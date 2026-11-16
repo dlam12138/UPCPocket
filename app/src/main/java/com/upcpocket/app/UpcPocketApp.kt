@@ -3,6 +3,7 @@ package com.upcpocket.app
 import android.app.Application
 import android.webkit.WebView
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.widget.WidgetAutoRefresh
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -15,9 +16,8 @@ import kotlinx.coroutines.launch
  * 启动只做宿主级工作：装配插件、让已激活插件做轻量初始化、恢复各自可恢复状态。
  * 具体 feature 是否初始化由激活插件决定；未注册/未激活的 feature 不会收到回调。
  *
- * ⚠️ 上游项目在这里排了「每 4 小时采样宿舍电量」的 WorkManager 周期任务。
- * 那个任务已经**随电费功能整体删除**，不再有 EnergySamplingWorker.schedule() 这一类调用 ——
- * 本应用没有任何周期性后台联网任务（WorkManager 依赖也已从构建脚本移除）。
+ * 桌面存在组件时，WorkManager 保留校园卡只读余额自动更新与课表本地重绘。
+ * 不恢复上游宿舍电量采样，不周期登录 CAS 或拉取课表。
  */
 class UpcPocketApp : Application() {
 
@@ -40,6 +40,7 @@ class UpcPocketApp : Application() {
         appScope.launch {
             AppGraph.account.restore()
             AppGraph.restorePlugins()
+            WidgetAutoRefresh.reconcile(this@UpcPocketApp)
         }
 
         // 诊断开关是用户偏好；DataStore 读取完成前使用默认开启，之后立即同步。
@@ -61,11 +62,11 @@ class UpcPocketApp : Application() {
                 runCatching { AppGraph.prepareCardForAccount() }
                 AppGraph.requestCardWidgetUpdate()
                 AppGraph.requestTimetableWidgetUpdate()
+                WidgetAutoRefresh.reconcile(this@UpcPocketApp)
             }
         }
 
-        // 课表查询成功/缓存落地后只重绘桌面组件，不额外联网；组件仍然只在点击刷新时
-        // 由 Worker 发起一次受控查询。这里只观察公开的周状态。
+        // 课表查询成功/缓存落地后只重绘桌面组件，不额外联网。自动更新也只读本地。
         appScope.launch {
             val service = AppGraph.timetableServiceOrNull ?: return@launch
             service.state.collect { state ->

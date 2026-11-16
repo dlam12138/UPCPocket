@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_timetable_title">今日课表</string>
-    <string name="widget_timetable_description">显示今天的主课、时间、地点与更新时间；默认 2×2，可拉宽到 4×2</string>
+    <string name="widget_timetable_description">随上下课和日期自动更新今日课程；默认 2×2，可拉宽到 4×2</string>
     <string name="widget_refresh_timetable">刷新课表组件</string>
 
     <!-- 仅用于系统组件选择器的静态预览；任何真实更新都会覆盖这些占位。 -->

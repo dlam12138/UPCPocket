@@ -180,7 +180,6 @@ class WidgetPreviewActivity : Activity() {
             refreshing = scenario == 9,
             failed = scenario == 10,
             openIntent = pending(context, 1),
-            refreshIntent = pending(context, 2),
         )
     }
 
@@ -221,7 +220,6 @@ class WidgetPreviewActivity : Activity() {
             refreshing = scenario == 9,
             failed = scenario == 10,
             openApp = { pending(context, 1) },
-            refresh = { pending(context, 2) },
         )
     }
 

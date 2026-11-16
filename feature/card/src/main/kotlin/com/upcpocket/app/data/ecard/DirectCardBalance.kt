@@ -117,6 +117,9 @@ data class DirectCardSnapshot(
 ) {
     val balanceText: String get() = BigDecimal.valueOf(balanceCents, 2).toPlainString()
     val transitionText: String get() = BigDecimal.valueOf(transitionCents, 2).toPlainString()
+    /** Display total only; retain the two original cent amounts in the cache. */
+    val totalBalanceText: String get() = BigDecimal.valueOf(balanceCents, 2)
+        .add(BigDecimal.valueOf(transitionCents, 2)).toPlainString()
 
     fun belongsTo(binding: CardBalanceBinding): Boolean =
         accountId == binding.accountId.value &&

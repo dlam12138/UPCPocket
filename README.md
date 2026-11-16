@@ -99,9 +99,11 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 使用 JDK 17+、Android SDK 36，默认构建 R8 + 资源压缩的通用 Release。机器路径、私钥和个人业务数据不入库。
 
-[构建指南](docs/BUILD.md) · [项目文档](docs/README.md) · [开发规范](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
+[构建指南](docs/BUILD.md) · [贡献流程](CONTRIBUTING.md) · [架构](ARCHITECTURE.md) · [内部契约](API.md) · [项目文档](docs/README.md) · [Agent 入口](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
 
-[2.0.7 第一部分：校园卡连接与诊断](docs/releases/2.0.7-development.md) 已通过用户验收，尚未公开发布；上方下载仍为 2.0.6。
+Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取矩阵执行，兼容状态与本轮范围见[文档建设报告](docs/agent-native/2026-11-16-audit-and-delivery.md)。
+
+[2.0.7 开发记录](docs/releases/2.0.7-development.md)：校园卡连接与诊断、小组件自动更新及总余额显示均已通过用户验收。正式包沿用最终候选原字节；[更新公告草稿](docs/releases/2.0.7-notice.md)待审核，[发布准备](docs/releases/2.0.7.md)单独记录。2.0.7 尚未公开发布，上方下载仍为 2.0.6。
 
 研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值的来源、实现与验证见 [集成记录](docs/releases/2.0.6-card-recharge.md)。
 
@@ -114,6 +116,8 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，2.0.4 扩展到古镇口东区和求是。
 
 感谢 [PR #5 作者](https://github.com/dlam12138/UPCPocket/pull/5) 贡献校园卡原生微信充值实现，集成时保留原作者归属，并简化操作与补齐验证。
+
+感谢 **或许是小鸡** 同学和 **讨厌星期四** 同学的意见反馈，以及对调试工作的支持。
 
 ### 2.0.4 新增内容
 

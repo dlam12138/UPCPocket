@@ -15,6 +15,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 组件刷新的一次性后台任务。
@@ -33,6 +34,20 @@ class WidgetRefreshWorker(
             ?: return Result.failure()
         val expectedBindingToken = inputData.getString(WidgetWork.KEY_BINDING_TOKEN)
         val state = WidgetStateStore(applicationContext)
+        if (inputData.getBoolean(WidgetAutoRefresh.KEY_AUTOMATIC, false)) {
+            // A restored periodic request must not query after its last widget was
+            // removed, while the plugin is absent, or without a usable current owner.
+            if (kind != WidgetKind.CARD || !WidgetAutoRefresh.hasWidgets(applicationContext, kind)) {
+                return Result.success()
+            }
+            val restored = withTimeoutOrNull(ACCOUNT_RESTORE_BUDGET_MS) {
+                AppGraph.account.restore()
+                true
+            } == true
+            if (!restored || AppGraph.cardServiceOrNull?.canRefreshNow() != true) return Result.success()
+            if (!state.tryBegin(kind)) return Result.success()
+            WidgetUpdates.updateKindNow(applicationContext, kind)
+        }
         val started = System.currentTimeMillis()
         Diagnostics.record(
             module = kind.diagnosticModule(),

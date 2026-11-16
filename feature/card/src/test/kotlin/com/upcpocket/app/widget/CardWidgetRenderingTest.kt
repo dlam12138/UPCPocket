@@ -19,6 +19,7 @@ import com.upcpocket.app.feature.card.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -49,7 +50,6 @@ class CardWidgetRenderingTest {
         snapshot: DirectCardSnapshot? = null,
         refreshing: Boolean = false,
         failed: Boolean = false,
-        onRefreshFactory: () -> Unit = {},
         onOpenFactory: () -> Unit = {},
     ): View = CardWidgetRenderer(context).views(
         status = status,
@@ -60,17 +60,13 @@ class CardWidgetRenderingTest {
             onOpenFactory()
             pending(1)
         },
-        refresh = {
-            onRefreshFactory()
-            pending(2)
-        },
     ).apply(context, FrameLayout(context))
 
     private fun text(root: View, id: Int): String =
         root.findViewById<TextView>(id).text.toString()
 
     @Test
-    fun `compact card shows main balance unit and one-line update only`() {
+    fun `compact card shows total and transition balance without a refresh button`() {
         val root = render(
             snapshot = DirectCardSnapshot(
                 accountId = binding.accountId.value,
@@ -81,7 +77,9 @@ class CardWidgetRenderingTest {
                 fetchedAt = now,
             ),
         )
-        assertEquals("123.45", text(root, R.id.widget_card_balance))
+        assertEquals("130.23", text(root, R.id.widget_card_balance))
+        assertEquals("过渡余额 6.78 元", text(root, R.id.widget_card_transition))
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_card_transition).visibility)
         assertEquals("元", text(root, R.id.widget_card_unit))
         assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_card_unit).visibility)
 
@@ -90,42 +88,29 @@ class CardWidgetRenderingTest {
         assertFalse(meta.contains("\n"))
         assertFalse(meta.contains("12-"))
 
-        val refresh = root.findViewById<View>(R.id.widget_card_refresh)
-        assertTrue(refresh.contentDescription.toString().contains("刷新校园卡余额"))
-        val minTouch = (44 * context.resources.displayMetrics.density).toInt()
-        assertTrue(refresh.layoutParams.width >= minTouch)
-        assertTrue(refresh.layoutParams.height >= minTouch)
+        assertNull(root.findViewById<View>(context.resources.getIdentifier("widget_card_refresh", "id", context.packageName)))
+        assertTrue(root.hasOnClickListeners())
     }
 
     @Test
-    fun `bound account without snapshot enables refresh instead of requiring old cache`() {
-        var refreshFactory = 0
-        val root = render(onRefreshFactory = { refreshFactory++ })
+    fun `bound account without snapshot waits for automatic update and opens the app`() {
+        val root = render()
         assertEquals("尚未查询", text(root, R.id.widget_card_balance))
-        assertEquals("已绑定 · 点击刷新", text(root, R.id.widget_card_updated))
-        assertTrue(
-            root.findViewById<View>(R.id.widget_card_refresh)
-                .contentDescription.toString().contains("刷新校园卡余额"),
-        )
-        assertEquals(1, refreshFactory)
+        assertEquals("已绑定 · 等待自动更新", text(root, R.id.widget_card_updated))
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_card_transition).visibility)
+        assertTrue(root.hasOnClickListeners())
     }
 
     @Test
     fun `no account guides setup and never creates a network refresh target`() {
-        var refreshFactory = 0
         var openFactory = 0
         val root = render(
             status = CardBindingStatus(CardBindingAvailability.NO_ACCOUNT),
-            onRefreshFactory = { refreshFactory++ },
             onOpenFactory = { openFactory++ },
         )
         assertEquals("尚未绑定", text(root, R.id.widget_card_balance))
         assertEquals("打开应用设置学校账号", text(root, R.id.widget_card_updated))
-        assertTrue(
-            root.findViewById<View>(R.id.widget_card_refresh)
-                .contentDescription.toString().contains("打开应用"),
-        )
-        assertEquals(0, refreshFactory)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_card_transition).visibility)
         assertTrue(openFactory >= 1)
     }
 
@@ -212,7 +197,6 @@ class CardWidgetRenderingTest {
             refreshing = false,
             failed = false,
             openApp = { pending(1) },
-            refresh = { pending(2) },
         )
         val root = views.apply(ctx, FrameLayout(ctx))
         val size = (160 * ctx.resources.displayMetrics.density).toInt()
@@ -250,7 +234,6 @@ class CardWidgetRenderingTest {
             refreshing = false,
             failed = false,
             openApp = { pending(1) },
-            refresh = { pending(2) },
         )
         val root = views.apply(dark, FrameLayout(dark))
         assertEquals(

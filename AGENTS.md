@@ -1,86 +1,84 @@
-# UPC Pocket 项目开发规范
+# UPC Pocket：Agent 工作入口
 
-本文件适用于整个仓库。后续 Agent 开发、评审和验证以此作为项目入口。
+本文件适用于整个仓库。先识别受影响模块，读取本文件及目标路径上的局部 `AGENTS.md`，再按下表读取文档正文。简单改动可轻量执行；跨模块、架构、安全与数据结构任务必须完整执行。
 
-## 项目背景与范围
+## 本轮新增的长期要求
 
-- 产品目标、阶段与校园数据接入边界见根目录 `UPC-Pocket-总体计划-v0.1.md`。该计划书保留原文；阶段变化应另行记录。
-- 历史基线：当时正式旧版为 UPC Pocket 2.0.3；当时 main 已合入面向下一版本的原生校园卡登录与本人只读交易流水（宿主装配认证适配时启用，当时尚未发布、未变更 versionCode），应用标识 `com.upcpocket.app`。保留校园卡余额与本人只读交易流水、唐岛湾电量、两校区空闲教室、图书馆座位、本机待办及一次性提醒、专注、只读课表与三个 RemoteViews 组件；校园卡/电量默认 2×2，今日课表默认 2×2、可扩到 4×2。古镇口通过学校页面访问。数字石大和图书馆主页已移除；交易流水仅本人查询，不含充值、转账、预约等写操作，也不代表学校认证通过或已取得官方身份；课表为 M3 新增的只读能力，含周网格、今日课程与桌面组件，但不包含编辑、导出或提醒。原计划为历史原文，当前范围见 README。新增校园能力必须核对 UPC 来源，不能套用郑大接口、认证和宿舍规则。
-- 用户的新指令优先于历史计划。校园受保护接口的授权范围以实际取得的授权为准；本地开发、构建或引入技能不代表获得校园接口授权。
-- 当前实现进度：M0 模块化与插件化已完成并经模拟器回归，记录见 `docs/m0/`；M1 统一账号本机加密保存、代次与失效/清理基础已完成，记录见 `docs/m1/`；M2 校园卡余额强关联、旧快照迁移与页面/组件/Worker 同目标已完成，记录见 `docs/m2/`；M3 课表真实 CAS 认证、学期/教学周查询、周网格、今日课程、只读缓存与离线查看已实现并完成模拟器及本人账号只读验证，记录见 `docs/m3/`；M4 图书馆统一认证、本人校验与账号/代次绑定已完成，记录见 `docs/m4/`；M5 三 tab 首页/课表/专注、统一设置入口、课表周网格与视觉第一版已实现并在模拟器验收，记录见 `docs/m5/`。2026-11-05 晚完成三组件 Apple 式视觉修订、尺寸/1.5× 字体矩阵与 R8 精简 Release 本地验收，记录见 `docs/m5/2026-11-05-组件视觉修订.md`。2026-11-05 用户正式验收通过，M0–M5 合入 main，以 2.0 正式发布（versionCode 20，兼容原开发签名）。M1 保存成功只表示“已保存，尚未验证”，不得表述为学校认证通过或已取得官方身份。
-- 当前导航为四 tab「首页 / 课表 / 待办 / 专注」，支持整页 HorizontalPager 与浮动胶囊联动；M5 第一版三 tab 为历史基线，账号/图书馆登录/组件/官方网页/外观/关于统一在首页右上角设置；设置入口唯一不等于每个功能只有一条快捷路径（校园网页还有首页卡，统计还有专注顶栏/今日卡，均指向同一路由）。改变入口时同步更新 `docs/m5/README.md` 的旧→新映射与缺插件说明。M5 不引入 Navigation 3、AGP 9、Glance 或数据层迁移，也不重启“更多”第二套目录。
-- 2026-11-05 课表/组件/超星预约要求见 `docs/m5/2026-11-05-课表与组件设计.md`：周网格以真实日期连续周日至周六；左轴使用学校官方 1–12 节作息，13–14 节无官方时刻时显示“时间待确认”；今日课程按上海时区实际今天独立于查看周；今日课表组件使用统一近实底 RemoteViews 设计（24dp 圆角、20dp 细线刷新 + 44dp 透明热区、无玻璃/描边），支持 2×2/4×2 自适应与独立刷新；余额/课表组件冷启动刷新必须等待有界账号恢复；超星 seat/seatengine 原生提交只在用户确认后一次发送，超时/未知不回重试，验证码分支才回官方页。视觉细节以 `docs/m5/2026-11-05-组件视觉修订.md` 为准。
-- 不将账号密码、Cookie、Token、私钥或未脱敏的学生业务数据写入源码、文档、日志和测试样本。
+- **不做极端状态测试，排除非必要测试。** 按本轮改动与实际风险选择最小必要验证；不新增或主动执行无关的压力、破坏性故障注入、穷举设备矩阵或重复全量回归。不为此删除已有测试。纯文档任务检查来源、路径、规则和差异，不构建 APK。
+- **需要 CAS 验收时使用已授权的本人真实账密。** 通过既有安全输入和认证入口完成；合成身份、Mock、离线测试不能代替真实 CAS 验收，不向学校提交虚构账号。缺少可用凭据时明确记为未验证。真实凭据、会话及未脱敏业务内容不得进入源码、文档、日志或测试样本。文档建设不触发学校登录。
 
-## Android Skills 使用规则
+## 项目与当前状态
 
-本项目引入 [android/skills](https://github.com/android/skills)，技能位于 `.agents/skills/<技能名>/SKILL.md`。来源、版本和完整索引见 `docs/android-skills.md`。
+- 面向中国石油大学（华东）的非官方 Android 校园工具；当前产品范围、安装和使用见 [README](README.md)。保留校园卡余额/本人流水/微信充值、唐岛湾电量、两校区空闲教室、图书馆座位、只读课表、本机待办及一次性提醒、专注与三个 RemoteViews 组件。石光与 e站通只读；不扩展到报名、签到、事项提交等写操作。课表不含编辑、导出或提醒；古镇口电量走学校页面。数字石大与图书馆主页入口已移除。
+- 当前开发为 **2.0.7 / 28**，第一部分及最终小组件候选均已验收；现为本地发布准备阶段，公告待用户审核，尚未推送或公开发布。公开版本 **2.0.6 / 27**，旧版线路 **2.0.3 / 24**。详情及产物哈希分别见 [2.0.7 发布准备](docs/releases/2.0.7.md)、[开发记录](docs/releases/2.0.7-development.md) 与 [2.0.6 正式记录](docs/releases/2.0.6.md)。已验收 APK 保留原字节，不能重编后冒充同一验收产物。
+- 新版 applicationId 为 `com.upcpocket.next`，Kotlin/资源 namespace 为 `com.upcpocket.app`；与旧包独立安装，不迁移、卸载或清除旧包数据。下载入口为 GitHub 与 gh-proxy。
+- 用户新指令优先于历史计划。原始 [总体计划](UPC-Pocket-总体计划-v0.1.md)、M0–M5、发布候选记录保留当时状态；旧根指令已[完整归档](docs/agent-native/legacy-agent-instructions-2026-11-16.md)。现行规则以本入口及适用局部指令为准，历史“未实现/未发布”不覆盖当前记录。
 
-- 开始 Android 相关任务时，先按技能描述选择与任务直接相关的技能，阅读对应 `SKILL.md`，并按需读取其附带资源。
-- 技能用于具体任务的技术指导；不要为执行全部技能而扩大任务范围。
-- 技能提出的新 API、工具、依赖或迁移步骤，需要先核对本项目的 SDK、AGP、Kotlin、Compose 与 Gradle 版本。
-- 保留当前已工作的架构：Compose / Material 3、手动 AppGraph、Room / DataStore、OkHttp，以及 RemoteViews 桌面小组件。技术迁移应由实际任务需求驱动。
-- 上游技能按固定提交引入。更新时显式审查差异，同步版本记录和许可证，避免直接修改上游副本来存放项目特有规则。
+## 技术栈、目录与边界
 
-| 任务 | 优先阅读的技能 |
+实际版本见 [构建指南](docs/BUILD.md)：Kotlin 2.0.21、AGP 8.7.3、Gradle 8.9、JDK 17+、minSdk 31 / compileSdk 与 targetSdk 36。保留 Compose / Material 3、Navigation Compose、手动 AppGraph、Room / DataStore、OkHttp、WorkManager 与 RemoteViews；不因技能推荐而迁移 Hilt、Navigation 3、AGP 9 或 Glance。
+
+| 目录/入口 | 职责与必读局部指令 |
 | --- | --- |
-| Compose 重组、滚动或渲染性能 | `jetpack-compose-performance` |
-| 大屏、窗口尺寸与自适应布局 | `adaptive` |
-| 状态栏、导航栏、Insets、边到边布局 | `edge-to-edge` |
-| 权限申请与清单权限审查 | `android-permissions-security` |
-| Intent、导出组件和跨应用通信 | `android-intent-security` |
-| 测试环境或测试基础设施调整 | `testing-setup` |
-| ANR 排查 / 性能分析 / R8 问题 | `anr-audit-and-fix` / `android-profiler` / `r8-analyzer` |
+| `app/` | Application、AppGraph、宿主导航、组件系统入口、更新与诊断；[app/AGENTS.md](app/AGENTS.md) |
+| `core/` | 插件契约/运行时/UI契约、账号与认证、平台能力、设计系统；[core/AGENTS.md](core/AGENTS.md) |
+| `feature/` | 9 个纵向业务模块；[feature/AGENTS.md](feature/AGENTS.md)；校园卡/图书馆/课表/待办还有各自局部指令 |
+| `docs/` | 当前知识、ADR、来源与历史证据；[文档索引](docs/README.md) |
+| `tools/release_update.ps1` | 签名更新附件准备；不自动上传或发布 |
+| `.agents/skills/` | 固定版本 Android 技能；[来源与索引](docs/android-skills.md) |
 
-其他技能按其描述触发。例如，Glance 技能适用于使用或迁移到 Glance 的任务，不要求现有 RemoteViews 组件改用 Glance；`agp-9-upgrade`、`navigation-3` 仅在对应迁移任务中使用。
+`app` 显式装配，feature 之间不得互依赖，core 不依赖 feature/app，业务 feature 不得依赖 `core:account` 或获取明文密码。`plugin-api`、`account-api` 无内部模块依赖；`plugin-runtime`、`plugin-ui` 仅依赖 `plugin-api`。不得通过反射、全局强转或公共模块堆积规避边界。完整职责、数据流及实际依赖见 [ARCHITECTURE.md](ARCHITECTURE.md)。
 
-## 当前发布
+## 按任务读取
 
-2026-11-16 用户验收 **2.0.7 / versionCode 28 candidate3**，并授权将校园卡连接恢复、充值准备读取和诊断改进提交为 **2.0.7 更新第一部分**；记录见 `docs/releases/2.0.7-development.md`。已验收 APK 为 `artifacts/UPC-Pocket-2.0.7-candidate3.apk`，5,645,368 bytes，SHA-256 `5c0f70f4e8ad1026862b884be775ef655f52be21eb747e09895b23c59f19d84b`，保留原字节。当前仅本地提交，未推送或公开发布，公开版本仍为下述 2.0.6；用户验收与开发侧离线空账号成品冒烟分别记录，不扩写为真实校园订单、微信付款或到账验证。
+所有任务先读根及目标路径上适用的局部指令；以下是额外必读资料。读取实际相关章节，不能仅凭文件名判断已经理解。
 
-2026-11-15 用户验收 **2.0.6 / versionCode 27 candidate4** 并授权后，已于上海时间 **18:48:33** 正式公开 `v2.0.6` 并设为 latest；`main` 与 tag 的发布提交为 `e03a2a1a38f738f0da10f699dffb778095f40537`，记录见 `docs/releases/2.0.6.md`。沿用已验收 APK 原字节（5,596,216 bytes，SHA-256 `38debce7078480254b08a24d377d48f3675a9195c8fcaccfa4859b460d9b02c1`），正式命名 `UPC-Pocket-2.0.6.apk`，不得重编。当前下载只提供 GitHub 与 gh-proxy；六附件同批公开，旧版两个更新文件原字节保留。推广图使用真实页面与合成数据，详情见 `docs/images/2.0.6/promo/README.md`。用户验收与开发侧真实只读准备分别记录，不能扩写为开发侧已独立完成真实下单、微信付款或到账。下列 candidate2/3/4 段落保留当时开发现场，当前状态以正式记录为准。
+| 任务 | 必须查阅 |
+| --- | --- |
+| 普通 Bug | 对应源代码与相关测试；局部指令引用的业务记录 |
+| 新功能/跨模块改动 | [架构](ARCHITECTURE.md)、[内部契约](API.md)、相关 [ADR](docs/adr/README.md)、[贡献流程](CONTRIBUTING.md) |
+| 插件/公开接口 | [API](API.md)、架构的依赖/扩展章节、ADR 001；核对所有消费者 |
+| 账号/CAS/学校接入 | 架构的账号流程、[隐私](docs/PRIVACY.md)、ADR 002、[官方入口](docs/upc/官方入口.md)及[入口 JSON](docs/upc/official-entrypoints.json)、相关 research |
+| 持久化/迁移/清理 | 架构的数据归属、ADR 003、所属模块模型/schema与测试；账号清理还读 ADR 002 |
+| 组件/课表/导航/视觉 | app 与对应 feature 指令、[M5 入口映射](docs/m5/README.md)、[课表与组件设计](docs/m5/2026-11-05-课表与组件设计.md)、[组件视觉](docs/m5/2026-11-05-组件视觉修订.md) |
+| 权限/Intent/诊断/更新安全 | [隐私](docs/PRIVACY.md)、app/core 指令、相关 Android 技能；更新另读 [更新机制](docs/updates/README.md)与 ADR 004 |
+| 构建/依赖/验证环境 | [BUILD](docs/BUILD.md)、[CONTRIBUTING](CONTRIBUTING.md)、version catalog与受影响模块 Gradle |
+| 发布/分发 | BUILD、更新机制、ADR 004、[CHANGELOG](docs/CHANGELOG.md)、对应 `docs/releases/` 记录与用户授权 |
+| 文档/指令/Agent 兼容 | [Agent 手册](docs/agent-native/README.md)、[兼容记录](docs/agent-native/agent-compatibility.md)、本轮[审计报告](docs/agent-native/2026-11-16-audit-and-delivery.md) |
 
-2026-11-15 后续按用户要求将 [PR #5](https://github.com/dlam12138/UPCPocket/pull/5) 的本人校园卡微信充值纳入同一 **2.0.6 / 27** 本地候选：正常路径为「输入金额 → 点击充值 → 拉起微信」，不再叠加金额确认；保留动态学校额度、待查订单防重、账号代次与未知结果恢复。充值是本轮新增的校园写操作实现，不能套用下文首批界面更新的只读验证结论。已完成定向测试（412 通过、1 跳过）、独立审查、Lint、R8/资源收缩签名 candidate3 及保留数据覆盖安装；修复业务会话失效和订单标记提交确认，实际证据见 `docs/releases/2.0.6-card-recharge.md`。当前未发布，真实微信付款与到账未验证。
+文档与代码冲突时调查并报告；先确认是否是历史现场或尚未完成的迁移，不自行猜测。改动后检查文档同步，最终说明实际查阅的关键文档。
 
-同日 candidate4 修复真实准备阶段的空额度配置拒绝，按学校官方 UI 缺省及动态配置顺序兼容；使用同一生产源码的 Debug APK 完成本人账号原生只读准备复验，订单/付款请求为 0，不代表最终 Release 真账号 UI 或支付验收。本轮定向单测 261 通过、1 跳过，独立审查、模块边界、Lint、R8/资源收缩签名 candidate4、保留数据覆盖安装及空账号 Release/组件冷启动检查完成。版本仍为 2.0.6 / 27，本轮修复未提交、未推送、未发布，真实下单、微信付款与到账未验证；产物和证据见同一充值集成记录。上段 candidate3 验证保留为历史。
+## 产品、安全与数据约束
 
-2026-11-15 的 **2.0.6 界面与交互更新已实现并生成本地签名交付候选，尚未发布**，需求入口见 `docs/design/2.0.6-ui-refresh.md`，实际证据见 `docs/releases/2.0.6-development.md`。工程候选为 2.0.6 / versionCode 27，已完成定向测试、独立审查、Lint、R8/资源收缩构建及保留数据覆盖安装；公开版本仍为下述 2.0.5。今日课程已移至首页顶部，待办与服务收紧，课表/查询页/设置优化，空闲教室为重点；专注不改。图书馆登录默认一行、点击展开。账号页及共用设置摘要按用户新要求删除固定「尚未验证」、改为「已保存」，保存成功提示同步简化；这覆盖上文 M1 的旧展示文案要求，内部状态及独立业务认证不迁移，不得改称「已登录」或「学校认证通过」。设备检查范围、已知边界与待用户视觉验收状态以开发记录为准，不把本地候选当作正式发布。
+- UI、领域模型与数据来源分离。失败、离线、缓存、未验证、验证码、清理未完成、结果未知和有后果的确认必须真实表达；不把缺数据或请求失败显示成成功空结果。账号保存显示“已保存”，内部仍为 `SAVED_UNVERIFIED`，不得称“已登录”或“学校认证通过”。
+- 当前四 tab 为“首页 / 课表 / 待办 / 专注”，Pager 与浮动胶囊联动；统一设置入口在首页右上角，不重建“更多”目录。快捷路径可以多处指向同一路由；改入口同步 M5 的旧→新映射与缺插件行为。用户文案短且具体，技术约束收进已有“数据说明/关于”，不新增说明入口。
+- 新增校园能力核对 UPC 来源，禁止套用 `docs/archive/zzu/` 中的域名、认证、Token、宿舍规则或验证结论。校园受保护接口以实际取得的授权为限；本地开发、构建和技能安装不构成学校接口授权。只读准备、下单、微信分发、付款与到账分别记录，不能互相替代。
+- 账号密码、Cookie、Token、私钥、未脱敏学生业务数据不写入源码、文档、日志、样本。根 `官方入口.txt` 可能含临时凭据，不原样提交、复制配置或输出日志。SDK 路径只放被忽略的 `local.properties`，JDK 走本机环境，不硬编码共享配置。
+- 诊断只允许固定枚举、有界数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止账号标识、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息及自由文本。用户主动导出，专用目录和临时 FileProvider 授权；诊断失败不得影响业务。
+- 更新仅固定仓库 `dlam12138/UPCPocket` 和内置候选域；内置 ECDSA P-256 公钥先验原始 UTF-8 字节再解析固定字段。禁止 GitHub API/PAT 依赖、清单指定任意主机/算法、镜像 SHA 文本代替真实性、静默安装、卸载/清数据换签名。更新 provider 独立且仅暴露 `cache/updates/`；用 PackageInstaller 交系统确认。
+- 新版发布同批提供 APK、`update-next.json`、`update-next.sig`、`SHA256SUMS.txt`；设 latest 时原字节附带旧 `update.json`/`update.sig`，旧线路继续指向 2.0.3，旧 Release 不变。公开后不原地替换资产；私钥只在仓库外，发布脚本只读环境变量。release 不得引入 debug 测试源或降低 TLS 策略。
+- 保留上游版权与许可证，Android 技能另适用 [Apache-2.0](.agents/android-skills-LICENSE.txt)。
 
-2026-11-14 用户已验收并授权正式推送 **2.0.5 / versionCode 26**，当时标注“重大更新”公开发布并设为 latest，现由 2.0.6 接续。沿用已验收 APK 原字节，六件附件同批公开、旧版更新元数据原字节保留；记录见 `docs/releases/2.0.5.md`，社交平台文案见 `docs/releases/2.0.5-notice.md`。2.0.5 新增石光与 e站通只读服务，完善流水年月点选、网页登录回退、自动登录和 schema 4 诊断；不得把真实正常登录验证扩写为真实验证码/二次验证、全部设备或校园写操作验收。
+## 执行、验证与交付
 
-当前发布应用身份为 **UPC Pocket 新版 / `com.upcpocket.next`**，2.0.6 / versionCode 27 于 2026-11-15 发布，使用独立长期 Release 签名，可与旧版 `com.upcpocket.app` 并存；Kotlin/资源 namespace 仍为 `com.upcpocket.app`。不迁移或清除旧包数据。新版更新文件固定为同仓库 `update-next.json` / `update-next.sig`；新版设为 latest 时须原字节附带旧 `update.json` / `update.sig`，保持旧线路指向 2.0.3，旧 Release 资产不变。当前发布记录见 `docs/releases/2.0.6.md`；此前记录见 `docs/releases/2.0.5.md`、`docs/releases/2.0.4.md`。上文旧标识、下文历史发布记录均保留其当时状态。
+简单任务直接处理；复杂需求、跨模块或重大技术决定先 planner；外部事实、官方文档或文献交 researcher；实际代码修改交 coder。重要变更分别由 tester 测试、reviewer 独立审查。任务须给目标、文件范围、限制与验收标准；独立任务可并行，同一文件只有一个写入者。检查返回证据，失败或审查问题回 coder 修复并定向复核，不把角色声明直接当验证事实。删除、覆盖、迁移、权限扩大、生产部署和高成本计算严格遵守用户授权；不扩大已授权范围。
 
-本次 **2.0.4 / versionCode 25** 整合古镇口东区、求是的按时段找座位/个人隐藏/布局对齐、校园卡原生本人流水及古镇口空闲教室卓越 A/B 筛选。图书馆真实预约、取消、签到仍未验证，历史候选 APK 不包含流水。见 `docs/releases/2.0.4-chaoxing-library-parity.md` 与 `docs/research/native-card-history.md`。上文流水合入时未改 versionCode 的描述是当时状态。
+Windows 常用入口（按影响选择，不机械全跑）：
 
-旧版线路当前正式版为 **2.0.3 / versionCode 24**，包含就地引导、空闲教室自动查询、本机待办提醒、首页摘要、四项整页滑动导航，以及唐岛湾按时段找座位/个人隐藏。当前导航为「首页 / 课表 / 待办 / 专注」，胶囊跟随 Pager 进度；上文 M5 三 tab 记录保留为历史。最新图书馆设计与验证见 `docs/design/2.0.3-library-time-search.md`、`docs/releases/2.0.3-library-time-search.md`；正式发布记录见 `docs/releases/2.0.3.md`，APK 与签名更新四件套同批发布；图书馆新增筛选和隐藏本轮仅适配唐岛湾。热力图改造属于另一个项目，本项目保持原样。
+```powershell
+.\gradlew.bat checkModuleBoundaries
+.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest
+.\gradlew.bat :app:assembleRelease
+```
 
-2026-11-06 用户验收通过课表修复、诊断导出与应用内更新，以 **2.0.2 / versionCode 23** 正式发布。2.0.1（21/22）为本地复测候选，不作为独立正式 Release。所有已提交支线成果合入 main；历史阶段文档保留当时状态。
+Linux/macOS 使用 `sh ./gradlew`（仓库 wrapper 未设可执行位）；模块单测与 Lint 选择见 CONTRIBUTING。`:app:testDebugUnitTest` 只代表宿主测试，不代表所有模块。`--dry-run` 只验证任务解析，不是测试通过。已知 `:app:testReleaseUnitTest` 可能受 debug-only `ui-test-manifest` 影响；用 debug 定向单测与必要 Release 安装冒烟，不为此改架构。
 
-## 实现与验证
+用户需要 APK 时默认交付 **R8 + resource shrink、长期 Release 签名的 universal APK**，保留全部功能；不擅改 ABI 多包或删功能。缺有效 `keystore.properties`/release key 必须失败，不能回退 debug 签名。报告实际字节数、SHA-256、证书指纹和 ABI；覆盖安装前比对包名、versionCode 和证书，不卸载、`pm clear` 或清用户数据。检查实际 merged manifest/APK 条目，确认 debug 合成 provider/预览 Activity/开关不进入 release。涉及 R8/系统入口的改动按实际影响安装冒烟，核查账号恢复、组件刷新/整卡导航及相关存储、WebView、插件、Worker 路径；必要时包含普通进程重启，不扩大为无关极端状态测试。
 
-- UI、领域模型与数据来源分离；本地能力与校园业务接口分别处理，错误和离线状态必须真实反映数据可用性。
-- 保留上游版权与许可证；第三方技能的 Apache-2.0 许可证见 `.agents/android-skills-LICENSE.txt`。
-- 机器专属 SDK 路径放入被 Git 忽略的 `local.properties`；JDK 路径使用本地环境或 IDE 配置，不能硬编码进共享 Gradle 配置。
-- 代码改动运行与影响范围匹配的构建和测试。Android 常规验证：`./gradlew :app:assembleDebug :app:testDebugUnitTest`；Windows 使用 `./gradlew.bat`。
-- 纯规范和文档变更检查路径、引用、来源及差异即可，无需重复构建 APK。
-- 本机诊断只写固定枚举、数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止写入账密、Cookie、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息或自由文本。导出必须由用户主动触发，FileProvider 只开放专用导出子目录并临时授权；诊断失败不得影响业务。
-- 应用内更新只允许固定 GitHub 仓库 `dlam12138/UPCPocket` 和内置候选域；清单必须用内置 ECDSA P-256 公钥验签原始 UTF-8 字节，再解析固定字段。不得依赖 GitHub API/PAT、不得让清单决定任意主机/算法、不得把镜像 SHA 文本当真实性、不得自动静默安装或为换签名卸载/清数据。新版每次发布必须同批提供 APK + `update-next.json` + `update-next.sig` + `SHA256SUMS.txt`（旧包历史线路仍用 `update.json` / `update.sig`），公开后不原地替换资产。更新私钥只在仓库外，发布脚本只读环境变量；`src/debug` 受控测试源不得进入 release，release TLS/网络安全配置不得为测试降低。更新 FileProvider 独立且只暴露 `cache/updates/`；最终安装用 PackageInstaller 会话交由系统确认，不静默安装。
-- 交付说明写清改动、实际验证结果与尚未验证的部分；不能把构建成功当作真机或校园接口验证成功。
+交付写清改动、实际验证、未验证部分、遗留风险及建议；区分 Mock/单测、集成、设备、真实校园与用户验收。不得把构建成功、HTTP 200、入口可达或会话建立当业务全部成功。纯文档任务交付文档报告，不构建 APK、不触发 CAS、不推送或发布。
 
-## 精简交付规范
+## 技能与长期维护
 
-- **面向用户文案少且具体**：标题、按钮、空态优先短句；不写协议名、实现名、开发者自证、重复作用说明或长期免责声明；技术约束收进现有“数据说明/关于”，不新增入口。失败、离线、缓存、未验证、验证码、清理未完成、结果未知和带后果的确认必须保留。
-- 面向用户的默认最终产物是 **R8 + resource shrink 的已签名 Release APK**；debug APK 只用于开发、视觉夹具和定向测试，不把 60MB+ debug 包当交付。若用户明确要调试包，再单独说明。
-- 保留现有全部功能，优先用 R8/资源收缩减小体积；默认 universal APK，不擅自改 ABI 多包或删功能。用实际 `assembleRelease` 产物报告字节数、SHA-256、签名证书指纹和 ABI；不凭经验承诺“几 MB”。
-- 新版 Release 固定使用仓库外长期 keystore；缺少有效 `keystore.properties`/release key 时必须构建失败，禁止自动回退 debug 签名。debug 仅用于开发。不得为了换签名而卸载、`pm clear` 或清除用户数据；覆盖安装前比对包名、versionCode 与证书指纹。旧包历史开发签名记录保留原文。
-- `src/debug` 的合成 provider、预览 Activity、调试开关和测试数据不得进入 release manifest/APK；构建后检查 merged manifest 和 APK 条目，不只依赖 source set 约定。
-- R8 后的 RemoteViews、WorkManager、插件发现、序列化、账号恢复、Room/DataStore、WebView 和点击导航需要真实安装冒烟，至少覆盖进程死亡、组件刷新、整卡导航；`assembleRelease` 成功不等于这些路径可用。
-- 已知 `:app:testReleaseUnitTest` 可能因 debug-only `ui-test-manifest` 配置失败；这是测试基础设施问题，不要为此改架构。采用 debug 定向单测 + release 真机/模拟器冒烟，并如实报告未覆盖分支。
+Android 任务先按[技能描述](docs/android-skills.md)读取直接相关的 `SKILL.md`，首次使用时告知用户，按需读资源；新 API/工具/依赖先核对现有工具链。性能读 `jetpack-compose-performance`；自适应读 `adaptive`；Insets 读 `edge-to-edge`；权限/Intent 分别读相应 security 技能；测试基础设施读 `testing-setup`；ANR/性能/R8 按任务选相应技能。不要扩大范围执行全部技能、直接改上游副本或静默更新固定提交；更新需审查差异、来源和许可证。其他 Agent 未确认自动发现技能时按手册显式读取。Lody 命令必须先读成功的命令专属 `lody_help({command: TOOL_NAME})`，帮助与命令顺序执行；上下文丢失后重读。
 
-## 文档归属与入口来源
-
-- 当前目标学校为中国石油大学（华东），UPC 官方入口以 `docs/upc/官方入口.md` 和 `docs/upc/official-entrypoints.json` 为准。
-- `docs/archive/zzu/` 仅为郑州大学历史参考；其中的域名、认证、Token、房号、校区和验收结论不得作为 UPC 事实。
-- 跨学校可复用的研究方法见 `docs/research/校园系统探索方法.md`。
-- 根目录 `官方入口.txt` 是本机原始材料，可能包含临时凭据；不要原样提交、复制进配置或输出日志。
-- 入口可访问、会话建立、数据读取与业务成功分别记录，不能把 HTTP 200 当作接入完成。
+发现规则错误及时报告，反复出现且已验证的长期经验才固化到最合适层级；不把每次临时 Bug 写入指令，不重复父级、不随意新增 AGENTS。重要规则不得未经说明删除或弱化。架构变化同步 ARCHITECTURE 与相关 ADR；公共契约同步 API；使用方式同步 README；发布维护现有 docs/CHANGELOG；文档本身也需 Review。所有文档改动和实读依据纳入最终报告。无 CI 的项目不得声称 CI 已保障约束，自动化覆盖与缺口见审计报告。

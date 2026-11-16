@@ -7,11 +7,15 @@
 | Android | minSdk 31 / compileSdk 与 targetSdk 36 |
 | JDK | 17+（本机 Android Studio JBR 21） |
 | Android Gradle Plugin | 8.7.3 |
-| Kotlin | 2.0.31 |
+| Gradle wrapper | 8.9 |
+| Kotlin | 2.0.21 |
+| KSP | 2.0.21-1.0.28 |
 | Compose BOM | 2024.12.01 |
 | Room | 2.6.1 |
 
 安装 Android SDK 36 与项目所需 Build Tools。通过环境变量配置本机 JDK，SDK 路径写入根目录 `local.properties`，例如 `sdk.dir=/your/android-sdk`。不提交本机路径或签名文件。
+
+版本依据为 [libs.versions.toml](../gradle/libs.versions.toml)、[wrapper](../gradle/wrapper/gradle-wrapper.properties)与 [app Gradle](../app/build.gradle.kts)。Java/Kotlin 目标为 17；本机 JBR 21 是环境实例，不应硬编码进共享配置。开发流程与按模块选择验证见 [CONTRIBUTING](../CONTRIBUTING.md)，Agent 先读[根指令](../AGENTS.md)。
 
 ## 检查与构建
 
@@ -21,13 +25,15 @@ Windows PowerShell：
 .\gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-Linux/macOS：
+Linux/macOS（仓库 wrapper 未设可执行位，经 sh 运行）：
 
 ```sh
-./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+sh ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
 调试包输出到 `app/build/outputs/apk/debug/`。测试成功不能替代本人设备上的校园接口验收；不要在测试中放入真实学号、Cookie、Token 或业务记录。
+
+上述为 Android 常规入口，`:app:testDebugUnitTest` 仅宿主测试。按影响选择对应 core/feature 的任务及 `checkModuleBoundaries`；不做非必要极端状态/重复全量测试。纯文档无需构建。确需 CAS 验收时，经已有安全入口使用已授权本人真实账密，不向学校提交合成账号、不将凭据放入测试或命令日志；Mock 只验证其覆盖的逻辑。
 
 ## 新版应用身份
 

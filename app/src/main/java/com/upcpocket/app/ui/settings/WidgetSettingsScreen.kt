@@ -97,14 +97,14 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "先在应用内查询一次，再添加对应组件。点击组件右上角刷新，点击主体打开功能页。",
+                text = "点击组件打开功能页。课表和校园卡自动更新；电量可点右上角刷新。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             WidgetCard(
                 title = "校园卡余额",
-                description = "余额与更新时间；换号后旧值会清除。",
+                description = "自动更新总余额，下方显示过渡余额；换号后旧值会清除。",
                 icon = Icons.Filled.CreditCard,
                 supported = supported,
                 onPin = {
@@ -126,7 +126,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
             )
             WidgetCard(
                 title = "今日课表",
-                description = "下一堂或正在上的课；未同步时明确提示。",
+                description = "同步一次后，随上下课和日期自动切换；未同步时明确提示。",
                 icon = Icons.Outlined.CalendarMonth,
                 supported = supported,
                 sizeLabel = "2×2 · 可拉到 4×2",
@@ -146,6 +146,11 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
+            )
+            Text(
+                text = "自动更新可能因系统省电而延迟。课表只切换已同步的课程，未缓存时需打开应用同步。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

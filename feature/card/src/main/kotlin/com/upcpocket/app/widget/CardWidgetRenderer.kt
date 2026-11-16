@@ -15,10 +15,10 @@ import com.upcpocket.app.feature.card.R
 /**
  * 校园卡余额的 RemoteViews 渲染器。
  *
- * 目标与缓存都必须来自当前统一账号绑定。没有成功快照但已绑定时，刷新按钮仍可
- * 触发后台查询；清理中/无绑定时只显示无身份的空状态，绝不保留旧学号或旧金额。
+ * 目标与缓存都必须来自当前统一账号绑定。后台自动更新由宿主调度；清理中/无绑定时
+ * 只显示无身份的空状态，绝不保留旧学号或旧金额。
  *
- * 2×2 只保留“校园卡 / 余额 / 更新时间”三层。脱敏学号不再常驻组件，账号目标与
+ * 显示总余额、过渡余额与更新时间。脱敏学号不再常驻组件，账号目标与
  * 真实绑定状态仍完整保留在应用页面和账号设置。
  */
 class CardWidgetRenderer(private val context: Context) {
@@ -29,7 +29,6 @@ class CardWidgetRenderer(private val context: Context) {
         refreshing: Boolean,
         failed: Boolean,
         openApp: () -> PendingIntent,
-        refresh: () -> PendingIntent,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_card_balance)
         views.setOnClickPendingIntent(R.id.widget_card_root, openApp())
@@ -43,6 +42,7 @@ class CardWidgetRenderer(private val context: Context) {
         val primary = context.getColor(DesignSystemR.color.widget_primary)
         val secondary = context.getColor(DesignSystemR.color.widget_secondary)
         views.setTextColor(R.id.widget_card_balance, primary)
+        views.setViewVisibility(R.id.widget_card_transition, View.GONE)
 
         if (binding == null || ownedSnapshot == null) {
             val (headline, stateHint) = when (status.availability) {
@@ -88,27 +88,10 @@ class CardWidgetRenderer(private val context: Context) {
                 },
             )
 
-            val canRefresh = binding != null &&
-                status.availability == CardBindingAvailability.READY
-            if (canRefresh) {
-                views.setOnClickPendingIntent(R.id.widget_card_refresh, refresh())
-                views.setContentDescription(
-                    R.id.widget_card_refresh,
-                    context.getString(R.string.widget_refresh_card),
-                )
-            } else {
-                // 无绑定/清理中不启用网络刷新，点击只打开应用处理账号状态。
-                views.setOnClickPendingIntent(R.id.widget_card_refresh, openApp())
-                views.setContentDescription(
-                    R.id.widget_card_refresh,
-                    context.getString(R.string.widget_open_card),
-                )
-            }
-            views.setFloat(R.id.widget_card_refresh, "setAlpha", if (refreshing) 0.5f else 1f)
             return views
         }
 
-        val value = ownedSnapshot.balanceText
+        val value = ownedSnapshot.totalBalanceText
         val fontScale = context.resources.configuration.fontScale
         val numberSize = numberTextSize(value, fontScale)
         views.setTextViewText(R.id.widget_card_balance, value)
@@ -124,6 +107,11 @@ class CardWidgetRenderer(private val context: Context) {
         )
         views.setTextColor(R.id.widget_card_unit, secondary)
         views.setViewVisibility(R.id.widget_card_unit, View.VISIBLE)
+        views.setTextViewText(
+            R.id.widget_card_transition,
+            context.getString(R.string.widget_card_transition, ownedSnapshot.transitionText),
+        )
+        views.setViewVisibility(R.id.widget_card_transition, View.VISIBLE)
 
         val meta = WidgetRenderSupport.metaText(
             context = context,
@@ -143,12 +131,6 @@ class CardWidgetRenderer(private val context: Context) {
             colorRes = WidgetRenderSupport.metaColor(refreshing, failed),
         )
 
-        views.setOnClickPendingIntent(R.id.widget_card_refresh, refresh())
-        views.setContentDescription(
-            R.id.widget_card_refresh,
-            context.getString(R.string.widget_refresh_card),
-        )
-        views.setFloat(R.id.widget_card_refresh, "setAlpha", if (refreshing) 0.5f else 1f)
         return views
     }
 

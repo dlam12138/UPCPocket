@@ -1,6 +1,5 @@
 package com.upcpocket.app.debug
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -86,15 +85,6 @@ class SyntheticTimetableWidgetProvider : AppWidgetProvider() {
                 context,
                 WidgetLaunchTarget.TIMETABLE,
                 widgetId,
-            ),
-            refreshIntent = PendingIntent.getBroadcast(
-                context,
-                widgetId,
-                Intent(context, providerClass).apply {
-                    action = ACTION_REFRESH
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ),
         )
 

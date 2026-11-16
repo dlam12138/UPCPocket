@@ -14,7 +14,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /**
- * 课表组件 RemoteViews 渲染器。只接收最小今日快照和两个显式 PendingIntent，不读账号、
+ * 课表组件 RemoteViews 渲染器。只接收最小今日快照和显式导航 PendingIntent，不读账号、
  * 不发网络；所有“无账号/未同步/清理中/非教学周/无课”状态都显式呈现。
  *
  * 空间顺序固定为：页头 → 日期/状态 → 主课（课程名最多两行、时间、地点）→ 次课 →
@@ -32,11 +32,9 @@ object TimetableWidgetRenderer {
         refreshing: Boolean,
         failed: Boolean,
         openIntent: PendingIntent,
-        refreshIntent: PendingIntent,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_timetable_today)
         views.setOnClickPendingIntent(R.id.widget_timetable_root, openIntent)
-        views.setOnClickPendingIntent(R.id.widget_timetable_refresh, refreshIntent)
 
         val primary = context.getColor(DesignSystemR.color.widget_primary)
         val secondary = context.getColor(DesignSystemR.color.widget_secondary)
@@ -90,11 +88,6 @@ object TimetableWidgetRenderer {
         views.setTextColor(R.id.widget_timetable_time, secondary)
         views.setTextColor(R.id.widget_timetable_location, secondary)
         views.setTextColor(R.id.widget_timetable_footer, tertiary)
-        views.setFloat(
-            R.id.widget_timetable_refresh,
-            "setAlpha",
-            if (refreshing) 0.5f else 1f,
-        )
 
         val today = LocalDate.now(ZONE)
         val dateLabel = formatDate(today)

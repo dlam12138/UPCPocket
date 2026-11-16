@@ -1,0 +1,14 @@
+# 架构决策记录
+
+ADR 记录影响模块边界、数据兼容或信任链的长期决定，不记录普通 Bug 修复。当前四条于 2026-11-16 对既有代码和项目要求作追溯记录；不是本轮新增实现，也不冒充原开发时已形成的 ADR 或历史讨论纪要。
+
+| 编号 | 决策 | 状态 |
+| --- | --- | --- |
+| [001](001-module-and-plugin-boundaries.md) | Gradle 模块、内置插件与显式装配 | Accepted（追溯） |
+| [002](002-account-generation-and-business-sessions.md) | 本机账号、凭据代次与独立业务会话 | Accepted（追溯） |
+| [003](003-data-ownership-and-schema-compatibility.md) | 数据归属与既有 schema 兼容 | Accepted（追溯） |
+| [004](004-release-identity-and-update-trust.md) | 独立新版身份、长期签名与更新信任链 | Accepted（追溯） |
+
+新增重大决策使用递增编号，写明日期、状态、背景、决策、备选、理由、影响/代价和源码/需求依据。Accepted 表示当前生效；Proposed 尚未采纳；Superseded 需链接替代记录；Deprecated 说明停用原因。变更既有选择时新增关联记录并更新旧记录状态，不重写原决策内容或假造过去讨论。
+
+本批“备选方案”是此次对现行选择的对照分析，不表示当年确实讨论过。当前结构以 [ARCHITECTURE](../../ARCHITECTURE.md) 为入口，API 变化同步 [API](../../API.md)，开发步骤见 [CONTRIBUTING](../../CONTRIBUTING.md)。

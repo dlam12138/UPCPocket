@@ -12,7 +12,7 @@ import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Local-only timetable widget redraw. No account restore, no network, no CAS.
+ * Local-only timetable redraw, including bounded local account restore. No network or CAS.
  */
 class TimetableWidgetTickWorker(
     appContext: Context,
@@ -20,6 +20,20 @@ class TimetableWidgetTickWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
+        // Older persisted one-shot requests have no flag and remain boundaries.
+        val boundary = inputData.getBoolean(TimetableWidgetTicker.KEY_BOUNDARY, true)
+        if (boundary && !TimetableWidgetTicker.begin(applicationContext, id)) return Result.success()
+        var completed = false
+        try {
+            return redraw().also { completed = true }
+        } finally {
+            // A failed/cancelled prerequisite must not leave a doomed successor
+            // recorded as pending; the independent local period can recover it.
+            if (boundary) TimetableWidgetTicker.finish(applicationContext, id, isStopped || !completed)
+        }
+    }
+
+    private suspend fun redraw(): Result {
         val started = System.currentTimeMillis()
         Diagnostics.record(
             module = DiagnosticModule.WIDGET,
@@ -39,7 +53,12 @@ class TimetableWidgetTickWorker(
             reason = if (restored == null) DiagnosticReason.ACCOUNT else null,
             durationMs = (System.currentTimeMillis() - restoreStarted).coerceAtLeast(0),
         )
-        WidgetUpdates.updateKindNow(applicationContext, WidgetKind.TIMETABLE)
+        AppGraph.timetableServiceOrNull?.refreshToday()
+        WidgetUpdates.updateKindNow(
+            applicationContext,
+            WidgetKind.TIMETABLE,
+            scheduleTicker = !inputData.getBoolean(TimetableWidgetTicker.KEY_BOUNDARY, true),
+        )
         Diagnostics.record(
             module = DiagnosticModule.WIDGET,
             action = DiagnosticAction.WORKER_COMPLETE,

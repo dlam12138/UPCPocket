@@ -17,6 +17,7 @@ import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,12 +34,6 @@ class TimetableWidgetRendererTest {
         context,
         1,
         Intent(context, Activity::class.java),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
-    private val refresh = PendingIntent.getBroadcast(
-        context,
-        2,
-        Intent("test.refresh"),
         PendingIntent.FLAG_IMMUTABLE,
     )
 
@@ -72,7 +67,6 @@ class TimetableWidgetRendererTest {
         refreshing = false,
         failed = false,
         openIntent = open,
-        refreshIntent = refresh,
     )
 
     private fun applied(views: RemoteViews, widthDp: Int, heightDp: Int, fontScale: Float = 1f): View {
@@ -168,10 +162,8 @@ class TimetableWidgetRendererTest {
         assertNotNull(date.layout)
         assertEquals("date must never collapse to 11…", 0, date.layout.getEllipsisCount(0))
         assertTrue(title.bottom <= root.height)
-        val refreshView = root.findViewById<View>(R.id.widget_timetable_refresh)
-        val minTouch = (44 * context.resources.displayMetrics.density).toInt()
-        assertTrue(refreshView.layoutParams.width >= minTouch)
-        assertTrue(refreshView.layoutParams.height >= minTouch)
+        assertNull(root.findViewById<View>(context.resources.getIdentifier("widget_timetable_refresh", "id", context.packageName)))
+        assertTrue(root.hasOnClickListeners())
     }
 
     @Test

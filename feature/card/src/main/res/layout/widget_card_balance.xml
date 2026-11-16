@@ -26,7 +26,6 @@
                 android:ellipsize="end"
                 android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
-                android:paddingEnd="28dp"
                 android:text="@string/widget_card_title"
                 android:textColor="@color/widget_primary"
                 android:textSize="13sp" />
@@ -72,6 +71,18 @@
                     android:textSize="15sp"
                     android:visibility="gone" />
             </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_card_transition"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/widget_secondary"
+                android:textSize="11sp"
+                android:visibility="gone" />
         </LinearLayout>
 
         <TextView
@@ -84,16 +95,4 @@
             android:textSize="10sp" />
     </LinearLayout>
 
-    <ImageButton
-        android:id="@+id/widget_card_refresh"
-        android:layout_width="44dp"
-        android:layout_height="44dp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="6dp"
-        android:layout_marginEnd="6dp"
-        android:background="@drawable/widget_refresh_touch"
-        android:contentDescription="@string/widget_refresh_card"
-        android:padding="12dp"
-        android:scaleType="centerInside"
-        android:src="@drawable/ic_widget_refresh" />
 </FrameLayout>
