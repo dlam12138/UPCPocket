@@ -38,7 +38,7 @@ class UpcCardAuthenticator internal constructor(
     private val credentials: SchoolCredentialAccess,
     private val transport: UpcAuthTransport,
 ) {
-    constructor(credentials: SchoolCredentialAccess) : this(credentials, OkHttpUpcAuthTransport())
+    constructor(credentials: SchoolCredentialAccess) : this(credentials, OkHttpUpcAuthTransport(recoverCardEntry = true))
 
     @OptIn(RestrictedSchoolCredentialUse::class)
     suspend fun authenticate(expectedAccountId: SchoolAccountId, expectedCredentialGeneration: Long): UpcCardAuthResult =

@@ -7,6 +7,11 @@ import com.upcpocket.app.account.SchoolCredentialUseResult
 import com.upcpocket.app.account.SchoolLoginCredential
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticSink
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -139,13 +144,29 @@ class UpcCardAuthenticatorTest {
     }
 
     @Test
-    fun transportTlsAndNetworkFailuresRemainDistinctFromInteraction() = runTest {
-        for ((failure, expected) in listOf(UpcAuthTransportFailure.TLS to UpcCardAuthFailure.TLS_ERROR,
-            UpcAuthTransportFailure.NETWORK to UpcCardAuthFailure.NETWORK_UNAVAILABLE)) {
-            val transport = CardFakeTransport { throw UpcAuthTransportException(failure) }
-            val result = UpcCardAuthenticator(credentials(), transport).authenticate(accountId, 3)
-            assertEquals(expected, (result as UpcCardAuthResult.Failure).reason)
-            assertEquals(0, transport.posts)
+    fun transportFailuresKeepTypedResultWithoutAppendingGenericFormRejection() = runTest {
+        val events = mutableListOf<DiagnosticEvent>()
+        Diagnostics.install(object : DiagnosticSink {
+            override fun record(event: DiagnosticEvent) { events += event }
+        })
+        try {
+            for ((failure, expected) in listOf(
+                UpcAuthTransportFailure.NETWORK to UpcCardAuthFailure.NETWORK_UNAVAILABLE,
+                UpcAuthTransportFailure.TIMEOUT to UpcCardAuthFailure.NETWORK_UNAVAILABLE,
+                UpcAuthTransportFailure.TLS to UpcCardAuthFailure.TLS_ERROR,
+                UpcAuthTransportFailure.TOO_LARGE to UpcCardAuthFailure.UPSTREAM_ERROR,
+                UpcAuthTransportFailure.PROTOCOL to UpcCardAuthFailure.UPSTREAM_ERROR,
+            )) {
+                events.clear()
+                val transport = CardFakeTransport { throw UpcAuthTransportException(failure) }
+                val result = UpcCardAuthenticator(credentials(), transport).authenticate(accountId, 3)
+                assertEquals(expected, (result as UpcCardAuthResult.Failure).reason)
+                assertEquals(0, transport.posts)
+                assertEquals(1, transport.requests.size)
+                assertEquals(DiagnosticPhase.ENTRY_GET, events.single { it.action == DiagnosticAction.AUTH_STOP }.phase)
+            }
+        } finally {
+            Diagnostics.install(null)
         }
     }
 

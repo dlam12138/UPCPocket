@@ -4,6 +4,15 @@ import android.util.AtomicFile
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.StudentIdFormat
 import com.upcpocket.app.platform.RefreshInvalidatedException
+import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
+import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import java.io.File
 import java.io.FileNotFoundException
 import java.math.BigDecimal
@@ -12,6 +21,9 @@ import java.net.URI
 import java.net.URLEncoder
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -31,7 +43,19 @@ import kotlinx.serialization.json.JsonPrimitive
  * 轻量版第二步删除了平台登录与流水，这个异常仍被余额查询的传输/解析使用，
  * 因此保留在余额实现文件里（原先定义在已删除的平台客户端中）。
  */
-class CampusCardException(message: String, cause: Throwable? = null) : java.io.IOException(message, cause)
+internal enum class DirectCardBalanceFailureKind { NETWORK, HTTP, SCHEMA, STORAGE, CLEANUP }
+
+class CampusCardException(
+    message: String,
+    cause: Throwable? = null,
+) : java.io.IOException(message, cause) {
+    internal var failureKind: DirectCardBalanceFailureKind? = null
+        private set
+
+    internal constructor(message: String, failureKind: DirectCardBalanceFailureKind) : this(message) {
+        this.failureKind = failureKind
+    }
+}
 
 /** Contract supplied in 用户资料“石大校园卡余额查询实现方法”; no authenticated-session claim. */
 object DirectCardBalanceProtocol {
@@ -69,7 +93,10 @@ object DirectCardBalanceProtocol {
             )
         } catch (_: Exception) {
             // Never expose server bodies, names or student identifiers in errors.
-            throw CampusCardException("学校未返回有效的本人校园卡余额（状态、学号或金额校验失败）")
+            throw CampusCardException(
+                "学校未返回有效的本人校园卡余额（状态、学号或金额校验失败）",
+                failureKind = DirectCardBalanceFailureKind.SCHEMA,
+            )
         }
     }
 }
@@ -287,6 +314,7 @@ class DirectCardBalanceRepository internal constructor(
     private val afterBlockingCacheRead: () -> Unit = {},
     // 测试可跳过 prepareMigration，单独验证“迟到磁盘读取不得回填内存”。
     private val prepareForCacheRead: (suspend (CardBalanceBinding) -> Unit)? = null,
+    private val beforeStoreSave: () -> Unit = {},
     private val request: suspend (String) -> String = { requestDirectCardBalance(it) },
 ) {
     private val mutableSnapshot = MutableStateFlow<DirectCardSnapshot?>(null)
@@ -449,45 +477,156 @@ class DirectCardBalanceRepository internal constructor(
      * 按当前绑定查询。首次无历史快照也能工作；没有绑定、绑定已变化或缓存清理
      * 尚未完成时抛出异常，调用方不得把旧数据当成本次结果，也不得联网。
      */
-    suspend fun refreshCurrent(): DirectCardSnapshot = withContext(Dispatchers.IO) {
-        val initial = currentBinding() ?: throw RefreshInvalidatedException()
-        runCatching { prepareMigration(initial) }
-        if (clearing || store.isClearPending()) {
-            throw CampusCardException("余额缓存清理尚未完成，请先重试清除")
+    suspend fun refreshCurrent(): DirectCardSnapshot {
+        val startedNanos = System.nanoTime()
+        val operation = runCatching { Diagnostics.beginOperation() }.getOrNull()
+        var phase = DiagnosticPhase.SESSION
+        recordBalanceOutcome(operation, startedNanos, phase, DiagnosticResult.PENDING, null)
+        val result = try {
+            withContext(Dispatchers.IO) {
+                val coroutineContext = currentCoroutineContext()
+                coroutineContext.ensureActive()
+                val initial = currentBinding() ?: throw RefreshInvalidatedException()
+                runCatching { prepareMigration(initial) }
+                coroutineContext.ensureActive()
+                if (clearing || store.isClearPending()) {
+                    throw CampusCardException(
+                        "余额缓存清理尚未完成，请先重试清除",
+                        failureKind = DirectCardBalanceFailureKind.CLEANUP,
+                    )
+                }
+                refreshLock.withLock {
+                    coroutineContext.ensureActive()
+                    val binding = currentBinding() ?: throw RefreshInvalidatedException()
+                    if (binding != initial) throw RefreshInvalidatedException()
+                    val startEpoch = businessEpoch.get()
+                    phase = DiagnosticPhase.RESPONSE
+                    val response = try {
+                        request(DirectCardBalanceProtocol.form(binding.studentId))
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (known: CampusCardException) {
+                        throw known
+                    } catch (_: Exception) {
+                        throw CampusCardException(
+                            "无法连接学校校园卡余额服务，请检查网络后重试",
+                            DirectCardBalanceFailureKind.NETWORK,
+                        )
+                    }
+                    coroutineContext.ensureActive()
+                    phase = DiagnosticPhase.PARSE
+                    val parsed = DirectCardBalanceProtocol.parse(response, binding.studentId, clock())
+                    coroutineContext.ensureActive()
+                    val value = parsed.copy(
+                        accountId = binding.accountId.value,
+                        credentialGeneration = binding.credentialGeneration.value,
+                    )
+                    if (clearing || store.isClearPending()) {
+                        throw CampusCardException(
+                            "余额缓存清理尚未完成，请先重试清除",
+                            failureKind = DirectCardBalanceFailureKind.CLEANUP,
+                        )
+                    }
+                    if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
+                        throw RefreshInvalidatedException()
+                    }
+                    phase = DiagnosticPhase.CACHE
+                    fileLock.withLock {
+                        coroutineContext.ensureActive()
+                        if (clearing || store.isClearPending()) {
+                            throw CampusCardException(
+                                "余额缓存清理尚未完成，请先重试清除",
+                                failureKind = DirectCardBalanceFailureKind.CLEANUP,
+                            )
+                        }
+                        if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
+                            throw RefreshInvalidatedException()
+                        }
+                        try {
+                            beforeStoreSave()
+                            store.saveCurrent(value)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            throw CampusCardException(
+                                "已读取余额，但本机保存失败，请重试",
+                                failureKind = DirectCardBalanceFailureKind.STORAGE,
+                            )
+                        }
+                        coroutineContext.ensureActive()
+                        // Saving may overlap account invalidation; stale results are never published.
+                        if (clearing || store.isClearPending()) {
+                            throw CampusCardException(
+                                "余额缓存清理尚未完成，请先重试清除",
+                                failureKind = DirectCardBalanceFailureKind.CLEANUP,
+                            )
+                        }
+                        if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
+                            throw RefreshInvalidatedException()
+                        }
+                        publishSnapshot(value)
+                    }
+                    value
+                }
+            }
+        } catch (failure: Throwable) {
+            val (diagnosticResult, reason) = balanceFailureOutcome(failure, phase)
+            recordBalanceOutcome(operation, startedNanos, phase, diagnosticResult, reason)
+            throw failure
         }
-        refreshLock.withLock {
-            val binding = currentBinding() ?: throw RefreshInvalidatedException()
-            if (binding != initial) throw RefreshInvalidatedException()
-            val startEpoch = businessEpoch.get()
-            val parsed = DirectCardBalanceProtocol.parse(
-                request(DirectCardBalanceProtocol.form(binding.studentId)),
-                binding.studentId,
-                clock(),
+        recordBalanceOutcome(operation, startedNanos, DiagnosticPhase.PUBLISH, DiagnosticResult.OK, null)
+        return result
+    }
+
+    private fun recordBalanceOutcome(
+        operation: DiagnosticOperation?,
+        startedNanos: Long,
+        phase: DiagnosticPhase,
+        result: DiagnosticResult,
+        reason: DiagnosticReason?,
+    ) {
+        if (operation == null) return
+        runCatching {
+            Diagnostics.record(
+                module = DiagnosticModule.CARD,
+                action = DiagnosticAction.OPERATION_STAGE,
+                result = result,
+                reason = reason,
+                phase = phase,
+                detail = DiagnosticDetail.CARD_BALANCE_QUERY,
+                operation = operation,
+                durationMs = ((System.nanoTime() - startedNanos).coerceAtLeast(0) / 1_000_000)
+                    .coerceAtMost(DiagnosticEvent.MAX_DURATION_MS),
             )
-            val result = parsed.copy(
-                accountId = binding.accountId.value,
-                credentialGeneration = binding.credentialGeneration.value,
-            )
-            if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
-                throw RefreshInvalidatedException()
+        }
+    }
+
+    private fun balanceFailureOutcome(
+        failure: Throwable,
+        phase: DiagnosticPhase,
+    ): Pair<DiagnosticResult, DiagnosticReason?> = when (failure) {
+        is CancellationException -> DiagnosticResult.CANCELLED to null
+        is RefreshInvalidatedException -> DiagnosticResult.BLOCKED to
+            if (phase == DiagnosticPhase.SESSION) DiagnosticReason.ACCOUNT else DiagnosticReason.STALE
+        is CampusCardException -> when (failure.failureKind) {
+            DirectCardBalanceFailureKind.NETWORK -> DiagnosticResult.FAIL to DiagnosticReason.NETWORK
+            DirectCardBalanceFailureKind.HTTP -> DiagnosticResult.FAIL to DiagnosticReason.HTTP
+            DirectCardBalanceFailureKind.SCHEMA -> DiagnosticResult.FAIL to DiagnosticReason.SCHEMA
+            DirectCardBalanceFailureKind.STORAGE -> DiagnosticResult.FAIL to DiagnosticReason.STORAGE
+            DirectCardBalanceFailureKind.CLEANUP -> DiagnosticResult.BLOCKED to DiagnosticReason.CLEANUP
+            null -> when (phase) {
+                DiagnosticPhase.PARSE -> DiagnosticResult.FAIL to DiagnosticReason.SCHEMA
+                DiagnosticPhase.CACHE -> DiagnosticResult.FAIL to DiagnosticReason.STORAGE
+                DiagnosticPhase.RESPONSE -> DiagnosticResult.FAIL to DiagnosticReason.NETWORK
+                else -> DiagnosticResult.FAIL to DiagnosticReason.UNKNOWN
             }
-            fileLock.withLock {
-                if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
-                    throw RefreshInvalidatedException()
-                }
-                if (clearing || store.isClearPending()) throw RefreshInvalidatedException()
-                try {
-                    store.saveCurrent(result)
-                } catch (_: Exception) {
-                    throw CampusCardException("已读取余额，但本机保存失败，请重试")
-                }
-                // 保存期间账号/清理仍可能变化；落盘后再次复核，旧结果不作为新值发布。
-                if (currentBinding() != binding || businessEpoch.get() != startEpoch) {
-                    throw RefreshInvalidatedException()
-                }
-                publishSnapshot(result)
-            }
-            result
+        }
+        else -> when (phase) {
+            DiagnosticPhase.SESSION -> DiagnosticResult.BLOCKED to DiagnosticReason.ACCOUNT
+            DiagnosticPhase.RESPONSE -> DiagnosticResult.FAIL to DiagnosticReason.NETWORK
+            DiagnosticPhase.PARSE -> DiagnosticResult.FAIL to DiagnosticReason.SCHEMA
+            DiagnosticPhase.CACHE -> DiagnosticResult.FAIL to DiagnosticReason.STORAGE
+            else -> DiagnosticResult.UNKNOWN to DiagnosticReason.UNKNOWN
         }
     }
 
@@ -701,14 +840,20 @@ internal fun requestDirectCardBalance(form: String, endpoint: String = DirectCar
         val bytes = form.toByteArray(Charsets.UTF_8)
         connection.setFixedLengthStreamingMode(bytes.size)
         connection.outputStream.use { it.write(bytes) }
-        if (connection.responseCode !in 200..299) throw CampusCardException("校园卡服务暂时不可用，请稍后重试")
+        if (connection.responseCode !in 200..299) throw CampusCardException(
+            "校园卡服务暂时不可用，请稍后重试",
+            failureKind = DirectCardBalanceFailureKind.HTTP,
+        )
         return connection.inputStream.use { input ->
             val output = java.io.ByteArrayOutputStream()
             val buffer = ByteArray(4096)
             while (true) {
                 val count = input.read(buffer)
                 if (count < 0) break
-                if (output.size() + count > 256 * 1024) throw CampusCardException("校园卡响应异常过大")
+                if (output.size() + count > 256 * 1024) throw CampusCardException(
+                    "校园卡响应异常过大",
+                    failureKind = DirectCardBalanceFailureKind.SCHEMA,
+                )
                 output.write(buffer, 0, count)
             }
             output.toString("UTF-8")
@@ -716,7 +861,10 @@ internal fun requestDirectCardBalance(form: String, endpoint: String = DirectCar
     } catch (e: CampusCardException) {
         throw e
     } catch (_: java.io.IOException) {
-        throw CampusCardException("无法连接学校校园卡余额服务，请检查网络后重试")
+        throw CampusCardException(
+            "无法连接学校校园卡余额服务，请检查网络后重试",
+            DirectCardBalanceFailureKind.NETWORK,
+        )
     } finally {
         connection.disconnect()
     }

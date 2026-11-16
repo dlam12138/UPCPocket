@@ -7,7 +7,12 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.data.cardrecharge.CardRechargeProtocol
 import com.upcpocket.app.data.cardrecharge.CardRechargeServiceTest
+import com.upcpocket.app.data.card.CardDiagnosticRecorder
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -18,6 +23,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [31])
 class CardRechargeScreenTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    @After fun detachDiagnostics() { Diagnostics.install(null) }
 
     private class WeChat(private val available: Boolean = true, private val launches: Boolean = true) : CardRechargeWeChatLauncher {
         var launchCount = 0
@@ -51,6 +57,8 @@ class CardRechargeScreenTest {
     }
 
     @Test fun missing_WeChat_stops_before_creating_any_order() {
+        val diagnostics = CardDiagnosticRecorder()
+        Diagnostics.install(diagnostics)
         val fixture = CardRechargeServiceTest.Fixture()
         runBlocking { fixture.service.open() }
         // Default Android launcher checks PackageManager; this device has no WeChat handler.
@@ -62,6 +70,8 @@ class CardRechargeScreenTest {
         assertEquals(0, fixture.createPosts)
         assertEquals(0, fixture.payPosts)
         assertNull(fixture.store.value)
+        assertEquals(DiagnosticResult.BLOCKED, diagnostics.terminals(DiagnosticDetail.CARD_WECHAT_AVAILABILITY).single().result)
+        assertTrue(diagnostics.forDetail(DiagnosticDetail.CARD_ORDER_CREATE).isEmpty())
         rule.onNodeWithTag("recharge_submit").assertIsEnabled()
     }
 

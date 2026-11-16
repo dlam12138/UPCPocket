@@ -6,6 +6,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.*
@@ -227,5 +230,106 @@ class CardRechargeServiceTest {
         assertNull(f.service.submit("20"))
         assertTrue(f.history.hasSession());assertNotNull(f.store.value)
         assertEquals(1,f.authentications);assertEquals(1,f.createPosts);assertEquals(1,f.payPosts)
+    }
+
+    @Test fun `cancelling a preparation body read stops the next GET and releases busy`()=runTest {
+        val f=Fixture()
+        val requests=Collections.synchronizedList(mutableListOf<String>())
+        val entered=CountDownLatch(1)
+        val transport=object:RechargeTransport {
+            override fun request(url:String,fields:Map<String,String>?,token:String?) = f.transport.request(url,fields,token)
+            override suspend fun preparationGet(url:String,token:String?,onTransport:(com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot?)->Unit):RechargeResponse {
+                requests += url.substringAfter(CardRechargeProtocol.BASE)
+                if(url.contains("/frontInfo?")) { entered.countDown(); awaitCancellation() }
+                return f.transport.request(url,null,token)
+            }
+        }
+        val service=CardRechargeService(f.history,f.store,transport)
+        val opening=async(Dispatchers.IO) { service.open() }
+
+        assertTrue(entered.await(2,TimeUnit.SECONDS))
+        opening.cancelAndJoin()
+
+        assertEquals(2,requests.size)
+        assertTrue(requests.last().startsWith("/berserker-app/frontInfo"))
+        assertFalse(service.state.value.busy)
+        assertNull(service.state.value.rules)
+        assertNull(f.store.value)
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts)
+    }
+
+    @Test fun `preparation keeps its five read order identity and live amount rules`()=runTest {
+        val f=Fixture()
+        val paths=mutableListOf<String>()
+        val transport=object:RechargeTransport {
+            override fun request(url:String,fields:Map<String,String>?,token:String?) = f.transport.request(url,fields,token)
+            override suspend fun preparationGet(url:String,token:String?,onTransport:(com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot?)->Unit):RechargeResponse {
+                paths += url.substringAfter(CardRechargeProtocol.BASE)
+                return f.transport.request(url,null,token)
+            }
+        }
+        val service=CardRechargeService(f.history,f.store,transport)
+
+        service.open()
+
+        assertEquals(listOf(
+            "/berserker-base/user?synAccessSource=h5",
+            "/berserker-app/frontInfo?synAccessSource=h5",
+            "/berserker-app/ykt/tsm/queryCard?scene=recharge",
+            "/charge/feeitem/singleFeeitem?feeitemid=401",
+            CardRechargeProtocol.SIGNER_SOURCE.substringAfter(CardRechargeProtocol.BASE),
+        ),paths)
+        assertEquals("500",service.state.value.rules!!.maximum.toPlainString())
+        assertEquals(1,f.authentications)
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts);assertNull(f.store.value)
+    }
+
+    @Test fun `preparation epoch change after a read prevents every later request and publication`()=runTest {
+        val f=Fixture()
+        val requests=mutableListOf<String>()
+        lateinit var service:CardRechargeService
+        val transport=object:RechargeTransport {
+            override fun request(url:String,fields:Map<String,String>?,token:String?) = f.transport.request(url,fields,token)
+            override suspend fun preparationGet(url:String,token:String?,onTransport:(com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot?)->Unit):RechargeResponse {
+                requests += url.substringAfter(CardRechargeProtocol.BASE)
+                val result=f.transport.request(url,null,token)
+                if(url.contains("/berserker-base/user")) service.invalidateForAccountChange(AccountDataScope.SESSIONS_ONLY)
+                return result
+            }
+        }
+        service=CardRechargeService(f.history,f.store,transport)
+
+        service.open()
+
+        assertEquals(1,requests.size)
+        assertTrue(requests.single().startsWith("/berserker-base/user"))
+        assertFalse(service.state.value.busy)
+        assertNull(service.state.value.rules)
+        assertNull(f.store.value)
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts)
+    }
+
+    @Test fun `account generation change during preparation response stops the remaining reads`()=runTest {
+        val f=Fixture()
+        val requests=mutableListOf<String>()
+        val transport=object:RechargeTransport {
+            override fun request(url:String,fields:Map<String,String>?,token:String?) = f.transport.request(url,fields,token)
+            override suspend fun preparationGet(url:String,token:String?,onTransport:(com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot?)->Unit):RechargeResponse {
+                requests += url.substringAfter(CardRechargeProtocol.BASE)
+                val result=f.transport.request(url,null,token)
+                if(url.contains("/berserker-base/user")) f.account.rotate()
+                return result
+            }
+        }
+        val service=CardRechargeService(f.history,f.store,transport)
+
+        service.open()
+
+        assertEquals(1,requests.size)
+        assertTrue(requests.single().startsWith("/berserker-base/user"))
+        assertFalse(service.state.value.busy)
+        assertNull(service.state.value.rules)
+        assertNull(f.store.value)
+        assertEquals(0,f.createPosts);assertEquals(0,f.payPosts)
     }
 }

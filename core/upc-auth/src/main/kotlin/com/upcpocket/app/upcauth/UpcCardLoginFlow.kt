@@ -18,6 +18,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.DiagnosticServiceParameter
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import kotlinx.serialization.json.*
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -470,15 +471,23 @@ internal class UpcCardLoginFlow(
         val phase = cardRequestPhase(uri.host.orEmpty(), uri.path.orEmpty(), body != null)
         val passwordSubmitted = if (uri.host == "cas.upc.edu.cn" && uri.path == "/cas/login" && body != null) 1 else 0
         val response = try {
-            transport.execute(UpcAuthHttpRequest(if (body == null) "GET" else "POST", url, headers, body))
+            transport.execute(UpcAuthHttpRequest(if (body == null) "GET" else "POST", url, headers, body,
+                collectTransportDiagnostics = true))
         } catch (failure: UpcAuthTransportException) {
+            val (detail, reason) = when (failure.failure) {
+                UpcAuthTransportFailure.NETWORK -> DiagnosticDetail.TRANSPORT_NETWORK to DiagnosticReason.NETWORK
+                UpcAuthTransportFailure.TIMEOUT -> DiagnosticDetail.TRANSPORT_TIMEOUT to DiagnosticReason.NETWORK
+                UpcAuthTransportFailure.TLS -> DiagnosticDetail.TRANSPORT_TLS to DiagnosticReason.TLS
+                UpcAuthTransportFailure.TOO_LARGE -> DiagnosticDetail.TRANSPORT_TOO_LARGE to DiagnosticReason.SCHEMA
+                UpcAuthTransportFailure.PROTOCOL -> DiagnosticDetail.TRANSPORT_PROTOCOL to DiagnosticReason.SCHEMA
+            }
             cardDiagnostic(
                 operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL,
-                phase, if (failure.failure == UpcAuthTransportFailure.TLS) DiagnosticDetail.TRANSPORT_TLS
-                    else DiagnosticDetail.TRANSPORT_NETWORK,
-                reason = if (failure.failure == UpcAuthTransportFailure.TLS) DiagnosticReason.TLS
-                    else DiagnosticReason.NETWORK,
+                phase, detail, reason = reason,
                 passwordSubmitted = passwordSubmitted,
+                httpStatus = failure.httpStatus,
+                responseBytes = failure.responseBytes,
+                transport = failure.transport,
             )
             throw failure
         }
@@ -490,6 +499,7 @@ internal class UpcCardLoginFlow(
                 operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL, phase,
                 DiagnosticDetail.CAS_RATE_LIMITED, DiagnosticReason.POLICY,
                 httpStatus = response.status, passwordSubmitted = passwordSubmitted,
+                responseBytes = response.body.size, transport = response.transport,
             )
             throw CardCasHttpFailure(UpcCardAuthFailure.ACCESS_DENIED)
         }
@@ -498,12 +508,23 @@ internal class UpcCardLoginFlow(
                 operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL, phase,
                 DiagnosticDetail.CAS_SERVER_ERROR, DiagnosticReason.HTTP,
                 httpStatus = response.status, passwordSubmitted = passwordSubmitted,
+                responseBytes = response.body.size, transport = response.transport,
             )
             throw CardCasHttpFailure(UpcCardAuthFailure.UPSTREAM_ERROR)
         }
         if (exactCasLogin && response.status in setOf(401, 403)) {
             // Preserve denied CAS responses for the form classifier. An ordinary GET form may
             // proceed to one POST; POST refusals are classified once by login() below.
+            cardDiagnostic(
+                operation, DiagnosticAction.AUTH_STAGE, DiagnosticResult.OK, phase,
+                when {
+                    phase == DiagnosticPhase.CAS_POST -> DiagnosticDetail.RESPONSE_HTTP
+                    response.status == 401 -> DiagnosticDetail.CAS_GET_401_FORM
+                    else -> DiagnosticDetail.CAS_GET_403_FORM
+                },
+                httpStatus = response.status, passwordSubmitted = passwordSubmitted,
+                responseBytes = response.body.size, transport = response.transport,
+            )
             return Response(url, response.status, response.header("Location"), response.body)
         }
         if (response.status >= 400) {
@@ -511,20 +532,23 @@ internal class UpcCardLoginFlow(
                 operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL, phase,
                 DiagnosticDetail.RESPONSE_HTTP, DiagnosticReason.HTTP,
                 httpStatus = response.status, passwordSubmitted = passwordSubmitted,
+                responseBytes = response.body.size, transport = response.transport,
             )
             throw CardCasHttpFailure(UpcCardAuthFailure.ACCESS_DENIED)
         }
-        if (phase in setOf(DiagnosticPhase.ENTRY_GET, DiagnosticPhase.CAS_GET, DiagnosticPhase.CAS_POST,
-                DiagnosticPhase.CAS_RETURN, DiagnosticPhase.BUSINESS_CALLBACK)) {
+        // Exactly one transport summary per response, including the token exchange.
+        // Later form/body classification never re-labels a successful transport.
+        run {
             cardDiagnostic(
                 operation, DiagnosticAction.AUTH_STAGE, DiagnosticResult.OK, phase,
                 when {
                     phase == DiagnosticPhase.CAS_GET && response.status == 401 -> DiagnosticDetail.CAS_GET_401_FORM
                     phase == DiagnosticPhase.CAS_GET && response.status == 403 -> DiagnosticDetail.CAS_GET_403_FORM
-                    phase == DiagnosticPhase.CAS_POST -> DiagnosticDetail.CAS_FORM_ACCEPTED
+                    phase == DiagnosticPhase.CAS_POST -> DiagnosticDetail.RESPONSE_HTTP
                     else -> DiagnosticDetail.RESPONSE_BUSINESS
                 },
                 httpStatus = response.status, passwordSubmitted = passwordSubmitted,
+                responseBytes = response.body.size, transport = response.transport,
             )
         }
         return Response(url, response.status, response.header("Location"), response.body)
@@ -565,11 +589,14 @@ internal fun cardDiagnostic(
     serviceParameter: DiagnosticServiceParameter? = null,
     callbackState: DiagnosticCallbackState? = null,
     bindingSource: DiagnosticBindingSource? = null,
+    responseBytes: Int? = null,
+    transport: DiagnosticTransportSnapshot? = null,
 ) = recordUpcAuthDiagnostic(
     operation, DiagnosticModule.CARD, action, result, phase, detail, reason, httpStatus,
     passwordSubmitted = passwordSubmitted, credentialState = credentialState,
     challengeType = challengeType, challengeEvidence = challengeEvidence,
     serviceParameter = serviceParameter, callbackState = callbackState, bindingSource = bindingSource,
+    responseBytes = responseBytes, transport = transport,
 )
 
 internal object CardAuthOrigins {

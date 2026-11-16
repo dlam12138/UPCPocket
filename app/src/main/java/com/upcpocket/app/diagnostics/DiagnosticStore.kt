@@ -7,11 +7,27 @@ import android.webkit.WebView
 import androidx.core.content.FileProvider
 import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
+import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
+import com.upcpocket.app.platform.diagnostics.DiagnosticBodyType
+import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
+import com.upcpocket.app.platform.diagnostics.DiagnosticChallengeEvidence
+import com.upcpocket.app.platform.diagnostics.DiagnosticChallengeType
+import com.upcpocket.app.platform.diagnostics.DiagnosticCredentialState
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
 import com.upcpocket.app.platform.diagnostics.DiagnosticExceptionType
+import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
+import com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
+import com.upcpocket.app.platform.diagnostics.DiagnosticServiceParameter
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportError
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportProtocol
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportProxyType
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportStage
 import com.upcpocket.app.platform.diagnostics.EpochBoundDiagnosticSink
 import java.io.BufferedOutputStream
 import java.io.File
@@ -411,6 +427,10 @@ class DiagnosticStore(
             appendLine("windowDp=${device.windowWidthDp}x${device.windowHeightDp}")
             appendLine("records=${lines.size}")
             appendLine("authenticationFields=operationId,phase,detail,httpStatus,passwordSubmitted,credentialState,challengeType,challengeEvidence,serviceParameter,callbackState,navigationFrame,bindingSource")
+            appendLine("transportFields=stage,error,totalMs,dnsMs,connectMs,tlsMs,headersMs,bodyMs,dnsQueryCount,dnsIpv4Count,dnsIpv6Count,connectAttemptCount,tlsAttemptCount,requestHeadersCount,connectionReused,protocol,proxyType")
+            appendLine("transportNotes=missing fields are unknown or unobserved; observed zero is preserved; connectMs can include tlsMs and must not be added to it")
+            appendLine("transportCounts=observed callbacks and connection attempts; they do not count credential or payment resubmissions")
+            appendLine("businessNotes=WeChat handoff OK means dispatch accepted; only CARD_PAYMENT_CONFIRMED means the school explicitly reported payment success")
             appendLine("range=${Instant.ofEpochMilli(start)} .. ${Instant.ofEpochMilli(end)}")
             appendLine("limits=last24h/${maxEventBytes}bytes; queue=$maxQueue; exports=$maxExports")
             appendLine()
@@ -428,88 +448,76 @@ class DiagnosticStore(
 
     private fun parseSummaryError(raw: String): String? = runCatching {
         val value = JSONObject(raw)
-        val result = value.optString("result", "UNKNOWN")
+        val result = value.enumName<DiagnosticResult>("result") ?: return@runCatching null
         if (result == DiagnosticResult.OK.name || result == DiagnosticResult.PENDING.name) {
             return@runCatching null
         }
-        val module = value.optString("module", "UNKNOWN")
-        val action = value.optString("action", "UNKNOWN")
-        val reason = value.optString("reason", "UNKNOWN")
-        val exception = value.optString("exceptionType", "")
-        val phase = value.optString("phase", "")
-        val detail = value.optString("detail", "")
-        val mediaType = value.optString("mediaType", "")
-        val bodyType = value.optString("bodyType", "")
-        val passwordSubmitted = value.optInt("passwordSubmitted", -1)
-        val credentialState = value.optString("credentialState", "")
-        val challengeType = value.optString("challengeType", "")
-        val challengeEvidence = value.optString("challengeEvidence", "")
-        val serviceParameter = value.optString("serviceParameter", "")
-        val callbackState = value.optString("callbackState", "")
-        val navigationFrame = value.optString("navigationFrame", "")
-        val bindingSource = value.optString("bindingSource", "")
         buildString {
-            append(module)
+            append(value.enumName<DiagnosticModule>("module") ?: "UNKNOWN")
             append(' ')
-            append(action)
+            append(value.enumName<DiagnosticAction>("action") ?: "UNKNOWN")
             append(' ')
             append(result)
             append(' ')
-            append(reason)
-            if (phase.isNotBlank()) {
-                append(" phase=")
-                append(phase)
-            }
-            if (detail.isNotBlank()) {
-                append(" detail=")
-                append(detail)
-            }
-            if (mediaType.isNotBlank()) {
-                append(" mime=")
-                append(mediaType)
-            }
-            if (bodyType.isNotBlank()) {
-                append(" body=")
-                append(bodyType)
-            }
-            if (passwordSubmitted in 0..1) {
-                append(" passwordSubmitted=")
-                append(passwordSubmitted)
-            }
-            if (credentialState.isNotBlank()) {
-                append(" credential=")
-                append(credentialState)
-            }
-            if (challengeType.isNotBlank()) {
-                append(" challenge=")
-                append(challengeType)
-            }
-            if (challengeEvidence.isNotBlank()) {
-                append(" challengeEvidence=")
-                append(challengeEvidence)
-            }
-            if (serviceParameter.isNotBlank()) {
-                append(" serviceParameter=")
-                append(serviceParameter)
-            }
-            if (callbackState.isNotBlank()) {
-                append(" callback=")
-                append(callbackState)
-            }
-            if (navigationFrame.isNotBlank()) {
-                append(" frame=")
-                append(navigationFrame)
-            }
-            if (bindingSource.isNotBlank()) {
-                append(" binding=")
-                append(bindingSource)
-            }
-            if (exception.isNotBlank()) {
-                append(" exception=")
-                append(exception)
+            append(value.enumName<DiagnosticReason>("reason") ?: "UNKNOWN")
+            val operation = (value.opt("operationId") as? String)?.takeIf { it.matches(Regex("[0-9a-f]{8}")) }
+            field("operationId", operation)
+            field("phase", value.enumName<DiagnosticPhase>("phase"))
+            field("detail", value.enumName<DiagnosticDetail>("detail"))
+            field("mime", value.enumName<DiagnosticMediaType>("mediaType"))
+            field("body", value.enumName<DiagnosticBodyType>("bodyType"))
+            field("httpStatus", value.boundedInteger("httpStatus", 100L, 599L))
+            field("durationMs", value.boundedInteger("durationMs", maximum = DiagnosticEvent.MAX_DURATION_MS))
+            field("responseBytes", value.boundedInteger("responseBytes", maximum = DiagnosticEvent.MAX_RESPONSE_BYTES.toLong()))
+            field("itemCount", value.boundedInteger("itemCount", maximum = DiagnosticEvent.MAX_ITEM_COUNT.toLong()))
+            field("passwordSubmitted", value.boundedInteger("passwordSubmitted", maximum = 1L))
+            field("credential", value.enumName<DiagnosticCredentialState>("credentialState"))
+            field("challenge", value.enumName<DiagnosticChallengeType>("challengeType"))
+            field("challengeEvidence", value.enumName<DiagnosticChallengeEvidence>("challengeEvidence"))
+            field("serviceParameter", value.enumName<DiagnosticServiceParameter>("serviceParameter"))
+            field("callback", value.enumName<DiagnosticCallbackState>("callbackState"))
+            field("frame", value.enumName<DiagnosticNavigationFrame>("navigationFrame"))
+            field("binding", value.enumName<DiagnosticBindingSource>("bindingSource"))
+            field("exception", value.enumName<DiagnosticExceptionType>("exceptionType"))
+            (value.opt("transport") as? JSONObject)?.let { transport ->
+                field("transport.stage", transport.enumName<DiagnosticTransportStage>("stage"))
+                field("transport.error", transport.enumName<DiagnosticTransportError>("error"))
+                for (name in listOf("totalMs", "dnsMs", "connectMs", "tlsMs", "headersMs", "bodyMs")) {
+                    field("transport.$name", transport.boundedInteger(name, maximum = DiagnosticTransportSnapshot.MAX_DURATION_MS))
+                }
+                for (name in listOf("dnsQueryCount", "dnsIpv4Count", "dnsIpv6Count", "connectAttemptCount", "tlsAttemptCount", "requestHeadersCount")) {
+                    field("transport.$name", transport.boundedInteger(name, maximum = DiagnosticTransportSnapshot.MAX_COUNT.toLong()))
+                }
+                field("transport.connectionReused", transport.boundedInteger("connectionReused", maximum = 1L))
+                field("transport.protocol", transport.enumName<DiagnosticTransportProtocol>("protocol"))
+                field("transport.proxyType", transport.enumName<DiagnosticTransportProxyType>("proxyType"))
             }
         }
     }.getOrNull()
+
+    /** Summary readers never echo stored field text, even from an unknown schema or damaged file. */
+    private inline fun <reified T : Enum<T>> JSONObject.enumName(key: String): String? {
+        val raw = opt(key) as? String ?: return null
+        return enumValues<T>().firstOrNull { it.name == raw }?.name
+    }
+
+    /** No optLong/optInt coercion: quoted numbers, booleans and floating point values stay unknown. */
+    private fun JSONObject.boundedInteger(key: String, minimum: Long = 0L, maximum: Long): Long? {
+        val number = when (val raw = opt(key)) {
+            is Int -> raw.toLong()
+            is Long -> raw
+            else -> return null
+        }
+        return number.takeIf { it in minimum..maximum }
+    }
+
+    private fun StringBuilder.field(name: String, value: String?) {
+        if (value != null) append(" $name=$value")
+    }
+
+    private fun StringBuilder.field(name: String, value: Long?) {
+        if (value != null) append(" $name=$value")
+    }
 
     private fun encode(event: DiagnosticEvent): String {
         val value = JSONObject()
@@ -540,6 +548,27 @@ class DiagnosticStore(
         event.callbackState?.let { value.put("callbackState", it.name) }
         event.navigationFrame?.let { value.put("navigationFrame", it.name) }
         event.bindingSource?.let { value.put("bindingSource", it.name) }
+        event.transport?.let { trace ->
+            value.put("transport", JSONObject().apply {
+                put("stage", trace.stage.name)
+                put("totalMs", trace.totalMs)
+                trace.error?.let { put("error", it.name) }
+                trace.dnsMs?.let { put("dnsMs", it) }
+                trace.connectMs?.let { put("connectMs", it) }
+                trace.tlsMs?.let { put("tlsMs", it) }
+                trace.headersMs?.let { put("headersMs", it) }
+                trace.bodyMs?.let { put("bodyMs", it) }
+                put("dnsQueryCount", trace.dnsQueryCount)
+                trace.dnsIpv4Count?.let { put("dnsIpv4Count", it) }
+                trace.dnsIpv6Count?.let { put("dnsIpv6Count", it) }
+                put("connectAttemptCount", trace.connectAttemptCount)
+                put("tlsAttemptCount", trace.tlsAttemptCount)
+                put("requestHeadersCount", trace.requestHeadersCount)
+                trace.connectionReused?.let { put("connectionReused", it) }
+                trace.protocol?.let { put("protocol", it.name) }
+                trace.proxyType?.let { put("proxyType", it.name) }
+            })
+        }
         if (event.frames.isNotEmpty()) {
             value.put("frames", JSONArray(event.frames))
         }

@@ -42,4 +42,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:${libs.versions.okhttp.get()}")
 }

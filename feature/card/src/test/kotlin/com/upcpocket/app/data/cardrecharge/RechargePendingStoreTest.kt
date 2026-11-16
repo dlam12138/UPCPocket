@@ -141,17 +141,48 @@ class RechargePendingStoreTest {
         for (failAt in 1..3) {
             val directory = temporary.newFolder()
             var commits = 0
-            val store = EncryptedRechargePendingStore(directory, crypto, atomicFiles = { path ->
+            var saveAttempts = 0
+            var successfulSaves = 0
+            var injectedFailureReached = false
+            var markerCommitted = false
+            var orderCommitted = false
+            var methodCommitted = false
+            val diskStore = EncryptedRechargePendingStore(directory, crypto, atomicFiles = { path ->
                 object : AtomicFile(path) {
                     override fun finishWrite(stream: FileOutputStream?) {
                         commits++
-                        if (commits == failAt) stream?.close() else super.finishWrite(stream)
+                        if (commits == failAt) {
+                            injectedFailureReached = true
+                            stream?.close()
+                        } else super.finishWrite(stream)
                     }
                 }
             })
+            val store = object : RechargePendingStore by diskStore {
+                override fun save(record: RechargePending) {
+                    saveAttempts++
+                    diskStore.save(record)
+                    successfulSaves++
+                    // Observe only successful save returns; do not add reads while AtomicFile is writing.
+                    markerCommitted = markerCommitted || record.orderId == null && record.payId == null
+                    orderCommitted = orderCommitted || record.orderId != null
+                    methodCommitted = methodCommitted || record.payId != null
+                }
+            }
             val fixture = CardRechargeServiceTest.Fixture(store)
             fixture.service.open()
-            assertNull(fixture.service.submit("20"))
+            val handoff = fixture.service.submit("20")
+            val progress = "failAt=$failAt saveAttempts=$saveAttempts successfulSaves=$successfulSaves " +
+                "finishCalls=$commits injectedFailureReached=$injectedFailureReached " +
+                "markerCommitted=$markerCommitted orderCommitted=$orderCommitted methodCommitted=$methodCommitted"
+            assertEquals(progress, failAt, saveAttempts)
+            assertEquals(progress, failAt, commits)
+            assertTrue(progress, injectedFailureReached)
+            assertEquals(progress, failAt - 1, successfulSaves)
+            assertEquals(progress, failAt > 1, markerCommitted)
+            assertEquals(progress, failAt > 2, orderCommitted)
+            assertFalse(progress, methodCommitted)
+            assertNull(handoff)
             assertEquals(if (failAt == 1) 0 else 1, fixture.createPosts)
             assertEquals(0, fixture.payPosts)
             assertTrue(fixture.service.state.value.recoveryRequired)

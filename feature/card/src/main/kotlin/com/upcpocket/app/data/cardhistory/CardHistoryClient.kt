@@ -3,6 +3,7 @@ package com.upcpocket.app.data.cardhistory
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.card.CardDiagnostics
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
 import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
@@ -18,11 +19,81 @@ import java.io.IOException
 import java.time.YearMonth
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
+
+internal data class CardReadHttpResponse(val code: Int, val body: String?, val location: String?)
+internal class CardReadBodyTooLargeException : IOException()
+
+/** Keep the Call cancellable until the bounded response body has been consumed. */
+internal suspend fun Call.awaitCardReadResponse(
+    trace: CardHistoryTransportTrace?,
+    maximumBodyBytes: Int,
+): CardReadHttpResponse = suspendCancellableCoroutine { continuation ->
+    val activeCall = this
+    continuation.invokeOnCancellation {
+        runCatching { trace?.coroutineCancelled() }
+        activeCall.cancel()
+    }
+    if (!continuation.isActive) return@suspendCancellableCoroutine
+    enqueue(object : Callback {
+        override fun onFailure(call: Call, error: IOException) {
+            continuation.resumeWith(Result.failure(error))
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val result = try {
+                Result.success(response.use {
+                    CardReadHttpResponse(
+                        it.code,
+                        it.readCardReadBody(trace, maximumBodyBytes),
+                        it.header("Location"),
+                    )
+                })
+            } catch (failure: Throwable) {
+                if (failure is CardReadBodyTooLargeException) runCatching { trace?.responseTooLarge() }
+                Result.failure(failure)
+            }
+            continuation.resumeWith(result)
+        }
+    })
+}
+
+private fun Response.readCardReadBody(
+    trace: CardHistoryTransportTrace?,
+    maximumBodyBytes: Int,
+): String? {
+    if (code != 200) return null
+    val body = body ?: return null
+    // OkHttp body events can arrive only after the first byte; keep an explicit interval around the bounded reader.
+    runCatching { trace?.responseBodyReadStart() }
+    try {
+        val output = java.io.ByteArrayOutputStream()
+        body.byteStream().use { stream ->
+            val buffer = ByteArray(8192)
+            while (true) {
+                val count = stream.read(buffer)
+                if (count < 0) break
+                if (output.size() + count > maximumBodyBytes) {
+                    throw CardReadBodyTooLargeException()
+                }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toString("UTF-8")
+    } finally {
+        runCatching { trace?.responseBodyReadEnd() }
+    }
+}
 
 /** Implemented by the host's restricted auth adapter, never by a password-reading feature. */
 fun interface CardHistoryAuthenticator {
@@ -74,10 +145,12 @@ internal class CardRechargeSession(val owner: SchoolStudentIdentity, val token: 
 class CardHistoryClient(
     private val account: SchoolAccountStudentIdentityReader,
     private val authenticator: CardHistoryAuthenticator,
-    private val http: OkHttpClient = OkHttpClient.Builder()
+    http: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build(),
     private val interactiveAuthenticator: CardHistoryInteractiveAuthenticator? = null,
 ) {
+    private val readTransport = CardHistoryReadTransport(http)
+
     private class Session(val owner: SchoolStudentIdentity, val token: String)
     private class InteractiveState(
         val id: Long,
@@ -255,10 +328,17 @@ class CardHistoryClient(
         !account.state.value.blocksPersonalSessions && account.studentIdentity.value == owner
 
     suspend fun login(): Unit = withContext(Dispatchers.IO) {
-        val owner = identity()
-        val generation = epoch.get()
-        val token = authenticator.authenticate(owner)
-        verifyAndCommit(owner, generation, token)
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_IDENTITY_VERIFY, DiagnosticPhase.BUSINESS_SESSION)
+        try {
+            val owner = identity()
+            val generation = epoch.get()
+            val token = authenticator.authenticate(owner)
+            currentCoroutineContext().ensureActive()
+            verifyAndCommit(owner, generation, token, diagnostic = diagnostic)
+        } catch (error: Throwable) {
+            diagnostic.fail(error)
+            throw error
+        }
     }
 
     private suspend fun verifyAndCommit(
@@ -266,17 +346,30 @@ class CardHistoryClient(
         generation: Long,
         token: String,
         interactive: InteractiveState? = null,
+        diagnostic: CardDiagnostics = CardDiagnostics.begin(DiagnosticDetail.CARD_IDENTITY_VERIFY, DiagnosticPhase.PERSONAL_VERIFY),
     ) {
-        val candidate = Session(owner, token)
-        CardHistoryProtocol.verifyIdentity(get("/berserker-base/user?synAccessSource=h5", candidate), owner.studentId)
-        synchronized(stateLock) {
-            if (!isCurrent(owner) || epoch.get() != generation ||
-                (interactive != null && (interactiveState !== interactive || interactive.cancelled))
-            ) {
-                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        try {
+            val coroutineContext = currentCoroutineContext()
+            coroutineContext.ensureActive()
+            diagnostic.phase = DiagnosticPhase.PERSONAL_VERIFY
+            val candidate = Session(owner, token)
+            CardHistoryProtocol.verifyIdentity(
+                get("/berserker-base/user?synAccessSource=h5", candidate, diagnostic), owner.studentId,
+            )
+            synchronized(stateLock) {
+                coroutineContext.ensureActive()
+                if (!isCurrent(owner) || epoch.get() != generation ||
+                    (interactive != null && (interactiveState !== interactive || interactive.cancelled))
+                ) {
+                    throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+                }
+                session = candidate
+                if (interactive != null) interactiveState = null
             }
-            session = candidate
-            if (interactive != null) interactiveState = null
+            diagnostic.finish()
+        } catch (error: Throwable) {
+            diagnostic.fail(error)
+            throw error
         }
     }
 
@@ -288,49 +381,79 @@ class CardHistoryClient(
     }
 
     suspend fun page(month: YearMonth? = null, current: Int = 1, size: Int = 50): BoundCardHistoryPage = withContext(Dispatchers.IO) {
-        val active = requireSession()
-        val generation = epoch.get()
-        val body = get("/berserker-search/search/personal/turnover?" + query(month, current, size), active)
-        val actual = (CardHistoryProtocol.data(body)["current"] as? JsonPrimitive)?.intOrNull
-        if (actual != null && actual != current) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-        val parsed = CardHistoryProtocol.parseRows(body)
-        checkCurrent(active, generation)
-        BoundCardHistoryPage(active.owner, month, current, parsed)
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_PAGE, DiagnosticPhase.BUSINESS_SESSION)
+        try {
+            val active = requireSession()
+            val generation = epoch.get()
+            diagnostic.phase = DiagnosticPhase.RESPONSE
+            val body = get(
+                "/berserker-search/search/personal/turnover?" + query(month, current, size), active, diagnostic,
+            )
+            diagnostic.phase = DiagnosticPhase.PARSE
+            val actual = (CardHistoryProtocol.data(body)["current"] as? JsonPrimitive)?.intOrNull
+            if (actual != null && actual != current) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            val parsed = CardHistoryProtocol.parseRows(body)
+            checkCurrent(active, generation)
+            BoundCardHistoryPage(active.owner, month, current, parsed).also { diagnostic.finish() }
+        } catch (error: Throwable) {
+            diagnostic.fail(error)
+            throw error
+        }
     }
 
     /** Explicit user action only. Failure never returns a partial list as a complete history. */
     suspend fun all(month: YearMonth? = null, onProgress: (Int, Int) -> Unit = { _, _ -> }): BoundCardHistoryPage {
-        val owner = requireSession().owner
-        val generation = epoch.get()
-        val records = linkedMapOf<String, CardHistoryRow>()
-        var current = 1
-        do {
-            val result = page(month, current)
-            if (result.owner != owner || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-            val previous = records.size
-            result.data.rows.forEach { records[it.id] = it }
-            if (current > 1 && records.size == previous) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            onProgress(records.size, result.data.total)
-            if (current >= result.data.pages) {
-                if (!isCurrent(owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-                if (records.size != result.data.total) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                return result.copy(data = result.data.copy(rows = records.values.toList()))
-            }
-            if (result.data.rows.isEmpty()) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            current++
-            delay(250)
-        } while (true)
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_PAGE, DiagnosticPhase.BUSINESS_SESSION)
+        try {
+            val owner = requireSession().owner
+            val generation = epoch.get()
+            val records = linkedMapOf<String, CardHistoryRow>()
+            var current = 1
+            do {
+                diagnostic.phase = DiagnosticPhase.RESPONSE
+                val result = page(month, current)
+                diagnostic.phase = DiagnosticPhase.PARSE
+                if (result.owner != owner || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+                val previous = records.size
+                result.data.rows.forEach { records[it.id] = it }
+                if (current > 1 && records.size == previous) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+                onProgress(records.size, result.data.total)
+                if (current >= result.data.pages) {
+                    if (!isCurrent(owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+                    if (records.size != result.data.total) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+                    diagnostic.finish()
+                    return result.copy(data = result.data.copy(rows = records.values.toList()))
+                }
+                if (result.data.rows.isEmpty()) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+                current++
+                delay(250)
+            } while (true)
+        } catch (error: Throwable) {
+            diagnostic.fail(error)
+            throw error
+        }
     }
 
     suspend fun summary(month: YearMonth? = null): CardHistorySummary = withContext(Dispatchers.IO) {
-        val active = requireSession()
-        val generation = epoch.get()
-        val data = CardHistoryProtocol.data(get("/berserker-search/statistics/turnover/count?" + query(month, 1, 50), active))
-        fun amount(key: String): Long = CardHistoryProtocol.fen(data[key])?.takeIf { it >= 0 }
-            ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-        val result = CardHistorySummary(amount("income"), amount("expenses"))
-        checkCurrent(active, generation)
-        result
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_SUMMARY, DiagnosticPhase.BUSINESS_SESSION)
+        try {
+            val active = requireSession()
+            val generation = epoch.get()
+            diagnostic.phase = DiagnosticPhase.RESPONSE
+            val body = get(
+                "/berserker-search/statistics/turnover/count?" + query(month, 1, 50), active, diagnostic,
+            )
+            diagnostic.phase = DiagnosticPhase.PARSE
+            val data = CardHistoryProtocol.data(body)
+            fun amount(key: String): Long = CardHistoryProtocol.fen(data[key])?.takeIf { it >= 0 }
+                ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            val result = CardHistorySummary(amount("income"), amount("expenses"))
+            checkCurrent(active, generation)
+            result.also { diagnostic.finish() }
+        } catch (error: Throwable) {
+            diagnostic.fail(error)
+            throw error
+        }
     }
 
     /** Restricted to this feature's recharge adapter; no credential or token reaches a page. */
@@ -362,46 +485,42 @@ class CardHistoryClient(
     private fun checkCurrent(active: Session, generation: Long) {
         if (!isCurrent(active.owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
     }
-    private fun get(path: String, active: Session): String {
+    private suspend fun get(path: String, active: Session, diagnostic: CardDiagnostics): String {
         val token = active.token
         if (token.isBlank() || token.length > 16384 || token.any { it <= ' ' || it == '\u007f' })
             throw CardHistoryException(CardHistoryFailure.AUTHENTICATION)
         val request = Request.Builder().url(CardHistoryProtocol.BASE + path)
             .header("Accept", "application/json").header("synAccessSource", "h5")
             .header("synjones-auth", "bearer $token").build()
+        val prepared = readTransport.prepare(request)
         try {
-            http.newCall(request).execute().use { response ->
-                if (response.code == 401 || response.code == 403) {
-                    if (session === active) clearSession()
-                    throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
-                }
-                if (response.code != 200) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                val body = response.body ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                val output = java.io.ByteArrayOutputStream()
-                body.byteStream().use { stream ->
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = stream.read(buffer)
-                        if (count < 0) break
-                        if (output.size() + count > 2 * 1024 * 1024) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                        output.write(buffer, 0, count)
-                    }
-                }
-                val text = output.toString("UTF-8")
-                val code = runCatching {
-                    (Json.parseToJsonElement(text).jsonObject["code"] as? JsonPrimitive)?.intOrNull
-                }.getOrNull()
-                if (code == 401 || code == 403) {
-                    if (session === active) clearSession()
-                    throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
-                }
-                return text
+            val response = prepared.client.newCall(prepared.request)
+                .awaitCardReadResponse(prepared.trace, CARD_HISTORY_RESPONSE_LIMIT_BYTES)
+            currentCoroutineContext().ensureActive()
+            if (response.code == 401 || response.code == 403) {
+                if (session === active) clearSession()
+                throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
             }
+            if (response.code != 200) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            val text = response.body ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            val code = runCatching {
+                (Json.parseToJsonElement(text).jsonObject["code"] as? JsonPrimitive)?.intOrNull
+            }.getOrNull()
+            if (code == 401 || code == 403) {
+                if (session === active) clearSession()
+                throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
+            }
+            return text
         } catch (known: CardHistoryException) { throw known }
+        catch (_: CardHistoryRequestPolicyException) { throw CardHistoryException(CardHistoryFailure.PROTOCOL) }
+        catch (_: CardReadBodyTooLargeException) { throw CardHistoryException(CardHistoryFailure.PROTOCOL) }
         catch (_: IOException) { throw CardHistoryException(CardHistoryFailure.NETWORK) }
+        finally { prepared.trace?.let { observed -> runCatching { diagnostic.transport(observed.snapshot()) } } }
     }
 
     companion object {
+        private const val CARD_HISTORY_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024
+
         internal fun query(month: YearMonth?, current: Int, size: Int): String {
             require(current > 0 && size in 1..100)
             val fields = linkedMapOf("size" to "$size", "current" to "$current", "synAccessSource" to "h5")

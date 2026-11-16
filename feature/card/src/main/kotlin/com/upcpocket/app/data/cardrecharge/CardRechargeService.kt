@@ -2,16 +2,23 @@ package com.upcpocket.app.data.cardrecharge
 
 import com.upcpocket.app.account.api.AccountDataScope
 import com.upcpocket.app.account.api.SchoolStudentIdentity
+import com.upcpocket.app.data.card.CardDiagnostics
 import com.upcpocket.app.data.cardhistory.CardHistoryClient
 import com.upcpocket.app.data.cardhistory.CardHistoryException
 import com.upcpocket.app.data.cardhistory.CardHistoryFailure
 import com.upcpocket.app.data.cardhistory.CardRechargeSession
+import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
+import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
+import com.upcpocket.app.platform.diagnostics.DiagnosticReason
+import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import java.util.UUID
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
@@ -26,7 +33,12 @@ internal data class CardRechargeState(
 /** A URI can be consumed only once, while its exact account and operation are still current. */
 internal class RechargeHandoff(private val uri: String, private val valid: () -> Boolean) {
     private val consumed=AtomicBoolean()
-    fun consume(): String? = if (consumed.compareAndSet(false,true) && valid()) CardRechargeProtocol.wechatUri(uri) else null
+    fun consume(): String? {
+        if (consumed.compareAndSet(false,true) && valid()) return CardRechargeProtocol.wechatUri(uri)
+        CardDiagnostics.begin(DiagnosticDetail.CARD_WECHAT_HANDOFF, DiagnosticPhase.PUBLISH, pending = false)
+            .finish(DiagnosticResult.BLOCKED, DiagnosticReason.STALE)
+        return null
+    }
     override fun toString() = "RechargeHandoff([REDACTED])"
 }
 
@@ -70,7 +82,13 @@ class CardRechargeService internal constructor(
     }
     private fun failed(owner:SchoolStudentIdentity,generation:Long,error:Exception) {
         synchronized(lock) {
-            if(!current(owner,generation)) return
+            if(!current(owner,generation)) {
+                if(epoch==generation && mutable.value.owner==owner) {
+                    prepared=null
+                    mutable.value=mutable.value.copy(busy=false,rules=null)
+                }
+                return
+            }
             val code=(error as? RechargeFailure)?.stage
             val text=when {
                 error is CardHistoryException -> when(error.reason) {
@@ -89,22 +107,46 @@ class CardRechargeService internal constructor(
     }
     internal suspend fun open() {
         val (owner,generation)=begin() ?: return
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_RECHARGE_PREPARE, DiagnosticPhase.BUSINESS_SESSION)
         try {
             withContext(Dispatchers.IO) {
                 withSession(owner,generation) { session ->
+                    val context = currentCoroutineContext()
+                    context.ensureActive()
+                    session.checkCurrent()
                     check(owner,generation)
                     val pending=store.read(owner)
+                    context.ensureActive()
+                    session.checkCurrent()
                     if(pending!=null) publish(owner,generation) { it.copy(pending=pending,recoveryRequired=true) }
-                    val config=api(session,generation).prepare(session)
-                    synchronized(lock) { check(owner,generation);prepared=config }
-                    publish(owner,generation) { it.copy(busy=false,rules=config.rules,message=if(pending!=null) "上次订单需要确认，正在查询状态。" else null) }
+                    val config=api(session,generation).prepare(session,diagnostic)
+                    context.ensureActive()
+                    session.checkCurrent()
+                    synchronized(lock) {
+                        context.ensureActive()
+                        session.checkCurrent()
+                        check(owner,generation)
+                        prepared=config
+                        mutable.value=mutable.value.copy(
+                            busy=false,
+                            rules=config.rules,
+                            message=if(pending!=null) "上次订单需要确认，正在查询状态。" else null,
+                        )
+                    }
                 }
             }
+            diagnostic.finish()
             if(mutable.value.pending!=null) refresh()
         } catch(cancelled:CancellationException) {
-            synchronized(lock) { if(current(owner,generation)) mutable.value=mutable.value.copy(busy=false) }
+            diagnostic.fail(cancelled)
+            synchronized(lock) {
+                if(epoch==generation && mutable.value.owner==owner) {
+                    if(current(owner,generation)) mutable.value=mutable.value.copy(busy=false)
+                    else { prepared=null;mutable.value=mutable.value.copy(busy=false,rules=null) }
+                }
+            }
             throw cancelled
-        } catch(error:Exception) { failed(owner,generation,error) }
+        } catch(error:Exception) { diagnostic.fail(error);failed(owner,generation,error) }
     }
     internal fun validateAmount(raw:String): String = synchronized(lock) {
         (prepared ?: throw RechargeFailure("P-CONFIG")).rules.amount(raw)
@@ -112,14 +154,20 @@ class CardRechargeService internal constructor(
     internal suspend fun submit(raw:String, expectedOwner:SchoolStudentIdentity?=studentIdentity.value): RechargeHandoff? {
         val requestOwner=expectedOwner ?: return null
         val (owner,generation)=begin(requestOwner) ?: return null
+        val preparation = CardDiagnostics.begin(DiagnosticDetail.CARD_RECHARGE_PREPARE, DiagnosticPhase.BUSINESS_SESSION)
+        var orderDiagnostic: CardDiagnostics? = null
         try {
             return withContext(NonCancellable + Dispatchers.IO) {
                 withSession(owner,generation) { session ->
                     check(owner,generation)
                     // Refresh read-only limits before the sole order request; stale displayed limits never authorize a larger order.
-                    val config=api(session,generation).prepare(session)
+                    val config=api(session,generation).prepare(session,preparation)
                     synchronized(lock) { check(owner,generation);prepared=config;mutable.value=mutable.value.copy(rules=config.rules) }
                     val amount=config.rules.amount(raw)
+                    preparation.finish()
+                    // No PENDING create event until the durable duplicate-order barrier has passed.
+                    val ordering = CardDiagnostics.begin(DiagnosticDetail.CARD_ORDER_CREATE, DiagnosticPhase.BUSINESS_SESSION, pending = false)
+                    orderDiagnostic = ordering
                     var pending=RechargePending(owner,UUID.randomUUID().toString(),amount)
                     synchronized(lock) {
                         check(owner,generation)
@@ -129,7 +177,7 @@ class CardRechargeService internal constructor(
                         mutable.value=mutable.value.copy(rules=config.rules,pending=pending,recoveryRequired=true)
                     }
                     val client=api(session,generation)
-                    val order=client.create(session,config,amount)
+                    val order=client.create(session,config,amount,ordering)
                     synchronized(lock) { check(owner,generation);pending=pending.copy(orderId=order);store.save(pending);mutable.value=mutable.value.copy(pending=pending) }
                     val uri=client.pay(session,config,pending) { method -> synchronized(lock) {
                         check(owner,generation);pending=pending.copy(payId=method);store.save(pending);mutable.value=mutable.value.copy(pending=pending)
@@ -138,20 +186,26 @@ class CardRechargeService internal constructor(
                     RechargeHandoff(uri) { synchronized(lock) { current(owner,generation) && mutable.value.pending?.attemptId==pending.attemptId && runCatching { session.checkCurrent() }.isSuccess } }
                 }
             }
-        } catch(cancelled:CancellationException) { throw cancelled }
-        catch(error:Exception) { failed(owner,generation,error);return null }
+        } catch(cancelled:CancellationException) { preparation.fail(cancelled);orderDiagnostic?.fail(cancelled);throw cancelled }
+        catch(error:Exception) { preparation.fail(error);orderDiagnostic?.fail(error);failed(owner,generation,error);return null }
         finally { synchronized(lock) { if(current(owner,generation)) mutable.value=mutable.value.copy(busy=false) } }
     }
     internal suspend fun refresh() {
         val (owner,generation)=begin() ?: return
+        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_ORDER_STATUS, DiagnosticPhase.BUSINESS_SESSION)
+        var observed: RechargeStatus? = null
         try {
             withContext(Dispatchers.IO) {
                 withSession(owner,generation) { session ->
                     val pending=synchronized(lock) { check(owner,generation);store.read(owner) } ?: run {
-                        publish(owner,generation) { it.copy(busy=false,pending=null,recoveryRequired=false) };return@withSession
+                        publish(owner,generation) { it.copy(busy=false,pending=null,recoveryRequired=false) }
+                        return@withSession
                     }
-                    if(pending.orderId==null) throw RechargeFailure("P-ORDER-UNKNOWN")
-                    val result=api(session,generation).status(session,pending)
+                    if(pending.orderId==null) {
+                        diagnostic.finish(DiagnosticResult.UNKNOWN, DiagnosticReason.UNKNOWN)
+                        throw RechargeFailure("P-ORDER-UNKNOWN")
+                    }
+                    val result=api(session,generation).status(session,pending,diagnostic)
                     synchronized(lock) {
                         check(owner,generation)
                         val terminal=result==RechargeStatus.SUCCEEDED
@@ -163,10 +217,20 @@ class CardRechargeService internal constructor(
                             RechargeStatus.UNKNOWN -> "学校尚未确认结果，请稍后刷新状态。"
                         })
                     }
+                    observed = result
                 }
             }
-        } catch(cancelled:CancellationException) { synchronized(lock) { if(current(owner,generation)) mutable.value=mutable.value.copy(busy=false) };throw cancelled }
-        catch(error:Exception) { failed(owner,generation,error) }
+            val result = observed
+            diagnostic.finish(when (result) {
+                null -> DiagnosticResult.SKIPPED
+                RechargeStatus.UNKNOWN -> DiagnosticResult.UNKNOWN
+                else -> DiagnosticResult.OK
+            }, if (result == null) DiagnosticReason.NO_DATA else null)
+            if (result == RechargeStatus.SUCCEEDED) {
+                diagnostic.mark(DiagnosticDetail.CARD_PAYMENT_CONFIRMED, DiagnosticResult.OK)
+            }
+        } catch(cancelled:CancellationException) { diagnostic.fail(cancelled);synchronized(lock) { if(current(owner,generation)) mutable.value=mutable.value.copy(busy=false) };throw cancelled }
+        catch(error:Exception) { diagnostic.fail(error);failed(owner,generation,error) }
     }
     internal suspend fun clearAfterVerification() {
         val (owner,generation)=begin() ?: return

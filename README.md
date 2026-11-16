@@ -101,6 +101,8 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 [构建指南](docs/BUILD.md) · [项目文档](docs/README.md) · [开发规范](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
 
+[2.0.7 第一部分：校园卡连接与诊断](docs/releases/2.0.7-development.md) 已通过用户验收，尚未公开发布；上方下载仍为 2.0.6。
+
 研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值的来源、实现与验证见 [集成记录](docs/releases/2.0.6-card-recharge.md)。
 
 </details>

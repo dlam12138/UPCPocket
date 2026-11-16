@@ -27,6 +27,7 @@ enum class DiagnosticAction {
     AUTH_COMPLETE,
     AUTH_INTERACTION,
     AUTH_STOP,
+    OPERATION_STAGE,
     WEBVIEW_START,
     WEBVIEW_FINISH,
     WEBVIEW_MAIN_FRAME_ERROR,
@@ -269,6 +270,23 @@ enum class DiagnosticDetail {
     TRANSPORT_TIMEOUT,
     TRANSPORT_TLS,
     TRANSPORT_TOO_LARGE,
+    TRANSPORT_PROTOCOL,
+    CARD_IDENTITY_VERIFY,
+    CARD_HISTORY_PAGE,
+    CARD_HISTORY_SUMMARY,
+    CARD_BALANCE_QUERY,
+    CARD_RECHARGE_PREPARE,
+    CARD_RECHARGE_CONFIG,
+    CARD_RECHARGE_CARD,
+    CARD_RECHARGE_RULES,
+    CARD_RECHARGE_SIGNER,
+    CARD_ORDER_CREATE,
+    CARD_PAYMENT_PREPARE,
+    CARD_PAYMENT_SUBMIT,
+    CARD_ORDER_STATUS,
+    CARD_PAYMENT_CONFIRMED,
+    CARD_WECHAT_AVAILABILITY,
+    CARD_WECHAT_HANDOFF,
     AUTH_REQUIRED,
     AUTH_INVALID,
     AUTH_INTERACTION,
@@ -347,6 +365,56 @@ enum class DiagnosticDetail {
     SHIGUANG_DETAIL_QUERY,
 }
 
+enum class DiagnosticTransportStage {
+    CALL_START, DNS, CONNECT, TLS, REQUEST_HEADERS, REQUEST_BODY,
+    RESPONSE_HEADERS, RESPONSE_BODY, UNKNOWN,
+}
+
+enum class DiagnosticTransportError {
+    DNS, CONNECT, NO_ROUTE, TIMEOUT, TLS_HANDSHAKE, TLS_PEER_UNVERIFIED,
+    TLS_IO, CERTIFICATE, EOF, SOCKET, PROTOCOL, TOO_LARGE, INVALID_REQUEST,
+    CANCELLED, IO_OTHER, OTHER,
+}
+
+enum class DiagnosticTransportProtocol { HTTP_1_1, HTTP_2, OTHER }
+enum class DiagnosticTransportProxyType { DIRECT, HTTP, SOCKS }
+
+/** No addresses, request/response objects or exception text can be represented. */
+data class DiagnosticTransportSnapshot(
+    val stage: DiagnosticTransportStage,
+    val totalMs: Long,
+    val error: DiagnosticTransportError? = null,
+    val dnsMs: Long? = null,
+    /** Includes TLS when a new TLS connection is made; do not add it to tlsMs. */
+    val connectMs: Long? = null,
+    val tlsMs: Long? = null,
+    /** From requestHeadersEnd (or an observed responseHeadersStart) to headers end/failure. */
+    val headersMs: Long? = null,
+    val bodyMs: Long? = null,
+    val dnsQueryCount: Int = 0,
+    val dnsIpv4Count: Int? = null,
+    val dnsIpv6Count: Int? = null,
+    val connectAttemptCount: Int = 0,
+    val tlsAttemptCount: Int = 0,
+    val requestHeadersCount: Int = 0,
+    val connectionReused: Int? = null,
+    val protocol: DiagnosticTransportProtocol? = null,
+    val proxyType: DiagnosticTransportProxyType? = null,
+) {
+    init {
+        require(totalMs in 0..MAX_DURATION_MS)
+        require(listOf(dnsMs, connectMs, tlsMs, headersMs, bodyMs).all { it == null || it in 0..MAX_DURATION_MS })
+        require(listOf(dnsQueryCount, dnsIpv4Count, dnsIpv6Count, connectAttemptCount, tlsAttemptCount,
+            requestHeadersCount).all { it == null || it in 0..MAX_COUNT })
+        require(connectionReused == null || connectionReused in 0..1)
+    }
+
+    companion object {
+        const val MAX_DURATION_MS = 600_000L
+        const val MAX_COUNT = 64
+    }
+}
+
 /**
  * A single bounded event. All fields are enums, numeric status/duration/size or
  * a short random operation id; there is no free-form string field.
@@ -380,6 +448,7 @@ data class DiagnosticEvent(
     val navigationFrame: DiagnosticNavigationFrame? = null,
     val bindingSource: DiagnosticBindingSource? = null,
     val timestampEpochMillis: Long = System.currentTimeMillis(),
+    val transport: DiagnosticTransportSnapshot? = null,
 ) {
     init {
         require(httpStatus == null || httpStatus in 100..599) { "httpStatus out of range" }
@@ -405,11 +474,11 @@ data class DiagnosticEvent(
 
     companion object {
         /**
-         * Additive schema: schema 4 adds fixed authentication stages, reasons and
-         * evidence fields. Older JSONL records remain readable and are re-exported
+         * Additive schema: schema 5 adds an optional bounded transport snapshot.
+         * Older JSONL records remain readable and are re-exported
          * without interpreting or rewriting fields that the older schema did not know.
          */
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
         const val MAX_FRAMES = 8
         const val MAX_DURATION_MS = 3_600_000L
         const val MAX_DIMENSION_DP = 20_000
@@ -435,6 +504,8 @@ interface EpochBoundDiagnosticSink : DiagnosticSink {
 data class DiagnosticOperation internal constructor(
     val id: String,
     val epochToken: Long?,
+    /** Failed epoch capture must never fall back to an unbound record. */
+    internal val recordingAllowed: Boolean = true,
 ) {
     override fun toString(): String = "DiagnosticOperation(id=$id)"
 }
@@ -456,8 +527,8 @@ object Diagnostics {
 
     fun beginOperation(): DiagnosticOperation {
         val activeSink = sink
-        val epoch = (activeSink as? EpochBoundDiagnosticSink)?.captureEpoch()
-        return DiagnosticOperation(newOperationId(), epoch)
+        val epoch = runCatching { (activeSink as? EpochBoundDiagnosticSink)?.captureEpoch() }
+        return DiagnosticOperation(newOperationId(), epoch.getOrNull(), epoch.isSuccess)
     }
 
     /**
@@ -492,7 +563,9 @@ object Diagnostics {
         navigationFrame: DiagnosticNavigationFrame? = null,
         bindingSource: DiagnosticBindingSource? = null,
         operation: DiagnosticOperation? = null,
+        transport: DiagnosticTransportSnapshot? = null,
     ): Boolean {
+        if (operation?.recordingAllowed == false) return false
         val activeSink = sink ?: return false
         val event = runCatching {
             DiagnosticEvent(
@@ -522,6 +595,7 @@ object Diagnostics {
                 callbackState = callbackState,
                 navigationFrame = navigationFrame,
                 bindingSource = bindingSource,
+                transport = transport,
             )
         }.getOrNull() ?: return false
         return runCatching {

@@ -14,6 +14,7 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.DiagnosticServiceParameter
+import com.upcpocket.app.platform.diagnostics.DiagnosticTransportSnapshot
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 
 /** Fixed-schema auth events. Diagnostics remains best effort and cannot fail a business request. */
@@ -35,6 +36,8 @@ internal fun recordUpcAuthDiagnostic(
     callbackState: DiagnosticCallbackState? = null,
     navigationFrame: DiagnosticNavigationFrame? = null,
     bindingSource: DiagnosticBindingSource? = null,
+    responseBytes: Int? = null,
+    transport: DiagnosticTransportSnapshot? = null,
 ) {
     runCatching {
         Diagnostics.record(
@@ -55,6 +58,8 @@ internal fun recordUpcAuthDiagnostic(
             callbackState = callbackState,
             navigationFrame = navigationFrame,
             bindingSource = bindingSource,
+            responseBytes = responseBytes,
+            transport = transport,
         )
     }
 }
