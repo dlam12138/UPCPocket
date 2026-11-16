@@ -10,10 +10,10 @@
 
 [![Release](https://img.shields.io/github/v/release/dlam12138/UPCPocket?style=flat-square&label=Release&color=1B6B4A)](https://github.com/dlam12138/UPCPocket/releases/latest)
 ![Android 12+](https://img.shields.io/badge/Android-12%2B-5278C6?style=flat-square)
-![APK 5.34 MiB](https://img.shields.io/badge/APK-5.34_MiB-1B6B4A?style=flat-square)
+![APK 5.40 MiB](https://img.shields.io/badge/APK-5.40_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**下载 2.0.6**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.6/UPC-Pocket-2.0.6.apk)
+[**下载 2.0.7**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.7/UPC-Pocket-2.0.7.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.7/UPC-Pocket-2.0.7.apk)
 
 [继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
@@ -23,17 +23,19 @@
 
 <img src="docs/images/widgets-light.png" width="760" alt="今日课表、校园卡余额、唐岛湾电量三个桌面组件，内容为合成演示数据" />
 
-<sub>今日课表、余额、电量，抬眼就能看见。图中内容为合成演示数据。</sub>
+<sub>今日课表、余额、电量。历史组件图使用合成演示数据；2.0.7 课表和校园卡已移除刷新按钮，并增加自动更新与总余额显示。</sub>
 
 </div>
 
-## 2.0.6 · 更顺手的校园日常
+## 2.0.7 · 小组件自动更新，余额显示更完整
 
-**2.0.6 已于 2026-11-15 正式发布并设为 latest。** 今日课程置顶，待办和常用服务更紧凑；优化课表、空闲教室与查询结果，图书馆登录默认折叠，学校账号保存状态简化为“已保存”。新增本人校园卡微信充值：**输入金额 → 点击充值 → 拉起微信**。
+**2.0.7 已于 2026-11-16 正式发布并设为 latest。** 课表小组件随已同步课程的上下课和跨日自动调整显示；校园卡小组件联网时每 30 分钟尝试更新，两个组件移除刷新按钮。校园卡页面与组件显示含过渡余额的总额，小字标注过渡余额；改善校园卡连接及诊断。系统后台限制可能延后更新，首次同步和未缓存教学周仍需进入应用处理。
 
-已安装新版 2.0.4/2.0.5 可在应用内检查更新，或直接覆盖安装，保留本机数据；2.0.6 旧候选请手动下载正式包覆盖。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
+保留 2.0.6 的今日课程置顶、紧凑待办与常用服务、课表和空闲教室优化、默认折叠的图书馆登录，以及校园卡微信充值：**输入金额 → 点击充值 → 拉起微信**。学校账号保存状态为“已保存”。[本次公告](docs/releases/2.0.7-notice.md) · [2.0.6–2.0.7 合并推广公告](docs/releases/2.0.6-2.0.7-promotion.md)。
 
-新版沿用固定长期 Release 签名；旧版更新线路继续保留 2.0.3。完整更新与校验值见 [2.0.6 发布记录](docs/releases/2.0.6.md)，可转发的文案见 [更新公告](docs/releases/2.0.6-notice.md)。
+已安装新版 2.0.4–2.0.6 可在应用内检查更新，或直接覆盖安装，保留本机数据；2.0.7 测试版请手动下载正式包覆盖。旧版 2.0.3 与新版独立安装、可并存，**旧版数据无法迁移到新版**；首次转用新版需重新设置账号、提醒和桌面组件。
+
+新版沿用固定长期 Release 签名；旧版更新线路继续保留 2.0.3。完整更新与校验值见 [2.0.7 发布记录](docs/releases/2.0.7.md)，可转发的文案见 [更新公告](docs/releases/2.0.7-notice.md)。
 
 <div align="center">
 <img src="docs/images/2.0.6/promo/01-home.png" width="230" alt="2.0.6 首页：今日课程与紧凑待办，合成演示数据" />
@@ -66,11 +68,11 @@
 
 ## 三步开始
 
-1. **安装**：从上方链接下载 2.0.6 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4/2.0.5，也可与旧版 2.0.3 并存。
+1. **安装**：从上方链接下载 2.0.7 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4–2.0.6，也可与旧版 2.0.3 并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 
-从旧版 2.0.3 转用新版需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；已安装新版 2.0.4/2.0.5 时，可在关于页检查更新。
+从旧版 2.0.3 转用新版需要手动下载，旧版应用内更新不能安装这个独立新版。新旧更新线路分别维护；已安装新版 2.0.4–2.0.6 时，可在关于页检查更新。
 
 ## 更新方便，反馈也方便
 
@@ -84,7 +86,7 @@
 
 空闲教室反映学校排课，临时占用以现场为准；图书馆候选与最终可约以学校返回和预约记录为准。2.0.4 已将按时段找座位与个人隐藏扩展到古镇口东区、求是，真实预约、取消和签到尚未验证。待办提醒需通知权限；精确闹钟未授权或系统限制后台时可能延后，系统强行停止后需重新打开应用。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
 
-2.0.6 安装包约 **5.34 MiB**，使用独立长期签名，用户已验收。开发侧完成充值真实只读准备、定向测试及最终 Release 空账号/组件冷启动检查，未独立执行真实下单、微信付款或到账。石光与 e站通保持只读，报名、签到和事项提交请使用学校官方平台。验证范围见 [发布记录](docs/releases/2.0.6.md)，数据处理见 [隐私说明](docs/PRIVACY.md)。
+2.0.7 安装包约 **5.40 MiB**，使用独立长期签名，用户已验收并正式公开。开发侧完成定向回归、独立审查和离线空账号 Release 组件检查；没有独立等待自然 30 分钟、真实上下课/跨日或执行本轮校园读取、下单、微信付款及到账验证。此前充值真实只读准备与各候选证据分别保留。石光与 e站通保持只读，报名、签到和事项提交请使用学校官方平台。验证范围见 [发布记录](docs/releases/2.0.7.md)，数据处理见 [隐私说明](docs/PRIVACY.md)。
 
 <details>
 <summary><strong>开发与文档</strong></summary>
@@ -103,7 +105,7 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取矩阵执行，兼容状态与本轮范围见[文档建设报告](docs/agent-native/2026-11-16-audit-and-delivery.md)。
 
-[2.0.7 开发记录](docs/releases/2.0.7-development.md)：校园卡连接与诊断、小组件自动更新及总余额显示均已通过用户验收。正式包沿用最终候选原字节；[更新公告草稿](docs/releases/2.0.7-notice.md)待审核，[发布准备](docs/releases/2.0.7.md)单独记录。2.0.7 尚未公开发布，上方下载仍为 2.0.6。
+[2.0.7 开发记录](docs/releases/2.0.7-development.md)：校园卡连接与诊断、小组件自动更新及总余额显示均已通过用户验收，正式包沿用最终候选原字节。公告审核后完成推送与六附件公开发布，旧版更新线路仍为 2.0.3；详见[正式记录](docs/releases/2.0.7.md)。
 
 研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值的来源、实现与验证见 [集成记录](docs/releases/2.0.6-card-recharge.md)。
 
