@@ -49,6 +49,6 @@ internal fun LibraryAccountBlocked(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Button(onClick = onBack) { Text("返回") }
+        com.upcpocket.app.ui.liquid.LiquidButton(onClick = onBack) { Text("返回") }
     }
 }

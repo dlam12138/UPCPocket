@@ -34,7 +34,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -67,10 +69,18 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.ui.liquid.LiquidBottomTabs
+import com.upcpocket.app.ui.liquid.LiquidDockDestination
+import com.upcpocket.app.ui.liquid.LocalGlassBackdrop
+import com.upcpocket.app.ui.liquid.isLiquidGlassActive
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -84,6 +94,7 @@ import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.official.OfficialWebScreen
+import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
@@ -117,6 +128,14 @@ private val hostHome = Destination(
     icon = Icons.Filled.Home,
     outlinedIcon = Icons.Outlined.Home,
     order = 0,
+)
+
+private val hostServices = Destination(
+    route = AppRoutes.SERVICES,
+    label = "服务",
+    icon = Icons.Filled.Apps,
+    outlinedIcon = Icons.Outlined.Apps,
+    order = 6,
 )
 
 /**
@@ -153,8 +172,12 @@ fun AppNav(
             page = pluginUi.page(tab.route),
         )
     }.sortedWith(compareBy({ it.order }, { it.route }))
-    // 首页由宿主固定在最左，即使未来某个插件贡献了更小的 order 也不能抢占宿主 tab。
-    val destinations = listOf(hostHome) + pluginDestinations
+    // 首页由宿主固定在最左，服务广场排在课表之后；插件 tab 按各自 order 排序合并。
+    val destinations = listOf(hostHome) +
+        (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
+    val allServiceEntries = remember(pluginUi) {
+        pluginUi.entriesIn(UiSurface.HOME_SERVICES, UiSurface.SERVICE_DIRECTORY)
+    }
     val tabRoutes = remember(destinations) { destinations.map { it.route }.toSet() }
 
     val initialPage = remember {
@@ -286,18 +309,39 @@ fun AppNav(
         DarkMode.LIGHT -> false
         DarkMode.SYSTEM -> isSystemInDarkTheme()
     }
+    val liquidActive = isLiquidGlassActive()
+    val ambientBackdrop = LocalGlassBackdrop.current
+    val navContentBackdrop = rememberLayerBackdrop()
+    val dockBackdrop = if (liquidActive && ambientBackdrop != null) {
+        rememberCombinedBackdrop(ambientBackdrop, navContentBackdrop)
+    } else {
+        null
+    }
 
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
         Box(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface),
+            if (liquidActive) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            },
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = MAIN_ROUTE,
-                modifier = Modifier.fillMaxSize(),
+            Box(
+                modifier = if (liquidActive) {
+                    Modifier
+                        .fillMaxSize()
+                        .layerBackdrop(navContentBackdrop)
+                } else {
+                    Modifier.fillMaxSize()
+                },
             ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = MAIN_ROUTE,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                 composable(MAIN_ROUTE) {
                     HorizontalPager(
                         state = pagerState,
@@ -317,15 +361,28 @@ fun AppNav(
                         }
                         CompositionLocalProvider(LocalPluginPageActive provides active) {
                             Box(pageModifier) {
-                                when (page) {
-                                    0 -> HomeScreen(
-                                        serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
+                                when (destinations.getOrNull(page)?.route) {
+                                    AppRoutes.HOME -> HomeScreen(
+                                        serviceEntries = allServiceEntries,
                                         timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
                                         cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
                                         todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
                                         sectionHost = sectionHost,
                                         onOpenRoute = pageHost::open,
                                         onOpenSettings = ::openSettings,
+                                        onOpenOfficialWeb = {
+                                            navController.navigate(AppRoutes.OFFICIAL_WEB)
+                                        },
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onOpenServices = { switchTab(AppRoutes.SERVICES) },
+                                    )
+                                    AppRoutes.SERVICES -> ServicesScreen(
+                                        entries = allServiceEntries,
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onTogglePin = { entryId ->
+                                            scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
+                                        },
+                                        onOpenRoute = pageHost::open,
                                         onOpenOfficialWeb = {
                                             navController.navigate(AppRoutes.OFFICIAL_WEB)
                                         },
@@ -378,16 +435,18 @@ fun AppNav(
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
             }
+            }
 
             if (dockVisible) {
                 FloatingDock(
                     destinations = destinations,
                     pagerState = pagerState,
                     dockDark = dockDark,
-                    selectedIndex = pagerState.currentPage,
+                    selectedIndex = pagerState.targetPage,
                     onSelect = { index ->
                         destinations.getOrNull(index)?.let { switchTab(it.route) }
                     },
+                    liquidBackdrop = dockBackdrop,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -409,9 +468,43 @@ private fun FloatingDock(
     dockDark: Boolean,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    liquidBackdrop: Backdrop? = null,
     modifier: Modifier = Modifier,
 ) {
     if (destinations.isEmpty()) return
+    if (liquidBackdrop != null) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures { }
+                }
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            LiquidBottomTabs(
+                destinations = destinations.map { dest ->
+                    LiquidDockDestination(
+                        route = dest.route,
+                        label = dest.label,
+                        icon = dest.outlinedIcon,
+                        selectedIcon = dest.icon,
+                        tabModifier = Modifier
+                            .semantics { contentDescription = dest.label }
+                            .testTag("tab_${dest.route}"),
+                    )
+                },
+                selectedIndex = selectedIndex,
+                onSelect = onSelect,
+                backdrop = liquidBackdrop,
+                darkSurface = dockDark,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("floating_dock"),
+            )
+        }
+        return
+    }
     val dockColor = if (dockDark) {
         MaterialTheme.colorScheme.surface
     } else {

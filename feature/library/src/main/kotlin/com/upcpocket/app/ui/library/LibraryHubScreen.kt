@@ -98,8 +98,9 @@ fun LibraryHubScreen(
     )
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("图书馆") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -139,7 +140,7 @@ fun LibraryHubScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (accountState.status != SchoolAccountStatus.SAVED_UNVERIFIED) {
-                        TextButton(onClick = onOpenAccount) {
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenAccount) {
                             Text("设置学校账号")
                         }
                     }
@@ -153,7 +154,7 @@ fun LibraryHubScreen(
             SectionHeader("求是")
             PlatformCard(platforms[2])
 
-            TextButton(onClick = {
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                 runCatching {
                     context.startActivity(
                         Intent(Intent.ACTION_VIEW, Uri.parse("https://library.upc.edu.cn/")),
@@ -186,12 +187,9 @@ private fun accountStatusLabel(status: SchoolAccountStatus): String = when (stat
 
 @Composable
 private fun PlatformCard(platform: LibraryPlatform) {
-    Surface(
-        onClick = platform.action,
+    GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 0.dp,
+        onClick = platform.action,
     ) {
         Row(
             modifier = Modifier.padding(16.dp),

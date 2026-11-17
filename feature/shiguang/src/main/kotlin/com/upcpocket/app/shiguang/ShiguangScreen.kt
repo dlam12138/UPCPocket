@@ -33,6 +33,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.HorizontalMetricBar
+import com.upcpocket.app.ui.components.MetricTile
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
@@ -90,8 +93,9 @@ internal fun ShiguangScreenContent(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text(if (state.selected != null) "活动详情" else "石光") },
                 navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
                 actions = {
@@ -193,20 +197,16 @@ private fun BrowseContent(
             )
         }
         item(key = "tabs") {
-            TabRow(selectedTabIndex = state.tab.ordinal) {
-                Tab(
-                    selected = state.tab == ShiguangTab.ACTIVITIES,
-                    enabled = inputEnabled,
-                    onClick = { scope.launch { service.selectTab(ShiguangTab.ACTIVITIES) } },
-                    text = { Text("活动") },
-                )
-                Tab(
-                    selected = state.tab == ShiguangTab.MINE,
-                    enabled = inputEnabled,
-                    onClick = { scope.launch { service.selectTab(ShiguangTab.MINE) } },
-                    text = { Text("我的") },
-                )
-            }
+            com.upcpocket.app.ui.liquid.LiquidSegmentedTabs(
+                tabs = listOf("活动", "我的"),
+                selectedIndex = state.tab.ordinal,
+                onSelect = { index ->
+                    val target = if (index == 0) ShiguangTab.ACTIVITIES else ShiguangTab.MINE
+                    scope.launch { service.selectTab(target) }
+                },
+                enabled = inputEnabled,
+                tabStyle = true,
+            )
         }
         if (state.busy) item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { reason ->
@@ -333,7 +333,7 @@ private fun AccountRequiredContent(modifier: Modifier, onOpenAccountSettings: ()
         Text("保存学校账号后查看活动与参与记录", style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("学校账号") }
+        com.upcpocket.app.ui.liquid.LiquidButton(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("学校账号") }
     }
 }
 
@@ -352,10 +352,10 @@ private fun ActivityFilters(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            FilterChip(selected == ShiguangActivityFilter.ALL, { onSelected(ShiguangActivityFilter.ALL) }, enabled = enabled, label = { Text("全部") })
-            FilterChip(selected == ShiguangActivityFilter.CAMPUS, { onSelected(ShiguangActivityFilter.CAMPUS) }, enabled = enabled, label = { Text("校园活动") })
-            FilterChip(selected == ShiguangActivityFilter.SOCIAL_PRACTICE, { onSelected(ShiguangActivityFilter.SOCIAL_PRACTICE) }, enabled = enabled, label = { Text("社会实践") })
-            FilterChip(hideEnded, { onHideEndedChange(!hideEnded) }, enabled = enabled, label = { Text("隐藏已结束") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.ALL, { onSelected(ShiguangActivityFilter.ALL) }, enabled = enabled, label = { Text("全部") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.CAMPUS, { onSelected(ShiguangActivityFilter.CAMPUS) }, enabled = enabled, label = { Text("校园活动") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.SOCIAL_PRACTICE, { onSelected(ShiguangActivityFilter.SOCIAL_PRACTICE) }, enabled = enabled, label = { Text("社会实践") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(hideEnded, { onHideEndedChange(!hideEnded) }, enabled = enabled, label = { Text("隐藏已结束") })
         }
         Text("仅筛本页", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -384,7 +384,7 @@ private fun PageHeader(
 
 @Composable
 internal fun ShiguangInteractiveLoginAction(state: ShiguangState, onClick: () -> Unit) {
-    TextButton(
+    com.upcpocket.app.ui.liquid.LiquidTextButton(
         onClick = onClick,
         enabled = !state.busy && state.interactiveAttempt == null,
         modifier = Modifier.heightIn(min = 48.dp),
@@ -395,10 +395,10 @@ internal fun ShiguangInteractiveLoginAction(state: ShiguangState, onClick: () ->
 
 @Composable
 private fun FailureCard(reason: ShiguangFailure, showingPreviousResults: Boolean, onOpenAccountSettings: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        shape = RoundedCornerShape(20.dp),
+    com.upcpocket.app.ui.liquid.LiquidPanel(
         modifier = Modifier.fillMaxWidth(),
+        tintColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f),
+        fallbackColor = MaterialTheme.colorScheme.errorContainer,
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(reason.label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -406,7 +406,11 @@ private fun FailureCard(reason: ShiguangFailure, showingPreviousResults: Boolean
                 Text("当前显示上次结果", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
             }
             if (reason in setOf(ShiguangFailure.INVALID_CREDENTIALS, ShiguangFailure.ACCOUNT_CHANGED, ShiguangFailure.IDENTITY_MISMATCH)) {
-                TextButton(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("检查账号") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
+                    onClick = onOpenAccountSettings,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("检查账号") }
             }
         }
     }
@@ -418,12 +422,10 @@ private fun ActivityCard(activity: ShiguangActivity, enabled: Boolean, onClick: 
     val category = activity.fields.firstValue("活动分类", "活动标签", "分类")
     val eventTime = activity.fields.firstValue("活动时间")
     val place = activity.fields.firstValue("活动地点", "地点")
-    Card(
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -473,47 +475,70 @@ private fun MetadataRow(icon: ImageVector, value: String) {
 
 @Composable
 private fun TotalHoursCard(summary: ShiguangSummary) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-    ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("累计学时", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(
-                "${summary.totalHours.display()} 学时",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
+    val totalCredits = remember(summary) {
+        val creditValues = summary.modules.mapNotNull { it.credits }
+        if (creditValues.isEmpty()) null else creditValues.fold(BigDecimal.ZERO) { acc, v -> acc + v }
+    }
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MetricTile(
+                    label = "累计学时",
+                    value = "${summary.totalHours.display()} 学时",
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                MetricTile(
+                    label = "累计学分",
+                    value = "${totalCredits.display()} 学分",
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun ModuleSummaryCard(summary: ShiguangSummary) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    val maxHours = remember(summary) {
+        summary.modules.mapNotNull { it.hours?.toFloat() }.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+    }
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "五模块学时分布",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
             summary.modules.forEachIndexed { index, module ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(module.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${module.hours.display()} 学时", style = MaterialTheme.typography.bodySmall)
-                            Text("${module.credits.display()} 学分", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    module.rank?.let { rank ->
-                        Text("专业排名 ${rank.position} / ${rank.total}", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                val hoursValue = module.hours?.toFloat() ?: 0f
+                val rankSubtitle = module.rank?.let { rank ->
+                    val topPercent = if (rank.total > 0) {
+                        ((rank.position.toFloat() / rank.total.toFloat()) * 100f)
+                            .toInt()
+                            .coerceIn(1, 100)
+                    } else null
+                    val pctText = topPercent?.let { " · 前 $it%" }.orEmpty()
+                    "专业排名 ${rank.position} / ${rank.total}$pctText"
                 }
-                if (index < summary.modules.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalMetricBar(
+                    label = module.label,
+                    valueText = "${module.hours.display()} 学时 · ${module.credits.display()} 学分",
+                    fraction = (hoursValue / maxHours).coerceIn(0f, 1f),
+                    subtitle = rankSubtitle,
+                )
+                if (index < summary.modules.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                }
             }
         }
     }
@@ -521,11 +546,7 @@ private fun ModuleSummaryCard(summary: ShiguangSummary) {
 
 @Composable
 private fun EmptyState(message: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-    ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Text(message, modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -581,11 +602,7 @@ internal fun DetailContent(
 
 @Composable
 private fun DetailGroup(title: String, fields: Map<String, String>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)),
-    ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
@@ -614,14 +631,14 @@ private fun Pagination(page: ShiguangPage, busy: Boolean, onPrevious: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TextButton(onClick = onPrevious, enabled = !busy && page.page > 1, modifier = Modifier.heightIn(min = 48.dp)) {
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onPrevious, enabled = !busy && page.page > 1, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("上一页")
         }
         Text(
             if (page.totalPages != null) "第 ${page.page} / ${page.totalPages} 页" else "第 ${page.page} 页",
             style = MaterialTheme.typography.labelMedium,
         )
-        TextButton(onClick = onNext, enabled = !busy && page.nextPage != null, modifier = Modifier.heightIn(min = 48.dp)) {
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onNext, enabled = !busy && page.nextPage != null, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("下一页")
         }
     }

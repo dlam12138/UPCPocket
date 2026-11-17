@@ -152,7 +152,7 @@ fun TodoEditorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
     ) {
         Column(
             modifier = Modifier
@@ -197,7 +197,7 @@ fun TodoEditorSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
+                com.upcpocket.app.ui.liquid.LiquidToggle(
                     checked = reminderEnabled,
                     onCheckedChange = ::toggleReminder,
                     modifier = Modifier.testTag("todo_reminder_switch"),
@@ -206,10 +206,10 @@ fun TodoEditorSheet(
 
             if (reminderEnabled) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showDate = true }) {
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = { showDate = true }) {
                         Text(TodoFormat.date(reminderAt, zone))
                     }
-                    OutlinedButton(onClick = { showTime = true }) {
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = { showTime = true }) {
                         Text(TodoFormat.clock(reminderAt, zone))
                     }
                 }
@@ -251,9 +251,9 @@ fun TodoEditorSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (initialTask != null) {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = {
-                            if (saving) return@TextButton
+                            if (saving) return@LiquidTextButton
                             saving = true
                             scope.launch {
                                 store.delete(initialTask.id)?.let(onDeleted)
@@ -262,13 +262,14 @@ fun TodoEditorSheet(
                             }
                         },
                         enabled = !saving,
+                        contentColor = MaterialTheme.colorScheme.error,
                     ) {
-                        Text("删除", color = MaterialTheme.colorScheme.error)
+                        Text("删除")
                     }
                 }
                 Column(Modifier.weight(1f)) {}
-                TextButton(onClick = onDismiss, enabled = !saving) { Text("取消") }
-                Button(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss, enabled = !saving) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidButton(
                     onClick = { save(keepOpen = false) },
                     enabled = title.trim().isNotEmpty() && !saving,
                     modifier = Modifier.testTag("todo_save"),
@@ -286,7 +287,7 @@ fun TodoEditorSheet(
         DatePickerDialog(
             onDismissRequest = { showDate = false },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = {
                         pickerState.selectedDateMillis?.let { millis ->
                             val date = Instant.ofEpochMilli(millis)
@@ -299,7 +300,7 @@ fun TodoEditorSheet(
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showDate = false }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDate = false }) { Text("取消") }
             },
         ) {
             DatePicker(state = pickerState)
@@ -313,12 +314,12 @@ fun TodoEditorSheet(
             initialMinute = time.minute,
             is24Hour = true,
         )
-        AlertDialog(
+        com.upcpocket.app.ui.liquid.LiquidDialog(
             onDismissRequest = { showTime = false },
             title = { Text("选择提醒时间") },
             text = { TimePicker(state = timeState) },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = {
                         reminderAt = combine(
                             instantDate(reminderAt, zone),
@@ -330,7 +331,7 @@ fun TodoEditorSheet(
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showTime = false }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showTime = false }) { Text("取消") }
             },
         )
     }

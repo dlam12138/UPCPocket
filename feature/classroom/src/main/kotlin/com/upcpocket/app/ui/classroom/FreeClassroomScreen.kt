@@ -95,6 +95,9 @@ import com.upcpocket.app.data.classroom.formatPeriods
 import com.upcpocket.app.data.classroom.groupSelectionState
 import com.upcpocket.app.data.classroom.matches
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.RatioRingBadge
+import com.upcpocket.app.ui.components.RatioSegment
+import com.upcpocket.app.ui.components.SegmentedRatioBar
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -176,7 +179,7 @@ fun FreeClassroomScreen(
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     enabled = pickerState.selectedDateMillis != null,
                     onClick = {
                         pickerState.selectedDateMillis?.let { millis ->
@@ -191,7 +194,7 @@ fun FreeClassroomScreen(
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDatePicker = false }) { Text("取消") }
             },
         ) {
             DatePicker(state = pickerState, showModeToggle = false)
@@ -228,6 +231,7 @@ fun FreeClassroomScreen(
         ModalBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
         ) {
             ClassroomFilterSheet(
                 building = draftBuilding,
@@ -262,8 +266,9 @@ fun FreeClassroomScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("空闲教室") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -405,7 +410,7 @@ private fun ClassroomFilterPanel(
             Text("校区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FreeClassroomCampus.entries.forEach { campus ->
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = model.campus == campus,
                         onClick = { model.chooseCampus(campus) },
                         enabled = filtersEnabled,
@@ -420,7 +425,7 @@ private fun ClassroomFilterPanel(
                 val stacked = maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.4f
                 if (stacked) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = onOpenDate,
                             enabled = filtersEnabled,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("classroom_date"),
@@ -452,7 +457,7 @@ private fun ClassroomFilterPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = onOpenDate,
                             enabled = filtersEnabled,
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("classroom_date"),
@@ -484,7 +489,7 @@ private fun ClassroomFilterPanel(
             ) {
                 ClassroomPeriodGroup.entries.forEach { group ->
                     val state = groupSelectionState(model.periods, group)
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = state == GroupSelectionState.ALL,
                         onClick = { model.choosePreset(group) },
                         enabled = filtersEnabled,
@@ -518,7 +523,7 @@ private fun ClassroomFilterPanel(
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(onClick = onOpenFilters, enabled = filtersEnabled) { Text("筛选") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenFilters, enabled = filtersEnabled) { Text("筛选") }
                 }
             }
         }
@@ -541,7 +546,7 @@ private fun ClassroomQueryActions(
         model.result != null -> "条件已更改，请查询"
         else -> "正在准备查询"
     }
-    Card(
+    GlassCard(
         Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -550,7 +555,7 @@ private fun ClassroomQueryActions(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (model.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onQuery,
                 enabled = !model.restoringCampus && !model.loading && model.periods.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -612,7 +617,7 @@ private fun ClassroomFilterSheet(
         Text("详细筛选", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("教学楼", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = onOpenBuilding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("classroom_building_picker"),
             ) {
@@ -627,7 +632,7 @@ private fun ClassroomFilterSheet(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     ZhuoyueWingFilter.entries.forEach { filter ->
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = wingFilter == filter,
                             onClick = { onWingFilterChange(filter) },
                             label = { Text(filter.label) },
@@ -645,7 +650,7 @@ private fun ClassroomFilterSheet(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 (1..13).forEach { period ->
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = period in periods,
                         onClick = {
                             onPeriodsChange(if (period in periods) periods - period else periods + period)
@@ -656,8 +661,8 @@ private fun ClassroomFilterSheet(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onPeriodsChange((1..13).toSet()) }) { Text("全选") }
-                TextButton(onClick = { onPeriodsChange(emptySet()) }) { Text("清空") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onPeriodsChange((1..13).toSet()) }) { Text("全选") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onPeriodsChange(emptySet()) }) { Text("清空") }
             }
             Text(
                 if (periods.isEmpty()) "至少选择一节。" else "第 ${formatPeriods(periods)} 节 · 共 ${periods.size} 节",
@@ -666,10 +671,10 @@ private fun ClassroomFilterSheet(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Text("取消")
             }
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onApply,
                 enabled = periods.isNotEmpty(),
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -704,25 +709,43 @@ private fun ResultSummaryCard(
         .format(result.fetchedAt)
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // 统计与开关都保持固有宽度：窄屏/大字号时开关整体落到下一行，
-            // 统计文本不参与 weight 压缩，避免“全/部”被拆开。
-            FlowRow(
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                listOf(
-                    "空闲 $freeCount",
-                    "共 $total 间",
-                ).forEach { metric ->
+                val freeRatio = if (total > 0) freeCount.toFloat() / total.toFloat() else 0f
+                val pct = (freeRatio * 100f).toInt().coerceIn(0, 100)
+                RatioRingBadge(
+                    fraction = freeRatio,
+                    centerText = "$pct%",
+                    size = 48.dp,
+                    strokeWidth = 5.dp,
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf(
+                            "空闲 $freeCount",
+                            "共 $total 间",
+                        ).forEach { metric ->
+                            Text(
+                                metric,
+                                modifier = Modifier.padding(end = 8.dp),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
                     Text(
-                        metric,
-                        modifier = Modifier.padding(end = 8.dp),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
+                        "读取于 $time · $status",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor,
                     )
                 }
                 Row(
@@ -737,38 +760,69 @@ private fun ResultSummaryCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("仅看空闲", style = MaterialTheme.typography.labelMedium)
-                    Switch(
+                    com.upcpocket.app.ui.liquid.LiquidToggle(
                         checked = onlyAvailable,
                         onCheckedChange = null,
                         enabled = total > 0,
                     )
                 }
             }
-            Text(
-                "读取于 $time · $status",
-                style = MaterialTheme.typography.labelSmall,
-                color = statusColor,
-            )
+            if (total > 0) {
+                val occupied = (total - freeCount).coerceAtLeast(0)
+                SegmentedRatioBar(
+                    segments = listOf(
+                        RatioSegment(
+                            label = "空闲",
+                            value = freeCount.toFloat(),
+                            color = MaterialTheme.colorScheme.primary,
+                            valueText = "$freeCount 间",
+                        ),
+                        RatioSegment(
+                            label = "占用",
+                            value = occupied.toFloat(),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            valueText = "$occupied 间",
+                        ),
+                    ),
+                    barHeight = 6.dp,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun BuildingHeader(group: BuildingRoomGroup) {
-    Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val freeRatio = if (group.totalCount > 0) {
+        group.freeCount.toFloat() / group.totalCount.toFloat()
+    } else 0f
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            group.building,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            "空闲 ${group.freeCount} / 共 ${group.totalCount}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                group.building,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "空闲 ${group.freeCount} / 共 ${group.totalCount}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SegmentedRatioBar(
+            segments = listOf(
+                RatioSegment("空闲", group.freeCount.toFloat(), MaterialTheme.colorScheme.primary),
+                RatioSegment("占用", (group.totalCount - group.freeCount).coerceAtLeast(0).toFloat(), MaterialTheme.colorScheme.surfaceVariant),
+            ),
+            showLegend = false,
+            barHeight = 4.dp,
         )
     }
 }
@@ -817,12 +871,7 @@ private fun RoomCell(
 
 @Composable
 private fun NoticeCard(text: String) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        ),
-    ) {
+    GlassCard(Modifier.fillMaxWidth()) {
         Text(
             text,
             Modifier.padding(12.dp),
@@ -863,7 +912,7 @@ private fun BuildingPickerDialog(
     onQueryAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择教学楼") },
         text = {
@@ -911,7 +960,7 @@ private fun BuildingPickerDialog(
                         }
                     }
                 }
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = onQueryAll,
                     enabled = canQueryAll,
                     modifier = Modifier.testTag("classroom_query_all_buildings"),
@@ -920,7 +969,7 @@ private fun BuildingPickerDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }
 
@@ -931,7 +980,7 @@ private fun RoomDetailDialog(
 ) {
     val room = detail.room
     val colors = roomColors(room.available)
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text(room.name) },
         text = {
@@ -957,6 +1006,6 @@ private fun RoomDetailDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }

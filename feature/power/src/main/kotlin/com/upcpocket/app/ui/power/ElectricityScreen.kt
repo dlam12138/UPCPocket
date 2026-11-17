@@ -55,8 +55,9 @@ fun ElectricityScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("电费") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -81,7 +82,7 @@ fun ElectricityScreen(
                         "楼号与房间号 · 无需登录",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Button(
+                    com.upcpocket.app.ui.liquid.LiquidButton(
                         onClick = onOpenTangdaowan,
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     ) { Text("查剩余电量") }
@@ -95,7 +96,7 @@ fun ElectricityScreen(
                         "使用学校页面查询",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    OutlinedButton(
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                         onClick = { openInBrowser(PowerCampusEntries.GUZHENKOU_URL) },
                         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                     ) { Text("打开学校页面") }

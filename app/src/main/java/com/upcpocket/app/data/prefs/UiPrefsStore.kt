@@ -6,9 +6,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -23,6 +25,8 @@ data class UiPrefs(
     val themePreset: ThemePreset = ThemePreset.DYNAMIC,
     /** 深浅色（默认跟随系统） */
     val darkMode: DarkMode = DarkMode.SYSTEM,
+    /** 全局界面风格（默认 Kyant 液态玻璃，可随时切换回 Material 3 原生） */
+    val uiStyle: UiStyle = UiStyle.LIQUID_GLASS,
     /**
      * 记住学校登录：把图书馆座位业务签发的 token 用 Keystore 加密保存。
      * 默认关闭。这只是图书馆 token 偏好，不是统一学校账号密码的保存同意；
@@ -40,13 +44,24 @@ data class UiPrefs(
      */
     val powerBuilding: String = "",
     val powerRoom: String = "",
+    /** 首页置顶的常用服务 ID 集合；默认置顶高频四项，用户可在「服务」页调整。 */
+    val pinnedServiceIds: Set<String> = DEFAULT_PINNED_SERVICES,
     /**
      * 旧版校园卡余额功能区学号草稿。
      *
      * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
      */
     val cardStudentId: String = "",
-)
+) {
+    companion object {
+        val DEFAULT_PINNED_SERVICES = setOf(
+            "classroom.free",
+            "library.home",
+            "power.electricity",
+            "shiguang.home",
+        )
+    }
+}
 
 private val Context.uiPrefsStore: DataStore<Preferences> by preferencesDataStore(name = "ui_prefs")
 
@@ -62,12 +77,20 @@ class UiPrefsStore internal constructor(
                 ?: ThemePreset.DYNAMIC,
             darkMode = p[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.SYSTEM,
+            uiStyle = p[KEY_UI_STYLE]?.let { runCatching { UiStyle.valueOf(it) }.getOrNull() }
+                ?: UiStyle.LIQUID_GLASS,
             rememberSchoolLogin = p[KEY_REMEMBER_SCHOOL_LOGIN] ?: false,
             diagnosticsEnabled = p[KEY_DIAGNOSTICS_ENABLED] ?: true,
             powerBuilding = p[KEY_POWER_BUILDING].orEmpty(),
             powerRoom = p[KEY_POWER_ROOM].orEmpty(),
+            pinnedServiceIds = p[KEY_PINNED_SERVICES] ?: UiPrefs.DEFAULT_PINNED_SERVICES,
             cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
         )
+    }
+
+    suspend fun togglePinnedService(entryId: String) = store.edit { p ->
+        val current = p[KEY_PINNED_SERVICES] ?: UiPrefs.DEFAULT_PINNED_SERVICES
+        p[KEY_PINNED_SERVICES] = if (entryId in current) current - entryId else current + entryId
     }
 
     /** “记住学校登录”开关。清理动作由调用方负责（token/密文/Cookie）。 */
@@ -102,9 +125,12 @@ class UiPrefsStore internal constructor(
 
     suspend fun setDarkMode(v: DarkMode) = store.edit { p -> p[KEY_DARK_MODE] = v.name }
 
+    suspend fun setUiStyle(v: UiStyle) = store.edit { p -> p[KEY_UI_STYLE] = v.name }
+
     private companion object {
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
+        val KEY_UI_STYLE = stringPreferencesKey("ui_style")
 
         /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")
@@ -118,5 +144,8 @@ class UiPrefsStore internal constructor(
 
         /** 校园卡余额功能区上次输入的学号（与余额快照无关） */
         val KEY_CARD_STUDENT_ID = stringPreferencesKey("card_student_id")
+
+        /** 首页置顶的服务入口 ID */
+        val KEY_PINNED_SERVICES = stringSetPreferencesKey("pinned_service_ids")
     }
 }

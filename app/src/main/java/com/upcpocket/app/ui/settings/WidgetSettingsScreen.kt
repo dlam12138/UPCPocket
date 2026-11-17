@@ -76,9 +76,9 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("桌面组件") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -184,7 +184,7 @@ private fun WidgetCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onPin,
                 modifier = Modifier.fillMaxWidth(),
             ) {

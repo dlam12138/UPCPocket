@@ -168,7 +168,7 @@ internal fun ShiguangLoginDialog(
                     modifier = Modifier.weight(1f),
                 )
                 if (error == null) {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         enabled = canReopenEntry(),
                         onClick = { reopenEntryPage() },
                     ) { Text("继续") }
@@ -383,7 +383,7 @@ internal fun ShiguangLoginDialog(
                         ) {
                             Text("学校验证未完成", style = MaterialTheme.typography.titleMedium)
                             Text(message, Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error)
-                            Button(
+                            com.upcpocket.app.ui.liquid.LiquidButton(
                                 onClick = { reopenEntryPage() },
                                 enabled = canReopenEntry(),
                                 modifier = Modifier.padding(top = 12.dp),

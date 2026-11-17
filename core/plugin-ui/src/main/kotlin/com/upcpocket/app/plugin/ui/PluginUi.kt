@@ -62,11 +62,20 @@ value class PluginRouteId private constructor(val value: String) {
  */
 enum class UiSurface {
     HOME_SERVICES,
+    SERVICE_DIRECTORY,
     HOME_TIMETABLE,
     HOME_CARD,
     HOME_TODO,
     MORE_LEARNING,
     MORE_SCHOOL,
+}
+
+/** 宿主服务分类，用于「服务」页的主流分组筛选，不改变插件边界与路由。 */
+enum class UiCategory(val label: String, val sortOrder: Int) {
+    STUDY("学习与空间", 0),
+    LIFE("校园生活", 1),
+    CAMPUS("校务与成长", 2),
+    GENERAL("常用工具", 3),
 }
 
 /** 图标是展示元数据，不把 Compose ImageVector 放进注册契约。 */
@@ -78,6 +87,9 @@ enum class UiIcon {
     TIMER,
     TIMETABLE,
     TODO,
+    WALLET,
+    RECHARGE,
+    APPS,
 }
 
 /** 页面只能通过宿主导航，不能拿 NavController 或对外 Intent。 */
@@ -116,6 +128,8 @@ data class PluginEntry(
     val subtitle: String,
     val icon: UiIcon,
     val route: PluginRouteId?,
+    val category: UiCategory = UiCategory.GENERAL,
+    val keywords: String = "",
 ) {
     init {
         require(title.isNotBlank()) { "入口标题不能为空" }
@@ -301,6 +315,11 @@ class PluginUiSnapshot internal constructor(
     val bottomNav: List<PluginBottomNav>,
 ) {
     fun entriesFor(surface: UiSurface): List<PluginEntry> = entries.filter { it.surface == surface }
+
+    fun entriesIn(vararg surfaces: UiSurface): List<PluginEntry> {
+        val allowed = surfaces.toSet()
+        return entries.filter { it.surface in allowed }
+    }
 
     fun sectionsFor(surface: UiSurface): List<PluginSection> = sections.filter { it.surface == surface }
 

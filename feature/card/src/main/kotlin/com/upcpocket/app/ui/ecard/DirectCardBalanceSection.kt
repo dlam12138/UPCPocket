@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,6 +26,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.upcpocket.app.ui.components.RatioSegment
+import com.upcpocket.app.ui.components.SegmentedRatioBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -154,9 +159,32 @@ fun DirectCardBalanceSection(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                onOpenHistory?.let { open -> TextButton(onClick = open) { Text("交易流水") } }
-                onOpenRecharge?.let { open -> TextButton(onClick = open) { Text("充值") } }
+            if (onOpenRecharge != null || onOpenHistory != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    onOpenRecharge?.let { open ->
+                        com.upcpocket.app.ui.liquid.LiquidTonalButton(
+                            onClick = open,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Outlined.Payments, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("充值")
+                        }
+                    }
+                    onOpenHistory?.let { open ->
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
+                            onClick = open,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("交易流水")
+                        }
+                    }
+                }
             }
 
             visibleSnapshot?.let { data ->
@@ -186,7 +214,7 @@ fun DirectCardBalanceSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Button(
+                    com.upcpocket.app.ui.liquid.LiquidButton(
                         onClick = ::query,
                         enabled = !loading && !querying,
                         modifier = Modifier
@@ -202,13 +230,13 @@ fun DirectCardBalanceSection(
                         }
                         Text(if (querying) "正在读取…" else if (visibleSnapshot == null) "查询余额" else "刷新余额")
                     }
-                    OutlinedButton(
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                         onClick = onOpenAccountSettings,
                         modifier = Modifier.testTag("card_open_account"),
                     ) { Text("账号") }
                 }
             } else {
-                OutlinedButton(
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                     onClick = onOpenAccountSettings,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -222,14 +250,14 @@ fun DirectCardBalanceSection(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (status.availability == CardBindingAvailability.READY || snapshot != null) {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = ::clearCache,
                         enabled = !loading && !querying,
                         modifier = Modifier.testTag("card_clear_cache"),
                     ) { Text("清除缓存") }
                 }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { showDetails = !showDetails }) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDetails = !showDetails }) {
                     Text("数据说明")
                     Icon(
                         imageVector = if (showDetails) {
@@ -308,12 +336,22 @@ private fun BalanceSnapshot(
         fresh -> "刚刚更新"
         else -> "上次读取"
     }
-    Surface(
+    val liquid = com.upcpocket.app.ui.liquid.isLiquidGlassActive()
+    val snapContentColor = if (liquid) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    com.upcpocket.app.ui.liquid.LiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("card_snapshot"),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        tintColor = if (liquid) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        fallbackColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column(
             Modifier.padding(14.dp),
@@ -322,26 +360,45 @@ private fun BalanceSnapshot(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.78f),
             )
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = "${data.totalBalanceText} 元",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = snapContentColor,
                 )
             }
             Text(
                 text = "过渡余额 ${data.transitionText} 元",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.84f),
             )
+            if (data.balanceCents > 0L || data.transitionCents > 0L) {
+                SegmentedRatioBar(
+                    segments = listOf(
+                        RatioSegment(
+                            label = "卡内",
+                            value = data.balanceCents.coerceAtLeast(0L).toFloat(),
+                            color = MaterialTheme.colorScheme.primary,
+                            valueText = "${data.balanceText} 元",
+                        ),
+                        RatioSegment(
+                            label = "过渡",
+                            value = data.transitionCents.coerceAtLeast(0L).toFloat(),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            valueText = "${data.transitionText} 元",
+                        ),
+                    ),
+                    barHeight = 6.dp,
+                )
+            }
             val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .withZone(ZoneId.systemDefault())
             Text(
                 text = time.format(Instant.ofEpochMilli(data.fetchedAt)),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.72f),
             )
         }
     }

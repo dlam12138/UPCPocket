@@ -203,8 +203,9 @@ fun TodoScreen(store: TodoStore) {
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(title = { Text("待办") })
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(title = { Text("待办") })
         },
         snackbarHost = {
             SnackbarHost(
@@ -213,20 +214,19 @@ fun TodoScreen(store: TodoStore) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            com.upcpocket.app.ui.liquid.LiquidFloatingActionButton(
                 onClick = {
                     editorTask = null
                     adding = true
                 },
                 modifier = Modifier
+                    .padding(bottom = dockClearance)
                     .semantics { contentDescription = "新增待办" }
-                    .testTag("todo_add")
-                    .padding(bottom = dockClearance),
+                    .testTag("todo_add"),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
@@ -347,7 +347,7 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("暂无待办", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        TextButton(onClick = onAdd) { Text("添加一条") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onAdd) { Text("添加一条") }
     }
 }
 
@@ -447,7 +447,7 @@ private fun TodoReminderBanner(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            com.upcpocket.app.ui.liquid.LiquidTextButton(
                 onClick = if (notificationIssue) onNotificationSettings else onExactAlarmSettings,
             ) { Text("去设置") }
         }

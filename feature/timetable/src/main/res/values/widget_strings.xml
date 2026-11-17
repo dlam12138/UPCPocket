@@ -40,4 +40,7 @@
     <string name="widget_timetable_status_cleanup">清理中</string>
     <string name="widget_timetable_status_outside_term">学期外</string>
     <string name="widget_timetable_failed_compact">更新失败 · 显示缓存</string>
+    <string name="widget_timetable_upcoming_header">后续课程</string>
+    <string name="widget_timetable_earlier_header">今日其余课程</string>
+    <string name="widget_timetable_upcoming_more">还有 %d 节 · 点击查看</string>
 </resources>
