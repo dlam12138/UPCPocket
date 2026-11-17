@@ -153,12 +153,14 @@ fun AppearanceScreen(
             }
             Text(
                 text = if (prefs.uiStyle == UiStyle.LIQUID_GLASS) {
-                    "已启用全局 Kyant 液态玻璃材质：Android 13+ 支持边缘光学折射与色散，Android 12 自动使用实时模糊与高光质感。"
+                    "Android 13+ 实时光学折射 · Android 12 柔焦高光"
                 } else {
-                    "当前使用 Material 3 原生实底卡片与胶囊导航。"
+                    "Material 3 原生实底卡片与胶囊导航"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
 
             Text(

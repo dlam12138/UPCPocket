@@ -2,6 +2,7 @@ package com.upcpocket.app.ui.services
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -18,7 +19,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PushPin
@@ -27,16 +30,10 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
-import com.upcpocket.app.ui.liquid.LiquidFilterChip
-import com.upcpocket.app.ui.liquid.LiquidTopAppBar
-import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,10 +43,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -59,6 +64,13 @@ import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
+import com.upcpocket.app.ui.liquid.GlassCapsule
+import com.upcpocket.app.ui.liquid.LiquidFilterChip
+import com.upcpocket.app.ui.liquid.LiquidIconButton
+import com.upcpocket.app.ui.liquid.LiquidPanel
+import com.upcpocket.app.ui.liquid.LiquidTopAppBar
+import com.upcpocket.app.ui.liquid.LocalGlassDark
+import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 import com.upcpocket.app.ui.nav.filledIcon
 import com.upcpocket.app.ui.official.OfficialWebCatalog
 
@@ -136,12 +148,22 @@ fun ServicesScreen(
         topBar = {
             LiquidTopAppBar(
                 title = {
-                    Column {
-                        Text("校园服务")
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
                         Text(
-                            "点图钉可固定到首页",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            text = "校园服务",
+                            style = MaterialTheme.typography.titleMedium.copy(fontSize = 17.sp),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        TopBarSearchField(
+                            query = query,
+                            onQueryChange = { query = it },
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 },
@@ -153,26 +175,9 @@ fun ServicesScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 28.dp + dockClearance),
+                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                placeholder = { Text("搜索服务、教室、校园卡、学时…") },
-                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
-                trailingIcon = {
-                    if (query.isNotEmpty()) {
-                        IconButton(onClick = { query = "" }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "清空搜索")
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth(),
-            )
-
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -181,7 +186,13 @@ fun ServicesScreen(
                     LiquidFilterChip(
                         selected = selectedFilter == tab,
                         onClick = { selectedFilterName = tab.name },
-                        label = { Text(tab.label) },
+                        label = {
+                            Text(
+                                text = tab.label,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        },
                     )
                 }
             }
@@ -189,7 +200,7 @@ fun ServicesScreen(
             if (groupedEntries.isEmpty() && filteredOfficial.isEmpty()) {
                 EmptyStateCard(
                     title = "没有匹配的服务",
-                    subtitle = if (normalizedQuery.isNotBlank()) "换个关键词试试，或切换到“全部”。" else "当前分类暂无可用工具。",
+                    subtitle = if (normalizedQuery.isNotBlank()) "换个关键词，或切回“全部”" else "当前分类暂无可用工具",
                     icon = Icons.Outlined.Search,
                     actionLabel = if (normalizedQuery.isNotBlank()) "清空搜索" else null,
                     onAction = if (normalizedQuery.isNotBlank()) {
@@ -273,26 +284,108 @@ private fun ServiceDirectoryCard(
             ) {
                 Text(
                     text = entry.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
+                    softWrap = false,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = entry.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            IconButton(onClick = onTogglePin) {
+            LiquidIconButton(
+                onClick = onTogglePin,
+                tonal = pinned,
+                modifier = Modifier.size(40.dp),
+            ) {
                 Icon(
                     imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                     contentDescription = if (pinned) "取消首页固定" else "固定到首页",
                     tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(18.dp),
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopBarSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalGlassDark.current
+    LiquidPanel(
+        modifier = modifier.height(38.dp),
+        shape = GlassCapsule,
+        tintColor = if (dark) Color.White.copy(alpha = 0.10f) else Color.White.copy(alpha = 0.34f),
+        fallbackColor = scheme.surfaceContainerHigh,
+        blurRadius = 3.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Search,
+                contentDescription = null,
+                tint = scheme.onSurfaceVariant,
+                modifier = Modifier.size(17.dp),
+            )
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                if (query.isEmpty()) {
+                    Text(
+                        text = "搜索服务",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.5.sp,
+                        color = scheme.onSurface,
+                    ),
+                    cursorBrush = SolidColor(scheme.primary),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (query.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button) { onQueryChange("") }
+                        .semantics { contentDescription = "清空搜索" },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Close,
+                        contentDescription = "清空搜索",
+                        tint = scheme.onSurfaceVariant,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
             }
         }
     }

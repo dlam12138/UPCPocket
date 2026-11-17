@@ -88,6 +88,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceAtMost
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
@@ -413,7 +414,7 @@ private fun LiquidInteractiveCapsuleButton(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CompositionLocalProvider(LocalContentColor provides contentColor) {
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp)) {
                     content()
                 }
             }
@@ -720,7 +721,7 @@ fun LiquidFilterChip(
                 if (leadingIcon != null) {
                     leadingIcon()
                 }
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                ProvideTextStyle(MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp)) {
                     label()
                 }
             }
@@ -980,7 +981,7 @@ fun LiquidTextButton(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CompositionLocalProvider(LocalContentColor provides resolvedContentColor) {
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontSize = 13.5.sp)) {
                     content()
                 }
             }
@@ -1257,7 +1258,7 @@ fun LiquidSegmentedTabs(
         val tabWidthPx = with(density) { pillWidth.toPx() }
         val maxOffsetPx = (count - 1).coerceAtLeast(0) * tabWidthPx
 
-        // 外层清透玻璃轨道
+        // 外层清透玻璃轨道（关闭边缘强折射并采用柔和环境光边，消除滑块高亮时的双边缘重影）
         Spacer(
             modifier = Modifier
                 .matchParentSize()
@@ -1267,11 +1268,12 @@ fun LiquidSegmentedTabs(
                     effects = {
                         applyGlassEffects(
                             blurRadiusDp = 3.dp,
-                            refractionHeightDp = 8.dp,
-                            refractionAmountDp = 16.dp,
+                            refractionHeightDp = 0.dp,
+                            refractionAmountDp = 0.dp,
+                            depthEffect = false,
                         )
                     },
-                    highlight = { Highlight.Default.copy(alpha = 0.70f) },
+                    highlight = { Highlight.Ambient.copy(alpha = 0.42f) },
                     onDrawSurface = { drawRect(trackTint) },
                 ),
         )
@@ -1292,11 +1294,12 @@ fun LiquidSegmentedTabs(
                     effects = {
                         applyGlassEffects(
                             blurRadiusDp = 2.dp,
-                            refractionHeightDp = 7.dp,
-                            refractionAmountDp = 14.dp,
+                            refractionHeightDp = 6.dp,
+                            refractionAmountDp = 12.dp,
+                            depthEffect = false,
                         )
                     },
-                    highlight = { Highlight.Default },
+                    highlight = { Highlight.Default.copy(alpha = 0.72f) },
                     shadow = {
                         Shadow(
                             radius = 6.dp,
@@ -1344,10 +1347,11 @@ fun LiquidSegmentedTabs(
                 ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 13.sp),
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                         color = contentColor,
                         maxLines = 1,
+                        softWrap = false,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = 6.dp),
                     )

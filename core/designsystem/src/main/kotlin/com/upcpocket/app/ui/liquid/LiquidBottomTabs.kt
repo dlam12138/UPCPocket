@@ -35,11 +35,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
@@ -56,9 +54,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
@@ -108,9 +103,6 @@ fun LiquidBottomTabs(
     val tabsCount = destinations.size
     var currentIndex by remember { mutableIntStateOf(selectedIndex.coerceIn(0, tabsCount - 1)) }
     val currentOnSelect by rememberUpdatedState(onSelect)
-
-    val tabsBackdrop = rememberLayerBackdrop()
-    val combinedBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
 
     val paddingPx = with(density) { 8.dp.toPx() }
     val dampedDragAnimation = remember(tabsCount, isLtr, paddingPx) {
@@ -195,7 +187,7 @@ fun LiquidBottomTabs(
             Color.Black.copy(alpha = 0.08f)
         }
 
-        // 1. 底层清透液态玻璃胶囊壳
+        // 1. 底层清透液态玻璃胶囊壳（柔和高光外框，避免与滑块边缘高光重叠产生重影）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -212,12 +204,12 @@ fun LiquidBottomTabs(
                     effects = {
                         applyGlassEffects(
                             blurRadiusDp = 4.dp,
-                            refractionHeightDp = 16.dp,
-                            refractionAmountDp = 28.dp,
-                            depthEffect = true,
+                            refractionHeightDp = 12.dp,
+                            refractionAmountDp = 22.dp,
+                            depthEffect = false,
                         )
                     },
-                    highlight = { Highlight.Default },
+                    highlight = { Highlight.Ambient.copy(alpha = 0.55f) },
                     shadow = {
                         Shadow(
                             radius = 16.dp,
@@ -229,66 +221,22 @@ fun LiquidBottomTabs(
                 .then(interactiveHighlight.modifier),
         )
 
-        // 2. Kyant 隐藏高亮色层：供滑动透镜在拖拽/按压时实时折射出主题强调色图标
-        Row(
-            modifier = Modifier
-                .clearAndSetSemantics {}
-                .alpha(0f)
-                .layerBackdrop(tabsBackdrop)
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { barShape },
-                    effects = {
-                        val p = dampedDragAnimation.pressProgress
-                        applyGlassEffects(
-                            blurRadiusDp = 4.dp,
-                            refractionHeightDp = 16.dp * p,
-                            refractionAmountDp = 24.dp * p,
-                        )
-                    },
-                    highlight = {
-                        Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress)
-                    },
-                    onDrawSurface = { drawRect(containerColor) },
-                )
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 4.dp)
-                .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            destinations.forEach { dest ->
-                Column(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(dest.selectedIcon, contentDescription = null, modifier = Modifier.size(21.dp))
-                    Text(
-                        dest.label,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 13.sp),
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
-
-        // 3. 中层果冻阻尼滑动透镜胶囊（按压/滑动时变为透明色散放大镜，弹跳挤压随速度形变）
+        // 2. 中层果冻阻尼滑动透镜胶囊（只折射底层页面内容，不复制图标文字以彻底杜绝高光重影）
         Box(
             modifier = Modifier
                 .padding(horizontal = 4.dp)
                 .size(width = pillWidth, height = 56.dp)
                 .drawBackdrop(
-                    backdrop = combinedBackdrop,
+                    backdrop = backdrop,
                     shape = { barShape },
                     effects = {
                         val p = dampedDragAnimation.pressProgress
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                             lens(
-                                refractionHeight = (4.dp + 8.dp * p).toPx(),
+                                refractionHeight = (4.dp + 7.dp * p).toPx(),
                                 refractionAmount = (6.dp + 12.dp * p).toPx(),
-                                depthEffect = true,
-                                chromaticAberration = p > 0.05f,
+                                depthEffect = false,
+                                chromaticAberration = p > 0.08f,
                             )
                         } else {
                             blur((2.dp * (1f - p * 0.5f)).toPx())
@@ -300,13 +248,13 @@ fun LiquidBottomTabs(
                     },
                     shadow = {
                         val p = dampedDragAnimation.pressProgress
-                        if (p > 0.01f) Shadow(radius = 8.dp, alpha = 0.16f * p) else null
+                        if (p > 0.01f) Shadow(radius = 8.dp, alpha = 0.14f * p) else null
                     },
                     innerShadow = {
                         val p = dampedDragAnimation.pressProgress
                         InnerShadow(
-                            radius = 8.dp * p,
-                            alpha = p * 0.65f,
+                            radius = 6.dp * p,
+                            alpha = p * 0.45f,
                         )
                     },
                     layerBlock = {

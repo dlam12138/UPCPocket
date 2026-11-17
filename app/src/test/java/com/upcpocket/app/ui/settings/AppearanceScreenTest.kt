@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,11 +19,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
@@ -34,7 +37,9 @@ import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.liquid.LiquidBottomTabs
 import com.upcpocket.app.ui.liquid.LiquidButton
 import com.upcpocket.app.ui.liquid.LiquidDockDestination
@@ -301,5 +306,31 @@ class AppearanceScreenTest {
         assertEquals(true, fabClicked)
         composeRule.onNodeWithText("文本操作").assertIsDisplayed()
         composeRule.onNodeWithText("我的").assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun servicesScreenTopBarSearchDisplaysConcisePlaceholderAndFilters() {
+        composeRule.setContent {
+            UpcPocketTheme(uiStyle = UiStyle.LIQUID_GLASS) {
+                CompositionLocalProvider(LocalDockClearance provides 0.dp) {
+                    ServicesScreen(
+                        entries = emptyList(),
+                        pinnedServiceIds = emptySet(),
+                        onTogglePin = {},
+                        onOpenRoute = {},
+                        onOpenOfficialWeb = {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("校园服务").assertIsDisplayed()
+        composeRule.onNodeWithText("搜索服务").assertIsDisplayed()
+        composeRule.onNode(hasSetTextAction()).performTextInput("不存在的服务关键词")
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("没有匹配的服务").assertIsDisplayed()
+        composeRule.onNodeWithText("清空搜索").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("搜索服务").assertIsDisplayed()
     }
 }
