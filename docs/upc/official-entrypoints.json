@@ -23,6 +23,22 @@
   },
   "entries": [
     {
+      "id": "academic_calendar",
+      "name": "校历（教务处）",
+      "campus": null,
+      "url": "https://jwc.upc.edu.cn/603/list.htm",
+      "official_source": "https://jwc.upc.edu.cn/603/list.htm",
+      "latest_observed_article": {
+        "title": "中国石油大学（华东）2026-2027学年校历",
+        "url": "https://jwc.upc.edu.cn/2026/0508/c603a490075/page.htm",
+        "published_on": "2026-05-08",
+        "checked_on": "2026-11-17"
+      },
+      "authentication": "Public official pages; no UPC account or CAS required for the reviewed content",
+      "integration": "planned_official_browser_entry_2.0.8_not_implemented",
+      "verification": "2026-11-17: the official HTTPS academic-calendar column, latest observed annual article and its two semester JPGs were reviewed without authentication. The default planned target is the column, not a pinned annual image or automatic current-academic-year inference. No Android entry, browser-navigation or mobile-reading acceptance has been performed. The images include undergraduate, graduate and general student notes but do not split the two campuses or prove identical individual schedules. This development-catalog entry is a plan, not runtime API configuration."
+    },
+    {
       "id": "shiguang",
       "name": "石光（第二课堂）",
       "campus": null,
