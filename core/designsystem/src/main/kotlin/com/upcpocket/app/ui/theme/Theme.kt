@@ -1,6 +1,8 @@
 package com.upcpocket.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -9,14 +11,23 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.ui.liquid.LiquidAmbientBackground
+import com.upcpocket.app.ui.liquid.LocalGlassBackdrop
+import com.upcpocket.app.ui.liquid.LocalGlassDark
+import com.upcpocket.app.ui.liquid.LocalUiStyle
 
 private val AppTypography = Typography(
     displaySmall = TextStyle(
@@ -89,6 +100,7 @@ private val AppShapes = Shapes(
 fun UpcPocketTheme(
     darkMode: DarkMode = DarkMode.SYSTEM,
     preset: ThemePreset = ThemePreset.DYNAMIC,
+    uiStyle: UiStyle = UiStyle.LIQUID_GLASS,
     content: @Composable () -> Unit,
 ) {
     val dark = when (darkMode) {
@@ -97,12 +109,33 @@ fun UpcPocketTheme(
         DarkMode.DARK -> true
     }
     val colorScheme = rememberAppColorScheme(preset = preset, dark = dark)
+    val ambientBackdrop = rememberLayerBackdrop()
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
         shapes = AppShapes,
-        content = content,
-    )
+    ) {
+        CompositionLocalProvider(
+            LocalUiStyle provides uiStyle,
+            LocalGlassDark provides dark,
+            LocalGlassBackdrop provides if (uiStyle == UiStyle.LIQUID_GLASS) ambientBackdrop else null,
+        ) {
+            if (uiStyle == UiStyle.LIQUID_GLASS) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LiquidAmbientBackground(
+                        colorScheme = colorScheme,
+                        dark = dark,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .layerBackdrop(ambientBackdrop),
+                    )
+                    content()
+                }
+            } else {
+                content()
+            }
+        }
+    }
 }
 
 /**

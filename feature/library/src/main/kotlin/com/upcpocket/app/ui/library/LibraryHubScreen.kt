@@ -98,8 +98,9 @@ fun LibraryHubScreen(
     )
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("图书馆") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

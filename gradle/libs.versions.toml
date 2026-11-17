@@ -1,13 +1,13 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
+kotlin = "2.3.10"
+ksp = "2.3.6"
 coreKtx = "1.15.0"
 lifecycle = "2.8.7"
 activityCompose = "1.9.3"
-composeBom = "2024.12.01"
+composeBom = "2026.02.01"
 navigation = "2.8.5"
-room = "2.6.1"
+room = "2.8.5"
 okhttp = "4.12.0"
 serialization = "1.7.3"
 coroutines = "1.9.0"
@@ -19,6 +19,9 @@ work = "2.10.0"
 vico = "2.0.0-beta.2"
 # Material You 配色生成：Google material-color-utilities 的 Kotlin 移植（MIT）
 materialColorUtilities = "2.0.0"
+# Kyant0 AndroidLiquidGlass (Apache-2.0)
+kyantBackdrop = "1.0.6"
+kyantShapes = "1.2.0"
 # 单元测试用的真实 Room（Robolectric 提供 Android 运行时，跑内存 SQLite）
 robolectric = "4.14.1"
 # 微信开放平台 Android SDK（OpenWebview / 小程序请求）；AppID 由本地配置提供
@@ -66,6 +69,8 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 vico-compose-m3 = { module = "com.patrykandpatrick.vico:compose-m3", version.ref = "vico" }
 material-color-utilities = { module = "com.materialkolor:material-color-utilities", version.ref = "materialColorUtilities" }
+kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "kyantBackdrop" }
+kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }
 wechat-sdk = { module = "com.tencent.mm.opensdk:wechat-sdk-android", version.ref = "wechatSdk" }
 
 junit = { module = "junit:junit", version = "4.13.2" }

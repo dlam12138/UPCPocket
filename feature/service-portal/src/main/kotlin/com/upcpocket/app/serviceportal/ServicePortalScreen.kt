@@ -42,7 +42,8 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.liquid.LiquidTopAppBar
+import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -86,9 +87,10 @@ fun ServicePortalScreen(
     BackHandler(state.selected != null) { service.closeGuide() }
 
     Scaffold(
+        containerColor = liquidScaffoldColor(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
+            LiquidTopAppBar(
                 title = { Text(state.selected?.let { "办事指南" } ?: "e站通") },
                 navigationIcon = {
                     IconButton(onClick = { if (state.selected != null) service.closeGuide() else onBack() }) {

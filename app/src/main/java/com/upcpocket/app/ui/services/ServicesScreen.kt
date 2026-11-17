@@ -26,7 +26,9 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
+import com.upcpocket.app.ui.liquid.LiquidFilterChip
+import com.upcpocket.app.ui.liquid.LiquidTopAppBar
+import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,7 +37,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -127,12 +128,12 @@ fun ServicesScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = liquidScaffoldColor(),
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         topBar = {
-            TopAppBar(
+            LiquidTopAppBar(
                 title = {
                     Column {
                         Text("校园服务")
@@ -176,7 +177,7 @@ fun ServicesScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 ServiceFilterTab.entries.forEach { tab ->
-                    FilterChip(
+                    LiquidFilterChip(
                         selected = selectedFilter == tab,
                         onClick = { selectedFilterName = tab.name },
                         label = { Text(tab.label) },

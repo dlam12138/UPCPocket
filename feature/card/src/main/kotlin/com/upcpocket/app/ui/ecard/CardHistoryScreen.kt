@@ -169,9 +169,11 @@ internal fun CardHistoryScreenContent(
         if (rows.isEmpty()) null else CardHistoryAnalytics.fromRows(rows)
     }
     fun money(fen: Long) = BigDecimal.valueOf(fen, 2).toPlainString()
-    Scaffold(topBar = {
-        TopAppBar(
-            title = { Text("交易流水") },
+    Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
+        topBar = {
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
+                title = { Text("交易流水") },
             navigationIcon = {
                 IconButton(onClick = back) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -197,7 +199,7 @@ internal fun CardHistoryScreenContent(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = month == null,
                             enabled = !loading && loginAttempt == null,
                             onClick = {
@@ -214,14 +216,14 @@ internal fun CardHistoryScreenContent(
                             },
                             label = { Text("全部日期") },
                         )
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = month != null,
                             enabled = !loading && loginAttempt == null,
                             onClick = { monthDialog = true },
                             label = { Text(month?.toString() ?: "按月") },
                         )
                     }
-                    Button(
+                    com.upcpocket.app.ui.liquid.LiquidButton(
                         onClick = { query() },
                         enabled = available && !loading && loginAttempt == null,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -294,7 +296,7 @@ internal fun CardHistoryScreenContent(
                         Text("已加载 ${rows.size} / ${visible.data.total} 条", style = MaterialTheme.typography.labelMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             CardHistoryDirectionFilter.entries.forEach { option ->
-                                FilterChip(
+                                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                                     selected = directionFilter == option,
                                     onClick = { directionFilterName = option.name },
                                     label = { Text(option.label) },

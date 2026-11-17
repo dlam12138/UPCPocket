@@ -4,6 +4,15 @@ package com.upcpocket.app.designsystem
 enum class DarkMode { SYSTEM, LIGHT, DARK }
 
 /**
+ * 全局界面视觉风格。
+ *
+ * - [LIQUID_GLASS]：基于 Kyant0 AndroidLiquidGlass 的全局液态玻璃风格
+ *   （实时背景折射/模糊、高光描边、胶囊流体交互；Android 12 自动降级为纯模糊+高光）。
+ * - [MATERIAL_3]：原生 Material 3 洁净实底卡片与胶囊导航。
+ */
+enum class UiStyle { LIQUID_GLASS, MATERIAL_3 }
+
+/**
  * 全应用配色预设。
  *
  * [DYNAMIC] = 跟随系统壁纸的动态取色；其余每一项都是一个种子色，由 Material 3

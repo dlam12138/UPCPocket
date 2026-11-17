@@ -119,9 +119,9 @@ fun AboutScreen(onBack: () -> Unit) {
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("关于") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -229,7 +229,7 @@ fun AboutScreen(onBack: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Switch(
+                        com.upcpocket.app.ui.liquid.LiquidToggle(
                             checked = diagnosticsEnabled,
                             onCheckedChange = { enabled ->
                                 diagnosticsEnabled = enabled

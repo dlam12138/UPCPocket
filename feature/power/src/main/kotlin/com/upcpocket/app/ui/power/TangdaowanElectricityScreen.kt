@@ -209,7 +209,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     }
 
     if (showPicker) {
-        AlertDialog(
+        com.upcpocket.app.ui.liquid.LiquidDialog(
             onDismissRequest = { showPicker = false },
             title = { Text("选择楼号") },
             text = {
@@ -265,8 +265,9 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("唐岛湾电费") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

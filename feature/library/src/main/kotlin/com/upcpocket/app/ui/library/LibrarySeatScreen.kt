@@ -207,8 +207,9 @@ fun LibrarySeatScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = {
                     Column {
                         Text("图书馆座位")
@@ -270,7 +271,7 @@ private enum class SeatMode { AREA, RESERVATIONS }
 
 @Composable
 private fun SeatModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+    com.upcpocket.app.ui.liquid.LiquidFilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
 
 @Composable
@@ -383,7 +384,7 @@ internal fun CompactFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             filters.buildings.forEach { building ->
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.building?.id == building.id,
                     onClick = { onBuilding(building) },
                     enabled = !state.loading,
@@ -397,7 +398,7 @@ internal fun CompactFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             filters.dates.forEach { date ->
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.date == date,
                     onClick = { onDate(date) },
                     enabled = !state.loading,
@@ -412,13 +413,13 @@ internal fun CompactFilterPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("楼层", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.selectedFloor == null,
                     onClick = { onFloor(null) },
                     label = { Text("全部") },
                 )
                 state.floors.forEach { floor ->
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = state.selectedFloor == floor.floorNum,
                         onClick = { onFloor(floor.floorNum) },
                         label = { Text(floor.floorName.ifBlank { "${floor.floorNum} 楼" }) },
@@ -597,9 +598,10 @@ private fun LibrarySeatDetailPage(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = {
                     Column {
                         Text(room?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -704,12 +706,12 @@ private fun LibrarySeatDetailPage(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = true,
                             onClick = {},
                             label = { Text("按座位选") },
                         )
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = false,
                             onClick = { vm.setSeatMode(RoomSeatMode.TIME) },
                             label = { Text("按时段找") },
@@ -759,7 +761,7 @@ private fun LibrarySeatDetailPage(
         val confirmStart = if (timeMode) state.timeStart else state.start
         val confirmEnd = if (timeMode) state.timeStop else state.end
         if (confirmSeat != null) {
-            AlertDialog(
+            com.upcpocket.app.ui.liquid.LiquidDialog(
                 onDismissRequest = vm::dismissConfirm,
                 title = { Text("确认预约") },
                 text = {
@@ -1460,8 +1462,9 @@ private fun LibraryLoginGate(
     val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("图书馆座位") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

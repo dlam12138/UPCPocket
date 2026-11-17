@@ -203,8 +203,9 @@ fun TodoScreen(store: TodoStore) {
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(title = { Text("待办") })
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(title = { Text("待办") })
         },
         snackbarHost = {
             SnackbarHost(
@@ -226,7 +227,6 @@ fun TodoScreen(store: TodoStore) {
                 Icon(Icons.Filled.Add, contentDescription = null)
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),

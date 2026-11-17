@@ -233,8 +233,9 @@ fun SchoolAccountScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("学校账号") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -487,7 +488,7 @@ fun SchoolAccountScreen(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        com.upcpocket.app.ui.liquid.LiquidDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("删除账号？") },
             text = {

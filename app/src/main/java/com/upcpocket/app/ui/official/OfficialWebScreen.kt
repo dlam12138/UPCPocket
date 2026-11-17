@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
+import com.upcpocket.app.ui.liquid.LiquidTopAppBar
+import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 
 /**
  * 学校官方网页入口。
@@ -36,9 +38,9 @@ fun OfficialWebScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            LiquidTopAppBar(
                 title = { Text("校园官方网页") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

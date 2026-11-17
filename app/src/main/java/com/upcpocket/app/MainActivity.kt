@@ -62,6 +62,7 @@ class MainActivity : ComponentActivity() {
             UpcPocketTheme(
                 darkMode = prefs.darkMode,
                 preset = prefs.themePreset,
+                uiStyle = prefs.uiStyle,
             ) {
                 AppNav(
                     launchTarget = widgetTarget.value,

@@ -93,8 +93,9 @@ internal fun ShiguangScreenContent(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text(if (state.selected != null) "活动详情" else "石光") },
                 navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回") } },
                 actions = {
@@ -355,10 +356,10 @@ private fun ActivityFilters(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            FilterChip(selected == ShiguangActivityFilter.ALL, { onSelected(ShiguangActivityFilter.ALL) }, enabled = enabled, label = { Text("全部") })
-            FilterChip(selected == ShiguangActivityFilter.CAMPUS, { onSelected(ShiguangActivityFilter.CAMPUS) }, enabled = enabled, label = { Text("校园活动") })
-            FilterChip(selected == ShiguangActivityFilter.SOCIAL_PRACTICE, { onSelected(ShiguangActivityFilter.SOCIAL_PRACTICE) }, enabled = enabled, label = { Text("社会实践") })
-            FilterChip(hideEnded, { onHideEndedChange(!hideEnded) }, enabled = enabled, label = { Text("隐藏已结束") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.ALL, { onSelected(ShiguangActivityFilter.ALL) }, enabled = enabled, label = { Text("全部") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.CAMPUS, { onSelected(ShiguangActivityFilter.CAMPUS) }, enabled = enabled, label = { Text("校园活动") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(selected == ShiguangActivityFilter.SOCIAL_PRACTICE, { onSelected(ShiguangActivityFilter.SOCIAL_PRACTICE) }, enabled = enabled, label = { Text("社会实践") })
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(hideEnded, { onHideEndedChange(!hideEnded) }, enabled = enabled, label = { Text("隐藏已结束") })
         }
         Text("仅筛本页", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

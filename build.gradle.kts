@@ -8,6 +8,29 @@ plugins {
     alias(libs.plugins.ksp) apply false
 }
 
+subprojects {
+    val configureLint: com.android.build.api.dsl.Lint.() -> Unit = {
+        // Kotlin 2.3.10 + Compose BOM 2026.02.01 附带的这组 UAST lint 检测器在 AGP 8.7.3 下会触发
+        // KaCallableMemberCall / KaSimpleVariableAccessCall 二进制接口变更崩溃，禁用以保证 lintDebug 稳定。
+        disable += listOf(
+            "AutoboxingStateCreation",
+            "FrequentlyChangingValue",
+            "NullSafeMutableLiveData",
+            "RememberInComposition",
+        )
+    }
+    plugins.withId("com.android.application") {
+        extensions.configure<com.android.build.api.dsl.ApplicationExtension> {
+            lint(configureLint)
+        }
+    }
+    plugins.withId("com.android.library") {
+        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
+            lint(configureLint)
+        }
+    }
+}
+
 /**
  * M0 依赖边界检查：feature 实现之间、core 到 feature、模块到 app 的反向依赖
  * 都在这里失败。新增模块时同步更新白名单，不允许用“全部塞进公共模块”绕过。

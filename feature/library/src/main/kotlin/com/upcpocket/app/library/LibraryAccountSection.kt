@@ -150,7 +150,7 @@ internal fun LibraryAccountSectionContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Switch(
+                        com.upcpocket.app.ui.liquid.LiquidToggle(
                             checked = rememberLogin,
                             onCheckedChange = onRememberLoginChange,
                             modifier = Modifier.testTag("library_remember_switch"),

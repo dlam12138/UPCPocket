@@ -69,10 +69,18 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.ui.liquid.LiquidBottomTabs
+import com.upcpocket.app.ui.liquid.LiquidDockDestination
+import com.upcpocket.app.ui.liquid.LocalGlassBackdrop
+import com.upcpocket.app.ui.liquid.isLiquidGlassActive
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -301,18 +309,39 @@ fun AppNav(
         DarkMode.LIGHT -> false
         DarkMode.SYSTEM -> isSystemInDarkTheme()
     }
+    val liquidActive = isLiquidGlassActive()
+    val ambientBackdrop = LocalGlassBackdrop.current
+    val navContentBackdrop = rememberLayerBackdrop()
+    val dockBackdrop = if (liquidActive && ambientBackdrop != null) {
+        rememberCombinedBackdrop(ambientBackdrop, navContentBackdrop)
+    } else {
+        null
+    }
 
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
         Box(
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface),
+            if (liquidActive) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            },
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = MAIN_ROUTE,
-                modifier = Modifier.fillMaxSize(),
+            Box(
+                modifier = if (liquidActive) {
+                    Modifier
+                        .fillMaxSize()
+                        .layerBackdrop(navContentBackdrop)
+                } else {
+                    Modifier.fillMaxSize()
+                },
             ) {
+                NavHost(
+                    navController = navController,
+                    startDestination = MAIN_ROUTE,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                 composable(MAIN_ROUTE) {
                     HorizontalPager(
                         state = pagerState,
@@ -406,6 +435,7 @@ fun AppNav(
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
             }
+            }
 
             if (dockVisible) {
                 FloatingDock(
@@ -416,6 +446,7 @@ fun AppNav(
                     onSelect = { index ->
                         destinations.getOrNull(index)?.let { switchTab(it.route) }
                     },
+                    liquidBackdrop = dockBackdrop,
                     modifier = Modifier.align(Alignment.BottomCenter),
                 )
             }
@@ -437,9 +468,43 @@ private fun FloatingDock(
     dockDark: Boolean,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
+    liquidBackdrop: Backdrop? = null,
     modifier: Modifier = Modifier,
 ) {
     if (destinations.isEmpty()) return
+    if (liquidBackdrop != null) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .pointerInput(Unit) {
+                    detectTapGestures { }
+                }
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+        ) {
+            LiquidBottomTabs(
+                destinations = destinations.map { dest ->
+                    LiquidDockDestination(
+                        route = dest.route,
+                        label = dest.label,
+                        icon = dest.outlinedIcon,
+                        selectedIcon = dest.icon,
+                        tabModifier = Modifier
+                            .semantics { contentDescription = dest.label }
+                            .testTag("tab_${dest.route}"),
+                    )
+                },
+                selectedIndex = selectedIndex,
+                onSelect = onSelect,
+                backdrop = liquidBackdrop,
+                darkSurface = dockDark,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("floating_dock"),
+            )
+        }
+        return
+    }
     val dockColor = if (dockDark) {
         MaterialTheme.colorScheme.surface
     } else {

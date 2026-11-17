@@ -231,6 +231,7 @@ fun FreeClassroomScreen(
         ModalBottomSheet(
             onDismissRequest = { showFilterSheet = false },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
         ) {
             ClassroomFilterSheet(
                 building = draftBuilding,
@@ -265,8 +266,9 @@ fun FreeClassroomScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("空闲教室") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -408,7 +410,7 @@ private fun ClassroomFilterPanel(
             Text("校区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FreeClassroomCampus.entries.forEach { campus ->
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = model.campus == campus,
                         onClick = { model.chooseCampus(campus) },
                         enabled = filtersEnabled,
@@ -487,7 +489,7 @@ private fun ClassroomFilterPanel(
             ) {
                 ClassroomPeriodGroup.entries.forEach { group ->
                     val state = groupSelectionState(model.periods, group)
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = state == GroupSelectionState.ALL,
                         onClick = { model.choosePreset(group) },
                         enabled = filtersEnabled,
@@ -630,7 +632,7 @@ private fun ClassroomFilterSheet(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     ZhuoyueWingFilter.entries.forEach { filter ->
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = wingFilter == filter,
                             onClick = { onWingFilterChange(filter) },
                             label = { Text(filter.label) },
@@ -648,7 +650,7 @@ private fun ClassroomFilterSheet(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 (1..13).forEach { period ->
-                    FilterChip(
+                    com.upcpocket.app.ui.liquid.LiquidFilterChip(
                         selected = period in periods,
                         onClick = {
                             onPeriodsChange(if (period in periods) periods - period else periods + period)
@@ -758,7 +760,7 @@ private fun ResultSummaryCard(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("仅看空闲", style = MaterialTheme.typography.labelMedium)
-                    Switch(
+                    com.upcpocket.app.ui.liquid.LiquidToggle(
                         checked = onlyAvailable,
                         onCheckedChange = null,
                         enabled = total > 0,
@@ -915,7 +917,7 @@ private fun BuildingPickerDialog(
     onQueryAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择教学楼") },
         text = {
@@ -983,7 +985,7 @@ private fun RoomDetailDialog(
 ) {
     val room = detail.room
     val colors = roomColors(room.available)
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text(room.name) },
         text = {

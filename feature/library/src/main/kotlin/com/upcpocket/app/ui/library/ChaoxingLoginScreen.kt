@@ -249,8 +249,9 @@ fun ChaoxingLoginScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("学校网页登录") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

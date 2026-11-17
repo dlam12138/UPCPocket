@@ -152,7 +152,7 @@ fun TodoEditorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
     ) {
         Column(
             modifier = Modifier
@@ -197,7 +197,7 @@ fun TodoEditorSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
+                com.upcpocket.app.ui.liquid.LiquidToggle(
                     checked = reminderEnabled,
                     onCheckedChange = ::toggleReminder,
                     modifier = Modifier.testTag("todo_reminder_switch"),
@@ -313,7 +313,7 @@ fun TodoEditorSheet(
             initialMinute = time.minute,
             is24Hour = true,
         )
-        AlertDialog(
+        com.upcpocket.app.ui.liquid.LiquidDialog(
             onDismissRequest = { showTime = false },
             title = { Text("选择提醒时间") },
             text = { TimePicker(state = timeState) },

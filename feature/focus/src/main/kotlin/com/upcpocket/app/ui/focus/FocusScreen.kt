@@ -136,11 +136,12 @@ fun FocusScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("专注") },
                 actions = {
                     FilledTonalIconButton(onClick = onOpenStats) {
@@ -392,7 +393,7 @@ private fun TagSection(
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             tags.forEach { name ->
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = ui.tagName == name,
                     onClick = { onToggle(name) },
                     label = { Text(name) },
@@ -400,13 +401,13 @@ private fun TagSection(
             }
             // 选中的是课名（不在标签表里）时也画出来，否则看不出自己选了什么
             if (ui.tagName.isNotBlank() && ui.tagName !in tags) {
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = true,
                     onClick = { onToggle(ui.tagName) },
                     label = { Text(ui.tagName) },
                 )
             }
-            FilterChip(
+            com.upcpocket.app.ui.liquid.LiquidFilterChip(
                 selected = false,
                 onClick = onNew,
                 label = { Text("新建") },
@@ -437,7 +438,7 @@ private fun TagManageDialog(
     var editingText by remember { mutableStateOf("") }
     var pendingDelete by remember { mutableStateOf<FocusTagEntity?>(null) }
 
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("管理标签") },
         text = {
@@ -491,7 +492,7 @@ private fun TagManageDialog(
     )
 
     pendingDelete?.let { tag ->
-        AlertDialog(
+        com.upcpocket.app.ui.liquid.LiquidDialog(
             onDismissRequest = { pendingDelete = null },
             title = { Text("删除标签「${tag.name}」？") },
             text = {
@@ -629,7 +630,7 @@ private fun TimerSettingsDialog(
     var autoBreak by remember(ui.prefs.autoStartBreak) { mutableStateOf(ui.prefs.autoStartBreak) }
     var autoFocus by remember(ui.prefs.autoStartFocus) { mutableStateOf(ui.prefs.autoStartFocus) }
 
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("计时设置") },
         text = {
@@ -698,7 +699,7 @@ private fun NumberField(
 private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange)
+        com.upcpocket.app.ui.liquid.LiquidToggle(checked = checked, onCheckedChange = onChange)
     }
 }
 
@@ -711,7 +712,7 @@ private fun NewTagDialog(
     var name by remember { mutableStateOf("") }
     val duplicate = name.trim().isNotEmpty() && existing.any { it.equals(name.trim(), ignoreCase = true) }
 
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("新建标签") },
         text = {
@@ -754,7 +755,7 @@ private fun ManualRecordDialog(
     val dayLabels = listOf("今天", "昨天", "前天")
     val presets = listOf(15, 25, 45, 60, 90)
 
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("补录专注") },
         text = {
@@ -773,7 +774,7 @@ private fun ManualRecordDialog(
                 Text("多久（分钟）", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     presets.forEach { m ->
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = minutes == m.toString(),
                             onClick = { minutes = m.toString() },
                             label = { Text("$m") },

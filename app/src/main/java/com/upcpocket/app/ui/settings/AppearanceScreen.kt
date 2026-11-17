@@ -20,14 +20,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import com.upcpocket.app.ui.components.GlassCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.liquid.LiquidFilterChip
+import com.upcpocket.app.ui.liquid.LiquidTopAppBar
+import com.upcpocket.app.ui.liquid.liquidScaffoldColor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -45,6 +46,7 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.ui.theme.MaterialYouScheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +73,11 @@ private fun DarkMode.label(): String = when (this) {
     DarkMode.DARK -> "深色"
 }
 
+private fun UiStyle.label(): String = when (this) {
+    UiStyle.LIQUID_GLASS -> "液态玻璃 · Liquid Glass"
+    UiStyle.MATERIAL_3 -> "Material 3 原生"
+}
+
 class AppearanceViewModel : ViewModel() {
 
     private val store = AppGraph.uiPrefsStore
@@ -89,10 +96,14 @@ class AppearanceViewModel : ViewModel() {
     fun setDarkMode(mode: DarkMode) {
         viewModelScope.launch { store.setDarkMode(mode) }
     }
+
+    fun setUiStyle(style: UiStyle) {
+        viewModelScope.launch { store.setUiStyle(style) }
+    }
 }
 
 /**
- * 「外观」页：切换整个 App 的配色与深浅色。
+ * 「外观」页：切换整个 App 的界面风格（液态玻璃 / Material 3）、配色与深浅色。
  *
  * 点一下**立刻全局生效**（主题在 MainActivity 上，改完整个 App 立刻重绘），
  * 所以每行左边那组色块本身就是预览色，不用再单独做一块预览区。
@@ -106,9 +117,9 @@ fun AppearanceScreen(
     val prefs by vm.state.collectAsStateWithLifecycle()
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            LiquidTopAppBar(
                 title = { Text("外观") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -127,13 +138,37 @@ fun AppearanceScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
+                text = "界面风格",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                UiStyle.entries.forEach { style ->
+                    LiquidFilterChip(
+                        selected = prefs.uiStyle == style,
+                        onClick = { vm.setUiStyle(style) },
+                        label = { Text(style.label()) },
+                    )
+                }
+            }
+            Text(
+                text = if (prefs.uiStyle == UiStyle.LIQUID_GLASS) {
+                    "已启用全局 Kyant 液态玻璃材质：Android 13+ 支持边缘光学折射与色散，Android 12 自动使用实时模糊与高光质感。"
+                } else {
+                    "当前使用 Material 3 原生实底卡片与胶囊导航。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Text(
                 text = "深浅色",
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(top = 4.dp),
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DarkMode.entries.forEach { mode ->
-                    FilterChip(
+                    LiquidFilterChip(
                         selected = prefs.darkMode == mode,
                         onClick = { vm.setDarkMode(mode) },
                         label = { Text(mode.label()) },

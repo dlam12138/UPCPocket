@@ -157,12 +157,12 @@ internal fun TimetableScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("课表") },
                 actions = {
                     IconButton(onClick = { infoVisible = true }) {
@@ -1255,6 +1255,7 @@ internal fun CourseDetailBottomSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
     ) {
         Column(
             Modifier
@@ -1331,7 +1332,7 @@ private fun TimetableInfoDialog(
     onDismiss: () -> Unit,
     onOpenWebLogin: () -> Unit,
 ) {
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("课表说明") },
         text = {

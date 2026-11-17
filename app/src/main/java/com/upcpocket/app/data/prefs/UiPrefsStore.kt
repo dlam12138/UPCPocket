@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -24,6 +25,8 @@ data class UiPrefs(
     val themePreset: ThemePreset = ThemePreset.DYNAMIC,
     /** 深浅色（默认跟随系统） */
     val darkMode: DarkMode = DarkMode.SYSTEM,
+    /** 全局界面风格（默认 Kyant 液态玻璃，可随时切换回 Material 3 原生） */
+    val uiStyle: UiStyle = UiStyle.LIQUID_GLASS,
     /**
      * 记住学校登录：把图书馆座位业务签发的 token 用 Keystore 加密保存。
      * 默认关闭。这只是图书馆 token 偏好，不是统一学校账号密码的保存同意；
@@ -74,6 +77,8 @@ class UiPrefsStore internal constructor(
                 ?: ThemePreset.DYNAMIC,
             darkMode = p[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.SYSTEM,
+            uiStyle = p[KEY_UI_STYLE]?.let { runCatching { UiStyle.valueOf(it) }.getOrNull() }
+                ?: UiStyle.LIQUID_GLASS,
             rememberSchoolLogin = p[KEY_REMEMBER_SCHOOL_LOGIN] ?: false,
             diagnosticsEnabled = p[KEY_DIAGNOSTICS_ENABLED] ?: true,
             powerBuilding = p[KEY_POWER_BUILDING].orEmpty(),
@@ -120,9 +125,12 @@ class UiPrefsStore internal constructor(
 
     suspend fun setDarkMode(v: DarkMode) = store.edit { p -> p[KEY_DARK_MODE] = v.name }
 
+    suspend fun setUiStyle(v: UiStyle) = store.edit { p -> p[KEY_UI_STYLE] = v.name }
+
     private companion object {
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
+        val KEY_UI_STYLE = stringPreferencesKey("ui_style")
 
         /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")

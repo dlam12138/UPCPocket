@@ -28,7 +28,7 @@ internal fun CardHistoryMonthDialog(
     var month by rememberSaveable { mutableIntStateOf(initialMonth.monthValue) }
     var choosingYear by rememberSaveable { mutableStateOf(false) }
 
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择月份") },
         text = {

@@ -176,10 +176,23 @@ fun MetricTile(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
+    val liquid = com.upcpocket.app.ui.liquid.isLiquidGlassActive()
     Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
-        color = containerColor,
+        color = if (liquid) {
+            containerColor.copy(alpha = (containerColor.alpha * 0.78f).coerceIn(0.28f, 0.78f))
+        } else {
+            containerColor
+        },
+        border = if (liquid) {
+            androidx.compose.foundation.BorderStroke(
+                0.75.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+            )
+        } else {
+            null
+        },
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),

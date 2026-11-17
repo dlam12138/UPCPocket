@@ -134,8 +134,9 @@ fun ChaoxingSeatScreen(
     }
 
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = {
                     Column {
                         Text("超星座位")
@@ -323,7 +324,7 @@ internal fun ChaoxingFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ChaoxingSeatKind.entries.forEach { kind ->
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.kind == kind,
                     onClick = { onKind(kind) },
                     enabled = !state.busy,
@@ -341,7 +342,7 @@ internal fun ChaoxingFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             state.dates.forEach { date ->
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.selectedDate == date,
                     onClick = { onDate(date) },
                     enabled = !state.busy,
@@ -480,27 +481,31 @@ internal fun ChaoxingSeatDetailContent(
     LaunchedEffect(state.kind, state.detail, state.selectedDate, state.seatMode,
         state.queryGeneration, state.selectedSeat, state.hiddenBusy, state.canConfirm()) { confirmKey = null }
     Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
         snackbarHost = { SnackbarHost(snack) },
         topBar = {
-            Surface {
-              Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = 8.dp),
-                  verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回区域") }
-                Column(Modifier.weight(1f)) {
-                    Text(detail.name, style = MaterialTheme.typography.titleMedium)
-                    Text("${state.kind.campusLabel} · ${shortChaoxingDate(state.selectedDate)}",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多") }
-                    DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem(text = { Text("隐藏的座位（${state.hiddenEntries.size}）") },
-                            onClick = { menu = false; onOpenHidden() })
-                        DropdownMenuItem(text = { Text("学校页面") }, onClick = { menu = false; onOpenOfficial() })
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
+                title = {
+                    Column {
+                        Text(detail.name, style = MaterialTheme.typography.titleMedium)
+                        Text("${state.kind.campusLabel} · ${shortChaoxingDate(state.selectedDate)}",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-              }
-            }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回区域") }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多") }
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem(text = { Text("隐藏的座位（${state.hiddenEntries.size}）") },
+                                onClick = { menu = false; onOpenHidden() })
+                            DropdownMenuItem(text = { Text("学校页面") }, onClick = { menu = false; onOpenOfficial() })
+                        }
+                    }
+                },
+            )
         },
         bottomBar = {
             val official = state.reservationUnknown || state.reservationSucceeded || state.interactionRequired
@@ -519,8 +524,8 @@ internal fun ChaoxingSeatDetailContent(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item(contentType = "seat_mode_controls") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
-                FilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
             } }
             item(contentType = "time_controls") {
                 if (state.seatMode == RoomSeatMode.TIME) {
@@ -569,7 +574,7 @@ internal fun ChaoxingSeatDetailContent(
             }
         }
     }
-    if (confirm != null) AlertDialog(
+    if (confirm != null) com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = { confirmKey = null }, title = { Text("确认预约") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${state.kind.campusLabel} · ${detail.name} · ${state.selectedSeat}")
@@ -581,7 +586,8 @@ internal fun ChaoxingSeatDetailContent(
     )
     if (state.showHiddenSheet) HiddenSeatManagementSheet(state.hiddenEntries, onCloseHidden, onRestore, onRestoreAll)
     if (timePart != null) ModalBottomSheet(onDismissRequest = { timePart = null },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor()) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (timePart == "start") "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium)
@@ -589,7 +595,7 @@ internal fun ChaoxingSeatDetailContent(
                 else state.selectedStart?.let { chaoxingEndOptions(detail, it, state.selectedDate) }.orEmpty()
             if (options.isEmpty()) Text(state.timeUnavailableReason ?: "没有可选时间")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                options.forEach { minute -> FilterChip(
+                options.forEach { minute -> com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = minute == if (timePart == "start") state.selectedStart else state.selectedEnd,
                     onClick = {
                         if (timePart == "start") { onStart(minute); timePart = "end" }

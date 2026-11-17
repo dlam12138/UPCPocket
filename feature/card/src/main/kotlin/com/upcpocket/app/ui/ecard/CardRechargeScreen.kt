@@ -95,11 +95,17 @@ internal fun CardRechargeScreen(
         onDispose { lifecycle.removeObserver(observer) }
     }
 
-    Scaffold(topBar = {
-        TopAppBar(title = { Text("校园卡充值") }, navigationIcon = {
-            IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
-        })
-    }) { padding ->
+    Scaffold(
+        containerColor = com.upcpocket.app.ui.liquid.liquidScaffoldColor(),
+        topBar = {
+            com.upcpocket.app.ui.liquid.LiquidTopAppBar(
+                title = { Text("校园卡充值") },
+                navigationIcon = {
+                    IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回") }
+                },
+            )
+        },
+    ) { padding ->
         LazyColumn(
             Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding(),
             contentPadding = PaddingValues(16.dp),
@@ -134,7 +140,7 @@ internal fun CardRechargeScreen(
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     rules.presets.forEach { preset ->
                         val value = preset.stripTrailingZeros().toPlainString()
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = amount == value,
                             onClick = { amount = value; inputError = false },
                             enabled = !visible.busy && !visible.recoveryRequired,
@@ -142,7 +148,7 @@ internal fun CardRechargeScreen(
                         )
                     }
                 }
-                if (!visible.recoveryRequired) Button(
+                if (!visible.recoveryRequired) com.upcpocket.app.ui.liquid.LiquidButton(
                     onClick = {
                         val selectedOwner = owner
                         if (selectedAmount == null) {
@@ -180,7 +186,7 @@ internal fun CardRechargeScreen(
             }
         }
     }
-    if (clearConfirmation) AlertDialog(
+    if (clearConfirmation) com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = { clearConfirmation = false },
         title = { Text("已核对学校与微信记录？") },
         text = { Text("只有确认旧订单无需继续付款时再清除本机标记。此操作不会取消学校订单或退款，避免重复充值。") },
