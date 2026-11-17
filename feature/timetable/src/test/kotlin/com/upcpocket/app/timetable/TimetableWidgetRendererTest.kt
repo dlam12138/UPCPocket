@@ -185,4 +185,54 @@ class TimetableWidgetRendererTest {
         assertEquals(View.GONE, location.visibility)
         assertTrue(time.bottom <= root.height)
     }
+
+    @Test
+    fun `four by two shows multiple courses across realistic launcher heights and fonts`() {
+        val compactFourByTwo = TimetableWidgetLayout.forSize(320, 145, 1.0f)
+        assertTrue(compactFourByTwo.showSecondary)
+        assertTrue(compactFourByTwo.showSidePanel)
+        assertEquals(2, compactFourByTwo.maxSideCourses)
+
+        val mediumFontFourByTwo = TimetableWidgetLayout.forSize(320, 175, 1.15f)
+        assertTrue(mediumFontFourByTwo.showSecondary)
+        assertTrue(mediumFontFourByTwo.showSidePanel)
+
+        val courses = listOf(
+            course(name = "高等数学", start = 0, end = 23 * 60 + 58),
+            course(name = "大学物理", location = "讲堂群 201", start = 23 * 60 + 59, end = 24 * 60 + 60),
+            course(name = "油气地质学", location = "工科楼 C102", start = 25 * 60, end = 26 * 60),
+            course(name = "英语读写", location = "南堂 305", start = 27 * 60, end = 28 * 60),
+        )
+        val snapshot = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = today,
+            courses = courses,
+            fetchedAtEpochMillis = 1_700_000_000_000,
+        )
+        val root = applied(
+            rendered(snapshot = snapshot, layout = TimetableWidgetLayout.forSize(340, 180, 1.0f)),
+            widthDp = 340,
+            heightDp = 180,
+        )
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_timetable_side_panel).visibility)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_timetable_upcoming_1).visibility)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_timetable_upcoming_2).visibility)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_timetable_upcoming_3).visibility)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_upcoming_more).visibility)
+        assertEquals("大学物理", root.findViewById<TextView>(R.id.widget_timetable_upcoming_name_1).text.toString())
+        assertEquals("油气地质学", root.findViewById<TextView>(R.id.widget_timetable_upcoming_name_2).text.toString())
+        assertEquals("英语读写", root.findViewById<TextView>(R.id.widget_timetable_upcoming_name_3).text.toString())
+
+        val fiveCourses = courses + course(name = "体育", location = "田径场", start = 29 * 60, end = 30 * 60)
+        val overflowRoot = applied(
+            rendered(
+                snapshot = snapshot.copy(courses = fiveCourses),
+                layout = TimetableWidgetLayout.forSize(320, 145, 1.0f),
+            ),
+            widthDp = 320,
+            heightDp = 145,
+        )
+        assertEquals(View.VISIBLE, overflowRoot.findViewById<View>(R.id.widget_timetable_upcoming_1).visibility)
+        assertEquals(View.VISIBLE, overflowRoot.findViewById<View>(R.id.widget_timetable_upcoming_more).visibility)
+    }
 }

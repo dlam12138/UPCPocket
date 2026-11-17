@@ -37,7 +37,9 @@ data class TimetableWidgetSnapshot(
  *
  * - [dense]：短矮网格或大字号，使用更紧的内边距与 16sp 主课；
  * - [showDate]：日期/状态行，空间不足时整行让位给主课；
- * - [showSecondary]：只有宽度足够的 4×2 才加一行次课；
+ * - [showSecondary]：宽度足够（4×2）或高度充裕的 2×2 时展示后续课程；
+ * - [showSidePanel]：4×2 宽卡启用右侧双栏后续课程列表（即使在 135~165dp 矮 2 行桌面下也能显示多节课）；
+ * - [maxSideCourses]：右侧最多直接展开的后续课程条数（2 或 3 节）。
  * - [showFooter]：更新时间行，空间不足时先让位给主课/次课。
  */
 data class TimetableWidgetLayout(
@@ -47,34 +49,38 @@ data class TimetableWidgetLayout(
     val showLocation: Boolean = true,
     val dense: Boolean = false,
     val compact: Boolean = false,
+    val showSidePanel: Boolean = false,
+    val maxSideCourses: Int = 2,
 ) {
     companion object {
         /**
          * 纯函数，便于单测覆盖 160/172/180/234/360 宽与 1.0/1.5 字体。
-         * 先保证主课两行 + 时间，再按剩余高度逐项恢复地点、日期、页脚、次课。
+         * 先保证主课两行 + 时间，再按剩余高度/宽度逐项恢复地点、日期、页脚与多课列表。
          */
         fun forSize(widthDp: Int, heightDp: Int, fontScale: Float): TimetableWidgetLayout {
             val width = widthDp.takeIf { it >= 100 } ?: 180
             val height = heightDp.takeIf { it >= 100 } ?: 180
-            val dense = height < 150 || (fontScale >= 1.3f && height < 240)
-            val wide = width >= 260
-            val showSecondary = !dense && (
-                (wide && height >= 200 && fontScale < 1.25f) ||
-                    (wide && height >= 170 && fontScale <= 1.05f) ||
-                    (!wide && height >= 215 && fontScale < 1.2f)
+            val wide = width >= 245
+            val dense = (!wide && height < 150) || (wide && height < 125) || (fontScale >= 1.3f && height < 240)
+            val showSidePanel = wide && !dense && height >= 130 && fontScale < 1.3f
+            val maxSideCourses = if (height >= 170 && fontScale < 1.15f) 3 else 2
+            val showSecondary = showSidePanel || (
+                !dense && !wide && height >= 215 && fontScale < 1.2f
                 )
             var showFooter = height >= if (fontScale >= 1.3f) 200 else 165
             if (fontScale >= 1.1f && height < 190) showFooter = false
             if (showSecondary && height < 215) showFooter = false
-            val showDate = height >= if (fontScale >= 1.3f) 180 else 150
-            val showLocation = height >= if (fontScale >= 1.3f) 175 else 155
+            val showDate = height >= if (fontScale >= 1.3f) 180 else if (wide) 135 else 150
+            val showLocation = height >= if (fontScale >= 1.3f) 175 else if (wide) 135 else 155
             return TimetableWidgetLayout(
                 showDate = showDate,
                 showFooter = showFooter,
                 showSecondary = showSecondary,
                 showLocation = showLocation,
                 dense = dense,
-                compact = width < 260,
+                compact = !wide,
+                showSidePanel = showSidePanel,
+                maxSideCourses = maxSideCourses,
             )
         }
     }
