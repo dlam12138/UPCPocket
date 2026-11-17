@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +39,10 @@ import com.upcpocket.app.ui.liquid.LiquidBottomTabs
 import com.upcpocket.app.ui.liquid.LiquidButton
 import com.upcpocket.app.ui.liquid.LiquidDockDestination
 import com.upcpocket.app.ui.liquid.LiquidFilterChip
+import com.upcpocket.app.ui.liquid.LiquidFloatingActionButton
+import com.upcpocket.app.ui.liquid.LiquidIconButton
+import com.upcpocket.app.ui.liquid.LiquidSegmentedTabs
+import com.upcpocket.app.ui.liquid.LiquidTextButton
 import com.upcpocket.app.ui.liquid.LiquidToggle
 import com.upcpocket.app.ui.liquid.LiquidTopAppBar
 import com.upcpocket.app.ui.liquid.LocalGlassBackdrop
@@ -244,5 +249,57 @@ class AppearanceScreenTest {
         composeRule.onNodeWithTag("swipe_dock").performTouchInput { swipeRight() }
         composeRule.waitForIdle()
         assertEquals(true, latestTab > 0)
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun liquidTextButtonIconFabAndSegmentedTabsWorkInBothStyles() {
+        var textClicked = false
+        var iconClicked = false
+        var fabClicked = false
+        var selectedSegment = 0
+        composeRule.setContent {
+            var style by remember { mutableStateOf(UiStyle.LIQUID_GLASS) }
+            UpcPocketTheme(uiStyle = style) {
+                Column(Modifier.padding(16.dp)) {
+                    LiquidTextButton(onClick = { textClicked = true }) {
+                        Text("文本操作")
+                    }
+                    LiquidIconButton(
+                        onClick = { iconClicked = true },
+                        tonal = true,
+                        modifier = Modifier.testTag("liquid_icon_btn"),
+                    ) {
+                        Icon(Icons.Filled.Home, contentDescription = "图标按钮")
+                    }
+                    LiquidFloatingActionButton(
+                        onClick = {
+                            fabClicked = true
+                            style = UiStyle.MATERIAL_3
+                        },
+                        modifier = Modifier.testTag("liquid_fab_btn"),
+                    ) {
+                        Icon(Icons.Outlined.Home, contentDescription = "悬浮按钮")
+                    }
+                    LiquidSegmentedTabs(
+                        tabs = listOf("活动", "我的"),
+                        selectedIndex = selectedSegment,
+                        onSelect = { selectedSegment = it },
+                        tabStyle = true,
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithText("文本操作").performClick()
+        composeRule.onNodeWithTag("liquid_icon_btn").performClick()
+        composeRule.onNodeWithText("我的").performClick()
+        composeRule.onNodeWithTag("liquid_fab_btn").performClick()
+        composeRule.waitForIdle()
+        assertEquals(true, textClicked)
+        assertEquals(true, iconClicked)
+        assertEquals(1, selectedSegment)
+        assertEquals(true, fabClicked)
+        composeRule.onNodeWithText("文本操作").assertIsDisplayed()
+        composeRule.onNodeWithText("我的").assertIsDisplayed()
     }
 }

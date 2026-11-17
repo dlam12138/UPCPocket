@@ -228,11 +228,11 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                 "楼号加载失败，请重试。",
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            TextButton(onClick = ::loadBuildings) { Text("重试") }
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         buildings.isEmpty() -> Column {
                             Text("没有返回楼号列表。")
-                            TextButton(onClick = ::loadBuildings) { Text("重试") }
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         else -> LazyColumn {
                             items(
@@ -259,7 +259,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPicker = false }) { Text("关闭") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showPicker = false }) { Text("关闭") }
             },
         )
     }
@@ -286,7 +286,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column {
-                OutlinedButton(
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                     onClick = { showPicker = true },
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -314,7 +314,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重试") }
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     buildings.isEmpty() -> {
                         Text(
@@ -323,7 +323,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重试") }
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     else -> Unit
                 }
@@ -355,7 +355,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 },
             )
 
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = ::runQuery,
                 enabled = !loading && building.isNotBlank() && room.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -365,7 +365,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             if (building.isNotBlank() || room.isNotBlank()) {
-                TextButton(onClick = ::clearInput, enabled = !loading) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::clearInput, enabled = !loading) {
                     Text("清除记录")
                 }
             }
@@ -439,7 +439,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(onClick = {
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                                 changeRoom(candidate.room)
                                 candidates = emptyList()
                             }) { Text("选择") }

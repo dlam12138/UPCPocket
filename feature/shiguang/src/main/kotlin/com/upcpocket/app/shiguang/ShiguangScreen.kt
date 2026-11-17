@@ -197,20 +197,16 @@ private fun BrowseContent(
             )
         }
         item(key = "tabs") {
-            TabRow(selectedTabIndex = state.tab.ordinal) {
-                Tab(
-                    selected = state.tab == ShiguangTab.ACTIVITIES,
-                    enabled = inputEnabled,
-                    onClick = { scope.launch { service.selectTab(ShiguangTab.ACTIVITIES) } },
-                    text = { Text("活动") },
-                )
-                Tab(
-                    selected = state.tab == ShiguangTab.MINE,
-                    enabled = inputEnabled,
-                    onClick = { scope.launch { service.selectTab(ShiguangTab.MINE) } },
-                    text = { Text("我的") },
-                )
-            }
+            com.upcpocket.app.ui.liquid.LiquidSegmentedTabs(
+                tabs = listOf("活动", "我的"),
+                selectedIndex = state.tab.ordinal,
+                onSelect = { index ->
+                    val target = if (index == 0) ShiguangTab.ACTIVITIES else ShiguangTab.MINE
+                    scope.launch { service.selectTab(target) }
+                },
+                enabled = inputEnabled,
+                tabStyle = true,
+            )
         }
         if (state.busy) item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { reason ->
@@ -337,7 +333,7 @@ private fun AccountRequiredContent(modifier: Modifier, onOpenAccountSettings: ()
         Text("保存学校账号后查看活动与参与记录", style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
-        Button(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("学校账号") }
+        com.upcpocket.app.ui.liquid.LiquidButton(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("学校账号") }
     }
 }
 
@@ -388,7 +384,7 @@ private fun PageHeader(
 
 @Composable
 internal fun ShiguangInteractiveLoginAction(state: ShiguangState, onClick: () -> Unit) {
-    TextButton(
+    com.upcpocket.app.ui.liquid.LiquidTextButton(
         onClick = onClick,
         enabled = !state.busy && state.interactiveAttempt == null,
         modifier = Modifier.heightIn(min = 48.dp),
@@ -399,10 +395,10 @@ internal fun ShiguangInteractiveLoginAction(state: ShiguangState, onClick: () ->
 
 @Composable
 private fun FailureCard(reason: ShiguangFailure, showingPreviousResults: Boolean, onOpenAccountSettings: () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-        shape = RoundedCornerShape(20.dp),
+    com.upcpocket.app.ui.liquid.LiquidPanel(
         modifier = Modifier.fillMaxWidth(),
+        tintColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.62f),
+        fallbackColor = MaterialTheme.colorScheme.errorContainer,
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(reason.label, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onErrorContainer)
@@ -410,7 +406,11 @@ private fun FailureCard(reason: ShiguangFailure, showingPreviousResults: Boolean
                 Text("当前显示上次结果", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onErrorContainer)
             }
             if (reason in setOf(ShiguangFailure.INVALID_CREDENTIALS, ShiguangFailure.ACCOUNT_CHANGED, ShiguangFailure.IDENTITY_MISMATCH)) {
-                TextButton(onClick = onOpenAccountSettings, modifier = Modifier.heightIn(min = 48.dp)) { Text("检查账号") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
+                    onClick = onOpenAccountSettings,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("检查账号") }
             }
         }
     }
@@ -423,9 +423,9 @@ private fun ActivityCard(activity: ShiguangActivity, enabled: Boolean, onClick: 
     val eventTime = activity.fields.firstValue("活动时间")
     val place = activity.fields.firstValue("活动地点", "地点")
     GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        enabled = enabled,
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -631,14 +631,14 @@ private fun Pagination(page: ShiguangPage, busy: Boolean, onPrevious: () -> Unit
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TextButton(onClick = onPrevious, enabled = !busy && page.page > 1, modifier = Modifier.heightIn(min = 48.dp)) {
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onPrevious, enabled = !busy && page.page > 1, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("上一页")
         }
         Text(
             if (page.totalPages != null) "第 ${page.page} / ${page.totalPages} 页" else "第 ${page.page} 页",
             style = MaterialTheme.typography.labelMedium,
         )
-        TextButton(onClick = onNext, enabled = !busy && page.nextPage != null, modifier = Modifier.heightIn(min = 48.dp)) {
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onNext, enabled = !busy && page.nextPage != null, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("下一页")
         }
     }

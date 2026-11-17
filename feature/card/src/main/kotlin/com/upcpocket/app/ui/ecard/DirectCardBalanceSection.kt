@@ -250,14 +250,14 @@ fun DirectCardBalanceSection(
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (status.availability == CardBindingAvailability.READY || snapshot != null) {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = ::clearCache,
                         enabled = !loading && !querying,
                         modifier = Modifier.testTag("card_clear_cache"),
                     ) { Text("清除缓存") }
                 }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = { showDetails = !showDetails }) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDetails = !showDetails }) {
                     Text("数据说明")
                     Icon(
                         imageVector = if (showDetails) {

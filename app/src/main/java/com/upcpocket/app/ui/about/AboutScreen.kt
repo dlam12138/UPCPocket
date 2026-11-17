@@ -253,13 +253,13 @@ fun AboutScreen(onBack: () -> Unit) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(
                             onClick = { exportDiagnostics() },
                             enabled = !exporting && !clearing,
                         ) {
                             Text(if (exporting) "正在生成…" else "导出诊断报告")
                         }
-                        TextButton(
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(
                             onClick = { clearDiagnostics() },
                             enabled = !exporting && !clearing,
                         ) {
@@ -304,7 +304,7 @@ fun AboutScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
                         Text("上游项目 3beuml/ZZUPocket（MIT）")
                     }
                 }

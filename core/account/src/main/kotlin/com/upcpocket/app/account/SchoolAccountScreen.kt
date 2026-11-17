@@ -316,7 +316,7 @@ fun SchoolAccountScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(
+                        com.upcpocket.app.ui.liquid.LiquidButton(
                             onClick = { retryCleanup() },
                             enabled = !busy,
                             modifier = Modifier.testTag("retry_cleanup"),
@@ -436,7 +436,7 @@ fun SchoolAccountScreen(
                 )
             }
 
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = { submit() },
                 enabled = !busy && !state.cleanupRequired,
                 modifier = Modifier.fillMaxWidth().testTag("save_account"),
@@ -458,7 +458,7 @@ fun SchoolAccountScreen(
             if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED ||
                 state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION
             ) {
-                OutlinedButton(
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                     onClick = { showDeleteDialog = true },
                     enabled = !busy && !state.cleanupRequired,
                     modifier = Modifier.fillMaxWidth().testTag("delete_account"),
@@ -497,7 +497,7 @@ fun SchoolAccountScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = {
                         showDeleteDialog = false
                         delete()
@@ -505,7 +505,7 @@ fun SchoolAccountScreen(
                 ) { Text("删除") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
             },
         )
     }

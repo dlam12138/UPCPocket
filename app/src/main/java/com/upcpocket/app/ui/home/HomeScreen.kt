@@ -247,8 +247,9 @@ private fun Header(
             )
         }
         androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
-        androidx.compose.material3.FilledTonalIconButton(
+        com.upcpocket.app.ui.liquid.LiquidIconButton(
             onClick = onOpenSettings,
+            tonal = true,
             modifier = Modifier.size(48.dp),
         ) {
             Icon(

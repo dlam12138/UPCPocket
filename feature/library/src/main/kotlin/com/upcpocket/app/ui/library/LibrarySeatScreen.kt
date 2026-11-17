@@ -300,7 +300,7 @@ private fun LibrarySeatAreaContent(
                     body = state.error ?: if (state.loading) "请稍候。" else "暂时没有拿到馆区/日期。",
                 )
                 if (!state.loading) {
-                    TextButton(onClick = onRetry) { Text("重试") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry) { Text("重试") }
                 }
             }
         } else {
@@ -344,7 +344,7 @@ private fun LibrarySeatAreaContent(
             state.error?.let { message ->
                 item(contentType = "error") {
                     CompactNotice("暂时无法读取", message)
-                    TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
                 }
             }
             if (!state.loading && state.error == null && visible.isEmpty()) {
@@ -370,14 +370,11 @@ internal fun CompactFilterPanel(
     onDate: (String) -> Unit,
     onFloor: (Int?) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
         Text("馆区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -427,6 +424,7 @@ internal fun CompactFilterPanel(
                 }
             }
         }
+        }
     }
 }
 
@@ -454,7 +452,7 @@ private fun LibrarySeatReservationContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onRefresh, enabled = !state.loading && !state.reservationsBusy) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRefresh, enabled = !state.loading && !state.reservationsBusy) {
                     Text(if (state.reservationsBusy) "刷新中…" else "刷新")
                 }
             }
@@ -462,7 +460,7 @@ private fun LibrarySeatReservationContent(
         state.reservationsError?.let { message ->
             item(contentType = "reservation_error") {
                 CompactNotice("预约状态读取失败", message)
-                TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
             }
         }
         if (state.reservations.isEmpty()) {
@@ -499,11 +497,9 @@ private fun LibrarySeatReservationContent(
 
 @Composable
 internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
+    com.upcpocket.app.ui.components.GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        onClick = onClick,
     ) {
         Row(
             Modifier.padding(14.dp),
@@ -539,7 +535,7 @@ internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
                     )
                 }
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = onClick,
                 modifier = Modifier.widthIn(min = 64.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp),
@@ -618,7 +614,7 @@ private fun LibrarySeatDetailPage(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { openSeatOfficial(context) }) { Text("学校页面") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { openSeatOfficial(context) }) { Text("学校页面") }
                     Box {
                         IconButton(onClick = { showHiddenMenu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "更多")
@@ -654,7 +650,7 @@ private fun LibrarySeatDetailPage(
                             Text(seat?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
                             Text(seatSummary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(
+                        com.upcpocket.app.ui.liquid.LiquidButton(
                             onClick = {
                                 when {
                                     seat == null -> Unit
@@ -773,12 +769,12 @@ private fun LibrarySeatDetailPage(
                     )
                 },
                 confirmButton = {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         enabled = if (timeMode) state.canConfirmTimeReservation() else state.canConfirmReservation(),
                         onClick = if (timeMode) vm::confirmTimeReservation else vm::confirmReservation,
                     ) { Text("确认预约") }
                 },
-                dismissButton = { TextButton(onClick = vm::dismissConfirm) { Text("取消") } },
+                dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = vm::dismissConfirm) { Text("取消") } },
             )
         }
     }
@@ -797,29 +793,29 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
     room: LibraryRoom?,
 ) {
     item(contentType = "seat_time_summary") {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
-            Column(Modifier.weight(1f)) {
-                Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
-                Text(
-                    if (state.start != null && state.end != null) {
-                        "已选时段 ${state.start.value}–${state.end.value}" +
-                            (durationText(state.start, state.end)?.let { " · $it" } ?: "") +
-                            "；点底部可改"
-                    } else {
-                        "先点选座位，再选择使用时间"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (state.start != null && state.end != null) {
+                            "已选时段 ${state.start.value}–${state.end.value}" +
+                                (durationText(state.start, state.end)?.let { " · $it" } ?: "") +
+                                "；点底部可改"
+                        } else {
+                            "先点选座位，再选择使用时间"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
             }
-            TextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
         }
     }
     state.error?.let { message ->
@@ -869,16 +865,16 @@ private fun TimePickDialog(
         initialMinute = minute % 60,
         is24Hour = true,
     )
-    AlertDialog(
+    com.upcpocket.app.ui.liquid.LiquidDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { TimePicker(state = picker) },
         confirmButton = {
-            TextButton(onClick = { onConfirm(formatHhmm(picker.hour * 60 + picker.minute)) }) {
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onConfirm(formatHhmm(picker.hour * 60 + picker.minute)) }) {
                 Text("确定")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -907,12 +903,12 @@ internal fun LibraryTimeSearchContent(
     ) {
         item(contentType = "time_mode_controls") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.seatMode == RoomSeatMode.SEAT,
                     onClick = { onMode(RoomSeatMode.SEAT) },
                     label = { Text("按座位选") },
                 )
-                FilterChip(
+                com.upcpocket.app.ui.liquid.LiquidFilterChip(
                     selected = state.seatMode == RoomSeatMode.TIME,
                     onClick = { onMode(RoomSeatMode.TIME) },
                     label = { Text("按时段找") },
@@ -958,35 +954,35 @@ internal fun TimeRangeControls(
     canSearch: Boolean,
     querying: Boolean,
 ) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = onPickBegin, modifier = Modifier.fillMaxWidth()) {
-                    Text(begin ?: "选择开始", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = onPickFinish, modifier = Modifier.fillMaxWidth()) {
-                    Text(finish ?: "选择结束", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-        }
-        Button(
-            onClick = onSearch,
-            enabled = canSearch,
-            modifier = Modifier.fillMaxWidth(),
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(if (querying) "查找中…" else "查找座位")
-        }
-        if (querying) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = onPickBegin, modifier = Modifier.fillMaxWidth()) {
+                        Text(begin ?: "选择开始", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = onPickFinish, modifier = Modifier.fillMaxWidth()) {
+                        Text(finish ?: "选择结束", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+            com.upcpocket.app.ui.liquid.LiquidButton(
+                onClick = onSearch,
+                enabled = canSearch,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (querying) "查找中…" else "查找座位")
+            }
+            if (querying) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
         }
     }
 }
@@ -1033,11 +1029,11 @@ internal fun SeatSelectionBottomBar(
             if (stacked) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Summary()
-                    Button(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
+                    com.upcpocket.app.ui.liquid.LiquidButton(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
                 }
             } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) { Summary() }
-                Button(onClick = onConfirm, enabled = canConfirm) { Text(actionLabel) }
+                com.upcpocket.app.ui.liquid.LiquidButton(onClick = onConfirm, enabled = canConfirm) { Text(actionLabel) }
             }
         }
     }
@@ -1062,7 +1058,7 @@ internal fun TimeSearchResults(
             result.failed ->
                 Column {
                     CompactNotice("查询失败", result.failureMessage ?: "请重试")
-                    TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
                 }
             result.complete && result.seats.isEmpty() ->
                 CompactNotice("这个时段暂无可约座位", "可以修改时段再找。")
@@ -1103,12 +1099,12 @@ internal fun TimeSearchResults(
                     result.partialFailure ->
                         Column {
                             Text("部分结果未加载", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
                         }
                     result.pageLimitReached ->
                         Text("已加载前 ${result.seats.size} 个，请缩小范围", style = MaterialTheme.typography.labelSmall)
                     result.hasMore ->
-                        TextButton(onClick = onLoadMore, enabled = !result.querying) { Text("加载更多") }
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onLoadMore, enabled = !result.querying) { Text("加载更多") }
                 }
                 if (state.timeSelecting) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1217,10 +1213,10 @@ internal fun HiddenSeatManagementSheet(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(entry.nameSnapshot, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = { onRestore(entry.seatId) }) { Text("恢复") }
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onRestore(entry.seatId) }) { Text("恢复") }
                     }
                 }
-                OutlinedButton(onClick = onRestoreAll, modifier = Modifier.fillMaxWidth()) {
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = onRestoreAll, modifier = Modifier.fillMaxWidth()) {
                     Text("全部恢复")
                 }
             }
@@ -1237,7 +1233,11 @@ private fun SeatTimeSheet(
     seat: LibrarySeat,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = vm::closeTimeDialog, sheetState = sheetState) {
+    ModalBottomSheet(
+        onDismissRequest = vm::closeTimeDialog,
+        sheetState = sheetState,
+        containerColor = com.upcpocket.app.ui.liquid.liquidSheetContainerColor(),
+    ) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(bottom = 24.dp),
@@ -1260,7 +1260,7 @@ private fun SeatTimeSheet(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.startTimes.forEach { option ->
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = state.start?.id == option.id,
                             onClick = { vm.chooseStart(option) },
                             label = { Text(option.value) },
@@ -1276,7 +1276,7 @@ private fun SeatTimeSheet(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.endTimes.forEach { option ->
-                        FilterChip(
+                        com.upcpocket.app.ui.liquid.LiquidFilterChip(
                             selected = state.end?.id == option.id,
                             onClick = { vm.chooseEnd(option) },
                             label = { Text(option.value) },
@@ -1292,7 +1292,7 @@ private fun SeatTimeSheet(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = vm::closeTimeDialog,
                 enabled = state.start != null && state.end != null,
                 modifier = Modifier.fillMaxWidth(),
@@ -1329,13 +1329,14 @@ private fun LegendItem(color: Color, label: String) {
 
 @Composable
 internal fun CompactNotice(title: String, body: String) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -1491,9 +1492,9 @@ private fun LibraryLoginGate(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (canAutoLogin) {
-                Button(
+                com.upcpocket.app.ui.liquid.LiquidButton(
                     onClick = {
-                        if (busy) return@Button
+                        if (busy) return@LiquidButton
                         busy = true
                         error = null
                         scope.launch {
@@ -1519,7 +1520,7 @@ private fun LibraryLoginGate(
                     Text(if (busy) "正在登录…" else "用已保存账号登录")
                 }
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = onLogin,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
@@ -1584,7 +1585,7 @@ private fun ReservationCard(
                 )
             }
             if (reservation.cancellable && !pending) {
-                TextButton(enabled = enabled, onClick = onCancel) { Text("取消预约") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(enabled = enabled, onClick = onCancel) { Text("取消预约") }
             }
         }
     }

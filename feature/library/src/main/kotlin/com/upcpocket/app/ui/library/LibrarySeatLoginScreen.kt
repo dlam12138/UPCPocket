@@ -180,7 +180,7 @@ fun LibrarySeatLoginScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                TextButton(onClick = {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                     webView?.let { view -> loginClient?.load(view, LibrarySeatProtocol.LOGIN_URL) }
                 }) { Text("重新加载") }
             }

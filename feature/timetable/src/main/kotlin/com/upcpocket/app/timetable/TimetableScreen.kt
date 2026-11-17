@@ -361,7 +361,7 @@ private fun AccountBlockedCard(message: String, onOpenAccountSettings: () -> Uni
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onOpenAccountSettings) { Text("更新账号") }
+            com.upcpocket.app.ui.liquid.LiquidButton(onClick = onOpenAccountSettings) { Text("更新账号") }
         }
     }
 }
@@ -387,7 +387,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
             if (isLoading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onOpenAccountSettings,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("设置学校账号") }
@@ -451,7 +451,7 @@ internal fun TermAndWeekHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f, fill = false)) {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = { menuOpen = true },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
@@ -509,7 +509,7 @@ internal fun TermAndWeekHeader(
                 )
             }
             Box {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = { weekMenuOpen = true },
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                 ) {
@@ -636,22 +636,22 @@ internal fun ConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
-                    Button(onClick = onOpenLogin) { Text("学校登录") }
+                    com.upcpocket.app.ui.liquid.LiquidButton(onClick = onOpenLogin) { Text("学校登录") }
                 }
                 if (state.canRetry && !state.isBusy) {
-                    TextButton(onClick = onRetry) { Text("重试") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRetry) { Text("重试") }
                 }
                 if (state.connection == TimetableConnection.NOT_CONFIGURED ||
                     state.connection == TimetableConnection.AUTH_FAILED ||
                     state.accountSavedUnverified
                 ) {
-                    TextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
                 }
                 if (state.connection != TimetableConnection.INTERACTION_REQUIRED &&
                     state.connection != TimetableConnection.NOT_CONFIGURED &&
                     !state.accountBlocked
                 ) {
-                    TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenWebLogin) { Text("网页登录") }
                 }
             }
         }
@@ -1225,7 +1225,7 @@ private fun TodayStatus(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && action != null) {
-            TextButton(
+            com.upcpocket.app.ui.liquid.LiquidTextButton(
                 onClick = action,
                 modifier = Modifier.heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1302,7 +1302,7 @@ internal fun CourseDetailBottomSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(
+            com.upcpocket.app.ui.liquid.LiquidTextButton(
                 onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.End)
@@ -1367,8 +1367,8 @@ private fun TimetableInfoDialog(
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenWebLogin) { Text("网页登录") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("关闭") }
             }
         },
     )

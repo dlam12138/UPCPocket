@@ -144,7 +144,10 @@ fun FocusScreen(
             com.upcpocket.app.ui.liquid.LiquidTopAppBar(
                 title = { Text("专注") },
                 actions = {
-                    FilledTonalIconButton(onClick = onOpenStats) {
+                    com.upcpocket.app.ui.liquid.LiquidIconButton(
+                        onClick = onOpenStats,
+                        tonal = true,
+                    ) {
                         Icon(Icons.Filled.Insights, contentDescription = "学习统计")
                     }
                     Spacer(Modifier.width(4.dp))
@@ -386,7 +389,7 @@ private fun TagSection(
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onManage) { Text("管理") }
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onManage) { Text("管理") }
         }
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -461,7 +464,7 @@ private fun TagManageDialog(
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(
                                 onClick = {
                                     onRename(tag.id, editingText)
                                     editingId = null
@@ -476,19 +479,22 @@ private fun TagManageDialog(
                                 style = MaterialTheme.typography.bodyLarge,
                                 modifier = Modifier.weight(1f),
                             )
-                            TextButton(onClick = {
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                                 editingId = tag.id
                                 editingText = tag.name
                             }) { Text("改名") }
-                            TextButton(onClick = { pendingDelete = tag }) {
-                                Text("删除", color = MaterialTheme.colorScheme.error)
+                            com.upcpocket.app.ui.liquid.LiquidTextButton(
+                                onClick = { pendingDelete = tag },
+                                contentColor = MaterialTheme.colorScheme.error,
+                            ) {
+                                Text("删除")
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } },
+        confirmButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("完成") } },
     )
 
     pendingDelete?.let { tag ->
@@ -502,13 +508,13 @@ private fun TagManageDialog(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                     onDelete(tag.id)
                     pendingDelete = null
                 }) { Text("删除") }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { pendingDelete = null }) { Text("取消") }
             },
         )
     }
@@ -522,12 +528,12 @@ private fun TodayCard(ui: FocusUiState, onManual: () -> Unit, onOpenStats: () ->
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("今天", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                TextButton(onClick = onOpenStats) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenStats) {
                     Icon(Icons.Filled.Insights, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("统计")
                 }
-                TextButton(onClick = onManual) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onManual) {
                     Icon(Icons.Filled.EditNote, contentDescription = null, Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("补录")
@@ -639,15 +645,11 @@ private fun TimerSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text("预设", style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    TimerPreset.entries.forEachIndexed { index, preset ->
-                        SegmentedButton(
-                            selected = ui.prefs.preset == preset,
-                            onClick = { onPreset(preset) },
-                            shape = SegmentedButtonDefaults.itemShape(index, TimerPreset.entries.size),
-                        ) { Text(preset.label.substringBefore(' '), style = MaterialTheme.typography.labelSmall) }
-                    }
-                }
+                com.upcpocket.app.ui.liquid.LiquidSegmentedTabs(
+                    tabs = TimerPreset.entries.map { it.label.substringBefore(' ') },
+                    selectedIndex = TimerPreset.entries.indexOf(ui.prefs.preset).coerceAtLeast(0),
+                    onSelect = { index -> onPreset(TimerPreset.entries[index]) },
+                )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NumberField("专注", focus, Modifier.weight(1f)) { focus = it }
@@ -663,7 +665,7 @@ private fun TimerSettingsDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = {
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = {
                 onSave(
                     focus.toIntOrNull() ?: ui.prefs.focusMinutes,
                     short.toIntOrNull() ?: ui.prefs.shortBreakMinutes,
@@ -674,7 +676,7 @@ private fun TimerSettingsDialog(
                 )
             }) { Text("保存") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -735,12 +737,12 @@ private fun NewTagDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            com.upcpocket.app.ui.liquid.LiquidTextButton(
                 onClick = { onConfirm(name) },
                 enabled = name.trim().isNotEmpty() && !duplicate,
             ) { Text("创建") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -761,15 +763,11 @@ private fun ManualRecordDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("哪一天", style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    dayLabels.forEachIndexed { index, label ->
-                        SegmentedButton(
-                            selected = daysBack == index,
-                            onClick = { daysBack = index },
-                            shape = SegmentedButtonDefaults.itemShape(index, dayLabels.size),
-                        ) { Text(label) }
-                    }
-                }
+                com.upcpocket.app.ui.liquid.LiquidSegmentedTabs(
+                    tabs = dayLabels,
+                    selectedIndex = daysBack,
+                    onSelect = { daysBack = it },
+                )
 
                 Text("多久（分钟）", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -797,11 +795,11 @@ private fun ManualRecordDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            com.upcpocket.app.ui.liquid.LiquidTextButton(
                 onClick = { onConfirm(minutes.toIntOrNull() ?: 0, daysBack) },
                 enabled = (minutes.toIntOrNull() ?: 0) > 0,
             ) { Text("补录") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

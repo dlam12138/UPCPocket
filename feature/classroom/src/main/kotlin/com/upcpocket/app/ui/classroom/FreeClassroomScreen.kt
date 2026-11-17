@@ -179,7 +179,7 @@ fun FreeClassroomScreen(
         DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     enabled = pickerState.selectedDateMillis != null,
                     onClick = {
                         pickerState.selectedDateMillis?.let { millis ->
@@ -194,7 +194,7 @@ fun FreeClassroomScreen(
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { showDatePicker = false }) { Text("取消") }
             },
         ) {
             DatePicker(state = pickerState, showModeToggle = false)
@@ -425,7 +425,7 @@ private fun ClassroomFilterPanel(
                 val stacked = maxWidth < 320.dp || LocalDensity.current.fontScale >= 1.4f
                 if (stacked) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = onOpenDate,
                             enabled = filtersEnabled,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("classroom_date"),
@@ -457,7 +457,7 @@ private fun ClassroomFilterPanel(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = onOpenDate,
                             enabled = filtersEnabled,
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("classroom_date"),
@@ -523,7 +523,7 @@ private fun ClassroomFilterPanel(
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(onClick = onOpenFilters, enabled = filtersEnabled) { Text("筛选") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onOpenFilters, enabled = filtersEnabled) { Text("筛选") }
                 }
             }
         }
@@ -617,7 +617,7 @@ private fun ClassroomFilterSheet(
         Text("详细筛选", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("教学楼", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = onOpenBuilding,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("classroom_building_picker"),
             ) {
@@ -661,8 +661,8 @@ private fun ClassroomFilterSheet(
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { onPeriodsChange((1..13).toSet()) }) { Text("全选") }
-                TextButton(onClick = { onPeriodsChange(emptySet()) }) { Text("清空") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onPeriodsChange((1..13).toSet()) }) { Text("全选") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { onPeriodsChange(emptySet()) }) { Text("清空") }
             }
             Text(
                 if (periods.isEmpty()) "至少选择一节。" else "第 ${formatPeriods(periods)} 节 · 共 ${periods.size} 节",
@@ -671,10 +671,10 @@ private fun ClassroomFilterSheet(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = onCancel, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
                 Text("取消")
             }
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onApply,
                 enabled = periods.isNotEmpty(),
                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -960,7 +960,7 @@ private fun BuildingPickerDialog(
                         }
                     }
                 }
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = onQueryAll,
                     enabled = canQueryAll,
                     modifier = Modifier.testTag("classroom_query_all_buildings"),
@@ -969,7 +969,7 @@ private fun BuildingPickerDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }
 
@@ -1006,6 +1006,6 @@ private fun RoomDetailDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onDismiss) { Text("关闭") } },
     )
 }

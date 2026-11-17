@@ -133,7 +133,7 @@ fun TodoHomeSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = {
                             if (pendingUndo == pending) pendingUndo = null
                             undoMessage = null

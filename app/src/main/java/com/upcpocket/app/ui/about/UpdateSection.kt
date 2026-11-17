@@ -147,7 +147,7 @@ fun UpdateSection() {
                         strokeWidth = 2.dp,
                     )
                 } else {
-                    TextButton(onClick = ::onCheckOrView) {
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = ::onCheckOrView) {
                         Text(if (state.available != null) "查看" else "检查")
                     }
                 }
@@ -182,7 +182,7 @@ fun UpdateSection() {
             }
 
             if (state.status == UpdateStatus.FAILED || state.status == UpdateStatus.UNSUPPORTED) {
-                TextButton(
+                com.upcpocket.app.ui.liquid.LiquidTextButton(
                     onClick = {
                         runCatching { uriHandler.openUri(RELEASES_URL) }
                             .onFailure { toast("无法打开发布页。") }
@@ -254,10 +254,10 @@ private fun UpdateDialog(
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = controller::startDownload) { Text("更新") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::startDownload) { Text("更新") }
                 },
                 dismissButton = {
-                    TextButton(onClick = controller::dismissDialog) { Text("稍后") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::dismissDialog) { Text("稍后") }
                 },
             )
         }
@@ -292,7 +292,7 @@ private fun UpdateDialog(
                     }
                 },
                 confirmButton = {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = controller::switchSource,
                         enabled = download.sourceIndex + 1 < download.sourceCount,
                     ) {
@@ -300,7 +300,7 @@ private fun UpdateDialog(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = controller::cancelDownload) { Text("取消") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::cancelDownload) { Text("取消") }
                 },
             )
         }
@@ -315,7 +315,7 @@ private fun UpdateDialog(
                     )
                 },
                 confirmButton = {
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         onClick = onLaunchInstall,
                         enabled = !installBusy,
                     ) {
@@ -323,7 +323,7 @@ private fun UpdateDialog(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = controller::dismissDialog) { Text("稍后") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::dismissDialog) { Text("稍后") }
                 },
             )
         }
@@ -338,10 +338,10 @@ private fun UpdateDialog(
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = controller::retryDownload) { Text("重试") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::retryDownload) { Text("重试") }
                 },
                 dismissButton = {
-                    TextButton(onClick = controller::dismissDialog) { Text("稍后") }
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = controller::dismissDialog) { Text("稍后") }
                 },
             )
         }

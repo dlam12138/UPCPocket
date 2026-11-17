@@ -1,6 +1,8 @@
 package com.upcpocket.app.ui.liquid
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -9,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,25 +19,39 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -64,7 +81,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -85,6 +105,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
+import com.kyant.shapes.RoundedRectangle
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -638,7 +659,7 @@ fun LiquidFilterChip(
 
     Box(
         modifier = modifier
-            .height(34.dp)
+            .defaultMinSize(minHeight = 34.dp)
             .graphicsLayer {
                 if (!enabled) return@graphicsLayer
                 val p = interactiveHighlight.pressProgress
@@ -861,6 +882,478 @@ fun LiquidPanel(
                 ),
         )
         Box(modifier = Modifier.clip(resolveClipShape(shape)), content = content)
+    }
+}
+
+/**
+ * 液态文本按钮：静态保持轻量无边界，按下瞬间呈现果冻缩放、手指位移追踪与清透高光胶囊。
+ */
+@Composable
+fun LiquidTextButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    shape: Shape = GlassCapsule,
+    contentPadding: PaddingValues = ButtonDefaults.TextButtonContentPadding,
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+    content: @Composable RowScope.() -> Unit,
+) {
+    if (!isLiquidGlassActive()) {
+        TextButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            contentPadding = contentPadding,
+            content = content,
+        )
+        return
+    }
+
+    val backdrop = LocalGlassBackdrop.current!!
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
+    val clipShape = resolveClipShape(shape)
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        LiquidInteractiveHighlight(animationScope = animationScope)
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val resolvedContentColor = if (enabled) contentColor else scheme.onSurface.copy(alpha = 0.38f)
+
+    Box(
+        modifier = modifier
+            .defaultMinSize(minWidth = 48.dp, minHeight = 38.dp)
+            .graphicsLayer {
+                if (!enabled) return@graphicsLayer
+                val p = interactiveHighlight.pressProgress
+                val scale = lerp(1f, 1.045f, p)
+                val maxOffset = size.minDimension.coerceAtLeast(1f)
+                val maxDrift = 6.dp.toPx()
+                val offset = interactiveHighlight.offset
+                translationX = maxDrift * tanh(0.28f * offset.x / maxOffset)
+                translationY = maxDrift * tanh(0.28f * offset.y / maxOffset)
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(clipShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { shape },
+                    effects = {
+                        val p = interactiveHighlight.pressProgress
+                        if (p > 0.02f) {
+                            applyGlassEffects(
+                                blurRadiusDp = 2.dp * p,
+                                refractionHeightDp = 8.dp * p,
+                                refractionAmountDp = 16.dp * p,
+                            )
+                        }
+                    },
+                    highlight = {
+                        val p = interactiveHighlight.pressProgress
+                        if (p > 0.02f) Highlight.Default.copy(alpha = 0.85f * p) else null
+                    },
+                    onDrawSurface = {
+                        val p = interactiveHighlight.pressProgress
+                        val baseAlpha = if (dark) lerp(0.03f, 0.16f, p) else lerp(0.04f, 0.24f, p)
+                        drawRect(Color.White.copy(alpha = baseAlpha))
+                    },
+                )
+                .then(if (enabled) interactiveHighlight.modifier else Modifier),
+        )
+        Row(
+            modifier = Modifier.padding(contentPadding),
+            horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompositionLocalProvider(LocalContentColor provides resolvedContentColor) {
+                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
+                    content()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 液态圆形图标按钮：`tonal = true` 时为高折射主题色晶体圆纽，`tonal = false` 时为轻透水滴按压高光。
+ */
+@Composable
+fun LiquidIconButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tonal: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    if (!isLiquidGlassActive()) {
+        if (tonal) {
+            FilledTonalIconButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                content = content,
+            )
+        } else {
+            IconButton(
+                onClick = onClick,
+                modifier = modifier,
+                enabled = enabled,
+                content = content,
+            )
+        }
+        return
+    }
+
+    val backdrop = LocalGlassBackdrop.current!!
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        LiquidInteractiveHighlight(animationScope = animationScope)
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val tint = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.08f)
+        tonal && dark -> scheme.primary.copy(alpha = 0.28f)
+        tonal -> scheme.primary.copy(alpha = 0.16f)
+        dark -> Color.White.copy(alpha = 0.06f)
+        else -> Color.White.copy(alpha = 0.14f)
+    }
+    val contentColor = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+        tonal -> scheme.primary
+        else -> scheme.onSurface
+    }
+
+    Box(
+        modifier = modifier
+            .defaultMinSize(minWidth = 44.dp, minHeight = 44.dp)
+            .graphicsLayer {
+                if (!enabled) return@graphicsLayer
+                val p = interactiveHighlight.pressProgress
+                val scale = lerp(1f, 1.08f, p)
+                val maxOffset = size.minDimension.coerceAtLeast(1f)
+                val maxDrift = 5.dp.toPx()
+                val offset = interactiveHighlight.offset
+                translationX = maxDrift * tanh(0.30f * offset.x / maxOffset)
+                translationY = maxDrift * tanh(0.30f * offset.y / maxOffset)
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { GlassCapsule },
+                    effects = {
+                        applyGlassEffects(
+                            blurRadiusDp = if (tonal) 3.dp else 2.dp,
+                            refractionHeightDp = if (tonal) 10.dp else 7.dp,
+                            refractionAmountDp = if (tonal) 20.dp else 14.dp,
+                        )
+                    },
+                    highlight = {
+                        val p = interactiveHighlight.pressProgress
+                        Highlight.Default.copy(
+                            alpha = lerp(if (tonal) 0.85f else 0.50f, 1f, p),
+                        )
+                    },
+                    onDrawSurface = {
+                        if (tonal && enabled) {
+                            drawRect(scheme.primary, blendMode = BlendMode.Hue)
+                        }
+                        drawRect(tint)
+                    },
+                )
+                .then(if (enabled) interactiveHighlight.modifier else Modifier),
+        )
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            content()
+        }
+    }
+}
+
+/**
+ * 液态玻璃悬浮动作按钮（FAB）：宝石着彩折射晶体 + AGSL 触摸高光。
+ */
+@Composable
+fun LiquidFloatingActionButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    if (!isLiquidGlassActive()) {
+        FloatingActionButton(
+            onClick = onClick,
+            modifier = modifier,
+            content = content,
+        )
+        return
+    }
+
+    val backdrop = LocalGlassBackdrop.current!!
+    val scheme = MaterialTheme.colorScheme
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        LiquidInteractiveHighlight(animationScope = animationScope)
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+    val fabShape = RoundedRectangle(18.dp)
+    val fabClipShape = RoundedCornerShape(18.dp)
+
+    Box(
+        modifier = modifier
+            .size(56.dp)
+            .graphicsLayer {
+                val p = interactiveHighlight.pressProgress
+                val scale = lerp(1f, 1.07f, p)
+                val maxOffset = size.minDimension.coerceAtLeast(1f)
+                val maxDrift = 7.dp.toPx()
+                val offset = interactiveHighlight.offset
+                translationX = maxDrift * tanh(0.30f * offset.x / maxOffset)
+                translationY = maxDrift * tanh(0.30f * offset.y / maxOffset)
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(fabClipShape)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .then(interactiveHighlight.gestureModifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { fabShape },
+                    effects = {
+                        applyGlassEffects(
+                            blurRadiusDp = 3.dp,
+                            refractionHeightDp = 12.dp,
+                            refractionAmountDp = 24.dp,
+                            depthEffect = true,
+                        )
+                    },
+                    highlight = {
+                        Highlight.Default.copy(alpha = lerp(0.88f, 1f, interactiveHighlight.pressProgress))
+                    },
+                    shadow = {
+                        Shadow(radius = 14.dp, color = scheme.primary.copy(alpha = 0.28f))
+                    },
+                    onDrawSurface = {
+                        drawRect(scheme.primary, blendMode = BlendMode.Hue)
+                        drawRect(scheme.primary.copy(alpha = 0.55f))
+                    },
+                )
+                .then(interactiveHighlight.modifier),
+        )
+        CompositionLocalProvider(LocalContentColor provides Color.White) {
+            content()
+        }
+    }
+}
+
+/**
+ * 全局统一的液态玻璃滑动选项卡 / 分段控件：
+ * - Liquid Glass 模式：透明玻璃胶囊轨道 + 弹性滑动高光透镜滑块；
+ * - Material 3 模式：`tabStyle = true` 回退原生 `TabRow`，`false` 回退 `SingleChoiceSegmentedButtonRow`。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LiquidSegmentedTabs(
+    tabs: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    tabStyle: Boolean = false,
+) {
+    if (tabs.isEmpty()) return
+    val clampedIndex = selectedIndex.coerceIn(0, tabs.lastIndex)
+
+    if (!isLiquidGlassActive()) {
+        if (tabStyle) {
+            TabRow(selectedTabIndex = clampedIndex, modifier = modifier) {
+                tabs.forEachIndexed { index, label ->
+                    Tab(
+                        selected = index == clampedIndex,
+                        enabled = enabled,
+                        onClick = { onSelect(index) },
+                        text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    )
+                }
+            }
+        } else {
+            SingleChoiceSegmentedButtonRow(modifier = modifier) {
+                tabs.forEachIndexed { index, label ->
+                    SegmentedButton(
+                        selected = index == clampedIndex,
+                        enabled = enabled,
+                        onClick = { onSelect(index) },
+                        shape = SegmentedButtonDefaults.itemShape(index, tabs.size),
+                    ) {
+                        Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    val backdrop = LocalGlassBackdrop.current!!
+    val scheme = MaterialTheme.colorScheme
+    val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
+    val density = LocalDensity.current
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val animatedIndex by animateFloatAsState(
+        targetValue = clampedIndex.toFloat(),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 1100f),
+        label = "liquid_segmented_tab",
+    )
+    val trackTint = if (dark) Color(0xFF141822).copy(alpha = 0.24f) else Color.White.copy(alpha = 0.20f)
+    val pillTint = if (dark) scheme.primary.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.52f)
+
+    BoxWithConstraints(
+        modifier = modifier
+            .height(44.dp)
+            .fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        val innerPadding = 3.dp
+        val count = tabs.size.coerceAtLeast(1)
+        val innerWidth = (maxWidth - innerPadding * 2).coerceAtLeast(48.dp)
+        val pillWidth = innerWidth / count
+        val tabWidthPx = with(density) { pillWidth.toPx() }
+        val maxOffsetPx = (count - 1).coerceAtLeast(0) * tabWidthPx
+
+        // 外层清透玻璃轨道
+        Spacer(
+            modifier = Modifier
+                .matchParentSize()
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { GlassCapsule },
+                    effects = {
+                        applyGlassEffects(
+                            blurRadiusDp = 3.dp,
+                            refractionHeightDp = 8.dp,
+                            refractionAmountDp = 16.dp,
+                        )
+                    },
+                    highlight = { Highlight.Default.copy(alpha = 0.70f) },
+                    onDrawSurface = { drawRect(trackTint) },
+                ),
+        )
+
+        // 滑动液态玻璃透镜滑块
+        Spacer(
+            modifier = Modifier
+                .padding(innerPadding)
+                .size(width = pillWidth, height = 38.dp)
+                .graphicsLayer {
+                    val x = animatedIndex * tabWidthPx
+                    translationX = if (isLtr) x.fastCoerceIn(0f, maxOffsetPx)
+                    else (maxOffsetPx - x).fastCoerceIn(0f, maxOffsetPx)
+                }
+                .drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { GlassCapsule },
+                    effects = {
+                        applyGlassEffects(
+                            blurRadiusDp = 2.dp,
+                            refractionHeightDp = 7.dp,
+                            refractionAmountDp = 14.dp,
+                        )
+                    },
+                    highlight = { Highlight.Default },
+                    shadow = {
+                        Shadow(
+                            radius = 6.dp,
+                            color = Color.Black.copy(alpha = if (dark) 0.24f else 0.08f),
+                        )
+                    },
+                    onDrawSurface = {
+                        if (!dark) {
+                            drawRect(scheme.primary.copy(alpha = 0.14f), blendMode = BlendMode.Hue)
+                        }
+                        drawRect(pillTint)
+                    },
+                ),
+        )
+
+        // 顶层标签交互行
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .padding(innerPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEachIndexed { index, label ->
+                val isSelected = index == clampedIndex
+                val contentColor = when {
+                    !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+                    isSelected -> scheme.primary
+                    else -> scheme.onSurface.copy(alpha = 0.82f)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(GlassCapsuleClipShape)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            enabled = enabled,
+                            role = Role.Tab,
+                            onClick = { onSelect(index) },
+                        )
+                        .semantics { selected = isSelected },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        color = contentColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                    )
+                }
+            }
+        }
     }
 }
 

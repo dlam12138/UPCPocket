@@ -194,7 +194,7 @@ internal fun CardHistoryScreenContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (!available) {
-                        Button(onClick = accountSettings, modifier = Modifier.heightIn(min = 48.dp)) {
+                        com.upcpocket.app.ui.liquid.LiquidButton(onClick = accountSettings, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text("前往学校账号设置")
                         }
                     }
@@ -232,13 +232,13 @@ internal fun CardHistoryScreenContent(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = { query(all = true) },
                             enabled = available && !loading && loginAttempt == null,
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                         ) { Text("加载全部") }
                         if (client.supportsInteractiveLogin) {
-                            OutlinedButton(
+                            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                                 onClick = ::startVerification,
                                 enabled = available && !loading && loginAttempt == null,
                                 modifier = Modifier.weight(1f).heightIn(min = 48.dp),
@@ -345,7 +345,7 @@ internal fun CardHistoryScreenContent(
                         key = { it.id },
                         contentType = { "transaction" },
                     ) { row ->
-                        Card {
+                        GlassCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(row.title, style = MaterialTheme.typography.titleSmall)
                                 Text(
@@ -359,7 +359,7 @@ internal fun CardHistoryScreenContent(
                 }
                 if (visible.current < visible.data.pages) {
                     item(key = "load-more", contentType = "actions") {
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = { query(more = true) },
                             enabled = !loading && available && loginAttempt == null,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -442,7 +442,7 @@ private fun CardHistoryAnalyticsCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onToggle) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onToggle) {
                     Text(if (expanded) "收起图表" else "展开图表")
                 }
             }

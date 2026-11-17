@@ -109,7 +109,7 @@ fun ServicePortalScreen(
                             }
                         },
                     ) { Icon(Icons.Outlined.Refresh, contentDescription = "刷新") }
-                    TextButton(
+                    com.upcpocket.app.ui.liquid.LiquidTextButton(
                         enabled = !state.busy && !state.accountBlocked,
                         onClick = onOpenAccountSettings,
                     ) { Text("学校账号") }
@@ -123,15 +123,13 @@ fun ServicePortalScreen(
         ) {
             Column(Modifier.widthIn(max = 900.dp).fillMaxSize()) {
                 if (state.selected == null) {
-                    TabRow(selectedTabIndex = state.tab.ordinal) {
-                        ServicePortalTab.entries.forEach { tab ->
-                            Tab(
-                                selected = state.tab == tab,
-                                onClick = { service.selectTab(tab) },
-                                text = { Text(tab.label) },
-                            )
-                        }
-                    }
+                    com.upcpocket.app.ui.liquid.LiquidSegmentedTabs(
+                        tabs = ServicePortalTab.entries.map { it.label },
+                        selectedIndex = state.tab.ordinal,
+                        onSelect = { index -> service.selectTab(ServicePortalTab.entries[index]) },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        tabStyle = true,
+                    )
                 }
                 if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 Row(
@@ -152,7 +150,7 @@ fun ServicePortalScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (state.accountAvailable) {
-                        TextButton(
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(
                             enabled = !state.busy && !state.accountBlocked,
                             onClick = service::loginOrRetry,
                         ) {
@@ -281,7 +279,7 @@ private fun ServiceListContent(
                     }
                 },
             )
-            Button(onClick = onSearch, enabled = !state.busy) { Text("搜索") }
+            com.upcpocket.app.ui.liquid.LiquidButton(onClick = onSearch, enabled = !state.busy) { Text("搜索") }
         }
         val page = state.results
         when {
@@ -358,7 +356,7 @@ internal fun ServiceSearchPageRecovery(
         verticalArrangement = Arrangement.Center,
     ) {
         Text("此页暂无事项", style = MaterialTheme.typography.bodyLarge)
-        TextButton(onClick = onFirstPage) { Text("回到第一页") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onFirstPage) { Text("回到第一页") }
     }
 }
 
@@ -410,7 +408,7 @@ private fun TodoListContent(
             item(key = "todo-pages") {
                 PageControls(page.page, page.pageSize, page.total, page.page > 1, page.hasMore && page.page < MAX_PAGE, onPrevious, onNext)
                 if (page.hasMore && page.page == MAX_PAGE) Text("最多查看 50 页，后续事项未加载。", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }
             }
         }
     }
@@ -470,7 +468,7 @@ private fun ApplicationListContent(
             item(key = "application-pages") {
                 PageControls(page.page, page.pageSize, page.total, page.page > 1, page.hasMore && page.page < MAX_PAGE, onPrevious, onNext)
                 if (page.hasMore && page.page == MAX_PAGE) Text("最多查看 50 页，后续申请未加载。", style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }
             }
         }
     }
@@ -501,8 +499,8 @@ private fun OutOfRangePage(
             onPrevious = onPrevious,
             onNext = {},
         )
-        TextButton(onClick = onFirst, enabled = !busy && page > 1) { Text("回到第一页") }
-        TextButton(onClick = onRefresh, enabled = !busy) { Text("刷新") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onFirst, enabled = !busy && page > 1) { Text("回到第一页") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onRefresh, enabled = !busy) { Text("刷新") }
     }
 }
 
@@ -521,7 +519,7 @@ private fun GuideContent(
         Modifier.fillMaxSize().verticalScroll(scroll).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        TextButton(onClick = onBack) { Text("返回事项") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onBack) { Text("返回事项") }
         Text(guide.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
         guide.department?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
         Text(guide.access.label(), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -576,10 +574,10 @@ private fun PageControls(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(enabled = canPrevious, onClick = onPrevious) { Text("上一页") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(enabled = canPrevious, onClick = onPrevious) { Text("上一页") }
         val pages = maxOf(1, ((total.toLong() + pageSize - 1) / pageSize).toInt())
         Text("第 $page 页 / $pages 页", style = MaterialTheme.typography.bodySmall)
-        TextButton(enabled = canNext, onClick = onNext) { Text("下一页") }
+        com.upcpocket.app.ui.liquid.LiquidTextButton(enabled = canNext, onClick = onNext) { Text("下一页") }
     }
 }
 
@@ -594,7 +592,9 @@ private fun NoticeCard(text: String, action: String? = null, onAction: (() -> Un
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-            if (action != null && onAction != null) TextButton(onClick = onAction) { Text(action) }
+            if (action != null && onAction != null) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onAction) { Text(action) }
+            }
         }
     }
 }

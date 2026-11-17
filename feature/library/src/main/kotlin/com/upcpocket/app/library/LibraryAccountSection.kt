@@ -176,7 +176,7 @@ internal fun LibraryAccountSectionContent(
                         )
                     }
                     if (hasSession) {
-                        TextButton(
+                        com.upcpocket.app.ui.liquid.LiquidTextButton(
                             onClick = onLogout,
                             modifier = Modifier.testTag("library_logout"),
                         ) {

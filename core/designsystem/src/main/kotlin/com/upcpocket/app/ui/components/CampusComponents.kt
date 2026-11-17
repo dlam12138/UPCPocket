@@ -46,7 +46,7 @@ fun SectionHeader(
             modifier = Modifier.weight(1f),
         )
         if (actionLabel != null && onAction != null) {
-            TextButton(onClick = onAction) {
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onAction) {
                 Text(actionLabel, style = MaterialTheme.typography.labelLarge)
             }
         }
@@ -264,7 +264,7 @@ fun EmptyStateCard(
                 )
             }
             if (actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = onAction) {
                     Text(actionLabel)
                 }
             }

@@ -113,7 +113,7 @@ internal fun CardRechargeScreen(
         ) {
             item {
                 Text(owner?.studentId?.let { "本人校园卡 · ${AccountMask.mask(it)}" } ?: "请先设置学校账号")
-                if (!available) Button(onClick = accountSettings) { Text("学校账号设置") }
+                if (!available) com.upcpocket.app.ui.liquid.LiquidButton(onClick = accountSettings) { Text("学校账号设置") }
                 if (visible?.busy == true) LinearProgressIndicator(Modifier.fillMaxWidth())
                 visible?.message?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 launchError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -173,16 +173,16 @@ internal fun CardRechargeScreen(
             } }
             if (visible?.recoveryRequired == true) item {
                 visible.pending?.let { Text("本次充值 ¥ ${it.yuan}") }
-                OutlinedButton(onClick = { scope.launch { service.refresh() } }, enabled = !visible.busy) {
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = { scope.launch { service.refresh() } }, enabled = !visible.busy) {
                     Text("刷新支付状态")
                 }
-                TextButton(onClick = { clearConfirmation = true }, enabled = !visible.busy) {
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { clearConfirmation = true }, enabled = !visible.busy) {
                     Text("已核对官方记录，处理未完成订单")
                 }
             }
             if (available && visible?.rules == null && visible?.busy != true && visible?.recoveryRequired != true) item {
-                OutlinedButton(onClick = { scope.launch { service.open() } }) { Text("重新加载") }
-                TextButton(onClick = accountSettings) { Text("学校账号设置") }
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(onClick = { scope.launch { service.open() } }) { Text("重新加载") }
+                com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = accountSettings) { Text("学校账号设置") }
             }
         }
     }
@@ -191,10 +191,10 @@ internal fun CardRechargeScreen(
         title = { Text("已核对学校与微信记录？") },
         text = { Text("只有确认旧订单无需继续付款时再清除本机标记。此操作不会取消学校订单或退款，避免重复充值。") },
         confirmButton = {
-            TextButton(onClick = { clearConfirmation = false; scope.launch { service.clearAfterVerification() } }) {
+            com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { clearConfirmation = false; scope.launch { service.clearAfterVerification() } }) {
                 Text("已核对，清除标记")
             }
         },
-        dismissButton = { TextButton(onClick = { clearConfirmation = false }) { Text("返回核对") } },
+        dismissButton = { com.upcpocket.app.ui.liquid.LiquidTextButton(onClick = { clearConfirmation = false }) { Text("返回核对") } },
     )
 }
