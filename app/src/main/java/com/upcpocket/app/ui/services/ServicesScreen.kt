@@ -1,5 +1,6 @@
 package com.upcpocket.app.ui.services
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -252,15 +253,10 @@ private fun ServiceDirectoryCard(
     onTogglePin: () -> Unit,
     onClick: () -> Unit,
 ) {
-    Surface(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f),
-        ),
-        modifier = Modifier.fillMaxWidth(),
+    com.upcpocket.app.ui.components.GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
     ) {
         Row(
             modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),

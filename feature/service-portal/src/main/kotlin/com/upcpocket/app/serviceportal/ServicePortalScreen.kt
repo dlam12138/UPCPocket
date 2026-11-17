@@ -317,7 +317,7 @@ private fun ServiceListContent(
                     )
                 }
                 items(page.items, key = ServicePortalItem::rowKey, contentType = { "service" }) { item ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpen(item) }) {
+                    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth().clickable { onOpen(item) }) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             item.department?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -394,7 +394,7 @@ private fun TodoListContent(
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
             items(page.items, key = ServicePortalTodo::rowKey, contentType = { "todo" }) { item ->
-                Card(Modifier.fillMaxWidth()) {
+                com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名事项" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         item.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -448,7 +448,7 @@ private fun ApplicationListContent(
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
             items(page.items, key = ServicePortalApplication::rowKey, contentType = { "application" }) { item ->
-                Card(Modifier.fillMaxWidth()) {
+                com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名申请" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         item.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -582,9 +582,8 @@ private fun PageControls(
 
 @Composable
 private fun NoticeCard(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
-    Card(
+    com.upcpocket.app.ui.components.GlassCard(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(16.dp),
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),

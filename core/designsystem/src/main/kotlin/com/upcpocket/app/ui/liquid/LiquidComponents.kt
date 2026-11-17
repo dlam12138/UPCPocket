@@ -1,15 +1,11 @@
 package com.upcpocket.app.ui.liquid
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -22,13 +18,12 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,7 +31,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ProvideTextStyle
@@ -45,30 +39,63 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.fastCoerceAtMost
+import androidx.compose.ui.util.fastCoerceIn
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberBackdrop
+import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.Capsule
-import com.upcpocket.app.designsystem.UiStyle
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.tanh
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * 全局顶栏：
- * - Liquid Glass 模式：通透磨砂玻璃浮层（自适配状态栏 inset 与底部高光线）
- * - Material 3 模式：原汁原味 Material 3 `TopAppBar`
+ * - Liquid Glass 模式：清透无灰底玻璃顶栏（低模糊 + 轻透明纯光 + 边缘高光线）
+ * - Material 3 模式：原生 Material 3 `TopAppBar`
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,23 +121,21 @@ fun LiquidTopAppBar(
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
     val barTint = if (dark) {
-        scheme.surfaceContainerHigh.copy(alpha = 0.58f)
+        Color(0xFF10141D).copy(alpha = 0.28f)
     } else {
-        scheme.surfaceContainerLowest.copy(alpha = 0.66f)
+        Color.White.copy(alpha = 0.22f)
     }
 
-    Box(
-        modifier = modifier.fillMaxWidth(),
-    ) {
+    Box(modifier = modifier.fillMaxWidth()) {
         Spacer(
             modifier = Modifier
                 .matchParentSize()
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { androidx.compose.ui.graphics.RectangleShape },
+                    shape = { RectangleShape },
                     effects = {
                         applyGlassEffects(
-                            blurRadiusDp = 16.dp,
+                            blurRadiusDp = 6.dp,
                             refractionHeightDp = 0.dp,
                             refractionAmountDp = 0.dp,
                         )
@@ -155,14 +180,14 @@ fun LiquidTopAppBar(
             }
             HorizontalDivider(
                 thickness = 0.5.dp,
-                color = if (dark) Color.White.copy(alpha = 0.14f) else scheme.outlineVariant.copy(alpha = 0.45f),
+                color = if (dark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.55f),
             )
         }
     }
 }
 
 /**
- * 通用主按钮：Liquid Glass 模式下使用折射高光胶囊玻璃按钮，Material 3 模式使用标准 `Button`。
+ * 通用主按钮：Kyant0 流体高光与指向性弹性形变 + 高通透主题色调玻璃。
  */
 @Composable
 fun LiquidButton(
@@ -183,82 +208,23 @@ fun LiquidButton(
         )
         return
     }
-
-    val backdrop = LocalGlassBackdrop.current!!
     val scheme = MaterialTheme.colorScheme
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(0.6f, 600f),
-        label = "liquidButtonScale",
+    LiquidInteractiveCapsuleButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        hueTint = if (enabled) scheme.primary else Color.Unspecified,
+        surfaceColor = if (enabled) scheme.primary.copy(alpha = 0.52f) else scheme.onSurface.copy(alpha = 0.10f),
+        contentColor = if (enabled) Color.White else scheme.onSurface.copy(alpha = 0.38f),
+        shadowColor = if (enabled) scheme.primary.copy(alpha = 0.24f) else null,
+        contentPadding = contentPadding,
+        content = content,
     )
-    val surfaceTint = if (enabled) {
-        scheme.primary.copy(alpha = 0.82f)
-    } else {
-        scheme.onSurface.copy(alpha = 0.12f)
-    }
-    val contentColor = if (enabled) scheme.onPrimary else scheme.onSurface.copy(alpha = 0.38f)
-
-    val clipShape = when (shape) {
-        GlassCapsule -> GlassCapsuleClipShape
-        GlassCardShape -> GlassCardClipShape
-        GlassDialogShape -> GlassDialogClipShape
-        else -> androidx.compose.foundation.shape.CircleShape
-    }
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = 64.dp, minHeight = 40.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(clipShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { shape },
-                    effects = {
-                        applyGlassEffects(
-                            blurRadiusDp = 8.dp,
-                            refractionHeightDp = 8.dp,
-                            refractionAmountDp = 16.dp,
-                        )
-                    },
-                    highlight = { Highlight.Default.copy(alpha = if (enabled) 0.85f else 0.25f) },
-                    shadow = {
-                        if (enabled) Shadow(radius = 8.dp, color = scheme.primary.copy(alpha = 0.22f)) else null
-                    },
-                    onDrawSurface = { drawRect(surfaceTint) },
-                ),
-        )
-        Row(
-            modifier = Modifier.padding(contentPadding),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompositionLocalProvider(LocalContentColor provides contentColor) {
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
-                    content()
-                }
-            }
-        }
-    }
 }
 
 /**
- * 液态次级按钮：Liquid Glass 下呈现色调毛玻璃胶囊，Material 3 下对应 `FilledTonalButton`。
+ * 液态次级按钮：超清透浅染色玻璃胶囊。
  */
 @Composable
 fun LiquidTonalButton(
@@ -279,80 +245,27 @@ fun LiquidTonalButton(
         )
         return
     }
-
-    val backdrop = LocalGlassBackdrop.current!!
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(0.6f, 600f),
-        label = "liquidTonalButtonScale",
+    LiquidInteractiveCapsuleButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        hueTint = if (enabled && !dark) scheme.primary.copy(alpha = 0.4f) else Color.Unspecified,
+        surfaceColor = when {
+            !enabled -> scheme.onSurface.copy(alpha = 0.08f)
+            dark -> Color.White.copy(alpha = 0.12f)
+            else -> scheme.primary.copy(alpha = 0.14f)
+        },
+        contentColor = if (enabled) scheme.primary else scheme.onSurface.copy(alpha = 0.38f),
+        contentPadding = contentPadding,
+        content = content,
     )
-    val surfaceTint = if (enabled) {
-        scheme.secondaryContainer.copy(alpha = if (dark) 0.58f else 0.70f)
-    } else {
-        scheme.onSurface.copy(alpha = 0.10f)
-    }
-    val contentColor = if (enabled) scheme.onSecondaryContainer else scheme.onSurface.copy(alpha = 0.38f)
-
-    val clipShape = when (shape) {
-        GlassCapsule -> GlassCapsuleClipShape
-        GlassCardShape -> GlassCardClipShape
-        GlassDialogShape -> GlassDialogClipShape
-        else -> androidx.compose.foundation.shape.CircleShape
-    }
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = 64.dp, minHeight = 40.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .clip(clipShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                role = Role.Button,
-                onClick = onClick,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { shape },
-                    effects = {
-                        applyGlassEffects(
-                            blurRadiusDp = 8.dp,
-                            refractionHeightDp = 6.dp,
-                            refractionAmountDp = 12.dp,
-                        )
-                    },
-                    highlight = { Highlight.Default.copy(alpha = 0.65f) },
-                    onDrawSurface = { drawRect(surfaceTint) },
-                ),
-        )
-        Row(
-            modifier = Modifier.padding(contentPadding),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            CompositionLocalProvider(LocalContentColor provides contentColor) {
-                ProvideTextStyle(MaterialTheme.typography.labelLarge) {
-                    content()
-                }
-            }
-        }
-    }
 }
 
 /**
- * 液态玻璃描边按钮：Liquid Glass 下透明清晰折射，Material 3 下为 `OutlinedButton`。
+ * 液态玻璃描边按钮：水晶清透透明玻璃 + 镜面高光边界。
  */
 @Composable
 fun LiquidOutlinedButton(
@@ -373,32 +286,68 @@ fun LiquidOutlinedButton(
         )
         return
     }
-
-    val backdrop = LocalGlassBackdrop.current!!
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) 0.96f else 1f,
-        animationSpec = spring(0.6f, 600f),
-        label = "liquidOutlinedScale",
+    LiquidInteractiveCapsuleButton(
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        shape = shape,
+        surfaceColor = if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.14f),
+        contentColor = if (enabled) scheme.primary else scheme.onSurface.copy(alpha = 0.38f),
+        borderStroke = BorderStroke(
+            0.8.dp,
+            if (dark) Color.White.copy(alpha = 0.22f) else scheme.outline.copy(alpha = 0.30f),
+        ),
+        contentPadding = contentPadding,
+        content = content,
     )
-    val surfaceTint = if (dark) Color.White.copy(alpha = 0.08f) else scheme.surface.copy(alpha = 0.42f)
-    val contentColor = if (enabled) scheme.primary else scheme.onSurface.copy(alpha = 0.38f)
+}
 
+@Composable
+private fun LiquidInteractiveCapsuleButton(
+    onClick: () -> Unit,
+    modifier: Modifier,
+    enabled: Boolean,
+    shape: Shape,
+    hueTint: Color = Color.Unspecified,
+    surfaceColor: Color,
+    contentColor: Color,
+    shadowColor: Color? = null,
+    borderStroke: BorderStroke? = null,
+    contentPadding: PaddingValues,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val backdrop = LocalGlassBackdrop.current!!
     val clipShape = resolveClipShape(shape)
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        LiquidInteractiveHighlight(animationScope = animationScope)
+    }
+    val interactionSource = remember { MutableInteractionSource() }
+
     Box(
         modifier = modifier
-            .defaultMinSize(minWidth = 64.dp, minHeight = 40.dp)
+            .defaultMinSize(minWidth = 64.dp, minHeight = 42.dp)
             .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+                if (!enabled) return@graphicsLayer
+                val progress = interactiveHighlight.pressProgress
+                val scale = lerp(1f, 1f + 4.dp.toPx() / size.height.coerceAtLeast(1f), progress)
+                val maxOffset = size.minDimension
+                val offset = interactiveHighlight.offset
+                if (maxOffset > 0f) {
+                    translationX = maxOffset * tanh(0.05f * offset.x / maxOffset)
+                    translationY = maxOffset * tanh(0.05f * offset.y / maxOffset)
+                }
+                val maxDragScale = 4.dp.toPx() / size.height.coerceAtLeast(1f)
+                val angle = atan2(offset.y, offset.x)
+                val maxDim = size.maxDimension.coerceAtLeast(1f)
+                val ratioW = (size.width / size.height.coerceAtLeast(1f)).fastCoerceAtMost(1f)
+                val ratioH = (size.height / size.width.coerceAtLeast(1f)).fastCoerceAtMost(1f)
+                scaleX = scale + maxDragScale * abs(cos(angle) * offset.x / maxDim) * ratioW
+                scaleY = scale + maxDragScale * abs(sin(angle) * offset.y / maxDim) * ratioH
             }
-            .border(
-                BorderStroke(1.dp, scheme.outline.copy(alpha = if (enabled) 0.45f else 0.20f)),
-                clipShape,
-            )
+            .let { base -> if (borderStroke != null) base.border(borderStroke, clipShape) else base }
             .clip(clipShape)
             .clickable(
                 interactionSource = interactionSource,
@@ -406,7 +355,8 @@ fun LiquidOutlinedButton(
                 enabled = enabled,
                 role = Role.Button,
                 onClick = onClick,
-            ),
+            )
+            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Spacer(
@@ -417,18 +367,27 @@ fun LiquidOutlinedButton(
                     shape = { shape },
                     effects = {
                         applyGlassEffects(
-                            blurRadiusDp = 6.dp,
-                            refractionHeightDp = 6.dp,
-                            refractionAmountDp = 12.dp,
+                            blurRadiusDp = 2.dp,
+                            refractionHeightDp = 12.dp,
+                            refractionAmountDp = 24.dp,
                         )
                     },
-                    highlight = { Highlight.Default.copy(alpha = 0.6f) },
-                    onDrawSurface = { drawRect(surfaceTint) },
-                ),
+                    highlight = { Highlight.Default.copy(alpha = if (enabled) 0.90f else 0.30f) },
+                    shadow = {
+                        shadowColor?.let { Shadow(radius = 10.dp, color = it) }
+                    },
+                    onDrawSurface = {
+                        if (hueTint.isSpecified) {
+                            drawRect(hueTint, blendMode = BlendMode.Hue)
+                        }
+                        drawRect(surfaceColor)
+                    },
+                )
+                .then(if (enabled) interactiveHighlight.modifier else Modifier),
         )
         Row(
             modifier = Modifier.padding(contentPadding),
-            horizontalArrangement = Arrangement.Center,
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             CompositionLocalProvider(LocalContentColor provides contentColor) {
@@ -441,7 +400,8 @@ fun LiquidOutlinedButton(
 }
 
 /**
- * 液态玻璃开关：Liquid Glass 下使用胶囊滑块 + 折射高光，Material 3 下使用原生 `Switch`。
+ * Kyant0 风格流体玻璃开关：支持真实水平拖动手势（跟手果冻拉伸、滑块按压/拖拽转为色散放大镜），
+ * 同时支持点击切换与无障碍 `Role.Switch` 语义。
  */
 @Composable
 fun LiquidToggle(
@@ -463,70 +423,172 @@ fun LiquidToggle(
     val backdrop = LocalGlassBackdrop.current!!
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
-    val trackColor by animateColorAsState(
-        targetValue = when {
-            !enabled && checked -> scheme.primary.copy(alpha = 0.32f)
-            !enabled -> scheme.onSurface.copy(alpha = 0.14f)
-            checked -> scheme.primary.copy(alpha = 0.86f)
-            dark -> Color.White.copy(alpha = 0.22f)
-            else -> scheme.surfaceVariant.copy(alpha = 0.72f)
+    val accentColor = scheme.primary
+    val trackColor = if (dark) Color(0xFF787880).copy(alpha = 0.34f) else Color(0xFF787880).copy(alpha = 0.22f)
+
+    val density = LocalDensity.current
+    val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val dragWidth = with(density) { 20.dp.toPx() }
+    val animationScope = rememberCoroutineScope()
+
+    var didDrag by remember { mutableStateOf(false) }
+    var fraction by remember { mutableFloatStateOf(if (checked) 1f else 0f) }
+
+    val dampedDragAnimation = remember(animationScope, dragWidth, isLtr, enabled, onCheckedChange) {
+        LiquidDampedDragAnimation(
+            animationScope = animationScope,
+            initialValue = fraction,
+            valueRange = 0f..1f,
+            visibilityThreshold = 0.001f,
+            initialScale = 1f,
+            pressedScale = 1.45f,
+            onDragStarted = { didDrag = false },
+            onDragStopped = {
+                if (!enabled || onCheckedChange == null) {
+                    didDrag = false
+                } else if (didDrag) {
+                    val target = if (targetValue >= 0.5f) 1f else 0f
+                    fraction = target
+                    onCheckedChange(target == 1f)
+                    didDrag = false
+                }
+            },
+            onDrag = { _, dragAmount ->
+                if (enabled && onCheckedChange != null) {
+                    if (!didDrag) didDrag = dragAmount.x != 0f
+                    val delta = dragAmount.x / dragWidth
+                    fraction = if (isLtr) {
+                        (fraction + delta).fastCoerceIn(0f, 1f)
+                    } else {
+                        (fraction - delta).fastCoerceIn(0f, 1f)
+                    }
+                }
+            },
+        )
+    }
+
+    LaunchedEffect(dampedDragAnimation) {
+        snapshotFlow { fraction }.collectLatest { f ->
+            dampedDragAnimation.updateValue(f)
+        }
+    }
+
+    LaunchedEffect(checked) {
+        val target = if (checked) 1f else 0f
+        if (target != fraction) {
+            fraction = target
+            dampedDragAnimation.animateToValue(target)
+        }
+    }
+
+    val trackBackdrop = rememberLayerBackdrop()
+    val thumbBackdrop = rememberCombinedBackdrop(
+        backdrop,
+        rememberBackdrop(trackBackdrop) { drawTrack ->
+            val p = dampedDragAnimation.pressProgress
+            val sx = lerp(0.72f, 0.80f, p)
+            val sy = lerp(0.10f, 0.78f, p)
+            scale(sx, sy) { drawTrack() }
         },
-        label = "liquidToggleTrack",
     )
-    val thumbOffset by animateDpAsState(
-        targetValue = if (checked) 24.dp else 4.dp,
-        animationSpec = spring(0.55f, 520f),
-        label = "liquidToggleOffset",
-    )
+
+    val semanticsAndInteraction = if (onCheckedChange != null) {
+        Modifier
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = { next ->
+                    fraction = if (next) 1f else 0f
+                    dampedDragAnimation.animateToValue(fraction)
+                    onCheckedChange(next)
+                },
+            )
+            .then(if (enabled) dampedDragAnimation.modifier else Modifier)
+    } else {
+        Modifier.semantics { role = Role.Switch }
+    }
 
     Box(
         modifier = modifier
-            .size(width = 56.dp, height = 32.dp)
+            .size(width = 64.dp, height = 28.dp)
             .clip(GlassCapsuleClipShape)
-            .let { base ->
-                if (onCheckedChange != null) {
-                    base.toggleable(
-                        value = checked,
-                        enabled = enabled,
-                        role = Role.Switch,
-                        onValueChange = onCheckedChange,
-                    )
-                } else {
-                    base
-                }
-            },
+            .then(semanticsAndInteraction),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Spacer(
-            modifier = Modifier
-                .matchParentSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { Capsule() },
-                    effects = {
-                        applyGlassEffects(
-                            blurRadiusDp = 6.dp,
-                            refractionHeightDp = 4.dp,
-                            refractionAmountDp = 8.dp,
-                        )
-                    },
-                    highlight = { Highlight.Default.copy(alpha = 0.6f) },
-                    onDrawSurface = { drawRect(trackColor) },
-                ),
-        )
+        // 轨道层（采集进 trackBackdrop 以供滑块按压拖拽时产生折射放大效果）
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset)
-                .size(width = 28.dp, height = 24.dp)
+                .layerBackdrop(trackBackdrop)
                 .clip(GlassCapsuleClipShape)
-                .background(Color.White.copy(alpha = if (enabled) 0.94f else 0.6f), GlassCapsuleClipShape)
-                .border(0.75.dp, Color.White.copy(alpha = 0.8f), GlassCapsuleClipShape),
+                .drawBehind {
+                    val v = dampedDragAnimation.value.fastCoerceIn(0f, 1f)
+                    val baseTrack = lerp(trackColor, accentColor, v)
+                    drawRect(if (enabled) baseTrack else baseTrack.copy(alpha = baseTrack.alpha * 0.45f))
+                }
+                .size(64.dp, 28.dp),
+        )
+
+        // 浮动的液态玻璃滑块（静态白润，按压/拖动转为色散透明透镜）
+        Box(
+            modifier = Modifier
+                .graphicsLayer {
+                    val v = dampedDragAnimation.value.fastCoerceIn(0f, 1f)
+                    val paddingPx = 2.dp.toPx()
+                    translationX = if (isLtr) {
+                        lerp(paddingPx, paddingPx + dragWidth, v)
+                    } else {
+                        lerp(-paddingPx, -(paddingPx + dragWidth), v)
+                    }
+                    val vel = (dampedDragAnimation.velocity / 50f).fastCoerceIn(-0.22f, 0.22f)
+                    scaleX = dampedDragAnimation.scaleX / (1f - vel * 0.75f).fastCoerceIn(0.8f, 1.25f)
+                    scaleY = dampedDragAnimation.scaleY * (1f - vel * 0.25f).fastCoerceIn(0.8f, 1.2f)
+                }
+                .drawBackdrop(
+                    backdrop = thumbBackdrop,
+                    shape = { Capsule() },
+                    effects = {
+                        val p = dampedDragAnimation.pressProgress
+                        val blurPx = (6.dp * (1f - p)).toPx()
+                        if (blurPx > 0.5f) {
+                            blur(blurPx)
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && p > 0.01f) {
+                            lens(
+                                refractionHeight = (5.dp * p).toPx(),
+                                refractionAmount = (10.dp * p).toPx(),
+                                chromaticAberration = true,
+                            )
+                        }
+                    },
+                    highlight = {
+                        val p = dampedDragAnimation.pressProgress
+                        Highlight.Ambient.copy(
+                            width = Highlight.Ambient.width / 1.5f,
+                            blurRadius = Highlight.Ambient.blurRadius / 1.5f,
+                            alpha = p,
+                        )
+                    },
+                    shadow = {
+                        Shadow(radius = 4.dp, color = Color.Black.copy(alpha = 0.08f))
+                    },
+                    innerShadow = {
+                        val p = dampedDragAnimation.pressProgress
+                        InnerShadow(radius = 4.dp * p, alpha = p * 0.7f)
+                    },
+                    onDrawSurface = {
+                        val p = dampedDragAnimation.pressProgress
+                        val alpha = ((1f - p) * if (enabled) 0.96f else 0.55f).fastCoerceIn(0f, 1f)
+                        drawRect(Color.White.copy(alpha = alpha))
+                    },
+                )
+                .size(40.dp, 24.dp),
         )
     }
 }
 
 /**
- * 液态胶囊筛选标签：Liquid Glass 下使用带高光的透明玻璃胶囊，Material 3 下回退 `FilterChip`。
+ * 液态胶囊选项按钮：超清透玻璃底 + 指向性流体高亮与果冻推压手势，选中使用高透主题色。
  */
 @Composable
 fun LiquidFilterChip(
@@ -552,18 +614,48 @@ fun LiquidFilterChip(
     val backdrop = LocalGlassBackdrop.current!!
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
-    val chipTint = when {
-        selected -> scheme.primaryContainer.copy(alpha = if (dark) 0.76f else 0.82f)
-        dark -> scheme.surfaceContainerHigh.copy(alpha = 0.48f)
-        else -> scheme.surfaceContainerLowest.copy(alpha = 0.58f)
+    val animationScope = rememberCoroutineScope()
+    val interactiveHighlight = remember(animationScope) {
+        LiquidInteractiveHighlight(animationScope = animationScope)
     }
-    val contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSurfaceVariant
+    val interactionSource = remember { MutableInteractionSource() }
+
+    val chipTint = when {
+        selected -> scheme.primary.copy(alpha = if (dark) 0.34f else 0.22f)
+        dark -> Color.White.copy(alpha = 0.07f)
+        else -> Color.White.copy(alpha = 0.16f)
+    }
+    val contentColor = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+        selected -> scheme.primary
+        else -> scheme.onSurface
+    }
 
     Box(
         modifier = modifier
             .height(34.dp)
+            .graphicsLayer {
+                if (!enabled) return@graphicsLayer
+                val p = interactiveHighlight.pressProgress
+                val scale = lerp(1f, 1.08f, p)
+                val maxOffset = size.minDimension
+                val offset = interactiveHighlight.offset
+                if (maxOffset > 0f) {
+                    translationX = maxOffset * tanh(0.05f * offset.x / maxOffset)
+                    translationY = maxOffset * tanh(0.05f * offset.y / maxOffset)
+                }
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(GlassCapsuleClipShape)
-            .clickable(enabled = enabled, role = Role.Checkbox, onClick = onClick),
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                enabled = enabled,
+                role = Role.Checkbox,
+                onClick = onClick,
+            )
+            .then(if (enabled) interactiveHighlight.gestureModifier else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Spacer(
@@ -574,14 +666,20 @@ fun LiquidFilterChip(
                     shape = { GlassCapsule },
                     effects = {
                         applyGlassEffects(
-                            blurRadiusDp = 8.dp,
-                            refractionHeightDp = 6.dp,
-                            refractionAmountDp = 12.dp,
+                            blurRadiusDp = 2.dp,
+                            refractionHeightDp = 8.dp,
+                            refractionAmountDp = 18.dp,
                         )
                     },
-                    highlight = { Highlight.Default.copy(alpha = if (selected) 0.9f else 0.45f) },
-                    onDrawSurface = { drawRect(chipTint) },
-                ),
+                    highlight = { Highlight.Default.copy(alpha = if (selected) 0.96f else 0.65f) },
+                    onDrawSurface = {
+                        if (selected) {
+                            drawRect(scheme.primary, blendMode = BlendMode.Hue)
+                        }
+                        drawRect(chipTint)
+                    },
+                )
+                .then(if (enabled) interactiveHighlight.modifier else Modifier),
         )
         Row(
             modifier = Modifier.padding(horizontal = 12.dp),
@@ -601,8 +699,7 @@ fun LiquidFilterChip(
 }
 
 /**
- * 通用液态玻璃弹窗容器：在 Liquid Glass 模式下包裹半透明高模糊玻璃圆角面板；
- * 在 Material 3 模式下使用标准 `AlertDialog`。
+ * 通用液态玻璃弹窗容器。
  */
 @Composable
 fun LiquidDialog(
@@ -633,9 +730,9 @@ fun LiquidDialog(
     val scheme = MaterialTheme.colorScheme
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
     val dialogTint = if (dark) {
-        scheme.surfaceContainerHigh.copy(alpha = 0.82f)
+        Color(0xFF141822).copy(alpha = 0.72f)
     } else {
-        scheme.surfaceContainerLowest.copy(alpha = 0.86f)
+        Color.White.copy(alpha = 0.68f)
     }
 
     Dialog(
@@ -651,7 +748,7 @@ fun LiquidDialog(
                         shape = { GlassDialogShape },
                         effects = {
                             applyGlassEffects(
-                                blurRadiusDp = 22.dp,
+                                blurRadiusDp = 12.dp,
                                 refractionHeightDp = 14.dp,
                                 refractionAmountDp = 28.dp,
                                 depthEffect = true,
@@ -661,7 +758,7 @@ fun LiquidDialog(
                         shadow = {
                             Shadow(
                                 radius = 24.dp,
-                                color = Color.Black.copy(alpha = if (dark) 0.42f else 0.18f),
+                                color = Color.Black.copy(alpha = if (dark) 0.40f else 0.14f),
                             )
                         },
                         onDrawSurface = { drawRect(dialogTint) },
@@ -724,21 +821,22 @@ fun liquidSheetContainerColor(): Color =
     if (isLiquidGlassActive()) {
         val scheme = MaterialTheme.colorScheme
         val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
-        if (dark) scheme.surfaceContainerHigh.copy(alpha = 0.86f) else scheme.surfaceContainerLowest.copy(alpha = 0.90f)
+        if (dark) Color(0xFF141822).copy(alpha = 0.82f) else Color.White.copy(alpha = 0.84f)
     } else {
-        androidx.compose.material3.BottomSheetDefaults.ContainerColor
+        BottomSheetDefaults.ContainerColor
     }
 
 /**
- * 通用液态玻璃面板：供 Banner、图表容器、底部操作栏使用。
+ * 通用液态玻璃面板。
  */
 @Composable
 fun LiquidPanel(
     modifier: Modifier = Modifier,
     shape: Shape = GlassCardShape,
     tintColor: Color? = null,
-    blurRadius: Dp = 12.dp,
-    shadowElevation: Dp = 0.dp,
+    fallbackColor: Color? = null,
+    blurRadius: Dp = 4.dp,
+    shadowElevation: Dp = 4.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {
     Box(modifier = modifier) {
@@ -748,6 +846,7 @@ fun LiquidPanel(
                 .liquidGlassSurface(
                     shape = shape,
                     tintColor = tintColor,
+                    fallbackColor = fallbackColor,
                     blurRadius = blurRadius,
                     shadowElevation = shadowElevation,
                 ),

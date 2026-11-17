@@ -546,7 +546,7 @@ private fun ClassroomQueryActions(
         model.result != null -> "条件已更改，请查询"
         else -> "正在准备查询"
     }
-    Card(
+    GlassCard(
         Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -555,7 +555,7 @@ private fun ClassroomQueryActions(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             if (model.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-            Button(
+            com.upcpocket.app.ui.liquid.LiquidButton(
                 onClick = onQuery,
                 enabled = !model.restoringCampus && !model.loading && model.periods.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -871,12 +871,7 @@ private fun RoomCell(
 
 @Composable
 private fun NoticeCard(text: String) {
-    Card(
-        Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
-        ),
-    ) {
+    GlassCard(Modifier.fillMaxWidth()) {
         Text(
             text,
             Modifier.padding(12.dp),

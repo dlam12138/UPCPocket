@@ -165,7 +165,7 @@ fun DirectCardBalanceSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     onOpenRecharge?.let { open ->
-                        FilledTonalButton(
+                        com.upcpocket.app.ui.liquid.LiquidTonalButton(
                             onClick = open,
                             modifier = Modifier.weight(1f),
                         ) {
@@ -175,7 +175,7 @@ fun DirectCardBalanceSection(
                         }
                     }
                     onOpenHistory?.let { open ->
-                        OutlinedButton(
+                        com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                             onClick = open,
                             modifier = Modifier.weight(1f),
                         ) {
@@ -214,7 +214,7 @@ fun DirectCardBalanceSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Button(
+                    com.upcpocket.app.ui.liquid.LiquidButton(
                         onClick = ::query,
                         enabled = !loading && !querying,
                         modifier = Modifier
@@ -230,13 +230,13 @@ fun DirectCardBalanceSection(
                         }
                         Text(if (querying) "正在读取…" else if (visibleSnapshot == null) "查询余额" else "刷新余额")
                     }
-                    OutlinedButton(
+                    com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                         onClick = onOpenAccountSettings,
                         modifier = Modifier.testTag("card_open_account"),
                     ) { Text("账号") }
                 }
             } else {
-                OutlinedButton(
+                com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                     onClick = onOpenAccountSettings,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -336,12 +336,22 @@ private fun BalanceSnapshot(
         fresh -> "刚刚更新"
         else -> "上次读取"
     }
-    Surface(
+    val liquid = com.upcpocket.app.ui.liquid.isLiquidGlassActive()
+    val snapContentColor = if (liquid) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    }
+    com.upcpocket.app.ui.liquid.LiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("card_snapshot"),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.secondaryContainer,
+        tintColor = if (liquid) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        fallbackColor = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Column(
             Modifier.padding(14.dp),
@@ -350,19 +360,19 @@ private fun BalanceSnapshot(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.78f),
             )
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = "${data.totalBalanceText} 元",
                     style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = snapContentColor,
                 )
             }
             Text(
                 text = "过渡余额 ${data.transitionText} 元",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.84f),
             )
             if (data.balanceCents > 0L || data.transitionCents > 0L) {
                 SegmentedRatioBar(
@@ -388,7 +398,7 @@ private fun BalanceSnapshot(
             Text(
                 text = time.format(Instant.ofEpochMilli(data.fetchedAt)),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                color = snapContentColor.copy(alpha = 0.72f),
             )
         }
     }

@@ -320,7 +320,7 @@ private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
+        com.upcpocket.app.ui.liquid.LiquidButton(
             onClick = {
                 when {
                     idle -> vm.start()
@@ -339,7 +339,7 @@ private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = vm::skip,
                 enabled = !idle,
                 modifier = Modifier.weight(1f),
@@ -348,12 +348,12 @@ private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
                 Spacer(Modifier.width(6.dp))
                 Text("跳过")
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = { vm.extend(5) },
                 enabled = !idle,
                 modifier = Modifier.weight(1f),
             ) { Text("+5 分钟") }
-            OutlinedButton(
+            com.upcpocket.app.ui.liquid.LiquidOutlinedButton(
                 onClick = vm::stop,
                 enabled = !idle,
                 modifier = Modifier.weight(1f),

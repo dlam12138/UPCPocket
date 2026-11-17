@@ -382,12 +382,20 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             }
 
             snapshot?.takeIf { it.matches(building, room) }?.let { value ->
-                Card(
+                com.upcpocket.app.ui.liquid.LiquidPanel(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
+                    tintColor = if (com.upcpocket.app.ui.liquid.isLiquidGlassActive()) {
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                    } else {
+                        MaterialTheme.colorScheme.primaryContainer
+                    },
+                    fallbackColor = MaterialTheme.colorScheme.primaryContainer,
                 ) {
+                    val resultContent = if (com.upcpocket.app.ui.liquid.isLiquidGlassActive()) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    }
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             when {
@@ -398,20 +406,20 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                     .format(Instant.ofEpochMilli(value.fetchedAt))
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent.copy(alpha = 0.8f),
                         )
                         Text(
                             text = value.kwh + " 度",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent,
                         )
                         Text(
                             text = listOf(value.building, value.room)
                                 .filter { it.isNotBlank() }
                                 .joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent.copy(alpha = 0.85f),
                         )
                     }
                 }
@@ -423,7 +431,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 candidates.forEach { candidate ->
-                    Card(Modifier.fillMaxWidth()) {
+                    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(candidate.room, style = MaterialTheme.typography.titleMedium)
                             Text(

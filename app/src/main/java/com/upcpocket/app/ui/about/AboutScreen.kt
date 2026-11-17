@@ -139,11 +139,20 @@ fun AboutScreen(onBack: () -> Unit) {
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
+            com.upcpocket.app.ui.liquid.LiquidPanel(
                 modifier = Modifier.fillMaxWidth(),
+                tintColor = if (com.upcpocket.app.ui.liquid.isLiquidGlassActive()) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
+                fallbackColor = MaterialTheme.colorScheme.primaryContainer,
             ) {
+                val heroContentColor = if (com.upcpocket.app.ui.liquid.isLiquidGlassActive()) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                }
                 Column(
                     Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -151,24 +160,24 @@ fun AboutScreen(onBack: () -> Unit) {
                     IconBadge(
                         icon = Icons.Outlined.Info,
                         contentDescription = null,
-                        containerColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        containerColor = heroContentColor.copy(alpha = 0.12f),
+                        contentColor = heroContentColor,
                         size = 44.dp,
                     )
                     Text(
                         "UPC Pocket",
                         style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = heroContentColor,
                     )
                     Text(
                         "中国石油大学（华东）的校园日常工具。非学校官方应用。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = heroContentColor,
                     )
                     Text(
                         "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                        color = heroContentColor.copy(alpha = 0.8f),
                     )
                 }
             }

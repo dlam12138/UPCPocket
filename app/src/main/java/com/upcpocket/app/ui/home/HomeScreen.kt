@@ -1,5 +1,6 @@
 package com.upcpocket.app.ui.home
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -264,11 +265,10 @@ private fun ServiceTile(
     action: QuickAction,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = action.onClick,
-        modifier = modifier.heightIn(min = 56.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    GlassCard(
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .clickable(onClick = action.onClick),
     ) {
         Row(
             modifier = Modifier

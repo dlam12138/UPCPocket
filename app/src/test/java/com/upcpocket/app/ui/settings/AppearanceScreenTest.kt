@@ -10,12 +10,15 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.printToString
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.test.core.app.ApplicationProvider
@@ -138,6 +141,7 @@ class AppearanceScreenTest {
         var cardClicked = false
         var buttonClicked = false
         var chipClicked = false
+        var toggled = false
         var tabSelected = -1
         composeRule.setContent {
             UpcPocketTheme(uiStyle = UiStyle.LIQUID_GLASS) {
@@ -159,6 +163,11 @@ class AppearanceScreenTest {
                         onClick = { chipClicked = true },
                         label = { Text("标签点击测试") },
                     )
+                    LiquidToggle(
+                        checked = false,
+                        onCheckedChange = { toggled = it },
+                        modifier = Modifier.testTag("liquid_toggle_test"),
+                    )
                     LiquidBottomTabs(
                         destinations = listOf(
                             LiquidDockDestination("home", "首页", Icons.Outlined.Home, Icons.Filled.Home),
@@ -174,10 +183,12 @@ class AppearanceScreenTest {
         composeRule.onNodeWithText("点击测试").performClick()
         composeRule.onNodeWithText("按钮点击测试").performClick()
         composeRule.onNodeWithText("标签点击测试").performClick()
+        composeRule.onNodeWithTag("liquid_toggle_test").performTouchInput { swipeRight() }
         composeRule.onNodeWithText("服务").performClick()
         assertEquals(true, cardClicked)
         assertEquals(true, buttonClicked)
         assertEquals(true, chipClicked)
+        assertEquals(true, toggled)
         assertEquals(1, tabSelected)
     }
 }

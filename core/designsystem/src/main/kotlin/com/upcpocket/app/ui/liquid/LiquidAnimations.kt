@@ -1,40 +1,45 @@
 /*
  * Adapted from Kyant0/AndroidLiquidGlass (Apache-2.0) catalog utilities for interactive
- * liquid damped-spring drag & touch highlight effects inside UPC Pocket.
+ * liquid damped-spring drag & AGSL RuntimeShader touch highlight effects inside UPC Pocket.
  */
 package com.upcpocket.app.ui.liquid
 
+import android.graphics.RuntimeShader
+import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.MutatorMutex
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.util.fastCoerceIn
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.tanh
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.android.awaitFrame
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * Damped spring animation controller for Kyant-style liquid pill dragging and press scaling.
+ * Kyant0-faithful damped spring animation controller with VelocityTracker jelly stretch
+ * and MutatorMutex concurrency safety.
  */
 class LiquidDampedDragAnimation(
     private val animationScope: CoroutineScope,
@@ -42,7 +47,7 @@ class LiquidDampedDragAnimation(
     val valueRange: ClosedRange<Float>,
     val visibilityThreshold: Float,
     val initialScale: Float = 1f,
-    val pressedScale: Float = 1.08f,
+    val pressedScale: Float = 1.24f,
     private val onDragStarted: LiquidDampedDragAnimation.(position: Offset) -> Unit = {},
     private val onDragStopped: LiquidDampedDragAnimation.() -> Unit = {},
     private val onDrag: LiquidDampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit = { _, _ -> },
@@ -50,25 +55,29 @@ class LiquidDampedDragAnimation(
     private val valueAnimationSpec = spring(1f, 1000f, visibilityThreshold)
     private val velocityAnimationSpec = spring(0.5f, 300f, visibilityThreshold * 10f)
     private val pressProgressAnimationSpec = spring(1f, 1000f, 0.001f)
-    private val scaleXAnimationSpec = spring(0.3f, 200f, 0.001f)
-    private val scaleYAnimationSpec = spring(0.5f, 300f, 0.001f)
+    private val scaleXAnimationSpec = spring(0.6f, 250f, 0.001f)
+    private val scaleYAnimationSpec = spring(0.7f, 250f, 0.001f)
 
     private val valueAnimatable = Animatable(initialValue, visibilityThreshold)
-    private val velocityAnimatable = Animatable(0f, visibilityThreshold * 10f)
+    private val velocityAnimatable = Animatable(0f, 5f)
     private val pressProgressAnimatable = Animatable(0f, 0.001f)
     private val scaleXAnimatable = Animatable(initialScale, 0.001f)
-    private val scaleYAnimatable = Animatable(1f, 0.001f)
+    private val scaleYAnimatable = Animatable(initialScale, 0.001f)
+
+    private val mutatorMutex = MutatorMutex()
+    private val velocityTracker = VelocityTracker()
 
     val value: Float get() = valueAnimatable.value
+    val targetValue: Float get() = valueAnimatable.targetValue
     val progress: Float
-        get() = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start))
-            .coerceIn(0f, 1f)
+        get() {
+            val span = (valueRange.endInclusive - valueRange.start).takeIf { it > 0f } ?: 1f
+            return ((value - valueRange.start) / span).coerceIn(0f, 1f)
+        }
     val pressProgress: Float get() = pressProgressAnimatable.value
     val scaleX: Float get() = scaleXAnimatable.value
     val scaleY: Float get() = scaleYAnimatable.value
-
-    private val velocity: Float get() = velocityAnimatable.value
-    val angularVelocity: Float get() = (velocity / 2000f) * (180f / Math.PI.toFloat())
+    val velocity: Float get() = velocityAnimatable.value
 
     val modifier: Modifier = Modifier.pointerInput(Unit) {
         inspectDragGestures(
@@ -84,12 +93,13 @@ class LiquidDampedDragAnimation(
                 onDragStopped()
                 release()
             },
-        ) { change, dragAmount ->
+        ) { _, dragAmount ->
             onDrag(size, dragAmount)
         }
     }
 
     fun press() {
+        velocityTracker.resetTracking()
         animationScope.launch {
             launch { pressProgressAnimatable.animateTo(1f, pressProgressAnimationSpec) }
             launch { scaleXAnimatable.animateTo(pressedScale, scaleXAnimationSpec) }
@@ -99,55 +109,63 @@ class LiquidDampedDragAnimation(
 
     fun release() {
         animationScope.launch {
+            awaitFrame()
             if (value != targetValue) {
-                launch { valueAnimatable.animateTo(targetValue, valueAnimationSpec) }
+                val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.01f)
+                val threshold = span * 0.025f
+                runCatching {
+                    snapshotFlow { valueAnimatable.value }
+                        .filter { abs(it - valueAnimatable.targetValue) < threshold }
+                        .first()
+                }
             }
             launch { velocityAnimatable.animateTo(0f, velocityAnimationSpec) }
             launch { pressProgressAnimatable.animateTo(0f, pressProgressAnimationSpec) }
             launch { scaleXAnimatable.animateTo(initialScale, scaleXAnimationSpec) }
-            launch { scaleYAnimatable.animateTo(1f, scaleYAnimationSpec) }
+            launch { scaleYAnimatable.animateTo(initialScale, scaleYAnimationSpec) }
         }
     }
 
-    private var targetValue = initialValue
-
     fun updateValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        this.targetValue = targetValue
+        val target = value.coerceIn(valueRange)
         animationScope.launch {
-            launch { valueAnimatable.animateTo(targetValue, valueAnimationSpec) { updateVelocity() } }
+            valueAnimatable.animateTo(target, valueAnimationSpec) { updateVelocity() }
         }
     }
 
     fun animateToValue(value: Float) {
-        val targetValue = value.coerceIn(valueRange)
-        this.targetValue = targetValue
-        press()
         animationScope.launch {
-            try {
-                valueAnimatable.animateTo(targetValue, valueAnimationSpec) { updateVelocity() }
-            } finally {
+            mutatorMutex.mutate {
+                press()
+                val target = value.coerceIn(valueRange)
+                launch { valueAnimatable.animateTo(target, valueAnimationSpec) }
+                if (velocity != 0f) {
+                    launch { velocityAnimatable.animateTo(0f, velocityAnimationSpec) }
+                }
                 release()
             }
         }
     }
 
     private fun updateVelocity() {
+        velocityTracker.addPosition(System.currentTimeMillis(), Offset(value, 0f))
+        val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(1f)
+        val targetVelocity = velocityTracker.calculateVelocity().x / span
         animationScope.launch {
-            velocityAnimatable.animateTo(valueAnimatable.velocity, velocityAnimationSpec)
+            velocityAnimatable.animateTo(targetVelocity, velocityAnimationSpec)
         }
     }
 }
 
 private suspend fun PointerInputScope.inspectDragGestures(
-    onDragStart: (down: androidx.compose.ui.input.pointer.PointerInputChange) -> Unit = {},
-    onDragEnd: (change: androidx.compose.ui.input.pointer.PointerInputChange) -> Unit = {},
+    onDragStart: (down: PointerInputChange) -> Unit = {},
+    onDragEnd: (change: PointerInputChange) -> Unit = {},
     onDragCancel: () -> Unit = {},
-    onDrag: (change: androidx.compose.ui.input.pointer.PointerInputChange, dragAmount: Offset) -> Unit,
+    onDrag: (change: PointerInputChange, dragAmount: Offset) -> Unit,
 ) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        var drag: androidx.compose.ui.input.pointer.PointerInputChange? = null
+        var drag: PointerInputChange? = null
         var overSlop = Offset.Zero
         val touchSlop = viewConfiguration.touchSlop
         var total = Offset.Zero
@@ -186,82 +204,112 @@ private suspend fun PointerInputScope.inspectDragGestures(
 }
 
 /**
- * Interactive specular press glow overlay (radial illumination + subtle stretch) inspired by
- * Kyant0/AndroidLiquidGlass.
+ * Kyant0-faithful interactive specular glow with AGSL RuntimeShader on API 33+ and radial
+ * fallback on API 31-32, plus finger offset tracking for jelly directional stretch.
  */
 class LiquidInteractiveHighlight(
     private val animationScope: CoroutineScope,
     val position: (size: Size, offset: Offset) -> Offset = { _, offset -> offset },
 ) {
+    private val pressProgressAnimationSpec = spring(0.5f, 300f, 0.001f)
+    private val positionAnimationSpec = spring(0.5f, 300f, Offset.VisibilityThreshold)
+
     private val pressProgressAnimatable = Animatable(0f, 0.001f)
     private val positionAnimatable = Animatable(Offset.Zero, Offset.VectorConverter, Offset.VisibilityThreshold)
 
     private var startPosition = Offset.Zero
     val pressProgress: Float get() = pressProgressAnimatable.value
+    val offset: Offset get() = positionAnimatable.value - startPosition
 
-    val gestureModifier: Modifier = Modifier.pointerInput(animationScope) {
-        inspectDragGestures(
-            onDragStart = { down ->
-                startPosition = down.position
-                animationScope.launch {
-                    launch { pressProgressAnimatable.animateTo(1f, spring(0.5f, 300f, 0.001f)) }
-                    launch { positionAnimatable.snapTo(startPosition) }
-                }
-            },
-            onDragEnd = {
-                animationScope.launch {
-                    launch { pressProgressAnimatable.animateTo(0f, spring(0.5f, 300f, 0.001f)) }
-                    launch { positionAnimatable.animateTo(startPosition, spring(0.5f, 300f, Offset.VisibilityThreshold)) }
-                }
-            },
-            onDragCancel = {
-                animationScope.launch {
-                    launch { pressProgressAnimatable.animateTo(0f, spring(0.5f, 300f, 0.001f)) }
-                    launch { positionAnimatable.animateTo(startPosition, spring(0.5f, 300f, Offset.VisibilityThreshold)) }
-                }
-            },
-        ) { change, _ ->
-            animationScope.launch { positionAnimatable.snapTo(change.position) }
+    private val shader =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            runCatching {
+                RuntimeShader(
+                    """
+uniform float2 size;
+layout(color) uniform half4 color;
+uniform float radius;
+uniform float2 position;
+
+half4 main(float2 coord) {
+    float dist = distance(coord, position);
+    float intensity = smoothstep(radius, radius * 0.5, dist);
+    return color * intensity;
+}""",
+                )
+            }.getOrNull()
+        } else {
+            null
         }
-    }
 
     val modifier: Modifier = Modifier.drawWithContent {
         val progress = pressProgressAnimatable.value
-        if (progress <= 0f) {
-            drawContent()
-            return@drawWithContent
+        if (progress > 0f) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
+                drawRect(
+                    Color.White.copy(alpha = 0.08f * progress),
+                    blendMode = BlendMode.Plus,
+                )
+                val glowPos = position(size, positionAnimatable.value)
+                shader.apply {
+                    setFloatUniform("size", size.width, size.height)
+                    setColorUniform("color", Color.White.copy(alpha = 0.16f * progress).toArgb())
+                    setFloatUniform("radius", (size.minDimension * 1.5f).coerceAtLeast(1f))
+                    setFloatUniform(
+                        "position",
+                        glowPos.x.fastCoerceIn(0f, size.width),
+                        glowPos.y.fastCoerceIn(0f, size.height),
+                    )
+                }
+                drawRect(
+                    ShaderBrush(shader),
+                    blendMode = BlendMode.Plus,
+                )
+            } else {
+                val glowPos = position(size, positionAnimatable.value)
+                val clamped = Offset(
+                    glowPos.x.fastCoerceIn(0f, size.width),
+                    glowPos.y.fastCoerceIn(0f, size.height),
+                )
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.24f * progress),
+                            Color.White.copy(alpha = 0.08f * progress),
+                            Color.Transparent,
+                        ),
+                        center = clamped,
+                        radius = size.maxDimension.coerceAtLeast(1f),
+                    ),
+                    blendMode = BlendMode.Plus,
+                )
+            }
         }
         drawContent()
-        val glowCenter = position(size, positionAnimatable.value)
-        val clamped = Offset(
-            glowCenter.x.fastCoerceIn(0f, size.width),
-            glowCenter.y.fastCoerceIn(0f, size.height),
-        )
-        val radius = size.maxDimension * 0.85f
-        drawRect(
-            brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.24f * progress),
-                    Color.White.copy(alpha = 0.08f * progress),
-                    Color.Transparent,
-                ),
-                center = clamped,
-                radius = radius.coerceAtLeast(1f),
-            ),
-            blendMode = BlendMode.Plus,
-        )
     }
 
-    companion object {
-        fun computeInteractiveOffset(size: Size, pointer: Offset): Offset {
-            val center = Offset(size.width / 2f, size.height / 2f)
-            val offset = pointer - center
-            val distance = offset.getDistance()
-            if (distance <= 0.001f) return Offset.Zero
-            val maxAxis = size.maxDimension.coerceAtLeast(1f)
-            val norm = tanh((distance / maxAxis) * 1.8f)
-            val angle = atan2(offset.y, offset.x)
-            return Offset(cos(angle), sin(angle)) * (abs(norm) * 4f)
+    val gestureModifier: Modifier = Modifier.pointerInput(animationScope) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            startPosition = down.position
+            animationScope.launch {
+                launch { pressProgressAnimatable.animateTo(1f, pressProgressAnimationSpec) }
+                launch { positionAnimatable.snapTo(startPosition) }
+            }
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val change = event.changes.firstOrNull { it.id == down.id }
+                if (change == null || !change.pressed) {
+                    animationScope.launch {
+                        launch { pressProgressAnimatable.animateTo(0f, pressProgressAnimationSpec) }
+                        launch { positionAnimatable.animateTo(startPosition, positionAnimationSpec) }
+                    }
+                    break
+                }
+                if (change.position != change.previousPosition) {
+                    animationScope.launch { positionAnimatable.snapTo(change.position) }
+                }
+            }
         }
     }
 }

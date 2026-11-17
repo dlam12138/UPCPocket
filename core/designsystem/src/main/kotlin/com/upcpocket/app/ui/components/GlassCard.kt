@@ -34,9 +34,10 @@ fun GlassCard(
                     .matchParentSize()
                     .liquidGlassSurface(
                         shape = GlassCardShape,
-                        blurRadius = 12.dp,
+                        blurRadius = 4.dp,
                         refractionHeight = 10.dp,
-                        refractionAmount = 18.dp,
+                        refractionAmount = 20.dp,
+                        shadowElevation = 6.dp,
                     ),
             )
             Box(modifier = Modifier.clip(GlassCardClipShape)) {

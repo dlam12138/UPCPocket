@@ -62,11 +62,11 @@ fun isLiquidGlassActive(): Boolean =
 
 /**
  * 为 Android 12（API 31–32）和 Android 13+（API 33+）提供一致的液态玻璃效果管道：
- * - API 31+：`vibrancy()` + `blur()` + 高光描边 + 阴影
+ * - API 31+：`vibrancy()` + 轻度清透 `blur()` + 高光描边
  * - API 33+：额外开启基于 AGSL RuntimeShader 的 `lens()` 真实边缘折射与色散
  */
 fun BackdropEffectScope.applyGlassEffects(
-    blurRadiusDp: Dp = 12.dp,
+    blurRadiusDp: Dp = 4.dp,
     refractionHeightDp: Dp = 10.dp,
     refractionAmountDp: Dp = 20.dp,
     depthEffect: Boolean = true,
@@ -90,20 +90,20 @@ fun BackdropEffectScope.applyGlassEffects(
 }
 
 /**
- * 全局通用的液态玻璃表面修饰器：
- * 在 Liquid Glass 模式且存在 [LocalGlassBackdrop] 时应用 Kyant `drawBackdrop` 折射/模糊/高光；
+ * 全局通用的清透液态玻璃表面修饰器（无灰底叠加）：
+ * 在 Liquid Glass 模式下保持高透明度纯白/深晶玻璃着色，辅以 `vibrancy()` + 轻模糊 + 边缘折射与高光；
  * 在 Material 3 模式或无 Backdrop（如独立测试）下平滑回退为干净的实底填充与细描边。
  */
 fun Modifier.liquidGlassSurface(
     shape: Shape = GlassCardShape,
     tintColor: Color? = null,
-    blurRadius: Dp = 12.dp,
+    blurRadius: Dp = 4.dp,
     refractionHeight: Dp = 10.dp,
     refractionAmount: Dp = 20.dp,
     depthEffect: Boolean = true,
     chromaticAberration: Boolean = false,
     ambientHighlightOnly: Boolean = false,
-    shadowElevation: Dp = 0.dp,
+    shadowElevation: Dp = 4.dp,
     innerShadow: InnerShadow? = null,
     fallbackColor: Color? = null,
     fallbackBorder: BorderStroke? = null,
@@ -115,15 +115,16 @@ fun Modifier.liquidGlassSurface(
     val dark = LocalGlassDark.current || scheme.surface.luminance() < 0.5f
 
     if (style == UiStyle.LIQUID_GLASS && backdrop != null) {
+        // 清透无灰底着色：浅色下用高透明纯白微光，深色下用极轻晶莹通透层，避免发灰发闷
         val resolvedTint = tintColor ?: if (dark) {
-            scheme.surfaceContainerHigh.copy(alpha = 0.54f)
+            Color.White.copy(alpha = 0.08f)
         } else {
-            scheme.surfaceContainerLowest.copy(alpha = 0.68f)
+            Color.White.copy(alpha = 0.24f)
         }
         val dropShadow = if (shadowElevation > 0.dp) {
             Shadow(
                 radius = shadowElevation,
-                color = Color.Black.copy(alpha = if (dark) 0.28f else 0.12f),
+                color = Color.Black.copy(alpha = if (dark) 0.26f else 0.07f),
             )
         } else {
             null
@@ -147,21 +148,22 @@ fun Modifier.liquidGlassSurface(
             onDrawSurface = { drawRect(resolvedTint) },
         )
     } else {
+        val clipShape = if (shape == GlassCapsule) GlassCapsuleClipShape else GlassCardClipShape
         val container = fallbackColor ?: tintColor ?: scheme.surfaceContainerLow
         val borderStroke = fallbackBorder ?: BorderStroke(
             1.dp,
             scheme.outlineVariant.copy(alpha = 0.55f),
         )
         this
-            .clip(shape)
-            .background(container, shape)
-            .border(borderStroke, shape)
+            .clip(clipShape)
+            .background(container, clipShape)
+            .border(borderStroke, clipShape)
     }
 }
 
 /**
- * 柔和的 Material You 环境光画布：在 Liquid Glass 模式下为各层玻璃卡片、胶囊导航与弹窗
- * 提供细腻流动的色彩纵深，同时保持文字对比度舒适不刺眼。
+ * 洁净通透的 Material You 环境光画布：避免传统 M3 灰底感，通过明亮/深邃渐变底色与柔和色彩光晕
+ * 为透明玻璃提供清晰的光学折射对比。
  */
 @Composable
 fun LiquidAmbientBackground(
@@ -169,15 +171,16 @@ fun LiquidAmbientBackground(
     dark: Boolean = LocalGlassDark.current,
     modifier: Modifier = Modifier,
 ) {
-    val base = colorScheme.surface
-    val primaryAura = colorScheme.primary.copy(alpha = if (dark) 0.22f else 0.16f)
-    val secondaryAura = colorScheme.secondaryContainer.copy(alpha = if (dark) 0.24f else 0.34f)
-    val tertiaryAura = colorScheme.tertiaryContainer.copy(alpha = if (dark) 0.20f else 0.26f)
+    val bgTop = if (dark) Color(0xFF0A0D14) else Color(0xFFF8FAFE)
+    val bgBottom = if (dark) Color(0xFF101624) else Color(0xFFEEF3FC)
+    val primaryAura = colorScheme.primary.copy(alpha = if (dark) 0.30f else 0.22f)
+    val secondaryAura = colorScheme.secondaryContainer.copy(alpha = if (dark) 0.22f else 0.38f)
+    val tertiaryAura = colorScheme.tertiary.copy(alpha = if (dark) 0.22f else 0.18f)
 
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .background(base),
+            .background(Brush.verticalGradient(listOf(bgTop, bgBottom))),
     ) {
         val w = size.width
         val h = size.height
@@ -186,29 +189,29 @@ fun LiquidAmbientBackground(
         drawCircle(
             brush = Brush.radialGradient(
                 colors = listOf(primaryAura, Color.Transparent),
-                center = Offset(w * 0.16f, h * 0.12f),
-                radius = maxOf(w, h) * 0.62f,
-            ),
-            center = Offset(w * 0.16f, h * 0.12f),
-            radius = maxOf(w, h) * 0.62f,
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(tertiaryAura, Color.Transparent),
-                center = Offset(w * 0.88f, h * 0.30f),
+                center = Offset(w * 0.14f, h * 0.10f),
                 radius = maxOf(w, h) * 0.58f,
             ),
-            center = Offset(w * 0.88f, h * 0.30f),
+            center = Offset(w * 0.14f, h * 0.10f),
             radius = maxOf(w, h) * 0.58f,
         )
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(secondaryAura, Color.Transparent),
-                center = Offset(w * 0.42f, h * 0.88f),
-                radius = maxOf(w, h) * 0.64f,
+                colors = listOf(tertiaryAura, Color.Transparent),
+                center = Offset(w * 0.90f, h * 0.28f),
+                radius = maxOf(w, h) * 0.54f,
             ),
-            center = Offset(w * 0.42f, h * 0.88f),
-            radius = maxOf(w, h) * 0.64f,
+            center = Offset(w * 0.90f, h * 0.28f),
+            radius = maxOf(w, h) * 0.54f,
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(secondaryAura, Color.Transparent),
+                center = Offset(w * 0.46f, h * 0.86f),
+                radius = maxOf(w, h) * 0.62f,
+            ),
+            center = Offset(w * 0.46f, h * 0.86f),
+            radius = maxOf(w, h) * 0.62f,
         )
     }
 }

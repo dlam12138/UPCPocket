@@ -422,12 +422,10 @@ private fun ActivityCard(activity: ShiguangActivity, enabled: Boolean, onClick: 
     val category = activity.fields.firstValue("活动分类", "活动标签", "分类")
     val eventTime = activity.fields.firstValue("活动时间")
     val place = activity.fields.firstValue("活动地点", "地点")
-    Card(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -481,11 +479,7 @@ private fun TotalHoursCard(summary: ShiguangSummary) {
         val creditValues = summary.modules.mapNotNull { it.credits }
         if (creditValues.isEmpty()) null else creditValues.fold(BigDecimal.ZERO) { acc, v -> acc + v }
     }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-    ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -495,14 +489,14 @@ private fun TotalHoursCard(summary: ShiguangSummary) {
                     label = "累计学时",
                     value = "${summary.totalHours.display()} 学时",
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
                 MetricTile(
                     label = "累计学分",
                     value = "${totalCredits.display()} 学分",
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -552,11 +546,7 @@ private fun ModuleSummaryCard(summary: ShiguangSummary) {
 
 @Composable
 private fun EmptyState(message: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-    ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Text(message, modifier = Modifier.padding(horizontal = 18.dp, vertical = 24.dp),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -612,11 +602,7 @@ internal fun DetailContent(
 
 @Composable
 private fun DetailGroup(title: String, fields: Map<String, String>) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f)),
-    ) {
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary)
