@@ -266,9 +266,8 @@ private fun ServiceTile(
     modifier: Modifier = Modifier,
 ) {
     GlassCard(
-        modifier = modifier
-            .heightIn(min = 56.dp)
-            .clickable(onClick = action.onClick),
+        modifier = modifier.heightIn(min = 56.dp),
+        onClick = action.onClick,
     ) {
         Row(
             modifier = Modifier

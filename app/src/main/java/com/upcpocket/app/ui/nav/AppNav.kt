@@ -442,7 +442,7 @@ fun AppNav(
                     destinations = destinations,
                     pagerState = pagerState,
                     dockDark = dockDark,
-                    selectedIndex = pagerState.currentPage,
+                    selectedIndex = pagerState.targetPage,
                     onSelect = { index ->
                         destinations.getOrNull(index)?.let { switchTab(it.route) }
                     },

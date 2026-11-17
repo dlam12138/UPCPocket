@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -106,11 +107,13 @@ fun LiquidBottomTabs(
 
     val tabsCount = destinations.size
     var currentIndex by remember { mutableIntStateOf(selectedIndex.coerceIn(0, tabsCount - 1)) }
+    val currentOnSelect by rememberUpdatedState(onSelect)
 
     val tabsBackdrop = rememberLayerBackdrop()
     val combinedBackdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop)
 
-    val dampedDragAnimation = remember(tabsCount, isLtr) {
+    val paddingPx = with(density) { 8.dp.toPx() }
+    val dampedDragAnimation = remember(tabsCount, isLtr, paddingPx) {
         LiquidDampedDragAnimation(
             animationScope = animationScope,
             initialValue = selectedIndex.coerceIn(0, tabsCount - 1).toFloat(),
@@ -118,17 +121,22 @@ fun LiquidBottomTabs(
             visibilityThreshold = 0.001f,
             initialScale = 1f,
             pressedScale = 1.24f,
+            horizontalOnly = true,
+            slopFraction = 0.25f,
             onDragStarted = {},
             onDragStopped = {
-                val targetIndex = value.roundToInt().fastCoerceIn(0, tabsCount - 1)
+                val targetIndex = (targetValue + velocity * 0.12f)
+                    .roundToInt()
+                    .fastCoerceIn(0, tabsCount - 1)
                 currentIndex = targetIndex
                 animateToValue(targetIndex.toFloat())
-                onSelect(targetIndex)
+                currentOnSelect(targetIndex)
             },
             onDrag = { size, dragAmount ->
                 if (tabsCount > 1 && size.width > 0) {
-                    val delta = (dragAmount.x / size.width.toFloat()) * tabsCount * if (isLtr) 1f else -1f
-                    updateValue((value + delta).fastCoerceIn(0f, (tabsCount - 1).toFloat()))
+                    val usableWidth = (size.width.toFloat() - paddingPx).coerceAtLeast(1f)
+                    val delta = (dragAmount.x / usableWidth) * tabsCount * if (isLtr) 1f else -1f
+                    dragTo((targetValue + delta).fastCoerceIn(0f, (tabsCount - 1).toFloat()))
                 }
             },
         )
@@ -139,7 +147,9 @@ fun LiquidBottomTabs(
         if (clamped != currentIndex) {
             currentIndex = clamped
         }
-        dampedDragAnimation.animateToValue(clamped.toFloat())
+        if (!dampedDragAnimation.isDragging && abs(dampedDragAnimation.targetValue - clamped.toFloat()) > 0.01f) {
+            dampedDragAnimation.animateToValue(clamped.toFloat())
+        }
     }
 
     LaunchedEffect(dampedDragAnimation) {
@@ -156,6 +166,7 @@ fun LiquidBottomTabs(
     val interactiveHighlight = remember(animationScope, tabsCount, isLtr) {
         LiquidInteractiveHighlight(
             animationScope = animationScope,
+            cancelOnConsumed = false,
             position = { size, _ ->
                 Offset(
                     x = if (isLtr) (dampedDragAnimation.value + 0.5f) * (size.width / tabsCount)

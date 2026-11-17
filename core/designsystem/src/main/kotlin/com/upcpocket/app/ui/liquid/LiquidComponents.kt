@@ -45,8 +45,8 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,7 +90,6 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.tanh
-import kotlinx.coroutines.flow.collectLatest
 
 /**
  * 全局顶栏：
@@ -332,14 +331,13 @@ private fun LiquidInteractiveCapsuleButton(
             .graphicsLayer {
                 if (!enabled) return@graphicsLayer
                 val progress = interactiveHighlight.pressProgress
-                val scale = lerp(1f, 1f + 4.dp.toPx() / size.height.coerceAtLeast(1f), progress)
-                val maxOffset = size.minDimension
+                val scale = lerp(1f, 1f + 4.5.dp.toPx() / size.height.coerceAtLeast(1f), progress)
+                val maxOffset = size.minDimension.coerceAtLeast(1f)
+                val maxDrift = 8.dp.toPx()
                 val offset = interactiveHighlight.offset
-                if (maxOffset > 0f) {
-                    translationX = maxOffset * tanh(0.05f * offset.x / maxOffset)
-                    translationY = maxOffset * tanh(0.05f * offset.y / maxOffset)
-                }
-                val maxDragScale = 4.dp.toPx() / size.height.coerceAtLeast(1f)
+                translationX = maxDrift * tanh(0.32f * offset.x / maxOffset)
+                translationY = maxDrift * tanh(0.32f * offset.y / maxOffset)
+                val maxDragScale = 4.5.dp.toPx() / size.height.coerceAtLeast(1f)
                 val angle = atan2(offset.y, offset.x)
                 val maxDim = size.maxDimension.coerceAtLeast(1f)
                 val ratioW = (size.width / size.height.coerceAtLeast(1f)).fastCoerceAtMost(1f)
@@ -372,7 +370,10 @@ private fun LiquidInteractiveCapsuleButton(
                             refractionAmountDp = 24.dp,
                         )
                     },
-                    highlight = { Highlight.Default.copy(alpha = if (enabled) 0.90f else 0.30f) },
+                    highlight = {
+                        val p = interactiveHighlight.pressProgress
+                        Highlight.Default.copy(alpha = if (enabled) lerp(0.86f, 1f, p) else 0.30f)
+                    },
                     shadow = {
                         shadowColor?.let { Shadow(radius = 10.dp, color = it) }
                     },
@@ -428,33 +429,40 @@ fun LiquidToggle(
 
     val density = LocalDensity.current
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
-    val dragWidth = with(density) { 20.dp.toPx() }
+    val dragWidth = with(density) { 24.dp.toPx() }
     val animationScope = rememberCoroutineScope()
+    val currentOnCheckedChange by rememberUpdatedState(onCheckedChange)
+    val currentEnabled by rememberUpdatedState(enabled)
 
     var didDrag by remember { mutableStateOf(false) }
     var fraction by remember { mutableFloatStateOf(if (checked) 1f else 0f) }
 
-    val dampedDragAnimation = remember(animationScope, dragWidth, isLtr, enabled, onCheckedChange) {
+    val dampedDragAnimation = remember(animationScope, dragWidth, isLtr) {
         LiquidDampedDragAnimation(
             animationScope = animationScope,
             initialValue = fraction,
             valueRange = 0f..1f,
             visibilityThreshold = 0.001f,
             initialScale = 1f,
-            pressedScale = 1.45f,
+            pressedScale = 1.32f,
+            horizontalOnly = true,
+            slopFraction = 0.20f,
             onDragStarted = { didDrag = false },
             onDragStopped = {
-                if (!enabled || onCheckedChange == null) {
+                val callback = currentOnCheckedChange
+                if (!currentEnabled || callback == null) {
                     didDrag = false
                 } else if (didDrag) {
-                    val target = if (targetValue >= 0.5f) 1f else 0f
+                    val projected = (targetValue + velocity * 0.08f).fastCoerceIn(0f, 1f)
+                    val target = if (projected >= 0.5f) 1f else 0f
                     fraction = target
-                    onCheckedChange(target == 1f)
+                    animateToValue(target)
+                    callback(target == 1f)
                     didDrag = false
                 }
             },
             onDrag = { _, dragAmount ->
-                if (enabled && onCheckedChange != null) {
+                if (currentEnabled && currentOnCheckedChange != null) {
                     if (!didDrag) didDrag = dragAmount.x != 0f
                     val delta = dragAmount.x / dragWidth
                     fraction = if (isLtr) {
@@ -462,22 +470,19 @@ fun LiquidToggle(
                     } else {
                         (fraction - delta).fastCoerceIn(0f, 1f)
                     }
+                    dragTo(fraction)
                 }
             },
         )
     }
 
-    LaunchedEffect(dampedDragAnimation) {
-        snapshotFlow { fraction }.collectLatest { f ->
-            dampedDragAnimation.updateValue(f)
-        }
-    }
-
     LaunchedEffect(checked) {
         val target = if (checked) 1f else 0f
-        if (target != fraction) {
+        if (!dampedDragAnimation.isDragging) {
             fraction = target
-            dampedDragAnimation.animateToValue(target)
+            if (abs(dampedDragAnimation.targetValue - target) > 0.01f) {
+                dampedDragAnimation.animateToValue(target)
+            }
         }
     }
 
@@ -582,7 +587,7 @@ fun LiquidToggle(
                         drawRect(Color.White.copy(alpha = alpha))
                     },
                 )
-                .size(40.dp, 24.dp),
+                .size(36.dp, 24.dp),
         )
     }
 }
@@ -637,13 +642,12 @@ fun LiquidFilterChip(
             .graphicsLayer {
                 if (!enabled) return@graphicsLayer
                 val p = interactiveHighlight.pressProgress
-                val scale = lerp(1f, 1.08f, p)
-                val maxOffset = size.minDimension
+                val scale = lerp(1f, 1.07f, p)
+                val maxOffset = size.minDimension.coerceAtLeast(1f)
+                val maxDrift = 6.dp.toPx()
                 val offset = interactiveHighlight.offset
-                if (maxOffset > 0f) {
-                    translationX = maxOffset * tanh(0.05f * offset.x / maxOffset)
-                    translationY = maxOffset * tanh(0.05f * offset.y / maxOffset)
-                }
+                translationX = maxDrift * tanh(0.30f * offset.x / maxOffset)
+                translationY = maxDrift * tanh(0.30f * offset.y / maxOffset)
                 scaleX = scale
                 scaleY = scale
             }
@@ -671,7 +675,12 @@ fun LiquidFilterChip(
                             refractionAmountDp = 18.dp,
                         )
                     },
-                    highlight = { Highlight.Default.copy(alpha = if (selected) 0.96f else 0.65f) },
+                    highlight = {
+                        val p = interactiveHighlight.pressProgress
+                        Highlight.Default.copy(
+                            alpha = lerp(if (selected) 0.92f else 0.65f, 1f, p),
+                        )
+                    },
                     onDrawSurface = {
                         if (selected) {
                             drawRect(scheme.primary, blendMode = BlendMode.Hue)

@@ -254,9 +254,8 @@ private fun ServiceDirectoryCard(
     onClick: () -> Unit,
 ) {
     com.upcpocket.app.ui.components.GlassCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),

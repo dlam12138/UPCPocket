@@ -317,7 +317,10 @@ private fun ServiceListContent(
                     )
                 }
                 items(page.items, key = ServicePortalItem::rowKey, contentType = { "service" }) { item ->
-                    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth().clickable { onOpen(item) }) {
+                    com.upcpocket.app.ui.components.GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = { onOpen(item) },
+                    ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                             item.department?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }

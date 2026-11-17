@@ -9,6 +9,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
@@ -18,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.unit.dp
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -190,5 +196,53 @@ class AppearanceScreenTest {
         assertEquals(true, chipClicked)
         assertEquals(true, toggled)
         assertEquals(1, tabSelected)
+    }
+
+    @Test
+    @Config(sdk = [35])
+    fun liquidBottomTabsAndToggleRespondToHorizontalSwipe() {
+        var latestChecked = false
+        var latestTab = 0
+        composeRule.setContent {
+            var checked by remember { mutableStateOf(false) }
+            var selectedTab by remember { mutableIntStateOf(0) }
+            UpcPocketTheme(uiStyle = UiStyle.LIQUID_GLASS) {
+                val backdrop = LocalGlassBackdrop.current!!
+                Column(Modifier.padding(16.dp)) {
+                    LiquidToggle(
+                        checked = checked,
+                        onCheckedChange = {
+                            checked = it
+                            latestChecked = it
+                        },
+                        modifier = Modifier.testTag("swipe_toggle"),
+                    )
+                    LiquidBottomTabs(
+                        destinations = listOf(
+                            LiquidDockDestination("home", "首页", Icons.Outlined.Home, Icons.Filled.Home),
+                            LiquidDockDestination("schedule", "课表", Icons.Outlined.Home, Icons.Filled.Home),
+                            LiquidDockDestination("services", "服务", Icons.Outlined.Home, Icons.Filled.Home),
+                        ),
+                        selectedIndex = selectedTab,
+                        onSelect = {
+                            selectedTab = it
+                            latestTab = it
+                        },
+                        backdrop = backdrop,
+                        modifier = Modifier.testTag("swipe_dock"),
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("swipe_toggle").performTouchInput { swipeRight() }
+        composeRule.waitForIdle()
+        assertEquals(true, latestChecked)
+        composeRule.onNodeWithTag("swipe_toggle").performTouchInput { swipeLeft() }
+        composeRule.waitForIdle()
+        assertEquals(false, latestChecked)
+
+        composeRule.onNodeWithTag("swipe_dock").performTouchInput { swipeRight() }
+        composeRule.waitForIdle()
+        assertEquals(true, latestTab > 0)
     }
 }
