@@ -16,6 +16,12 @@ import com.upcpocket.app.account.api.SchoolStudentIdentity
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.cardhistory.*
 import com.upcpocket.app.platform.AccountMask
+import com.upcpocket.app.ui.components.ChartBarItem
+import com.upcpocket.app.ui.components.DailyBarChart
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.HorizontalMetricBar
+import com.upcpocket.app.ui.components.RatioSegment
+import com.upcpocket.app.ui.components.SegmentedRatioBar
 import java.math.BigDecimal
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
@@ -52,6 +58,9 @@ internal fun CardHistoryScreenContent(
     var loginAttempt by remember { mutableStateOf<CardHistoryInteractiveAttempt?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
+    var directionFilterName by rememberSaveable { mutableStateOf(CardHistoryDirectionFilter.ALL.name) }
+    var showAnalytics by rememberSaveable { mutableStateOf(false) }
+    var selectedChartDay by remember { mutableStateOf<Int?>(null) }
     var requestId by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val available = owner != null && !account.blocksPersonalSessions
@@ -138,8 +147,26 @@ internal fun CardHistoryScreenContent(
         }
     }
     val visible = bound?.takeIf { client.isCurrent(it.owner) && it.month == month }
-    val shown = if (visible == null) emptyList() else rows.filter {
-        search.isBlank() || it.title.contains(search.trim(), true) || it.time.contains(search.trim())
+    val directionFilter = CardHistoryDirectionFilter.entries
+        .firstOrNull { it.name == directionFilterName }
+        ?: CardHistoryDirectionFilter.ALL
+    val shown = if (visible == null) {
+        emptyList()
+    } else {
+        rows.filter { row ->
+            val matchesSearch = search.isBlank() ||
+                row.title.contains(search.trim(), true) ||
+                row.time.contains(search.trim())
+            val matchesDirection = when (directionFilter) {
+                CardHistoryDirectionFilter.ALL -> true
+                CardHistoryDirectionFilter.EXPENSE -> row.amountFen < 0L
+                CardHistoryDirectionFilter.INCOME -> row.amountFen > 0L
+            }
+            matchesSearch && matchesDirection
+        }
+    }
+    val analytics = remember(rows) {
+        if (rows.isEmpty()) null else CardHistoryAnalytics.fromRows(rows)
     }
     fun money(fen: Long) = BigDecimal.valueOf(fen, 2).toPlainString()
     Scaffold(topBar = {
@@ -232,14 +259,32 @@ internal fun CardHistoryScreenContent(
             if (visible != null) {
                 summary?.let { data ->
                     item(key = "summary", contentType = "summary") {
-                        Card {
-                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        GlassCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(
                                     if (summaryIsPrevious || loading) "上次学校汇总" else "学校汇总",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 Text("收入 ¥ ${money(data.incomeFen)} · 支出 ¥ ${money(data.expenseFen)}")
+                                if (data.incomeFen > 0L || data.expenseFen > 0L) {
+                                    SegmentedRatioBar(
+                                        segments = listOf(
+                                            RatioSegment(
+                                                label = "收入",
+                                                value = data.incomeFen.coerceAtLeast(0L).toFloat(),
+                                                color = MaterialTheme.colorScheme.primary,
+                                            ),
+                                            RatioSegment(
+                                                label = "支出",
+                                                value = data.expenseFen.coerceAtLeast(0L).toFloat(),
+                                                color = MaterialTheme.colorScheme.tertiary,
+                                            ),
+                                        ),
+                                        showLegend = false,
+                                        barHeight = 5.dp,
+                                    )
+                                }
                             }
                         }
                     }
@@ -247,6 +292,15 @@ internal fun CardHistoryScreenContent(
                 item(key = "result-controls", contentType = "controls") {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("已加载 ${rows.size} / ${visible.data.total} 条", style = MaterialTheme.typography.labelMedium)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CardHistoryDirectionFilter.entries.forEach { option ->
+                                FilterChip(
+                                    selected = directionFilter == option,
+                                    onClick = { directionFilterName = option.name },
+                                    label = { Text(option.label) },
+                                )
+                            }
+                        }
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
@@ -261,6 +315,19 @@ internal fun CardHistoryScreenContent(
                                 }
                             },
                             modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                analytics?.let { stats ->
+                    item(key = "analytics", contentType = "analytics") {
+                        CardHistoryAnalyticsCard(
+                            analytics = stats,
+                            expanded = showAnalytics,
+                            onToggle = { showAnalytics = !showAnalytics },
+                            selectedDayIndex = selectedChartDay,
+                            onSelectDay = { idx ->
+                                selectedChartDay = if (selectedChartDay == idx) null else idx
+                            },
                         )
                     }
                 }
@@ -344,5 +411,77 @@ internal fun CardHistoryScreenContent(
                 loginAttempt = null
             },
         )
+    }
+}
+
+@Composable
+private fun CardHistoryAnalyticsCard(
+    analytics: CardHistoryAnalytics,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    selectedDayIndex: Int?,
+    onSelectDay: (Int) -> Unit,
+) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("已加载收支洞察", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "支出 ¥ ${CardHistoryAnalytics.formatYuan(analytics.loadedExpenseFen)} · 收入 ¥ ${CardHistoryAnalytics.formatYuan(analytics.loadedIncomeFen)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onToggle) {
+                    Text(if (expanded) "收起图表" else "展开图表")
+                }
+            }
+            if (expanded) {
+                if (analytics.dailyExpenses.isNotEmpty()) {
+                    Text(
+                        "近期日支出趋势",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    DailyBarChart(
+                        bars = analytics.dailyExpenses.map { day ->
+                            ChartBarItem(
+                                label = day.shortLabel,
+                                value = day.expenseFen.toFloat(),
+                                valueLabel = "¥${CardHistoryAnalytics.formatYuan(day.expenseFen)}",
+                            )
+                        },
+                        selectedIndex = selectedDayIndex,
+                        onSelect = onSelectDay,
+                    )
+                }
+                if (analytics.categories.isNotEmpty()) {
+                    val maxCategory = analytics.categories.maxOf { it.expenseFen }.coerceAtLeast(1L)
+                    Text(
+                        "消费分类占比",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        analytics.categories.take(5).forEach { cat ->
+                            val ratio = cat.expenseFen.toFloat() / maxCategory.toFloat()
+                            HorizontalMetricBar(
+                                label = "${cat.label}（${cat.count} 笔）",
+                                valueText = "¥ ${CardHistoryAnalytics.formatYuan(cat.expenseFen)}",
+                                fraction = ratio,
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

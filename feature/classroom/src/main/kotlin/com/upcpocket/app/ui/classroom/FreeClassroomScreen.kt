@@ -95,6 +95,9 @@ import com.upcpocket.app.data.classroom.formatPeriods
 import com.upcpocket.app.data.classroom.groupSelectionState
 import com.upcpocket.app.data.classroom.matches
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.RatioRingBadge
+import com.upcpocket.app.ui.components.RatioSegment
+import com.upcpocket.app.ui.components.SegmentedRatioBar
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -704,25 +707,43 @@ private fun ResultSummaryCard(
         .format(result.fetchedAt)
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            // 统计与开关都保持固有宽度：窄屏/大字号时开关整体落到下一行，
-            // 统计文本不参与 weight 压缩，避免“全/部”被拆开。
-            FlowRow(
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                listOf(
-                    "空闲 $freeCount",
-                    "共 $total 间",
-                ).forEach { metric ->
+                val freeRatio = if (total > 0) freeCount.toFloat() / total.toFloat() else 0f
+                val pct = (freeRatio * 100f).toInt().coerceIn(0, 100)
+                RatioRingBadge(
+                    fraction = freeRatio,
+                    centerText = "$pct%",
+                    size = 48.dp,
+                    strokeWidth = 5.dp,
+                )
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        listOf(
+                            "空闲 $freeCount",
+                            "共 $total 间",
+                        ).forEach { metric ->
+                            Text(
+                                metric,
+                                modifier = Modifier.padding(end = 8.dp),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
                     Text(
-                        metric,
-                        modifier = Modifier.padding(end = 8.dp),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
+                        "读取于 $time · $status",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = statusColor,
                     )
                 }
                 Row(
@@ -744,31 +765,62 @@ private fun ResultSummaryCard(
                     )
                 }
             }
-            Text(
-                "读取于 $time · $status",
-                style = MaterialTheme.typography.labelSmall,
-                color = statusColor,
-            )
+            if (total > 0) {
+                val occupied = (total - freeCount).coerceAtLeast(0)
+                SegmentedRatioBar(
+                    segments = listOf(
+                        RatioSegment(
+                            label = "空闲",
+                            value = freeCount.toFloat(),
+                            color = MaterialTheme.colorScheme.primary,
+                            valueText = "$freeCount 间",
+                        ),
+                        RatioSegment(
+                            label = "占用",
+                            value = occupied.toFloat(),
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            valueText = "$occupied 间",
+                        ),
+                    ),
+                    barHeight = 6.dp,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun BuildingHeader(group: BuildingRoomGroup) {
-    Row(
-        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val freeRatio = if (group.totalCount > 0) {
+        group.freeCount.toFloat() / group.totalCount.toFloat()
+    } else 0f
+    Column(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            group.building,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            "空闲 ${group.freeCount} / 共 ${group.totalCount}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                group.building,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "空闲 ${group.freeCount} / 共 ${group.totalCount}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SegmentedRatioBar(
+            segments = listOf(
+                RatioSegment("空闲", group.freeCount.toFloat(), MaterialTheme.colorScheme.primary),
+                RatioSegment("占用", (group.totalCount - group.freeCount).coerceAtLeast(0).toFloat(), MaterialTheme.colorScheme.surfaceVariant),
+            ),
+            showLegend = false,
+            barHeight = 4.dp,
         )
     }
 }

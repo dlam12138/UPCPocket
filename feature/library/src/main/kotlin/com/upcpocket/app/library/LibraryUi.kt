@@ -8,6 +8,7 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -121,6 +122,8 @@ internal class LibraryUi(
                 subtitle = "三馆座位",
                 icon = UiIcon.LIBRARY,
                 route = LIBRARY_HOME_ROUTE,
+                category = UiCategory.STUDY,
+                keywords = "图书馆 座位 预约 唐岛湾 古镇口 求是",
             ),
         )
         registry.addSection(

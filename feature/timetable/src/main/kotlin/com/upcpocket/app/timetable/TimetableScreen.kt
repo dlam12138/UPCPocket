@@ -1177,6 +1177,26 @@ internal fun TodayPanel(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (isCurrent && range != null) {
+                                val duration = (range.endMinute - range.startMinute).coerceAtLeast(1)
+                                val elapsed = (nowMinute - range.startMinute).coerceIn(0, duration)
+                                val remaining = (duration - elapsed).coerceAtLeast(0)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    LinearProgressIndicator(
+                                        progress = { elapsed.toFloat() / duration.toFloat() },
+                                        modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(999.dp)),
+                                    )
+                                    Text(
+                                        "剩 $remaining 分钟",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
                         }
                         if (ended) {
                             Text(

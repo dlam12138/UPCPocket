@@ -33,6 +33,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.HorizontalMetricBar
+import com.upcpocket.app.ui.components.MetricTile
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
 
@@ -473,47 +476,74 @@ private fun MetadataRow(icon: ImageVector, value: String) {
 
 @Composable
 private fun TotalHoursCard(summary: ShiguangSummary) {
+    val totalCredits = remember(summary) {
+        val creditValues = summary.modules.mapNotNull { it.credits }
+        if (creditValues.isEmpty()) null else creditValues.fold(BigDecimal.ZERO) { acc, v -> acc + v }
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
-        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("累计学时", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
-            Text(
-                "${summary.totalHours.display()} 学时",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MetricTile(
+                    label = "累计学时",
+                    value = "${summary.totalHours.display()} 学时",
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+                MetricTile(
+                    label = "累计学分",
+                    value = "${totalCredits.display()} 学分",
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.48f),
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun ModuleSummaryCard(summary: ShiguangSummary) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.58f)),
-    ) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    val maxHours = remember(summary) {
+        summary.modules.mapNotNull { it.hours?.toFloat() }.maxOrNull()?.coerceAtLeast(1f) ?: 1f
+    }
+    GlassCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                "五模块学时分布",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
             summary.modules.forEachIndexed { index, module ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(module.label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("${module.hours.display()} 学时", style = MaterialTheme.typography.bodySmall)
-                            Text("${module.credits.display()} 学分", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    module.rank?.let { rank ->
-                        Text("专业排名 ${rank.position} / ${rank.total}", style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                val hoursValue = module.hours?.toFloat() ?: 0f
+                val rankSubtitle = module.rank?.let { rank ->
+                    val topPercent = if (rank.total > 0) {
+                        ((rank.position.toFloat() / rank.total.toFloat()) * 100f)
+                            .toInt()
+                            .coerceIn(1, 100)
+                    } else null
+                    val pctText = topPercent?.let { " · 前 $it%" }.orEmpty()
+                    "专业排名 ${rank.position} / ${rank.total}$pctText"
                 }
-                if (index < summary.modules.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                HorizontalMetricBar(
+                    label = module.label,
+                    valueText = "${module.hours.display()} 学时 · ${module.credits.display()} 学分",
+                    fraction = (hoursValue / maxHours).coerceIn(0f, 1f),
+                    subtitle = rankSubtitle,
+                )
+                if (index < summary.modules.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                }
             }
         }
     }

@@ -5,6 +5,7 @@ import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -54,6 +55,8 @@ internal class PowerUi(
                 subtitle = "唐岛湾 / 古镇口",
                 icon = UiIcon.ELECTRICITY,
                 route = POWER_ELECTRICITY_ROUTE,
+                category = UiCategory.LIFE,
+                keywords = "宿舍 电费 电量 唐岛湾 古镇口",
             ),
         )
     }
