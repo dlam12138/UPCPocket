@@ -11,6 +11,7 @@ import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -51,6 +52,8 @@ class ServicePortalPlugin(
                 subtitle = "办事服务",
                 icon = UiIcon.TODO,
                 route = SERVICE_PORTAL_ROUTE,
+                category = UiCategory.CAMPUS,
+                keywords = "e站通 办事 指南 待办 在办 校务",
             ),
         )
     }

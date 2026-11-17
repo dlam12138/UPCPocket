@@ -78,14 +78,24 @@ fun HomeScreen(
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenOfficialWeb: () -> Unit,
+    pinnedServiceIds: Set<String> = emptySet(),
+    onOpenServices: (() -> Unit)? = null,
 ) {
     val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
     val dateLabel = today.format(
         DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
     )
+    val prioritizedEntries = remember(serviceEntries, pinnedServiceIds) {
+        if (pinnedServiceIds.isEmpty()) {
+            serviceEntries
+        } else {
+            val pinned = serviceEntries.filter { it.entryId.value in pinnedServiceIds }
+            pinned.ifEmpty { serviceEntries.take(4) }
+        }
+    }
     val actions = buildList {
-        serviceEntries.forEach { entry ->
+        prioritizedEntries.forEach { entry ->
             add(
                 QuickAction(
                     title = entry.title,
@@ -94,13 +104,15 @@ fun HomeScreen(
                 ),
             )
         }
-        add(
-            QuickAction(
-                title = "校园网页",
-                icon = Icons.Outlined.Public,
-                onClick = onOpenOfficialWeb,
-            ),
-        )
+        if (onOpenServices == null || isEmpty()) {
+            add(
+                QuickAction(
+                    title = "校园网页",
+                    icon = Icons.Outlined.Public,
+                    onClick = onOpenOfficialWeb,
+                ),
+            )
+        }
     }
 
     Scaffold(
@@ -143,6 +155,8 @@ fun HomeScreen(
             if (actions.isNotEmpty()) {
                 SectionHeader(
                     title = "常用服务",
+                    actionLabel = if (onOpenServices != null) "全部服务" else null,
+                    onAction = onOpenServices,
                     modifier = Modifier.padding(top = 16.dp, bottom = 2.dp),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

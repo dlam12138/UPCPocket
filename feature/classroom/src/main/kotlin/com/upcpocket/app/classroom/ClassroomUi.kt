@@ -7,6 +7,7 @@ import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -42,6 +43,8 @@ internal class ClassroomUi(
                 subtitle = "按日期与节次",
                 icon = UiIcon.CLASSROOM,
                 route = CLASSROOM_ROUTE,
+                category = UiCategory.STUDY,
+                keywords = "空教室 自习 教室 教学楼 卓越",
             ),
         )
     }

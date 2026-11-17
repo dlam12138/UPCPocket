@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
@@ -40,13 +41,24 @@ data class UiPrefs(
      */
     val powerBuilding: String = "",
     val powerRoom: String = "",
+    /** 首页置顶的常用服务 ID 集合；默认置顶高频四项，用户可在「服务」页调整。 */
+    val pinnedServiceIds: Set<String> = DEFAULT_PINNED_SERVICES,
     /**
      * 旧版校园卡余额功能区学号草稿。
      *
      * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
      */
     val cardStudentId: String = "",
-)
+) {
+    companion object {
+        val DEFAULT_PINNED_SERVICES = setOf(
+            "classroom.free",
+            "library.home",
+            "power.electricity",
+            "shiguang.home",
+        )
+    }
+}
 
 private val Context.uiPrefsStore: DataStore<Preferences> by preferencesDataStore(name = "ui_prefs")
 
@@ -66,8 +78,14 @@ class UiPrefsStore internal constructor(
             diagnosticsEnabled = p[KEY_DIAGNOSTICS_ENABLED] ?: true,
             powerBuilding = p[KEY_POWER_BUILDING].orEmpty(),
             powerRoom = p[KEY_POWER_ROOM].orEmpty(),
+            pinnedServiceIds = p[KEY_PINNED_SERVICES] ?: UiPrefs.DEFAULT_PINNED_SERVICES,
             cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
         )
+    }
+
+    suspend fun togglePinnedService(entryId: String) = store.edit { p ->
+        val current = p[KEY_PINNED_SERVICES] ?: UiPrefs.DEFAULT_PINNED_SERVICES
+        p[KEY_PINNED_SERVICES] = if (entryId in current) current - entryId else current + entryId
     }
 
     /** “记住学校登录”开关。清理动作由调用方负责（token/密文/Cookie）。 */
@@ -118,5 +136,8 @@ class UiPrefsStore internal constructor(
 
         /** 校园卡余额功能区上次输入的学号（与余额快照无关） */
         val KEY_CARD_STUDENT_ID = stringPreferencesKey("card_student_id")
+
+        /** 首页置顶的服务入口 ID */
+        val KEY_PINNED_SERVICES = stringSetPreferencesKey("pinned_service_ids")
     }
 }

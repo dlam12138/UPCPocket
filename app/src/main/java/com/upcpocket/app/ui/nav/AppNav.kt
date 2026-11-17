@@ -34,7 +34,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +86,7 @@ import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.official.OfficialWebScreen
+import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
@@ -117,6 +120,14 @@ private val hostHome = Destination(
     icon = Icons.Filled.Home,
     outlinedIcon = Icons.Outlined.Home,
     order = 0,
+)
+
+private val hostServices = Destination(
+    route = AppRoutes.SERVICES,
+    label = "服务",
+    icon = Icons.Filled.Apps,
+    outlinedIcon = Icons.Outlined.Apps,
+    order = 6,
 )
 
 /**
@@ -153,8 +164,12 @@ fun AppNav(
             page = pluginUi.page(tab.route),
         )
     }.sortedWith(compareBy({ it.order }, { it.route }))
-    // 首页由宿主固定在最左，即使未来某个插件贡献了更小的 order 也不能抢占宿主 tab。
-    val destinations = listOf(hostHome) + pluginDestinations
+    // 首页由宿主固定在最左，服务广场排在课表之后；插件 tab 按各自 order 排序合并。
+    val destinations = listOf(hostHome) +
+        (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
+    val allServiceEntries = remember(pluginUi) {
+        pluginUi.entriesIn(UiSurface.HOME_SERVICES, UiSurface.SERVICE_DIRECTORY)
+    }
     val tabRoutes = remember(destinations) { destinations.map { it.route }.toSet() }
 
     val initialPage = remember {
@@ -317,15 +332,28 @@ fun AppNav(
                         }
                         CompositionLocalProvider(LocalPluginPageActive provides active) {
                             Box(pageModifier) {
-                                when (page) {
-                                    0 -> HomeScreen(
-                                        serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
+                                when (destinations.getOrNull(page)?.route) {
+                                    AppRoutes.HOME -> HomeScreen(
+                                        serviceEntries = allServiceEntries,
                                         timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
                                         cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
                                         todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
                                         sectionHost = sectionHost,
                                         onOpenRoute = pageHost::open,
                                         onOpenSettings = ::openSettings,
+                                        onOpenOfficialWeb = {
+                                            navController.navigate(AppRoutes.OFFICIAL_WEB)
+                                        },
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onOpenServices = { switchTab(AppRoutes.SERVICES) },
+                                    )
+                                    AppRoutes.SERVICES -> ServicesScreen(
+                                        entries = allServiceEntries,
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onTogglePin = { entryId ->
+                                            scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
+                                        },
+                                        onOpenRoute = pageHost::open,
                                         onOpenOfficialWeb = {
                                             navController.navigate(AppRoutes.OFFICIAL_WEB)
                                         },

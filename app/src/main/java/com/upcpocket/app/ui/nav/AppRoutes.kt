@@ -11,6 +11,7 @@ object AppRoutes {
 
     /** 宿主固定 tab；课表/待办/专注 tab 由插件贡献。 */
     const val HOME = "home"
+    const val SERVICES = "services"
 
     /** 宿主设置页（不是 tab，进入后底部导航隐藏）。 */
     const val SETTINGS = "settings"
