@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 仅用于“检查更新 → 下载校验完成 → 用户在系统界面确认安装”。不静默安装。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
         校园服务入口要在系统浏览器里打开，Android 11+ 必须显式声明可查询的 Intent。
@@ -71,13 +72,12 @@
         </activity>
 
         <!--
-            桌面小组件：校园卡余额、唐岛湾剩余电量、今日课表，默认 2×2，可扩到 4×2。
+            桌面小组件：校园卡余额、唐岛湾剩余电量、今日课表与本机待办。
 
-            三个接收器都 exported=false：
-              · APPWIDGET_UPDATE 由系统以显式广播投递；
-              · 刷新广播只来自本应用创建的显式、immutable PendingIntent。
-            广播里只有 appWidgetId，不携带学号、楼号、房间号或 URL。
-            updatePeriodMillis=0：不做周期刷新，只有用户点按钮才入队一次性 WorkManager。
+            所有组件接收器都 exported=false；APPWIDGET_UPDATE 由系统以显式广播投递。
+            刷新动作只携带 appWidgetId；待办勾选的显式 Mutable PendingIntent 仅接收
+            RemoteViews 的 checked 值，并由私有 receiver 校验 widget 与任务 revision。
+            不携带学号、楼号、房间号或 URL。组件 updatePeriodMillis=0。
         -->
         <receiver
             android:name=".widget.CardBalanceWidgetProvider"
@@ -112,6 +112,58 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_timetable_today_info" />
         </receiver>
+        <receiver
+            android:name=".widget.TodoWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_todo_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_todo_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.CardBalanceGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_card_glass_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_card_balance_glass_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.PowerGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_power_glass_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_power_balance_glass_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TimetableGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_timetable_glass_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_timetable_today_glass_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.TodoGlassWidgetProvider"
+            android:exported="false"
+            android:label="@string/widget_todo_glass_title">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_todo_glass_info" />
+        </receiver>
+
+        <!-- Mutable only for the system-filled RemoteViews checkbox state; the receiver is private. -->
+        <receiver
+            android:name=".widget.TodoWidgetCompleteReceiver"
+            android:exported="false" />
 
         <!-- Protected system broadcasts only; keep private to the app and system. -->
         <receiver

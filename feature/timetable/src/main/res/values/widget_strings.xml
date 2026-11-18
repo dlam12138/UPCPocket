@@ -2,6 +2,8 @@
 <resources>
     <string name="widget_timetable_title">今日课表</string>
     <string name="widget_timetable_description">随上下课和日期自动更新今日课程；默认 2×2，可拉宽到 4×2</string>
+    <string name="widget_timetable_glass_title">今日课表 · 玻璃版</string>
+    <string name="widget_timetable_glass_description">今日课表组件，固定静态玻璃外观</string>
     <string name="widget_refresh_timetable">刷新课表组件</string>
 
     <!-- 仅用于系统组件选择器的静态预览；任何真实更新都会覆盖这些占位。 -->
@@ -40,4 +42,7 @@
     <string name="widget_timetable_status_cleanup">清理中</string>
     <string name="widget_timetable_status_outside_term">学期外</string>
     <string name="widget_timetable_failed_compact">更新失败 · 显示缓存</string>
+    <string name="widget_timetable_upcoming_header">后续课程</string>
+    <string name="widget_timetable_earlier_header">今日其余课程</string>
+    <string name="widget_timetable_upcoming_more">还有 %d 节 · 点击查看</string>
 </resources>

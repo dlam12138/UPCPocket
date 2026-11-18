@@ -150,7 +150,7 @@ internal fun LibraryAccountSectionContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Switch(
+                        com.upcpocket.app.ui.components.CampusSwitch(
                             checked = rememberLogin,
                             onCheckedChange = onRememberLoginChange,
                             modifier = Modifier.testTag("library_remember_switch"),
@@ -176,7 +176,7 @@ internal fun LibraryAccountSectionContent(
                         )
                     }
                     if (hasSession) {
-                        TextButton(
+                        com.upcpocket.app.ui.components.CampusTextButton(
                             onClick = onLogout,
                             modifier = Modifier.testTag("library_logout"),
                         ) {

@@ -64,7 +64,7 @@ fun SettingsScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("设置") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

@@ -24,19 +24,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -63,6 +58,11 @@ import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
 import com.upcpocket.app.platform.AccountMask
+import com.upcpocket.app.ui.components.CampusAlertDialog
+import com.upcpocket.app.ui.components.CampusButton
+import com.upcpocket.app.ui.components.CampusOutlinedButton
+import com.upcpocket.app.ui.components.CampusTextButton
+import com.upcpocket.app.ui.components.CampusTopAppBar
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -233,8 +233,9 @@ fun SchoolAccountScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            CampusTopAppBar(
                 title = { Text("学校账号") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -315,7 +316,7 @@ fun SchoolAccountScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(
+                        CampusButton(
                             onClick = { retryCleanup() },
                             enabled = !busy,
                             modifier = Modifier.testTag("retry_cleanup"),
@@ -435,7 +436,7 @@ fun SchoolAccountScreen(
                 )
             }
 
-            Button(
+            CampusButton(
                 onClick = { submit() },
                 enabled = !busy && !state.cleanupRequired,
                 modifier = Modifier.fillMaxWidth().testTag("save_account"),
@@ -457,7 +458,7 @@ fun SchoolAccountScreen(
             if (state.status == SchoolAccountStatus.SAVED_UNVERIFIED ||
                 state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION
             ) {
-                OutlinedButton(
+                CampusOutlinedButton(
                     onClick = { showDeleteDialog = true },
                     enabled = !busy && !state.cleanupRequired,
                     modifier = Modifier.fillMaxWidth().testTag("delete_account"),
@@ -487,7 +488,7 @@ fun SchoolAccountScreen(
     }
 
     if (showDeleteDialog) {
-        AlertDialog(
+        CampusAlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("删除账号？") },
             text = {
@@ -496,7 +497,7 @@ fun SchoolAccountScreen(
                 )
             },
             confirmButton = {
-                TextButton(
+                CampusTextButton(
                     onClick = {
                         showDeleteDialog = false
                         delete()
@@ -504,7 +505,7 @@ fun SchoolAccountScreen(
                 ) { Text("删除") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
+                CampusTextButton(onClick = { showDeleteDialog = false }) { Text("取消") }
             },
         )
     }

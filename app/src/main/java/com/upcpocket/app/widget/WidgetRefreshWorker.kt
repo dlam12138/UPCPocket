@@ -32,6 +32,7 @@ class WidgetRefreshWorker(
     override suspend fun doWork(): Result {
         val kind = WidgetKind.fromKey(inputData.getString(WidgetWork.KEY_KIND))
             ?: return Result.failure()
+        if (kind == WidgetKind.TODO) return Result.failure()
         val expectedBindingToken = inputData.getString(WidgetWork.KEY_BINDING_TOKEN)
         val state = WidgetStateStore(applicationContext)
         if (inputData.getBoolean(WidgetAutoRefresh.KEY_AUTOMATIC, false)) {
@@ -118,6 +119,7 @@ class WidgetRefreshWorker(
                             }
                         }
                     }
+                    WidgetKind.TODO -> pluginAvailable = false
                 }
             }
             if (!pluginAvailable) {
@@ -230,6 +232,7 @@ class WidgetRefreshWorker(
         WidgetKind.CARD -> DiagnosticModule.CARD
         WidgetKind.POWER -> DiagnosticModule.POWER
         WidgetKind.TIMETABLE -> DiagnosticModule.TIMETABLE
+        WidgetKind.TODO -> DiagnosticModule.WIDGET
     }
 
     private fun friendly(failure: Throwable): String {

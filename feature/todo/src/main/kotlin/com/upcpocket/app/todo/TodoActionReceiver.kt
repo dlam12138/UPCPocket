@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.upcpocket.app.todo.reminder.TodoIntents
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,8 +18,9 @@ import kotlinx.coroutines.launch
 class TodoActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        val taskId = intent.getStringExtra(TodoIntents.EXTRA_TASK_ID) ?: return
-        if (!isUuid(taskId)) return
+        val taskId = TodoLaunchContract.canonicalUuid(
+            intent.getStringExtra(TodoIntents.EXTRA_TASK_ID) ?: return,
+        ) ?: return
         val revision = intent.getIntExtra(TodoIntents.EXTRA_REVISION, -1)
         if (revision < 1) return
         val service = TodoRuntime.serviceOrNull() ?: return
@@ -38,7 +38,4 @@ class TodoActionReceiver : BroadcastReceiver() {
             }
         }
     }
-
-    private fun isUuid(value: String): Boolean =
-        runCatching { UUID.fromString(value) }.isSuccess
 }

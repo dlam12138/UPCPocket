@@ -14,6 +14,7 @@ data class TodoTaskEntity(
     val reminderAt: Long?,
     val reminderFiredAt: Long?,
     val revision: Int,
+    val dueAt: Long? = null,
 )
 
 fun TodoTaskEntity.toDomain(): TodoTask = TodoTask(
@@ -26,6 +27,7 @@ fun TodoTaskEntity.toDomain(): TodoTask = TodoTask(
     reminderAt = reminderAt,
     reminderFiredAt = reminderFiredAt,
     revision = revision,
+    dueAt = dueAt,
 )
 
 fun TodoTask.toEntity(): TodoTaskEntity = TodoTaskEntity(
@@ -38,4 +40,5 @@ fun TodoTask.toEntity(): TodoTaskEntity = TodoTaskEntity(
     reminderAt = reminderAt,
     reminderFiredAt = reminderFiredAt,
     revision = revision,
+    dueAt = dueAt,
 )

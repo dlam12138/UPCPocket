@@ -5,6 +5,22 @@
       渐变、外描边或投影；RemoteViews 也不需要壁纸权限或截屏。
     -->
     <color name="widget_surface">#F7F7F9</color>
+    <color name="widget_surface_translucent">#CCF7F7F9</color>
+    <color name="widget_surface_glass">#D6F7F7F9</color>
+    <color name="widget_glass_highlight">#70FFFFFF</color>
+    <color name="widget_glass_edge">#55A5C7EB</color>
+    <color name="widget_frosted_top">#A6FFFFFF</color>
+    <color name="widget_frosted_mid">#A3F4F7FC</color>
+    <color name="widget_frosted_bottom">#A0EEF3F8</color>
+    <color name="widget_frosted_edge">#3385A9D1</color>
+    <color name="widget_frosted_lens_haze">#1AB6D5F0</color>
+    <color name="widget_frosted_lens_arc">#B6CDE4F5</color>
+    <color name="widget_frosted_lens_arc_soft">#619FC6EA</color>
+    <color name="widget_frosted_lens_bounce">#79BAD8F0</color>
+    <color name="widget_frosted_secondary">#272D34</color>
+    <color name="widget_frosted_tertiary">#272D34</color>
+    <color name="widget_frosted_accent">#0A301C</color>
+    <color name="widget_frosted_error">#421713</color>
     <color name="widget_primary">#1C1C1E</color>
     <color name="widget_secondary">#6E6E73</color>
     <color name="widget_tertiary">#8A8A8E</color>

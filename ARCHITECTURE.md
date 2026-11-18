@@ -1,6 +1,6 @@
 # UPC Pocket 当前架构
 
-核对日期：2026-11-16。本文描述当前源码；产品与公开下载见 [README](README.md)，版本与工具链见 [BUILD](docs/BUILD.md)。M0–M5 和 v0.1 方案保留历史现场，不是待执行迁移清单。重要选择的追溯依据见 [ADR](docs/adr/README.md)。
+核对日期：2026-11-17。本文描述 2.0.8 开发源码；公开正式版仍为 2.0.7，产品与下载见 [README](README.md)，版本与工具链见 [BUILD](docs/BUILD.md)。开发中完成项及验证边界见 [开发记录](docs/releases/2.0.8-development.md)。M0–M5 和 v0.1 方案保留历史现场，不是待执行迁移清单。重要选择见 [ADR](docs/adr/README.md)。
 
 ## 系统轮廓
 
@@ -47,9 +47,9 @@ flowchart TD
 | `feature:library` | libseat 与超星座位、会话/本人校验、查询与预约 UI、个人隐藏 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:focus` | 本机计时、专注数据库、统计、通知与前台服务 | designsystem、plugin-api、plugin-ui |
 | `feature:timetable` | 学期/周查询、账号绑定只读缓存、周网格/今日课程、组件渲染 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
-| `feature:todo` | 本机任务、独立 Room、一次性提醒与通知动作 | designsystem、plugin-api、plugin-ui |
+| `feature:todo` | 本机任务/截止、独立 Room、一次性提醒/通知动作与组件渲染 | designsystem、plugin-api、plugin-ui |
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
-| `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、plugin-api、plugin-ui |
+| `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 
 feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不依赖账号实现。card 的认证适配由宿主注入，其他四个需要 upc-auth 的模块按现有类型契约依赖它。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 方向和指定核心白名单；不检查所有源码调用或运行时网络白名单。
 
@@ -64,7 +64,9 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 扩展一个 feature 需同步 Gradle、PluginDescriptor/能力、宿主工厂与依赖注入、UI 贡献和缺插件行为；稳定 ID/路由/能力键是兼容契约。[API](API.md) 说明内部调用面。插件在同一 APK/进程中，不构成安全沙箱。
 
-[AppNav](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) 使用 HorizontalPager 承载首页/课表/待办/专注，胶囊跟随 Pager；二级页仍用现有 Navigation Compose。`LocalPluginPageActive` 防止预加载页查询或申请权限，`LocalDockClearance` 给内容末尾、FAB 和 Snackbar 留余量。首页右上角统一设置；多处快捷路径可指向同一路由。入口变化同步 [M5 映射](docs/m5/README.md)。
+[AppNav](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) 使用 HorizontalPager 承载首页/课表/服务/待办/专注，胶囊跟随 Pager；首页与服务为宿主目的地，业务 Tab 来自最终激活插件，导航按稳定 route 解析而非旧下标。二级页仍用现有 Navigation Compose。`LocalPluginPageActive` 防止预加载页查询或申请权限，`LocalDockClearance` 给内容末尾、FAB 和 Snackbar 留余量。首页右上角统一设置；多处快捷路径可指向同一路由。服务页按插件元数据分类与搜索，首页固定偏好缺键采用四默认项，显式空集合保持为空。校历为宿主固定公开外链，不依赖课表插件或账号；服务、首页固定及官方网页目录共用 `OfficialWebCatalog`。入口变化同步 [M5 映射](docs/m5/README.md)。
+
+`core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。五项导航继续使用浮动胶囊与 Pager。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
 ## 本机账号与业务会话
 
@@ -97,7 +99,7 @@ sequenceDiagram
 - **校园卡余额**：统一账号受控学号 → CardBalanceService → 当前绑定 Repository/快照 → 页面或组件；不接受外部目标。余额不发送密码。迁移只接收同学号旧快照，失败/清理时不展示旧身份数值。2.0.7 第二部分主值在展示层取卡内余额与过渡余额之和，小字保留过渡明细；原始分字段及缓存格式不变。
 - **本人流水**：宿主认证适配 → 校园卡业务 token → 本人核验 → 月份/分页/汇总 → 内存列表。用户主动加载全部才继续分页；仅成功完整集合可称完整结果。
 - **微信充值**：进入页认证并只读准备 → 用户点击带金额充值按钮 → 可靠加密待查标记 → 单次订单/支付准备 → 微信分发 → 回到 App 只读查单。未知结果保留防重，不重下单；微信接受分发、用户付款、学校订单成功与余额更新分别判断。
-- **图书馆**：libseat、超星 seat、seatengine 按各自协议登录/核验 → 房间/座位/时段读取 → 当前上下文预检 → 用户确认后单次写。提交后超时/畸形响应保持未知，不自动回官方页重复写；个人隐藏仅为本机展示偏好。真实预约/取消/签到尚未完成开发侧验收。
+- **图书馆**：libseat、超星 seat、seatengine 按各自协议登录/核验 → 房间/座位/时段读取 → 当前上下文预检 → 用户确认后单次写。提交后超时/畸形响应保持未知，不自动回官方页重复写。列表/地图由同一房间布局派生，共用原座位 ID 和时段；展示状态与坐标变换归 feature/library UI，不合并学校协议。个人隐藏进入房间后异步恢复，未完成或失败时阻止选择与确认，仅影响本机展示。唐岛湾同一 ViewModel 内的隐藏读写串行，切房再返回时等候旧写入完成，并按房间和代次校验后发布名单。真实预约/取消/签到尚未完成开发侧验收。
 - **空教室/电量**：独立来源与查询键，不混入学校账号密码。教室失败或不完整不能显示成空闲；预设自动查、自选手动查。唐岛湾电量直接读取，古镇口通过学校页面。
 - **石光/e站通**：业务独立认证/本人数据读取，正常网页登录是已有回退；活动报名、签到、事项提交等写操作不在范围。
 
@@ -107,7 +109,9 @@ sequenceDiagram
 
 周缓存只保存完整成功且归属当前账号的结果。失败保留历史缓存并标示，完整空周、未查询、无缓存与协议失败不混同。会话单独加密；本机周缓存本身未单独加密，依赖应用沙箱与 noBackup 范围。新课表不读 focus 的停用兼容表。
 
-三个 RemoteViews 的渲染器归 card/power/timetable；Provider、点击 Intent 和 Worker 归 app。2.0.7 第二部分移除课表/校园卡组件刷新键，整卡导航保留，电量继续手动刷新；旧 [WidgetRefreshWorker](app/src/main/java/com/upcpocket/app/widget/WidgetRefreshWorker.kt) 和动作身份保持兼容。
+四类 RemoteViews 的渲染器分别归 card/power/timetable/todo，Provider、点击 Intent 和 Worker 归 app。课表和校园卡使用整卡导航，电量另有手动刷新。2.0.8 为每类组件增加一个固定使用静态磨砂背景的 Launcher Provider，复用业务布局和动作。原组件继续使用原 Provider 身份与宿主 `UiPrefsStore` 中的全局外观偏好，保存只本地重绘。玻璃版与原组件共享数据、校园卡发布屏障和同类调度，最后一个同类实例移除时取消调度。
+
+待办组件经最终 `TodoStore` 能力异步读取 Room 的有限摘要与全部未完成数，区分尚未恢复、读取失败、缺插件和有效空。存储/revision 变化经宿主注入的窄回调刷新所有实例，不依赖 Activity 收集 Flow。完成 Receiver 非导出，仅框架勾选值需要可变 PendingIntent；实例、完整 UUID、revision 与目标 true 绑定 Intent 身份，旧动作不能重绑新版本。新建与导航保持 immutable，冷/暖 Activity 经同一契约解析并仅在活动待办页消费；桌面不承载编辑输入。[TodoWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TodoWidgetTicker.kt) 在截止和设备本地午夜安排本地重绘，最后实例移除取消，不使用校园网络或常驻服务。
 
 [TimetableWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TimetableWidgetTicker.kt) 在课程开始、结束和上海午夜安排一次性本地重绘，[WidgetAutoRefresh](app/src/main/java/com/upcpocket/app/widget/WidgetAutoRefresh.kt) 维护 30 分钟本地周期兜底。重绘与续排分开，防止同名任务替换正在运行的自身或每次渲染重置等待；自动课表路径不调用会联网的 `open()`，不登录 CAS，也不遍历未缓存周。校园卡另有独立的 30 分钟联网条件任务，仅存在组件时保留，首轮在联网条件满足后执行，不额外叠加一次性查询；执行时有界恢复本机账号并由 `CardBalanceService` 读取当前受控本人余额。周期不因重绘而重置，最后组件删除取消；无账号、清理中或插件不可用时不查询。
 
@@ -124,8 +128,8 @@ sequenceDiagram
 | 课表会话/周缓存 | timetable；会话密文、账号绑定私有 JSON | 会话与缓存分离；同号可保留历史，换号清理 |
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
-| 待办/提醒 revision | todo；Room `upcpocket-todo.db` v1 | 任务为事实，Alarm/通知可重建；旧动作按 taskId+revision 拒绝 |
-| 主题/寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 不纳入学校个人数据误删；共享旧文件避免多开 DataStore |
+| 待办/截止/提醒 revision | todo；Room `upcpocket-todo.db` v2 | v1 显式新增可空 dueAt，旧任务截止为空且原字段保留；任务为事实，Alarm/通知可重建；旧动作按 taskId+revision 拒绝 |
+| 配色与深色模式、桌面外观、首页固定、寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 学校账号清理保留这些本机选项；普通组件外观归 UiPrefsStore，固定玻璃版由 Provider 身份决定，首页固定项缺键与显式空集分别处理 |
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 
 数据模型归业务模块，不能把所有表或凭据移到公共模块。Room schema/file name、Keystore alias、DataStore 文件/键、私有文件格式和稳定 PendingIntent 都属于兼容面；变更需给出迁移与恢复依据。见 [ADR 003](docs/adr/003-data-ownership-and-schema-compatibility.md)。

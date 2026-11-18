@@ -19,6 +19,15 @@ object WidgetRenderSupport {
     private val SAME_YEAR_TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm")
     private val CROSS_YEAR_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
+    /** Change only the RemoteViews background; foreground text remains fully opaque. */
+    fun applyAppearance(
+        views: RemoteViews,
+        rootViewId: Int,
+        appearance: WidgetAppearance,
+    ) {
+        views.setInt(rootViewId, "setBackgroundResource", appearance.backgroundResource)
+    }
+
     fun metaText(
         context: Context,
         fetchedAt: Long,
@@ -45,10 +54,11 @@ object WidgetRenderSupport {
         viewId: Int,
         text: String,
         colorRes: Int,
+        appearance: WidgetAppearance = WidgetAppearance.SOLID,
     ) {
         views.setTextViewText(viewId, text)
         // Resolve colors in the launcher host, including when night mode changes.
-        views.setColorStateList(viewId, "setTextColor", colorRes)
+        views.setColorStateList(viewId, "setTextColor", appearance.textColorResource(colorRes))
     }
 
     /**

@@ -6,6 +6,7 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import com.upcpocket.app.data.power.PowerSnapshot
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.designsystem.R as DesignSystemR
 import com.upcpocket.app.feature.power.R
@@ -24,11 +25,13 @@ class PowerWidgetRenderer(private val context: Context) {
         failed: Boolean,
         openApp: () -> PendingIntent,
         refresh: () -> PendingIntent,
+        appearance: WidgetAppearance = WidgetAppearance.SOLID,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_power_balance)
+        WidgetRenderSupport.applyAppearance(views, R.id.widget_power_root, appearance)
         views.setOnClickPendingIntent(R.id.widget_power_root, openApp())
-        val primary = context.getColor(DesignSystemR.color.widget_primary)
-        val secondary = context.getColor(DesignSystemR.color.widget_secondary)
+        val primary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_primary))
+        val secondary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_secondary))
         views.setTextColor(R.id.widget_power_building, secondary)
         views.setTextColor(R.id.widget_power_room, primary)
         views.setTextColor(R.id.widget_power_value, primary)
@@ -63,6 +66,7 @@ class PowerWidgetRenderer(private val context: Context) {
                     failed -> DesignSystemR.color.widget_error
                     else -> DesignSystemR.color.widget_tertiary
                 },
+                appearance = appearance,
             )
             views.setOnClickPendingIntent(R.id.widget_power_refresh, openApp())
             views.setContentDescription(
@@ -105,6 +109,7 @@ class PowerWidgetRenderer(private val context: Context) {
                 failed = failed,
             ),
             colorRes = WidgetRenderSupport.metaColor(refreshing, failed),
+            appearance = appearance,
         )
 
         views.setOnClickPendingIntent(R.id.widget_power_refresh, refresh())

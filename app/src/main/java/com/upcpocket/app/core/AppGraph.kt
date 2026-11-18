@@ -326,7 +326,11 @@ object AppGraph {
      * 本机待办与提醒。通知点击只通过固定 Action + 本地 UUID 打开对应条目。
      */
     private val todoPlugin: TodoPlugin by lazy {
-        TodoPlugin(appContext) { taskId -> todoOpenIntent(taskId) }
+        TodoPlugin(
+            context = appContext,
+            onTasksChanged = { WidgetUpdates.requestTodo(appContext) },
+            openAppIntent = { taskId -> todoOpenIntent(taskId) },
+        )
     }
 
     internal fun todoOpenIntent(taskId: String): PendingIntent {

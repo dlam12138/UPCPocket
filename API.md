@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间实际使用的 Kotlin 契约，核对日期 2026-11-16。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名和默认值以链接源码为准；修改公共面同时更新本文、[架构](ARCHITECTURE.md)与所有消费者。
+本文索引宿主、基础模块和 feature 之间实际使用的 Kotlin 契约，核对日期 2026-11-17，对应 2.0.8 开发代码。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名和默认值以链接源码为准；修改公共面同时更新本文、[架构](ARCHITECTURE.md)与所有消费者。
 
 ## 插件、能力与 UI
 
@@ -20,6 +20,8 @@
 
 [PluginUi.kt](core/plugin-ui/src/main/kotlin/com/upcpocket/app/plugin/ui/PluginUi.kt) 的 `PluginUiContributor.contribute(registry)` 添加 `PluginEntry`、`PluginPage`、`PluginSection`、`PluginBottomNav`；registry 校验重复 ID/路由和归属后构建 `PluginUiSnapshot`。宿主负责 fork/原子合并及失败隔离。`PluginPageHost.open(route: PluginRouteId)`、`back()`、账号设置入口是窄导航面；feature 不拿任意宿主 NavController。`LocalPluginPageActive` 表示可执行前台动作，`LocalDockClearance` 表示宿主悬浮导航留白。
 
+2.0.8 增加 `UiSurface.SERVICE_DIRECTORY`，`PluginEntry.category: UiCategory = GENERAL` 和 `keywords: String = ""` 作为分类/搜索元数据；分类为学习与空间、校园生活、校务与成长、常用工具。稳定 ID 和路由保持；服务目录与首页固定共用贡献，不复制业务状态。宿主 `official.calendar` 是固定公开外链服务，不塞入课表领域契约，也不要求账号或课表插件。
+
 ## 账号状态与受控身份
 
 所有公开类型来自 [SchoolAccount.kt](core/account-api/src/main/kotlin/com/upcpocket/app/account/api/SchoolAccount.kt)。账号 API 不返回密码或通用解密器。
@@ -38,7 +40,7 @@
 
 `SchoolAccountController` 合并 reader/admin，但不作为业务插件的通用管理能力。`blocksPersonalSessions` 在 LOADING、cleanupRequired、SWITCHING、UPDATING、REMOVING 时阻断个人会话。`SESSIONS_ONLY` 与 `PERSONAL_DATA` 决定清会话或连同归属个人数据清理；消费者不能按界面短文案推断范围。
 
-`SchoolAccountId` 为内部不可逆标识，不是学校官方身份。`SchoolStudentIdentity` 的学号校验为整串 8–16 位 ASCII 数字，不能从任意或脱敏字符串截取。真实身份字段仅用于受控业务，不得写入诊断。
+`SchoolAccountId` 为内部不可逆标识，不是学校官方身份。2.0.8 的 `StudentIdFormat` 统一接受整串 8–16 位 ASCII 数字，以及大写 S/Z/M 加 8 位数字、TS 加 9 位数字、BY 加 10 位数字。受控身份、卡业务 CAS 和流水本人核验共用该规则；不截取前缀、不自动改变大小写，学校返回身份必须完整一致。格式依据不是完整编码规范，也不证明学校接口已支持全部研究生；真实身份字段不得写入诊断。
 
 ## 受控认证
 
@@ -67,13 +69,19 @@ suspend fun authenticate(
 | [DirectCardSnapshot](feature/card/src/main/kotlin/com/upcpocket/app/data/ecard/DirectCardBalance.kt) | 原始 `balanceCents`/`transitionCents`、格式化 `balanceText`/`transitionText`；新增派生 `totalBalanceText` | 总额以十进制相加，页面与组件用总额为主值、小字展示过渡余额；不改原始字段含义或持久化格式 |
 | [PowerService](feature/power/src/main/kotlin/com/upcpocket/app/power/PowerService.kt) | 电量查询与快照能力 | 唐岛湾输入/协议，组件与页面同源；完整签名以源码为准 |
 | [TimetableService](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt) | `state`/`todayState`，`suspend open()`、`refresh()`、`selectWeek(week: Int)`、`refreshToday()`；`readWidgetSnapshot()` | 查看周与今日分离；refreshToday 为本地恢复，不等同周联网刷新 |
-| [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；`suspend add(title, reminderAt): TodoTask`、`edit(...): Boolean`、`delete(id): TodoTask?` | Room 事实源；标题/时间验证由服务；失败不能捏造已保存任务 |
+| [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；原 `add(title, reminderAt)` / `edit(id, title, reminderAt)` 保留，新增带 `dueAt: Long?` 的重载；`delete(id): TodoTask?` | 截止与提醒独立；原新增无截止，原编辑保留已有截止，新编辑可显式清除；写入维护 revision；失败不捏造已保存任务 |
 | `TodoStore.setCompletedIfRevision(id: String, revision: Int, completed: Boolean): TodoTask?` | suspend；成功条件更新后返回任务，否则 null | 提醒/撤销旧动作必须守住 revision，不能退化成无条件更新 |
 | [LibraryService](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryService.kt) / [ChaoxingService](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingService.kt) | 各系统会话、本人验证、读取与受控提交 | 两套协议/结果不混用，未知提交保持防重 |
 | [FocusService](feature/focus/src/main/kotlin/com/upcpocket/app/focus/FocusService.kt) | 本机计时/记录能力 | 独立于学校账号，Room 历史兼容 |
 | [ShiguangService](feature/shiguang/src/main/kotlin/com/upcpocket/app/shiguang/ShiguangService.kt) / [ServicePortalService](feature/service-portal/src/main/kotlin/com/upcpocket/app/serviceportal/ServicePortalService.kt) | 各自只读查询/分页与 UI 状态 | 失败、有效空、部分结果与登录回退分别表达 |
 
 各能力键在所属 `*Plugin.kt` 中声明，修改前检查所有引用。稳定 route/entry/action/provider/Worker 标识也会被通知、桌面和系统持久化任务消费；修改需兼容策略，不能只改 UI 调用处。
+
+Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`、`openCreate(requestId: String): Boolean` 与 `consumeCreateRequest()`，与原任务打开请求分别消费；只有活动页面打开编辑器。`TodoLaunchContract` 的新建/打开只接受完整 UUID 分组，合法大小写规范为同一 UUID，拒绝 `UUID.fromString` 宽松接受的缩写。`readWidgetSnapshot(maxVisibleRows: Int = 4)` 异步读取本机库，区分 `NotRestored`、`ReadFailed` 与 `Ready(tasks, incompleteCount)`；Ready 空列表才是有效空，总数包含全部未完成任务。`onTasksChanged` 是宿主注入的窄本地刷新回调，覆盖存储/revision 的成功变化、首次恢复成功与首次恢复失败的状态更新，不向 feature 暴露 AppGraph；回调失败不改变已提交结果。
+
+[TodoWidgetRenderer](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoWidgetRenderer.kt) 只接收本机摘要、实际尺寸派生的 `TodoWidgetLayout` 和宿主提供的 `TodoWidgetActions`；最多四行，总数不限于可见行。标题/数量、正文、新建与完成分别绑定动作，完成使用 `setOnCheckedChangeResponse`，PendingIntent 的身份/可变性与实例验证归宿主；null 摘要表示插件不可用，不等同有效空。
+
+[WidgetAppearance](core/designsystem/src/main/kotlin/com/upcpocket/app/designsystem/WidgetAppearance.kt) 的全局偏好识别 `SOLID`、`TRANSLUCENT`、`GLASS`，缺键或未知值回退近实底。宿主按 Widget ID 的 Provider 给独立玻璃版传入 `FROSTED_GLASS`，给原组件传入 `UiPrefsStore` 异步恢复的全局偏好。`WidgetRenderSupport.applyAppearance(views, rootViewId, appearance)` 设置静态背景，`WidgetAppearance.textColorResource` 为磨砂背景选择次要文字与状态颜色资源。两种 Provider 共用 renderer、数据发布屏障和每类刷新任务。电量的显式刷新动作指向实际 Provider，待办完成校验两个同类 Provider 的当前实例归属。待办文字用资源 ID 交 Launcher 解析，校园卡、电量和课表的部分文字由应用渲染时解析。保存全局外观只触发本地重绘。
 
 2.0.7 第二部分组件调度仍由宿主拥有：课表边界和 30 分钟兜底只调用本地快照/恢复路径，不能把 `open()` 或前台联网刷新放入自动周期；校园卡 30 分钟联网读取仅在有组件时保留，目标执行时从当前受控绑定取得。移除课表/校园卡刷新按钮时须联查正式宿主、debug 预览及 renderer 测试消费者；旧系统组件和动作身份保持兼容，电量刷新及全部整卡导航保留。
 

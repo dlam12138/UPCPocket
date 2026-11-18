@@ -27,13 +27,22 @@ value class SchoolAccountId(val value: String) {
     }
 }
 
-/** 余额等业务可接受的学号格式；与现有余额协议保持 8–16 位 ASCII 数字。 */
+/** 余额等业务接受的完整学号：8–16 位 ASCII 数字，或已核对的 S/Z/M、TS、BY 前缀格式。 */
 object StudentIdFormat {
     const val MIN_LENGTH = 8
     const val MAX_LENGTH = 16
 
-    fun isValid(value: String): Boolean =
-        value.length in MIN_LENGTH..MAX_LENGTH && value.all { it in '0'..'9' }
+    fun isValid(value: String): Boolean = when {
+        value.length in MIN_LENGTH..MAX_LENGTH && hasAsciiDigitsFrom(value, 0) -> true
+        value.length == 9 && (value[0] == 'S' || value[0] == 'Z' || value[0] == 'M') ->
+            hasAsciiDigitsFrom(value, 1)
+        value.length == 11 && value.startsWith("TS") -> hasAsciiDigitsFrom(value, 2)
+        value.length == 12 && value.startsWith("BY") -> hasAsciiDigitsFrom(value, 2)
+        else -> false
+    }
+
+    private fun hasAsciiDigitsFrom(value: String, startIndex: Int): Boolean =
+        (startIndex until value.length).all { value[it] in '0'..'9' }
 }
 
 /**

@@ -7,14 +7,18 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -71,6 +75,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,12 +83,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -120,6 +135,9 @@ import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /** 原生座位预约：登录走官方网页，查询、选座、确认、取消都在 App 内完成。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -207,8 +225,9 @@ fun LibrarySeatScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = {
                     Column {
                         Text("图书馆座位")
@@ -270,7 +289,7 @@ private enum class SeatMode { AREA, RESERVATIONS }
 
 @Composable
 private fun SeatModeChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+    com.upcpocket.app.ui.components.CampusFilterChip(selected = selected, onClick = onClick, label = { Text(label) })
 }
 
 @Composable
@@ -299,7 +318,7 @@ private fun LibrarySeatAreaContent(
                     body = state.error ?: if (state.loading) "请稍候。" else "暂时没有拿到馆区/日期。",
                 )
                 if (!state.loading) {
-                    TextButton(onClick = onRetry) { Text("重试") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry) { Text("重试") }
                 }
             }
         } else {
@@ -343,7 +362,7 @@ private fun LibrarySeatAreaContent(
             state.error?.let { message ->
                 item(contentType = "error") {
                     CompactNotice("暂时无法读取", message)
-                    TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
                 }
             }
             if (!state.loading && state.error == null && visible.isEmpty()) {
@@ -369,21 +388,18 @@ internal fun CompactFilterPanel(
     onDate: (String) -> Unit,
     onFloor: (Int?) -> Unit,
 ) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
         Text("馆区", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(
             Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             filters.buildings.forEach { building ->
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.building?.id == building.id,
                     onClick = { onBuilding(building) },
                     enabled = !state.loading,
@@ -397,7 +413,7 @@ internal fun CompactFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             filters.dates.forEach { date ->
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.date == date,
                     onClick = { onDate(date) },
                     enabled = !state.loading,
@@ -412,19 +428,20 @@ internal fun CompactFilterPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("楼层", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.selectedFloor == null,
                     onClick = { onFloor(null) },
                     label = { Text("全部") },
                 )
                 state.floors.forEach { floor ->
-                    FilterChip(
+                    com.upcpocket.app.ui.components.CampusFilterChip(
                         selected = state.selectedFloor == floor.floorNum,
                         onClick = { onFloor(floor.floorNum) },
                         label = { Text(floor.floorName.ifBlank { "${floor.floorNum} 楼" }) },
                     )
                 }
             }
+        }
         }
     }
 }
@@ -453,7 +470,7 @@ private fun LibrarySeatReservationContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                TextButton(onClick = onRefresh, enabled = !state.loading && !state.reservationsBusy) {
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onRefresh, enabled = !state.loading && !state.reservationsBusy) {
                     Text(if (state.reservationsBusy) "刷新中…" else "刷新")
                 }
             }
@@ -461,7 +478,7 @@ private fun LibrarySeatReservationContent(
         state.reservationsError?.let { message ->
             item(contentType = "reservation_error") {
                 CompactNotice("预约状态读取失败", message)
-                TextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry, enabled = !state.loading) { Text("重试") }
             }
         }
         if (state.reservations.isEmpty()) {
@@ -498,11 +515,9 @@ private fun LibrarySeatReservationContent(
 
 @Composable
 internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
+    com.upcpocket.app.ui.components.GlassCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        onClick = onClick,
     ) {
         Row(
             Modifier.padding(14.dp),
@@ -538,7 +553,7 @@ internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
                     )
                 }
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.components.CampusOutlinedButton(
                 onClick = onClick,
                 modifier = Modifier.widthIn(min = 64.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp),
@@ -551,7 +566,7 @@ internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-private fun LibrarySeatDetailPage(
+internal fun LibrarySeatDetailPage(
     state: LibrarySeatViewModel.UiState,
     vm: LibrarySeatViewModel,
     onExit: () -> Unit,
@@ -560,6 +575,18 @@ private fun LibrarySeatDetailPage(
     val context = LocalContext.current
     val room = state.room
     val seat = state.seat
+    val buildingKey = state.building?.id.orEmpty()
+    val roomKey = room?.roomId.orEmpty()
+    var showSeatMap by rememberSeatPresentationMapState("libseat", buildingKey, roomKey)
+    val mapViewportState = rememberSeatMapViewportState("libseat", buildingKey, roomKey)
+    val listSeats = remember(state.layout) {
+        sortSeatPresentations(
+            state.layout?.seats.orEmpty().filter { it.isSeat },
+            nameOf = LibrarySeat::name,
+            stableIdOf = LibrarySeat::id,
+        )
+    }
+    val density = LocalDensity.current
     val snackbar = remember { SnackbarHostState() }
     var showHiddenMenu by remember { mutableStateOf(false) }
     var pickingBegin by remember { mutableStateOf(false) }
@@ -597,9 +624,10 @@ private fun LibrarySeatDetailPage(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = {
                     Column {
                         Text(room?.name.orEmpty(), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -616,7 +644,7 @@ private fun LibrarySeatDetailPage(
                     }
                 },
                 actions = {
-                    TextButton(onClick = { openSeatOfficial(context) }) { Text("学校页面") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = { openSeatOfficial(context) }) { Text("学校页面") }
                     Box {
                         IconButton(onClick = { showHiddenMenu = true }) {
                             Icon(Icons.Filled.MoreVert, contentDescription = "更多")
@@ -652,7 +680,7 @@ private fun LibrarySeatDetailPage(
                             Text(seat?.name?.let { "已选 $it" } ?: "请选择座位", fontWeight = FontWeight.SemiBold)
                             Text(seatSummary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Button(
+                        com.upcpocket.app.ui.components.CampusButton(
                             onClick = {
                                 when {
                                     seat == null -> Unit
@@ -662,7 +690,9 @@ private fun LibrarySeatDetailPage(
                             },
                             enabled = when {
                                 seat == null -> false
-                                state.start == null || state.end == null -> seat.selectable && !state.loading
+                                state.start == null || state.end == null ->
+                                    seat.selectable && state.hiddenLoaded && !state.hiddenBusy &&
+                                        state.hiddenError == null && seat.id !in state.hiddenSeatIds && !state.loading
                                 else -> state.canConfirmReservation()
                             },
                         ) {
@@ -691,35 +721,55 @@ private fun LibrarySeatDetailPage(
                     onHide = vm::hideSeat,
                     onRetry = vm::retryTime,
                     onLoadMore = vm::loadMoreTime,
+                    onRetryHidden = vm::retryHiddenSeats,
                 )
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                item(contentType = "seat_mode_controls") {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        FilterChip(
-                            selected = true,
-                            onClick = {},
-                            label = { Text("按座位选") },
-                        )
-                        FilterChip(
-                            selected = false,
-                            onClick = { vm.setSeatMode(RoomSeatMode.TIME) },
-                            label = { Text("按时段找") },
-                        )
+            BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+                val columns = seatListColumnCount(
+                    availableWidthDp = (maxWidth - 32.dp).coerceAtLeast(1.dp).value,
+                    fontScale = density.fontScale,
+                )
+                val seatRows = remember(listSeats, columns) { listSeats.chunked(columns) }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    item(contentType = "seat_mode_controls") {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            com.upcpocket.app.ui.components.CampusFilterChip(
+                                selected = true,
+                                onClick = {},
+                                label = { Text("按座位选") },
+                            )
+                            com.upcpocket.app.ui.components.CampusFilterChip(
+                                selected = false,
+                                onClick = { vm.setSeatMode(RoomSeatMode.TIME) },
+                                label = { Text("按时段找") },
+                            )
+                        }
                     }
-                }
-                seatModeContent(state, vm, seat, room)
-                item(contentType = "seat_mode_notice") {
-                    state.notice?.let { notice ->
-                        Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    seatModeContent(
+                        state = state,
+                        vm = vm,
+                        seat = seat,
+                        room = room,
+                        sortedSeats = listSeats,
+                        seatRows = seatRows,
+                        listColumns = columns,
+                        showMap = showSeatMap,
+                        onShowMapChange = { showSeatMap = it },
+                        mapScopeKey = "$buildingKey|$roomKey",
+                        mapViewportState = mapViewportState,
+                    )
+                    item(contentType = "seat_mode_notice") {
+                        state.notice?.let { notice ->
+                            Text(notice, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                        }
                     }
                 }
             }
@@ -759,7 +809,7 @@ private fun LibrarySeatDetailPage(
         val confirmStart = if (timeMode) state.timeStart else state.start
         val confirmEnd = if (timeMode) state.timeStop else state.end
         if (confirmSeat != null) {
-            AlertDialog(
+            com.upcpocket.app.ui.components.CampusAlertDialog(
                 onDismissRequest = vm::dismissConfirm,
                 title = { Text("确认预约") },
                 text = {
@@ -771,12 +821,15 @@ private fun LibrarySeatDetailPage(
                     )
                 },
                 confirmButton = {
-                    TextButton(
-                        enabled = if (timeMode) state.canConfirmTimeReservation() else state.canConfirmReservation(),
+                    com.upcpocket.app.ui.components.CampusTextButton(
+                        enabled = if (timeMode) {
+                            state.hiddenLoaded && !state.hiddenBusy && state.hiddenError == null &&
+                                state.canConfirmTimeReservation()
+                        } else state.canConfirmReservation(),
                         onClick = if (timeMode) vm::confirmTimeReservation else vm::confirmReservation,
                     ) { Text("确认预约") }
                 },
-                dismissButton = { TextButton(onClick = vm::dismissConfirm) { Text("取消") } },
+                dismissButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = vm::dismissConfirm) { Text("取消") } },
             )
         }
     }
@@ -793,63 +846,257 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
     vm: LibrarySeatViewModel,
     seat: LibrarySeat?,
     room: LibraryRoom?,
+    sortedSeats: List<LibrarySeat>,
+    seatRows: List<List<LibrarySeat>>,
+    listColumns: Int,
+    showMap: Boolean,
+    onShowMapChange: (Boolean) -> Unit,
+    mapScopeKey: String,
+    mapViewportState: SeatMapViewportState,
 ) {
     item(contentType = "seat_time_summary") {
-        Row(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
-            Column(Modifier.weight(1f)) {
-                Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
-                Text(
-                    if (state.start != null && state.end != null) {
-                        "已选时段 ${state.start.value}–${state.end.value}" +
-                            (durationText(state.start, state.end)?.let { " · $it" } ?: "") +
-                            "；点底部可改"
-                    } else {
-                        "先点选座位，再选择使用时间"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(Icons.Filled.AccessTime, contentDescription = null, modifier = Modifier.size(20.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("日期 ${state.date.orEmpty()}", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        if (state.start != null && state.end != null) {
+                            "已选时段 ${state.start.value}–${state.end.value}" +
+                                (durationText(state.start, state.end)?.let { " · $it" } ?: "") +
+                                "；点底部可改"
+                        } else {
+                            "先点选座位，再选择使用时间"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
             }
-            TextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
         }
     }
     state.error?.let { message ->
         item(contentType = "seat_operation_error") { CompactNotice("座位操作未完成", message) }
     }
+    if (state.hiddenBusy) {
+        item(contentType = "hidden_loading") {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Text(
+                    if (state.hiddenLoaded) "正在更新本机隐藏偏好…" else "正在恢复本机隐藏偏好…",
+                    Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+    }
+    state.hiddenError?.let { message ->
+        item(contentType = "hidden_error") {
+            CompactNotice("隐藏偏好未恢复", message)
+            com.upcpocket.app.ui.components.CampusTextButton(
+                onClick = vm::retryHiddenSeats,
+                enabled = !state.hiddenBusy,
+            ) { Text("重试") }
+        }
+    }
     item(contentType = "seat_legend") {
         SeatLegend(hiddenCount = state.hiddenSeatIds.size)
     }
-    item(contentType = "seat_map") {
-        if (state.loading && state.layout == null) {
+    item(contentType = "seat_presentation_control") {
+        SeatPresentationModeControl(showMap = showMap, onShowMapChange = onShowMapChange)
+    }
+    if (state.loading && state.layout == null) {
+        item(contentType = "seat_map_loading") {
             Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator()
                 Text("正在读取座位…", style = MaterialTheme.typography.bodySmall)
             }
+        }
+    } else if (state.layout == null) {
+        item(contentType = "seat_map_missing") {
+            CompactNotice("没有座位布局", "学校未返回该区域的座位布局，不能显示虚构平面图。")
+        }
+    } else if (showMap) {
+        item(contentType = "seat_map") {
+            SeatMap(
+                layout = requireNotNull(state.layout),
+                selectedId = seat?.id,
+                onSelect = vm::chooseSeat,
+                hiddenIds = state.hiddenSeatIds,
+                onLongClick = vm::hideSeat,
+                selectionEnabled = state.hiddenLoaded && !state.hiddenBusy &&
+                    state.hiddenError == null && !state.loading,
+                mapScopeKey = mapScopeKey,
+                viewportState = mapViewportState,
+            )
+        }
+    } else {
+        if (sortedSeats.isEmpty()) {
+            item(contentType = "seat_list_empty") { CompactNotice("没有座位", "学校未返回可显示的真实座位。") }
         } else {
-            state.layout?.let { layout ->
-                SeatMap(
-                    layout = layout,
-                    selectedId = seat?.id,
-                    onSelect = vm::chooseSeat,
-                    hiddenIds = state.hiddenSeatIds,
-                    onLongClick = vm::hideSeat,
-                )
-            } ?: CompactNotice("没有座位布局", "学校未返回该区域的座位布局，不能显示虚构平面图。")
+            items(
+                items = seatRows,
+                key = { row -> "libseat-row-${row.first().id}" },
+                contentType = { "seat_list_row" },
+            ) { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEach { item ->
+                        LibrarySeatListTile(
+                            modifier = Modifier.weight(1f),
+                            seat = item,
+                            selected = item.id == seat?.id,
+                            hidden = item.id in state.hiddenSeatIds,
+                            hiddenLoaded = state.hiddenLoaded,
+                            hiddenBusy = state.hiddenBusy,
+                            onSelect = { vm.chooseSeat(item) },
+                            onHide = { vm.hideSeat(item) },
+                        )
+                    }
+                    repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+            }
         }
     }
     item(contentType = "seat_help") {
         Text(
-            "点可用座位选择；长按可隐藏；布局可横向、纵向滑动。",
+            if (showMap) "点可用位置选择；长按座位可隐藏；双指缩放或拖动查看，复位返回概览。"
+            else "按座号排序；点可用座位选择，更多操作可隐藏。",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+internal fun SeatPresentationModeControl(
+    showMap: Boolean,
+    onShowMapChange: (Boolean) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.upcpocket.app.ui.components.CampusFilterChip(
+            selected = !showMap,
+            onClick = { onShowMapChange(false) },
+            modifier = Modifier.testTag("seat_presentation_list"),
+            label = { Text("座位列表") },
+        )
+        com.upcpocket.app.ui.components.CampusFilterChip(
+            selected = showMap,
+            onClick = { onShowMapChange(true) },
+            modifier = Modifier.testTag("seat_presentation_map"),
+            label = { Text("布局图") },
+        )
+    }
+}
+
+@Composable
+internal fun rememberSeatPresentationMapState(
+    systemKey: String,
+    areaKey: String,
+    roomKey: String,
+): androidx.compose.runtime.MutableState<Boolean> = rememberSaveable(systemKey, areaKey, roomKey) {
+    mutableStateOf(false)
+}
+
+internal data class SeatMapViewportState(
+    val zoomMultiplier: androidx.compose.runtime.MutableState<Float>,
+    val centerXFraction: androidx.compose.runtime.MutableState<Float>,
+    val centerYFraction: androidx.compose.runtime.MutableState<Float>,
+)
+
+@Composable
+internal fun rememberSeatMapViewportState(
+    systemKey: String,
+    areaKey: String,
+    roomKey: String,
+): SeatMapViewportState {
+    val zoomMultiplier = rememberSaveable(systemKey, areaKey, roomKey, "zoom") { mutableStateOf(1f) }
+    val centerXFraction = rememberSaveable(systemKey, areaKey, roomKey, "center-x") { mutableStateOf(0.5f) }
+    val centerYFraction = rememberSaveable(systemKey, areaKey, roomKey, "center-y") { mutableStateOf(0.5f) }
+    return remember(zoomMultiplier, centerXFraction, centerYFraction) {
+        SeatMapViewportState(zoomMultiplier, centerXFraction, centerYFraction)
+    }
+}
+
+@Composable
+private fun LibrarySeatListTile(
+    modifier: Modifier,
+    seat: LibrarySeat,
+    selected: Boolean,
+    hidden: Boolean,
+    hiddenLoaded: Boolean,
+    hiddenBusy: Boolean,
+    onSelect: () -> Unit,
+    onHide: () -> Unit,
+) {
+    val canSelect = seat.selectable && hiddenLoaded && !hiddenBusy && !hidden
+    val canHide = seat.isSeat && hiddenLoaded && !hiddenBusy && !hidden
+    var menu by remember { mutableStateOf(false) }
+    val description = when {
+        hidden -> "本机已隐藏"
+        seat.localOnly -> "仅本地布局元素，不可预约"
+        !seat.enabled -> "不可预约"
+        else -> com.upcpocket.app.data.library.LibrarySeatStatus.label(seat.status)
+    }
+    Surface(
+        modifier = modifier.heightIn(min = 56.dp)
+            .semantics {
+                contentDescription = "座位 ${seat.name}，$description"
+                this.selected = selected
+            }
+            .testTag("library_seat_list_${seat.id}")
+            .combinedClickable(
+                enabled = canSelect || canHide,
+                role = Role.RadioButton,
+                onClick = { if (canSelect) onSelect() },
+                onLongClick = { if (canHide) onHide() },
+            ),
+        shape = RoundedCornerShape(12.dp),
+        color = when {
+            hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
+            selected -> MaterialTheme.colorScheme.tertiaryContainer
+            canSelect && (seat.status == "FREE" || seat.status == "YESSELECT") ->
+                MaterialTheme.colorScheme.primaryContainer
+            canSelect -> MaterialTheme.colorScheme.tertiaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
+        },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                seat.name,
+                modifier = Modifier.fillMaxWidth().testTag("library_seat_name_${seat.id}"),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    description,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+                Box {
+                    IconButton(onClick = { menu = true }, enabled = canHide) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "座位 ${seat.name} 的更多操作")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("隐藏此座位") },
+                            enabled = canHide,
+                            onClick = { menu = false; onHide() },
+                            leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -867,16 +1114,16 @@ private fun TimePickDialog(
         initialMinute = minute % 60,
         is24Hour = true,
     )
-    AlertDialog(
+    com.upcpocket.app.ui.components.CampusAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { TimePicker(state = picker) },
         confirmButton = {
-            TextButton(onClick = { onConfirm(formatHhmm(picker.hour * 60 + picker.minute)) }) {
+            com.upcpocket.app.ui.components.CampusTextButton(onClick = { onConfirm(formatHhmm(picker.hour * 60 + picker.minute)) }) {
                 Text("确定")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
 
@@ -897,6 +1144,7 @@ internal fun LibraryTimeSearchContent(
     onHide: (LibrarySeat) -> Unit,
     onRetry: () -> Unit,
     onLoadMore: () -> Unit,
+    onRetryHidden: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -905,12 +1153,12 @@ internal fun LibraryTimeSearchContent(
     ) {
         item(contentType = "time_mode_controls") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.seatMode == RoomSeatMode.SEAT,
                     onClick = { onMode(RoomSeatMode.SEAT) },
                     label = { Text("按座位选") },
                 )
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.seatMode == RoomSeatMode.TIME,
                     onClick = { onMode(RoomSeatMode.TIME) },
                     label = { Text("按时段找") },
@@ -928,6 +1176,27 @@ internal fun LibraryTimeSearchContent(
                     state.timeResult?.querying != true,
                 querying = state.timeResult?.querying == true,
             )
+        }
+        if (state.hiddenBusy) {
+            item(contentType = "hidden_loading") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(
+                        if (state.hiddenLoaded) "正在更新本机隐藏偏好…" else "正在恢复本机隐藏偏好…",
+                        Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+        state.hiddenError?.let { message ->
+            item(contentType = "hidden_error") {
+                CompactNotice("隐藏偏好未恢复", message)
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = onRetryHidden,
+                    enabled = !state.hiddenBusy,
+                ) { Text("重试") }
+            }
         }
         item(contentType = "time_results") {
             TimeSearchResults(
@@ -956,35 +1225,35 @@ internal fun TimeRangeControls(
     canSearch: Boolean,
     querying: Boolean,
 ) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = onPickBegin, modifier = Modifier.fillMaxWidth()) {
-                    Text(begin ?: "选择开始", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                OutlinedButton(onClick = onPickFinish, modifier = Modifier.fillMaxWidth()) {
-                    Text(finish ?: "选择结束", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-        }
-        Button(
-            onClick = onSearch,
-            enabled = canSearch,
-            modifier = Modifier.fillMaxWidth(),
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(if (querying) "查找中…" else "查找座位")
-        }
-        if (querying) {
-            LinearProgressIndicator(Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("开始时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(onClick = onPickBegin, modifier = Modifier.fillMaxWidth()) {
+                        Text(begin ?: "选择开始", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                Column(Modifier.weight(1f)) {
+                    Text("结束时间", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(onClick = onPickFinish, modifier = Modifier.fillMaxWidth()) {
+                        Text(finish ?: "选择结束", style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+            }
+            com.upcpocket.app.ui.components.CampusButton(
+                onClick = onSearch,
+                enabled = canSearch,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (querying) "查找中…" else "查找座位")
+            }
+            if (querying) {
+                LinearProgressIndicator(Modifier.fillMaxWidth())
+            }
         }
     }
 }
@@ -1009,7 +1278,13 @@ internal fun TimeSearchBottomBar(
     } else {
         "选择时段"
     }
-    SeatSelectionBottomBar(chosen?.name, summary, state.canConfirmTimeReservation(), onConfirm)
+    val hiddenPreferencesReady = state.hiddenLoaded && !state.hiddenBusy && state.hiddenError == null
+    SeatSelectionBottomBar(
+        chosen?.name,
+        summary,
+        hiddenPreferencesReady && state.canConfirmTimeReservation(),
+        onConfirm,
+    )
 }
 
 @Composable
@@ -1031,11 +1306,11 @@ internal fun SeatSelectionBottomBar(
             if (stacked) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Summary()
-                    Button(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
+                    com.upcpocket.app.ui.components.CampusButton(onClick = onConfirm, enabled = canConfirm, modifier = Modifier.fillMaxWidth()) { Text(actionLabel) }
                 }
             } else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(Modifier.weight(1f)) { Summary() }
-                Button(onClick = onConfirm, enabled = canConfirm) { Text(actionLabel) }
+                com.upcpocket.app.ui.components.CampusButton(onClick = onConfirm, enabled = canConfirm) { Text(actionLabel) }
             }
         }
     }
@@ -1060,7 +1335,7 @@ internal fun TimeSearchResults(
             result.failed ->
                 Column {
                     CompactNotice("查询失败", result.failureMessage ?: "请重试")
-                    TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
                 }
             result.complete && result.seats.isEmpty() ->
                 CompactNotice("这个时段暂无可约座位", "可以修改时段再找。")
@@ -1093,6 +1368,8 @@ internal fun TimeSearchResults(
                     TimeCandidateRow(
                         candidate = candidate,
                         selected = state.timeSelectedSeat?.id == candidate.id,
+                        interactionsEnabled = state.hiddenLoaded && !state.hiddenBusy &&
+                            state.hiddenError == null,
                         onSelect = { onSelect(candidate) },
                         onHide = { onHide(candidate) },
                     )
@@ -1101,12 +1378,12 @@ internal fun TimeSearchResults(
                     result.partialFailure ->
                         Column {
                             Text("部分结果未加载", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry, enabled = !result.querying) { Text("重试") }
                         }
                     result.pageLimitReached ->
                         Text("已加载前 ${result.seats.size} 个，请缩小范围", style = MaterialTheme.typography.labelSmall)
                     result.hasMore ->
-                        TextButton(onClick = onLoadMore, enabled = !result.querying) { Text("加载更多") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = onLoadMore, enabled = !result.querying) { Text("加载更多") }
                 }
                 if (state.timeSelecting) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -1121,8 +1398,20 @@ internal fun TimeSearchResults(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TimeCandidateRow(candidate: LibrarySeat, selected: Boolean, onSelect: () -> Unit, onHide: () -> Unit) =
-    SeatCandidateRow(candidate.name, candidate.timeSelectable, selected, onSelect, onHide)
+private fun TimeCandidateRow(
+    candidate: LibrarySeat,
+    selected: Boolean,
+    interactionsEnabled: Boolean,
+    onSelect: () -> Unit,
+    onHide: () -> Unit,
+) = SeatCandidateRow(
+    name = candidate.name,
+    selectable = candidate.timeSelectable && interactionsEnabled,
+    selected = selected,
+    onSelect = onSelect,
+    onHide = onHide,
+    canHide = interactionsEnabled,
+)
 
 @Composable
 internal fun SeatCandidateRow(
@@ -1131,6 +1420,7 @@ internal fun SeatCandidateRow(
     selected: Boolean,
     onSelect: () -> Unit,
     onHide: () -> Unit,
+    canHide: Boolean = true,
 ) {
     var menu by remember { mutableStateOf(false) }
     Surface(
@@ -1161,12 +1451,13 @@ internal fun SeatCandidateRow(
                 }
             }
             Box {
-                IconButton(onClick = { menu = true }) {
+                IconButton(onClick = { menu = true }, enabled = canHide) {
                     Icon(Icons.Filled.MoreVert, contentDescription = "更多")
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                     DropdownMenuItem(
                         text = { Text("隐藏此座位") },
+                        enabled = canHide,
                         onClick = { menu = false; onHide() },
                         leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
                     )
@@ -1182,7 +1473,16 @@ private fun HiddenSeatsSheet(
     state: LibrarySeatViewModel.UiState,
     vm: LibrarySeatViewModel,
 ) {
-    HiddenSeatManagementSheet(state.hiddenEntries, vm::closeHiddenSheet, vm::restoreHidden, vm::restoreAllHidden)
+    HiddenSeatManagementSheet(
+        entries = state.hiddenEntries,
+        onClose = vm::closeHiddenSheet,
+        onRestore = vm::restoreHidden,
+        onRestoreAll = vm::restoreAllHidden,
+        busy = state.hiddenBusy,
+        loaded = state.hiddenLoaded,
+        error = state.hiddenError,
+        onRetry = vm::retryHiddenSeats,
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1190,6 +1490,10 @@ private fun HiddenSeatsSheet(
 internal fun HiddenSeatManagementSheet(
     entries: List<LibraryHiddenSeat>, onClose: () -> Unit,
     onRestore: (String) -> Unit, onRestoreAll: () -> Unit,
+    busy: Boolean = false,
+    loaded: Boolean = true,
+    error: String? = null,
+    onRetry: () -> Unit = {},
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
@@ -1206,20 +1510,49 @@ internal fun HiddenSeatManagementSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (entries.isEmpty()) {
+            if (busy) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text(
+                        if (loaded) "正在更新隐藏名单…" else "正在读取隐藏名单…",
+                        Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+            error?.let { message ->
+                CompactNotice("隐藏偏好未恢复", message)
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = onRetry,
+                    enabled = !busy,
+                ) { Text("重试") }
+            }
+            if (!loaded && !busy && error == null) {
+                CompactNotice("隐藏偏好未读取", "读取完成前不会将名单显示为空。")
+            } else if (loaded && !busy && entries.isEmpty()) {
                 Text("没有隐藏的座位。", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            } else {
+            }
+            if (loaded && entries.isNotEmpty()) {
                 entries.forEach { entry ->
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(entry.nameSnapshot, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = { onRestore(entry.seatId) }) { Text("恢复") }
+                        com.upcpocket.app.ui.components.CampusTextButton(
+                            onClick = { onRestore(entry.seatId) },
+                            enabled = !busy,
+                        ) { Text("恢复") }
                     }
                 }
-                OutlinedButton(onClick = onRestoreAll, modifier = Modifier.fillMaxWidth()) {
-                    Text("全部恢复")
+                if (!busy) {
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                        onClick = onRestoreAll,
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("全部恢复")
+                    }
                 }
             }
         }
@@ -1235,7 +1568,11 @@ private fun SeatTimeSheet(
     seat: LibrarySeat,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(onDismissRequest = vm::closeTimeDialog, sheetState = sheetState) {
+    ModalBottomSheet(
+        onDismissRequest = vm::closeTimeDialog,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp).padding(bottom = 24.dp),
@@ -1258,7 +1595,7 @@ private fun SeatTimeSheet(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.startTimes.forEach { option ->
-                        FilterChip(
+                        com.upcpocket.app.ui.components.CampusFilterChip(
                             selected = state.start?.id == option.id,
                             onClick = { vm.chooseStart(option) },
                             label = { Text(option.value) },
@@ -1274,7 +1611,7 @@ private fun SeatTimeSheet(
             } else {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     state.endTimes.forEach { option ->
-                        FilterChip(
+                        com.upcpocket.app.ui.components.CampusFilterChip(
                             selected = state.end?.id == option.id,
                             onClick = { vm.chooseEnd(option) },
                             label = { Text(option.value) },
@@ -1290,7 +1627,7 @@ private fun SeatTimeSheet(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            Button(
+            com.upcpocket.app.ui.components.CampusButton(
                 onClick = vm::closeTimeDialog,
                 enabled = state.start != null && state.end != null,
                 modifier = Modifier.fillMaxWidth(),
@@ -1327,13 +1664,14 @@ private fun LegendItem(color: Color, label: String) {
 
 @Composable
 internal fun CompactNotice(title: String, body: String) {
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
-    ) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -1395,13 +1733,19 @@ internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel
         timeSelecting = false,
         hiddenSeatIds = emptySet(),
         hiddenEntries = emptyList(),
+        hiddenLoaded = false,
+        hiddenBusy = false,
+        hiddenError = null,
         showHiddenSheet = false,
+        hiddenActionError = null,
         undoHidden = null,
     )
 
 internal fun LibrarySeatViewModel.UiState.canConfirmReservation(): Boolean {
     if (reservationSubmitted) return false
+    if (!hiddenLoaded || hiddenBusy || hiddenError != null) return false
     val selectedSeat = seat ?: return false
+    if (selectedSeat.id in hiddenSeatIds) return false
     val selectedStart = start ?: return false
     val selectedEnd = end ?: return false
     val currentLayout = layout ?: return false
@@ -1460,8 +1804,9 @@ private fun LibraryLoginGate(
     val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("图书馆座位") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -1488,9 +1833,9 @@ private fun LibraryLoginGate(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (canAutoLogin) {
-                Button(
+                com.upcpocket.app.ui.components.CampusButton(
                     onClick = {
-                        if (busy) return@Button
+                        if (busy) return@CampusButton
                         busy = true
                         error = null
                         scope.launch {
@@ -1516,7 +1861,7 @@ private fun LibraryLoginGate(
                     Text(if (busy) "正在登录…" else "用已保存账号登录")
                 }
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.components.CampusOutlinedButton(
                 onClick = onLogin,
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth(),
@@ -1581,7 +1926,7 @@ private fun ReservationCard(
                 )
             }
             if (reservation.cancellable && !pending) {
-                TextButton(enabled = enabled, onClick = onCancel) { Text("取消预约") }
+                com.upcpocket.app.ui.components.CampusTextButton(enabled = enabled, onClick = onCancel) { Text("取消预约") }
             }
         }
     }
@@ -1602,102 +1947,247 @@ internal fun SeatMap(
     onSelect: (LibrarySeat) -> Unit,
     hiddenIds: Set<String> = emptySet(),
     onLongClick: (LibrarySeat) -> Unit = {},
+    selectionEnabled: Boolean = true,
+    mapScopeKey: String = "libseat|default",
+    viewportState: SeatMapViewportState? = null,
 ) {
+    val bounds = remember(layout) {
+        seatMapBoundsForGrid(
+            rowCount = layout.rows,
+            columnCount = layout.cols,
+            allLayoutElements = layout.seats,
+            rowOf = LibrarySeat::row,
+            columnOf = LibrarySeat::col,
+        )
+    }
+    if (bounds == null) {
+        CompactNotice("没有有效布局", "学校未返回可显示的座位坐标。")
+        return
+    }
+
     val byPosition = remember(layout) { layout.seats.associateBy { it.row to it.col } }
-    val cell = 38.dp
-    val h = rememberScrollState()
-    val v = rememberScrollState()
-    Box(
-        Modifier.fillMaxWidth().heightIn(max = 430.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .verticalScroll(v)
-            .padding(8.dp),
-    ) {
-        Column(Modifier.horizontalScroll(h)) {
-            for (row in 0 until layout.rows) {
-                Row {
-                    for (col in 0 until layout.cols) {
-                        val seat = byPosition[row to col]
-                        if (seat == null) {
-                            Spacer(Modifier.size(cell))
-                        } else {
-                            SeatCell(
-                                seat = seat,
-                                selected = seat.id == selectedId,
-                                hidden = seat.id in hiddenIds,
-                                cell = cell,
-                                onClick = { onSelect(seat) },
-                                onLongClick = { onLongClick(seat) },
-                            )
+    val density = LocalDensity.current
+    var fallbackZoom by rememberSaveable("libseat", mapScopeKey, "zoom") { mutableStateOf(1f) }
+    var fallbackCenterX by rememberSaveable("libseat", mapScopeKey, "center-x") { mutableStateOf(0.5f) }
+    var fallbackCenterY by rememberSaveable("libseat", mapScopeKey, "center-y") { mutableStateOf(0.5f) }
+    val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
+    val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
+    val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth()
+                .height(368.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .testTag("seat_map_viewport"),
+        ) {
+            val controlsHeightPx = with(density) { 48.dp.toPx() }
+            val viewportSize = SeatMapSize(
+                width = constraints.maxWidth.toFloat(),
+                height = (constraints.maxHeight - controlsHeightPx).coerceAtLeast(1f),
+            )
+            val paddingPx = with(density) { 12.dp.toPx() }
+            val targetSeatPx = with(density) { 48.dp.toPx() }
+            val overview = SeatMapViewportTransform.overview(bounds, viewportSize, paddingPx)
+            if (overview == null) {
+                CompactNotice("无法显示布局", "当前窗口空间不足，请调整窗口后重试。")
+            } else {
+                val maxZoom = max(4f, targetSeatPx / overview.scale).coerceAtMost(64f)
+                val pose = SeatMapViewportPose(zoom, centerX, centerY)
+                val transform = remember(bounds, viewportSize, pose, maxZoom) {
+                    pose.toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                }
+                val currentTransform = rememberUpdatedState(transform)
+                val currentByPosition = rememberUpdatedState(byPosition)
+                val currentHiddenIds = rememberUpdatedState(hiddenIds)
+                val currentSelectionEnabled = rememberUpdatedState(selectionEnabled)
+                val currentOnSelect = rememberUpdatedState(onSelect)
+                val currentOnLongClick = rememberUpdatedState(onLongClick)
+
+                fun saveTransform(next: SeatMapViewportTransform) {
+                    val nextPose = SeatMapViewportPose.from(next)
+                    if (viewportState == null) {
+                        fallbackZoom = nextPose.zoomMultiplier
+                        fallbackCenterX = nextPose.centerXFraction
+                        fallbackCenterY = nextPose.centerYFraction
+                    } else {
+                        viewportState.zoomMultiplier.value = nextPose.zoomMultiplier
+                        viewportState.centerXFraction.value = nextPose.centerXFraction
+                        viewportState.centerYFraction.value = nextPose.centerYFraction
+                    }
+                }
+
+                val gestureModifier = Modifier
+                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom) {
+                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                            val current = currentTransform.value
+                            val next = current
+                                .zoomAt(SeatMapPoint(centroid.x, centroid.y), zoomChange)
+                                .panBy(SeatMapPoint(pan.x, pan.y))
+                            saveTransform(next)
                         }
                     }
+                    .pointerInput(mapScopeKey, bounds, viewportSize) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val position = currentTransform.value.displayToGridPosition(
+                                    SeatMapPoint(offset.x, offset.y),
+                                ) ?: return@detectTapGestures
+                                val target = currentByPosition.value[position.row to position.col]
+                                    ?: return@detectTapGestures
+                                if (currentSelectionEnabled.value && target.selectable &&
+                                    target.id !in currentHiddenIds.value
+                                ) {
+                                    currentOnSelect.value(target)
+                                }
+                            },
+                            onLongPress = { offset ->
+                                val position = currentTransform.value.displayToGridPosition(
+                                    SeatMapPoint(offset.x, offset.y),
+                                ) ?: return@detectTapGestures
+                                val target = currentByPosition.value[position.row to position.col]
+                                    ?: return@detectTapGestures
+                                if (target.isSeat && target.id !in currentHiddenIds.value &&
+                                    currentSelectionEnabled.value
+                                ) {
+                                    currentOnLongClick.value(target)
+                                }
+                            },
+                        )
+                    }
+
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SeatMapZoomControls(
+                        onZoomOut = {
+                            val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
+                            saveTransform(transform.zoomAt(center, 1f / 1.6f))
+                        },
+                        onZoomIn = {
+                            val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
+                            saveTransform(transform.zoomAt(center, 1.6f))
+                        },
+                        onReset = { transform.reset()?.let(::saveTransform) },
+                    )
+                    Box(Modifier.fillMaxWidth().weight(1f).then(gestureModifier)) {
+                    val drawnCellSize = with(density) { transform.scale.toDp() }
+                    val showLabels = drawnCellSize >= 24.dp
+                    Box(
+                        Modifier
+                            .offset {
+                                val current = currentTransform.value
+                                IntOffset(
+                                    x = (current.translationX + current.contentBounds.left * current.scale).roundToInt(),
+                                    y = (current.translationY + current.contentBounds.top * current.scale).roundToInt(),
+                                )
+                            }
+                            .graphicsLayer {
+                                val current = currentTransform.value
+                                val densityScale = current.scale / density.density
+                                scaleX = densityScale
+                                scaleY = densityScale
+                                transformOrigin = TransformOrigin(0f, 0f)
+                            }
+                            .size(bounds.width.dp, bounds.height.dp),
+                    ) {
+                        layout.seats.forEach { item ->
+                            if (item.row !in 0 until layout.rows || item.col !in 0 until layout.cols) {
+                                return@forEach
+                            }
+                            val hidden = item.id in hiddenIds
+                            val selected = item.id == selectedId
+                            val positionStatus = if (!item.isSeat) "非座位布局元素" else when {
+                                hidden -> "本机已隐藏"
+                                item.localOnly || !item.enabled -> "不可预约"
+                                item.status == "FREE" || item.status == "YESSELECT" -> "可用"
+                                else -> com.upcpocket.app.data.library.LibrarySeatStatus.label(item.status)
+                            }
+                            val color = when {
+                                !item.isSeat -> MaterialTheme.colorScheme.surfaceVariant
+                                hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                selected -> MaterialTheme.colorScheme.tertiary
+                                !item.enabled || item.localOnly -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.primaryContainer
+                                item.status == "AWAY" -> MaterialTheme.colorScheme.tertiaryContainer
+                                item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
+                                    MaterialTheme.colorScheme.errorContainer
+                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                            }
+                            val textColor = when {
+                                hidden -> MaterialTheme.colorScheme.outline
+                                selected -> MaterialTheme.colorScheme.onTertiary
+                                !item.enabled || item.localOnly -> MaterialTheme.colorScheme.onSurfaceVariant
+                                item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.onPrimaryContainer
+                                item.status == "AWAY" -> MaterialTheme.colorScheme.onTertiaryContainer
+                                item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
+                                    MaterialTheme.colorScheme.onErrorContainer
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            Box(
+                                Modifier
+                                    .offset(
+                                        x = (item.col.toFloat() - bounds.left).dp,
+                                        y = (item.row.toFloat() - bounds.top).dp,
+                                    )
+                                    .size(1.dp)
+                                    .padding(0.04.dp)
+                                    .clip(RoundedCornerShape(0.18.dp))
+                                    .background(color)
+                                    .then(if (hidden) Modifier.drawBehind {
+                                        drawLine(
+                                            color = Color.Gray,
+                                            start = Offset.Zero,
+                                            end = Offset(size.width, size.height),
+                                            strokeWidth = size.minDimension * 0.09f,
+                                        )
+                                    } else Modifier)
+                                    .semantics {
+                                        contentDescription = if (item.isSeat) {
+                                            "座位 ${item.name}，$positionStatus"
+                                        } else {
+                                            positionStatus
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (item.isSeat && showLabels && !hidden) {
+                                    Text(
+                                        item.name,
+                                        color = textColor,
+                                        fontSize = 0.38.sp,
+                                        lineHeight = 0.4.sp,
+                                        maxLines = 1,
+                                        softWrap = false,
+                                        overflow = TextOverflow.Clip,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                } else if (hidden && showLabels) {
+                                    Text("·", color = textColor, fontSize = 0.5.sp, maxLines = 1)
+                                }
+                            }
+                        }
+                    }
+                }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SeatCell(
-    seat: LibrarySeat,
-    selected: Boolean,
-    hidden: Boolean,
-    cell: androidx.compose.ui.unit.Dp,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
+internal fun SeatMapZoomControls(
+    onZoomOut: () -> Unit,
+    onZoomIn: () -> Unit,
+    onReset: () -> Unit,
 ) {
-    // 个人隐藏是弱化 + 独立标记，不删除占位、不重排，也不冒充官方占用状态。
-    val color = when {
-        hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
-        selected -> MaterialTheme.colorScheme.tertiary
-        !seat.enabled || seat.localOnly -> MaterialTheme.colorScheme.surfaceContainerHighest
-        seat.status == "FREE" || seat.status == "YESSELECT" -> MaterialTheme.colorScheme.primaryContainer
-        seat.status == "AWAY" -> MaterialTheme.colorScheme.tertiaryContainer
-        seat.status == "IN_USE" || seat.status == "BOOKED" || seat.status == "FULL" ->
-            MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.surfaceContainerHighest
-    }
-    val textColor = when {
-        hidden -> MaterialTheme.colorScheme.outline
-        selected -> MaterialTheme.colorScheme.onTertiary
-        !seat.enabled || seat.localOnly -> MaterialTheme.colorScheme.onSurfaceVariant
-        seat.status == "FREE" || seat.status == "YESSELECT" -> MaterialTheme.colorScheme.onPrimaryContainer
-        seat.status == "AWAY" -> MaterialTheme.colorScheme.onTertiaryContainer
-        seat.status == "IN_USE" || seat.status == "BOOKED" || seat.status == "FULL" ->
-            MaterialTheme.colorScheme.onErrorContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val status = if (hidden) "已隐藏" else com.upcpocket.app.data.library.LibrarySeatStatus.label(seat.status)
-    Box(
-        Modifier.size(cell).padding(1.5.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(color)
-            .then(if (hidden) Modifier.drawBehind {
-                drawLine(
-                    color = androidx.compose.ui.graphics.Color.Gray,
-                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(size.width, size.height),
-                    strokeWidth = 2f,
-                )
-            } else Modifier)
-            .semantics { contentDescription = "座位 ${seat.name}，$status" }
-            .combinedClickable(
-                enabled = seat.selectable || hidden,
-                onClick = onClick,
-                onLongClick = onLongClick,
-            ),
-        contentAlignment = Alignment.Center,
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = seat.name.takeLast(5),
-            fontSize = 8.sp,
-            lineHeight = 9.sp,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-            color = textColor,
-        )
+        com.upcpocket.app.ui.components.CampusTextButton(onClick = onZoomOut) { Text("缩小") }
+        com.upcpocket.app.ui.components.CampusTextButton(onClick = onZoomIn) { Text("放大") }
+        com.upcpocket.app.ui.components.CampusTextButton(onClick = onReset) { Text("复位") }
     }
 }
 
@@ -1705,6 +2195,9 @@ internal class LibrarySeatViewModel(
     private val repo: LibrarySeatRepository,
     private val hiddenSeatsStore: LibraryHiddenSeatsStore,
     private val ops: LibrarySeatOps,
+    private val startTimesLoader: suspend (String, String) -> List<LibraryTimeOption> = repo::startTimes,
+    /** 默认读取原房间布局；测试可注入本地布局，避免触发学校请求。 */
+    private val layoutLoader: suspend (String, String) -> LibrarySeatLayout = repo::layout,
     private val logoutCleanup: () -> Unit = {},
     /** 仅供状态恢复/测试注入初始状态；生产 factory 不传。 */
     initialState: UiState = UiState(),
@@ -1754,6 +2247,9 @@ internal class LibrarySeatViewModel(
         // ── 本机个人隐藏 ────────────────────────────────────────────────
         val hiddenSeatIds: Set<String> = emptySet(),
         val hiddenEntries: List<LibraryHiddenSeat> = emptyList(),
+        val hiddenLoaded: Boolean = false,
+        val hiddenBusy: Boolean = false,
+        val hiddenError: String? = null,
         val showHiddenSheet: Boolean = false,
         val hiddenActionError: String? = null,
         val undoHidden: LibraryHiddenSeat? = null,
@@ -1766,6 +2262,7 @@ internal class LibrarySeatViewModel(
     private var roomDetailRequestGeneration = 0L
     private var timeSearchGeneration = 0L
     private var hiddenGeneration = 0L
+    private val hiddenStoreMutex = Mutex()
 
     fun ensureLoaded() {
         if (state.filters != null || state.loading) return
@@ -1880,11 +2377,17 @@ internal class LibrarySeatViewModel(
             timeFinish = null,
             hiddenSeatIds = emptySet(),
             hiddenEntries = emptyList(),
+            hiddenLoaded = false,
+            hiddenBusy = false,
+            hiddenError = null,
+            showHiddenSheet = false,
+            hiddenActionError = null,
             undoHidden = null,
         ).clearTimeSelection()
+        loadHiddenSeats()
         viewModelScope.launch {
             try {
-                val layout = repo.layout(room.roomId, date)
+                val layout = layoutLoader(room.roomId, date)
                 if (generation != roomDetailRequestGeneration || state.room?.roomId != room.roomId) {
                     return@launch
                 }
@@ -1896,14 +2399,39 @@ internal class LibrarySeatViewModel(
     }
 
     fun chooseSeat(seat: LibrarySeat) {
-        if (!seat.selectable) return
+        when {
+            state.hiddenBusy -> {
+                state = state.copy(
+                    error = if (state.hiddenLoaded) {
+                        "本机隐藏偏好正在更新，请稍后再选座"
+                    } else {
+                        "正在恢复本机隐藏偏好，请稍后再选座"
+                    },
+                )
+                return
+            }
+            state.hiddenError != null -> {
+                state = state.copy(error = "隐藏偏好未恢复，请重试后再选座")
+                return
+            }
+            !state.hiddenLoaded -> {
+                state = state.copy(error = "隐藏偏好未恢复，请重试后再选座")
+                return
+            }
+            seat.id in state.hiddenSeatIds -> {
+                state = state.copy(error = "该座位已在本机隐藏，可在隐藏列表中恢复")
+                return
+            }
+            !seat.selectable -> return
+        }
+        val currentSeat = state.layout?.seats?.firstOrNull { it.id == seat.id && it.selectable } ?: return
         val date = state.date ?: return
         val requestToken = repo.session.value?.token
         val generation = ++timeRequestGeneration
         state = state.copy(
             loading = true,
             error = null,
-            seat = seat,
+            seat = currentSeat,
             startTimes = emptyList(),
             endTimes = emptyList(),
             start = null,
@@ -1912,8 +2440,8 @@ internal class LibrarySeatViewModel(
         )
         viewModelScope.launch {
             try {
-                val starts = repo.startTimes(seat.id, date)
-                if (generation != timeRequestGeneration || state.seat?.id != seat.id) return@launch
+                val starts = startTimesLoader(currentSeat.id, date)
+                if (generation != timeRequestGeneration || state.seat?.id != currentSeat.id) return@launch
                 state = state.copy(
                     startTimes = starts,
                     loading = false,
@@ -1928,11 +2456,15 @@ internal class LibrarySeatViewModel(
     fun closeRoom() {
         timeRequestGeneration++
         roomDetailRequestGeneration++
+        hiddenGeneration++
         state = state.afterCloseRoom()
     }
 
     fun openTimeSheet() {
-        if (state.seat != null) {
+        val selectedSeat = state.seat ?: return
+        if (state.hiddenLoaded && !state.hiddenBusy &&
+            state.hiddenError == null && selectedSeat.id !in state.hiddenSeatIds
+        ) {
             state = state.copy(showTimeDialog = true, showConfirm = false)
         }
     }
@@ -2142,6 +2674,10 @@ internal class LibrarySeatViewModel(
 
     /** 选中一个区间候选：调官方 startTimes/endTimes 匹配 HH:mm，只用原始 id。 */
     fun selectTimeCandidate(seat: LibrarySeat) {
+        if (!state.hiddenLoaded || state.hiddenBusy || state.hiddenError != null) {
+            state = state.copy(error = "隐藏偏好未恢复，请重试后再选座")
+            return
+        }
         if (!seat.timeSelectable) return
         val key = state.currentTimeSearchKey() ?: return
         val result = state.timeResult ?: return
@@ -2206,7 +2742,9 @@ internal class LibrarySeatViewModel(
 
     fun requestTimeReservation() {
         if (state.reservationSubmitted) return
-        if (!state.canConfirmTimeReservation()) {
+        if (!state.hiddenLoaded || state.hiddenBusy || state.hiddenError != null ||
+            !state.canConfirmTimeReservation()
+        ) {
             state = state.copy(error = "所选座位或时段已变化，请重新查找")
             return
         }
@@ -2222,7 +2760,9 @@ internal class LibrarySeatViewModel(
      */
     fun confirmTimeReservation() {
         if (state.reservationSubmitted) return
-        if (!state.canConfirmTimeReservation()) {
+        if (!state.hiddenLoaded || state.hiddenBusy || state.hiddenError != null ||
+            !state.canConfirmTimeReservation()
+        ) {
             state = state.copy(showConfirm = false, error = "所选座位或时段已变化，请重新查找")
             return
         }
@@ -2434,25 +2974,115 @@ internal class LibrarySeatViewModel(
      * 不污染新房间。
      */
     private fun loadHiddenSeats() {
-        val buildingId = state.building?.id ?: return
-        val roomId = state.room?.roomId ?: return
+        if (state.hiddenBusy) return
+        val buildingId = state.building?.id
+        val roomId = state.room?.roomId
+        if (buildingId == null || roomId == null) {
+            state = state.copy(
+                hiddenLoaded = false,
+                hiddenBusy = false,
+                hiddenError = "当前房间信息不完整，无法恢复隐藏偏好",
+            )
+            return
+        }
         val generation = ++hiddenGeneration
+        state = state.copy(hiddenBusy = true, hiddenLoaded = false, hiddenError = null)
         viewModelScope.launch {
+            hiddenStoreMutex.lock()
             try {
+                if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
                 val entries = hiddenSeatsStore.entries(buildingId, roomId)
                 if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
-                state = state.copy(
-                    hiddenSeatIds = entries.mapTo(linkedSetOf()) { it.seatId },
-                    hiddenEntries = entries,
-                )
+                publishHiddenEntries(entries)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 if (isHiddenContextCurrent(generation, buildingId, roomId)) {
-                    state = state.copy(hiddenActionError = "隐藏名单读取失败")
+                    state = state.copy(
+                        hiddenLoaded = false,
+                        hiddenBusy = false,
+                        hiddenError = "隐藏名单读取失败",
+                    )
                 }
+            } finally {
+                hiddenStoreMutex.unlock()
             }
         }
+    }
+
+    private fun publishHiddenEntries(
+        entries: List<LibraryHiddenSeat>,
+        updateUndo: (LibraryHiddenSeat?) -> LibraryHiddenSeat? = { it },
+    ) {
+        val hiddenIds = entries.mapTo(linkedSetOf()) { it.seatId }
+        val selectedSeatHidden = state.seat?.id?.let { it in hiddenIds } == true
+        val selectedTimeSeatHidden = state.timeSelectedSeat?.id?.let { it in hiddenIds } == true
+        if (selectedSeatHidden || selectedTimeSeatHidden) timeRequestGeneration++
+        state = state.copy(
+            hiddenSeatIds = hiddenIds,
+            hiddenEntries = entries,
+            hiddenLoaded = true,
+            hiddenBusy = false,
+            hiddenError = null,
+            seat = state.seat.takeUnless { selectedSeatHidden },
+            startTimes = if (selectedSeatHidden) emptyList() else state.startTimes,
+            endTimes = if (selectedSeatHidden) emptyList() else state.endTimes,
+            start = if (selectedSeatHidden) null else state.start,
+            end = if (selectedSeatHidden) null else state.end,
+            showTimeDialog = if (selectedSeatHidden) false else state.showTimeDialog,
+            timeSelectedSeat = state.timeSelectedSeat.takeUnless { selectedTimeSeatHidden },
+            timeStartTimes = if (selectedTimeSeatHidden) emptyList() else state.timeStartTimes,
+            timeEndTimes = if (selectedTimeSeatHidden) emptyList() else state.timeEndTimes,
+            timeStart = if (selectedTimeSeatHidden) null else state.timeStart,
+            timeStop = if (selectedTimeSeatHidden) null else state.timeStop,
+            timeSelecting = if (selectedTimeSeatHidden) false else state.timeSelecting,
+            showConfirm = if (selectedSeatHidden || selectedTimeSeatHidden) false else state.showConfirm,
+            undoHidden = updateUndo(state.undoHidden),
+            error = null,
+        )
+    }
+
+    private fun performHiddenWrite(
+        buildingId: String,
+        roomId: String,
+        mutation: suspend () -> Boolean,
+        beforeWrite: (UiState) -> UiState = { it },
+        updateUndo: (LibraryHiddenSeat?) -> LibraryHiddenSeat? = { it },
+    ) {
+        if (state.hiddenBusy) return
+        val generation = ++hiddenGeneration
+        state = beforeWrite(state).copy(
+            hiddenBusy = true,
+            hiddenActionError = null,
+            hiddenError = null,
+            error = null,
+        )
+        viewModelScope.launch {
+            hiddenStoreMutex.lock()
+            try {
+                if (!mutation()) error("hidden preference write failed")
+                val entries = hiddenSeatsStore.entries(buildingId, roomId)
+                if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
+                publishHiddenEntries(entries, updateUndo)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
+                    state = state.copy(
+                        hiddenBusy = false,
+                        hiddenLoaded = false,
+                        hiddenError = "隐藏名单保存失败，请重试恢复",
+                        hiddenActionError = "保存失败，请重试",
+                    )
+                }
+            } finally {
+                hiddenStoreMutex.unlock()
+            }
+        }
+    }
+
+    fun retryHiddenSeats() {
+        loadHiddenSeats()
     }
 
     private fun isHiddenContextCurrent(generation: Long, buildingId: String, roomId: String): Boolean =
@@ -2461,6 +3091,14 @@ internal class LibrarySeatViewModel(
             state.room?.roomId == roomId
 
     fun hideSeat(seat: LibrarySeat) {
+        if (state.hiddenBusy) {
+            state = state.copy(error = "本机隐藏偏好正在更新，请稍后再隐藏")
+            return
+        }
+        if (!state.hiddenLoaded || state.hiddenError != null) {
+            state = state.copy(error = "隐藏偏好未恢复，请重试后再隐藏")
+            return
+        }
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
         val entry = LibraryHiddenSeat(
@@ -2470,67 +3108,49 @@ internal class LibrarySeatViewModel(
             seatId = seat.id,
             nameSnapshot = seat.name,
         )
-        // 立即清掉正被选中的座位/确认与在途选时（不等持久化），避免隐藏期间仍可确认；
-        // 代次递增使迟到的 startTimes/endTimes 不能恢复确认。
+        // 在写入前立即清掉选中状态；performHiddenWrite 同步置忙，
+        // 直到持久化并重读房间名单完成后才允许再次选座或确认。
         timeRequestGeneration++
-        state = state.copy(
-            timeSelectedSeat = state.timeSelectedSeat?.takeIf { it.id != seat.id },
-            seat = state.seat?.takeIf { it.id != seat.id },
-            showConfirm = false,
-            timeStartTimes = emptyList(),
-            timeEndTimes = emptyList(),
-            timeStart = null,
-            timeStop = null,
-            timeSelecting = false,
+        performHiddenWrite(
+            buildingId = buildingId,
+            roomId = roomId,
+            mutation = { hiddenSeatsStore.hide(entry) },
+            beforeWrite = { current ->
+                val selectedSeat = current.seat?.id == seat.id
+                current.copy(
+                    timeSelectedSeat = current.timeSelectedSeat?.takeUnless { it.id == seat.id },
+                    seat = current.seat?.takeUnless { it.id == seat.id },
+                    startTimes = if (selectedSeat) emptyList() else current.startTimes,
+                    endTimes = if (selectedSeat) emptyList() else current.endTimes,
+                    start = if (selectedSeat) null else current.start,
+                    end = if (selectedSeat) null else current.end,
+                    showTimeDialog = if (selectedSeat) false else current.showTimeDialog,
+                    showConfirm = false,
+                    timeStartTimes = emptyList(),
+                    timeEndTimes = emptyList(),
+                    timeStart = null,
+                    timeStop = null,
+                    timeSelecting = false,
+                )
+            },
+            updateUndo = { entry },
         )
-        val generation = ++hiddenGeneration
-        viewModelScope.launch {
-            val saved = try {
-                hiddenSeatsStore.hide(entry)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                false
-            }
-            if (!saved) {
-                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
-                    state = state.copy(hiddenActionError = "保存失败，请重试")
-                }
-                return@launch
-            }
-            // 存储偏好可完成在 A，但 UI 发布必须校验仍是捕获的房间 + 代次。
-            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
-            state = state.copy(
-                hiddenSeatIds = state.hiddenSeatIds + seat.id,
-                hiddenEntries = state.hiddenEntries + entry,
-                undoHidden = entry,
-                hiddenActionError = null,
-            )
-            loadHiddenSeats()
-        }
     }
 
     fun undoHide() {
-        val entry = state.undoHidden ?: return
-        val generation = ++hiddenGeneration
-        viewModelScope.launch {
-            val saved = try {
-                hiddenSeatsStore.restore(entry.buildingId, entry.roomId, entry.seatId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                false
-            }
-            if (!saved) {
-                if (generation == hiddenGeneration) {
-                    state = state.copy(hiddenActionError = "保存失败，请重试")
-                }
-                return@launch
-            }
-            if (generation != hiddenGeneration) return@launch
-            state = state.copy(undoHidden = null)
-            loadHiddenSeats()
+        if (state.hiddenBusy) {
+            state = state.copy(hiddenActionError = "隐藏名单正在更新，请稍后再撤销")
+            return
         }
+        if (!state.hiddenLoaded || state.hiddenError != null) return
+        val entry = state.undoHidden ?: return
+        if (state.building?.id != entry.buildingId || state.room?.roomId != entry.roomId) return
+        performHiddenWrite(
+            buildingId = entry.buildingId,
+            roomId = entry.roomId,
+            mutation = { hiddenSeatsStore.restore(entry.buildingId, entry.roomId, entry.seatId) },
+            updateUndo = { null },
+        )
     }
 
     fun clearUndoHide() {
@@ -2539,7 +3159,7 @@ internal class LibrarySeatViewModel(
 
     fun openHiddenSheet() {
         state = state.copy(showHiddenSheet = true)
-        loadHiddenSeats()
+        if (!state.hiddenBusy) loadHiddenSeats()
     }
 
     fun closeHiddenSheet() {
@@ -2547,49 +3167,27 @@ internal class LibrarySeatViewModel(
     }
 
     fun restoreHidden(seatId: String) {
+        if (!state.hiddenLoaded || state.hiddenBusy || state.hiddenError != null) return
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
-        val generation = ++hiddenGeneration
-        viewModelScope.launch {
-            val saved = try {
-                hiddenSeatsStore.restore(buildingId, roomId, seatId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                false
-            }
-            if (!saved) {
-                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
-                    state = state.copy(hiddenActionError = "保存失败，请重试")
-                }
-                return@launch
-            }
-            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
-            loadHiddenSeats()
-        }
+        performHiddenWrite(
+            buildingId = buildingId,
+            roomId = roomId,
+            mutation = { hiddenSeatsStore.restore(buildingId, roomId, seatId) },
+            updateUndo = { undo -> undo?.takeUnless { it.seatId == seatId } },
+        )
     }
 
     fun restoreAllHidden() {
+        if (!state.hiddenLoaded || state.hiddenBusy || state.hiddenError != null) return
         val buildingId = state.building?.id ?: return
         val roomId = state.room?.roomId ?: return
-        val generation = ++hiddenGeneration
-        viewModelScope.launch {
-            val saved = try {
-                hiddenSeatsStore.restoreAll(buildingId, roomId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                false
-            }
-            if (!saved) {
-                if (isHiddenContextCurrent(generation, buildingId, roomId)) {
-                    state = state.copy(hiddenActionError = "保存失败，请重试")
-                }
-                return@launch
-            }
-            if (!isHiddenContextCurrent(generation, buildingId, roomId)) return@launch
-            loadHiddenSeats()
-        }
+        performHiddenWrite(
+            buildingId = buildingId,
+            roomId = roomId,
+            mutation = { hiddenSeatsStore.restoreAll(buildingId, roomId) },
+            updateUndo = { null },
+        )
     }
 
     fun clearHiddenActionError() {

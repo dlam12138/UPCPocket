@@ -2,6 +2,22 @@
 <resources>
     <!-- 深炭近实底；文字仍用系统级高对比，不把“深色”做成灰蒙蒙的玻璃。 -->
     <color name="widget_surface">#1C1C1E</color>
+    <color name="widget_surface_translucent">#CC1C1C1E</color>
+    <color name="widget_surface_glass">#D61C1C1E</color>
+    <color name="widget_glass_highlight">#55FFFFFF</color>
+    <color name="widget_glass_edge">#55FFFFFF</color>
+    <color name="widget_frosted_top">#A613161C</color>
+    <color name="widget_frosted_mid">#A2080B12</color>
+    <color name="widget_frosted_bottom">#A0000208</color>
+    <color name="widget_frosted_edge">#33FFFFFF</color>
+    <color name="widget_frosted_lens_haze">#0AD9EAFF</color>
+    <color name="widget_frosted_lens_arc">#90DCEEFF</color>
+    <color name="widget_frosted_lens_arc_soft">#5BB8DDF4</color>
+    <color name="widget_frosted_lens_bounce">#65C7E3F7</color>
+    <color name="widget_frosted_secondary">#FBFCFE</color>
+    <color name="widget_frosted_tertiary">#FBFCFE</color>
+    <color name="widget_frosted_accent">#E8FFEC</color>
+    <color name="widget_frosted_error">#FFF5F2</color>
     <color name="widget_primary">#F5F5F7</color>
     <color name="widget_secondary">#A1A1A6</color>
     <color name="widget_tertiary">#8E8E93</color>

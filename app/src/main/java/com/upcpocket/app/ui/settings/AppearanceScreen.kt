@@ -20,14 +20,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import com.upcpocket.app.ui.components.GlassCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.CampusFilterChip
+import com.upcpocket.app.ui.components.CampusTopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -89,13 +89,11 @@ class AppearanceViewModel : ViewModel() {
     fun setDarkMode(mode: DarkMode) {
         viewModelScope.launch { store.setDarkMode(mode) }
     }
+
 }
 
 /**
- * 「外观」页：切换整个 App 的配色与深浅色。
- *
- * 点一下**立刻全局生效**（主题在 MainActivity 上，改完整个 App 立刻重绘），
- * 所以每行左边那组色块本身就是预览色，不用再单独做一块预览区。
+ * 「外观」页：设置深浅色与配色。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -108,7 +106,7 @@ fun AppearanceScreen(
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            CampusTopAppBar(
                 title = { Text("外观") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -133,7 +131,7 @@ fun AppearanceScreen(
             )
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DarkMode.entries.forEach { mode ->
-                    FilterChip(
+                    CampusFilterChip(
                         selected = prefs.darkMode == mode,
                         onClick = { vm.setDarkMode(mode) },
                         label = { Text(mode.label()) },

@@ -116,7 +116,7 @@ fun ChaoxingLoginScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onBack) { Text("返回") }
+            com.upcpocket.app.ui.components.CampusButton(onClick = onBack) { Text("返回") }
         }
         return
     }
@@ -140,7 +140,7 @@ fun ChaoxingLoginScreen(
                 color = MaterialTheme.colorScheme.error,
             )
             if (cleanupState == ChaoxingCleanupState.FAILED) {
-                Button(onClick = {
+                com.upcpocket.app.ui.components.CampusButton(onClick = {
                     scope.launch {
                         if (service.retryCookieCleanup()) {
                             entry = service.beginWebLogin()
@@ -151,7 +151,7 @@ fun ChaoxingLoginScreen(
                     }
                 }) { Text("重试清理") }
             }
-            TextButton(onClick = onBack) { Text("返回") }
+            com.upcpocket.app.ui.components.CampusTextButton(onClick = onBack) { Text("返回") }
         }
         return
     }
@@ -249,8 +249,9 @@ fun ChaoxingLoginScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("学校网页登录") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -552,7 +553,7 @@ fun ChaoxingLoginScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                                 if (showSlowHint) {
-                                    TextButton(onClick = { reload() }) { Text("重新加载") }
+                                    com.upcpocket.app.ui.components.CampusTextButton(onClick = { reload() }) { Text("重新加载") }
                                 }
                             }
                         }
@@ -578,12 +579,12 @@ fun ChaoxingLoginScreen(
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.padding(top = 8.dp),
                             )
-                            Button(
+                            com.upcpocket.app.ui.components.CampusButton(
                                 onClick = { reload() },
                                 modifier = Modifier.padding(top = 12.dp),
                             ) { Text("重新加载") }
-                            TextButton(onClick = { clearOldSession() }) { Text("清除登录") }
-                            TextButton(onClick = onBack) { Text("返回") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = { clearOldSession() }) { Text("清除登录") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = onBack) { Text("返回") }
                         }
                     }
                 }

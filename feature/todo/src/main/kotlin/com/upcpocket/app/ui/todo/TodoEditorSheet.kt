@@ -9,22 +9,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -35,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -42,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
@@ -55,13 +54,14 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
  * 新增/编辑待办底部面板。
  *
  * 新增模式回车保存后保留面板并清空输入，便于连续添加；编辑模式回车保存并关闭。
- * 提醒时间默认当前系统本地时间，明确显示；空白标题不可保存。
+ * 截止与一次性提醒分别编辑，时间均按设备本地日期和时分保存；空白标题不可保存。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,18 +75,17 @@ fun TodoEditorSheet(
     val zone = remember { ZoneId.systemDefault() }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
 
-    var title by remember(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
-    var reminderEnabled by remember(initialTask?.id) {
-        mutableStateOf(initialTask?.reminderAt != null)
-    }
-    var reminderAt by remember(initialTask?.id) {
-        mutableStateOf(initialTask?.reminderAt ?: defaultReminderNow(zone))
-    }
-    var showDate by remember { mutableStateOf(false) }
-    var showTime by remember { mutableStateOf(false) }
+    var title by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
+    var dueAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.dueAt) }
+    var reminderAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.reminderAt) }
+    var showDueDate by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
+    var showDueTime by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
+    var showReminderDate by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
+    var showReminderTime by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var access by remember { mutableStateOf(store.reminderAccess()) }
@@ -109,17 +108,22 @@ fun TodoEditorSheet(
         saving = true
         errorText = null
         scope.launch {
-            runCatching {
-                if (initialTask == null) {
-                    store.add(trimmed, reminderAt.takeIf { reminderEnabled })
+            try {
+                val saved = if (initialTask == null) {
+                    store.add(trimmed, reminderAt, dueAt)
+                    true
                 } else {
-                    store.edit(initialTask.id, trimmed, reminderAt.takeIf { reminderEnabled })
+                    store.edit(initialTask.id, trimmed, reminderAt, dueAt)
                 }
-            }.onSuccess {
+                if (!saved) {
+                    saving = false
+                    errorText = "待办已不存在，无法保存"
+                    return@launch
+                }
                 if (initialTask == null && keepOpen) {
                     title = ""
-                    reminderEnabled = false
-                    reminderAt = defaultReminderNow(zone)
+                    reminderAt = null
+                    dueAt = null
                     saving = false
                     runCatching { focusRequester.requestFocus() }
                     keyboard?.show()
@@ -127,7 +131,10 @@ fun TodoEditorSheet(
                     saving = false
                     onDismiss()
                 }
-            }.onFailure {
+            } catch (cancelled: CancellationException) {
+                saving = false
+                throw cancelled
+            } catch (_: Exception) {
                 saving = false
                 errorText = "保存失败，请重试"
             }
@@ -135,8 +142,11 @@ fun TodoEditorSheet(
     }
 
     fun toggleReminder(enabled: Boolean) {
-        reminderEnabled = enabled
-        if (!enabled) return
+        if (!enabled) {
+            reminderAt = null
+            return
+        }
+        reminderAt = reminderAt ?: currentLocalMinute(zone)
         access = store.reminderAccess()
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -152,12 +162,13 @@ fun TodoEditorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -173,6 +184,13 @@ fun TodoEditorSheet(
                     .focusRequester(focusRequester)
                     .testTag("todo_title_input"),
                 label = { Text("标题") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                ),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
@@ -192,28 +210,86 @@ fun TodoEditorSheet(
                 Column(Modifier.weight(1f)) {
                     Text("提醒", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        if (reminderEnabled) TodoFormat.editorTime(reminderAt, zone) else "不提醒",
+                        reminderAt?.let { TodoFormat.editorTime(it, zone) } ?: "不提醒",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
-                    checked = reminderEnabled,
+                com.upcpocket.app.ui.components.CampusSwitch(
+                    checked = reminderAt != null,
                     onCheckedChange = ::toggleReminder,
                     modifier = Modifier.testTag("todo_reminder_switch"),
                 )
             }
 
-            if (reminderEnabled) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { showDate = true }) {
-                        Text(TodoFormat.date(reminderAt, zone))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("截止", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            dueAt?.let { TodoFormat.editorTime(it, zone) } ?: "不设截止",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("todo_due_value"),
+                        )
                     }
-                    OutlinedButton(onClick = { showTime = true }) {
-                        Text(TodoFormat.clock(reminderAt, zone))
+                    if (dueAt != null) {
+                        com.upcpocket.app.ui.components.CampusTextButton(
+                            onClick = {
+                                focusManager.clearFocus()
+                                dueAt = null
+                            },
+                            modifier = Modifier.testTag("todo_clear_due"),
+                        ) { Text("清除") }
                     }
                 }
-                if (reminderAt <= System.currentTimeMillis()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showDueDate = true
+                        },
+                        modifier = Modifier.testTag("todo_due_date"),
+                    ) {
+                        Text(dueAt?.let { TodoFormat.date(it, zone) } ?: "选择日期")
+                    }
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showDueTime = true
+                        },
+                        modifier = Modifier.testTag("todo_due_time"),
+                    ) {
+                        Text(dueAt?.let { TodoFormat.clock(it, zone) } ?: "选择时间")
+                    }
+                }
+            }
+
+            if (reminderAt != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showReminderDate = true
+                        },
+                        modifier = Modifier.testTag("todo_reminder_date"),
+                    ) {
+                        Text(TodoFormat.date(reminderAt!!, zone))
+                    }
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                        onClick = {
+                            focusManager.clearFocus()
+                            showReminderTime = true
+                        },
+                        modifier = Modifier.testTag("todo_reminder_time"),
+                    ) {
+                        Text(TodoFormat.clock(reminderAt!!, zone))
+                    }
+                }
+                if (reminderAt!! <= System.currentTimeMillis()) {
                     val alreadyFired = initialTask?.let {
                         it.reminderAt == reminderAt && it.reminderFiredAt != null
                     } == true
@@ -251,9 +327,9 @@ fun TodoEditorSheet(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (initialTask != null) {
-                    TextButton(
+                    com.upcpocket.app.ui.components.CampusTextButton(
                         onClick = {
-                            if (saving) return@TextButton
+                            if (saving) return@CampusTextButton
                             saving = true
                             scope.launch {
                                 store.delete(initialTask.id)?.let(onDeleted)
@@ -262,13 +338,18 @@ fun TodoEditorSheet(
                             }
                         },
                         enabled = !saving,
+                        contentColor = MaterialTheme.colorScheme.error,
                     ) {
-                        Text("删除", color = MaterialTheme.colorScheme.error)
+                        Text("删除")
                     }
                 }
                 Column(Modifier.weight(1f)) {}
-                TextButton(onClick = onDismiss, enabled = !saving) { Text("取消") }
-                Button(
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = onDismiss,
+                    enabled = !saving,
+                    modifier = Modifier.testTag("todo_editor_cancel"),
+                ) { Text("取消") }
+                com.upcpocket.app.ui.components.CampusButton(
                     onClick = { save(keepOpen = false) },
                     enabled = title.trim().isNotEmpty() && !saving,
                     modifier = Modifier.testTag("todo_save"),
@@ -279,64 +360,126 @@ fun TodoEditorSheet(
         }
     }
 
-    if (showDate) {
+    if (showDueDate) {
+        val dueBase = dueAt ?: currentLocalMinute(zone)
         val pickerState = rememberDatePickerState(
-            initialSelectedDateMillis = utcDateMillis(reminderAt, zone),
+            initialSelectedDateMillis = utcDateMillis(dueBase, zone),
         )
         DatePickerDialog(
-            onDismissRequest = { showDate = false },
+            onDismissRequest = { showDueDate = false },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.components.CampusTextButton(
                     onClick = {
                         pickerState.selectedDateMillis?.let { millis ->
                             val date = Instant.ofEpochMilli(millis)
                                 .atZone(ZoneOffset.UTC)
                                 .toLocalDate()
-                            reminderAt = combine(date, instantTime(reminderAt, zone), zone)
+                            dueAt = combine(date, instantTime(dueBase, zone), zone)
                         }
-                        showDate = false
+                        showDueDate = false
                     },
+                    modifier = Modifier.testTag("todo_due_date_confirm"),
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showDate = false }) { Text("取消") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = { showDueDate = false }) { Text("取消") }
             },
         ) {
             DatePicker(state = pickerState)
         }
     }
 
-    if (showTime) {
-        val time = instantTime(reminderAt, zone)
+    if (showDueTime) {
+        val dueBase = dueAt ?: currentLocalMinute(zone)
+        val time = instantTime(dueBase, zone)
         val timeState = rememberTimePickerState(
             initialHour = time.hour,
             initialMinute = time.minute,
             is24Hour = true,
         )
-        AlertDialog(
-            onDismissRequest = { showTime = false },
-            title = { Text("选择提醒时间") },
+        com.upcpocket.app.ui.components.CampusAlertDialog(
+            onDismissRequest = { showDueTime = false },
+            title = { Text("选择截止时间") },
             text = { TimePicker(state = timeState) },
             confirmButton = {
-                TextButton(
+                com.upcpocket.app.ui.components.CampusTextButton(
                     onClick = {
-                        reminderAt = combine(
-                            instantDate(reminderAt, zone),
+                        dueAt = combine(
+                            instantDate(dueBase, zone),
                             LocalTime.of(timeState.hour, timeState.minute),
                             zone,
                         )
-                        showTime = false
+                        showDueTime = false
+                    },
+                    modifier = Modifier.testTag("todo_due_time_confirm"),
+                ) { Text("确定") }
+            },
+            dismissButton = {
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = { showDueTime = false }) { Text("取消") }
+            },
+        )
+    }
+
+    if (showReminderDate) {
+        val reminder = reminderAt ?: currentLocalMinute(zone)
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = utcDateMillis(reminder, zone),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showReminderDate = false },
+            confirmButton = {
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = {
+                        pickerState.selectedDateMillis?.let { millis ->
+                            val date = Instant.ofEpochMilli(millis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                            reminderAt = combine(date, instantTime(reminder, zone), zone)
+                        }
+                        showReminderDate = false
                     },
                 ) { Text("确定") }
             },
             dismissButton = {
-                TextButton(onClick = { showTime = false }) { Text("取消") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = { showReminderDate = false }) { Text("取消") }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+
+    if (showReminderTime) {
+        val reminder = reminderAt ?: currentLocalMinute(zone)
+        val time = instantTime(reminder, zone)
+        val timeState = rememberTimePickerState(
+            initialHour = time.hour,
+            initialMinute = time.minute,
+            is24Hour = true,
+        )
+        com.upcpocket.app.ui.components.CampusAlertDialog(
+            onDismissRequest = { showReminderTime = false },
+            title = { Text("选择提醒时间") },
+            text = { TimePicker(state = timeState) },
+            confirmButton = {
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = {
+                        reminderAt = combine(
+                            instantDate(reminder, zone),
+                            LocalTime.of(timeState.hour, timeState.minute),
+                            zone,
+                        )
+                        showReminderTime = false
+                    },
+                ) { Text("确定") }
+            },
+            dismissButton = {
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = { showReminderTime = false }) { Text("取消") }
             },
         )
     }
 }
 
-private fun defaultReminderNow(zone: ZoneId): Long =
+private fun currentLocalMinute(zone: ZoneId): Long =
     Instant.ofEpochMilli(System.currentTimeMillis())
         .atZone(zone)
         .withSecond(0)

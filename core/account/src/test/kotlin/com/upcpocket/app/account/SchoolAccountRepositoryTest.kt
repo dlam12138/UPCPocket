@@ -73,6 +73,26 @@ class SchoolAccountRepositoryTest {
     }
 
     @Test
+    fun savedPrefixedStudentIdIsPublishedAfterRestore() = runTest {
+        val store = MemoryStore()
+        val crypto = FakeCrypto()
+        val first = repository(store, crypto)
+        first.restore()
+        assertEquals(
+            SchoolAccountWriteResult.Success,
+            first.save("TS999999999", oldPassword.toCharArray()),
+        )
+
+        val reopened = repository(store, crypto)
+        reopened.restore()
+
+        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
+        assertTrue(reopened.state.value.studentIdAvailable)
+        assertEquals("TS999999999", reopened.studentIdentity.value?.studentId)
+        assertEquals(AccountGeneration(1), reopened.studentIdentity.value?.credentialGeneration)
+    }
+
+    @Test
     fun identityVerifierComparesOnlyTheCurrentAccountAndGeneration() = runTest {
         val repository = repository(MemoryStore())
         repository.restore()

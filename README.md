@@ -105,6 +105,8 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取矩阵执行，兼容状态与本轮范围见[文档建设报告](docs/agent-native/2026-11-16-audit-and-delivery.md)。
 
+[2.0.8 开发记录](docs/releases/2.0.8-development.md)：五 Tab / 服务目录、研究生学号适配、待办截止与组件、座位列表 / 地图及校历已在本地实现。保留座号、深色对比度和课表排版修复。应用内继续使用 Material 3。长按桌面 → 小组件 → UPC Pocket 新版，可为校园卡、电量、课表或待办单独添加「玻璃版」，原组件沿用已有外观与布局。此版本仍在开发，上方下载和使用说明对应 2.0.7。候选产物与验证范围见开发记录。
+
 [2.0.7 开发记录](docs/releases/2.0.7-development.md)：校园卡连接与诊断、小组件自动更新及总余额显示均已通过用户验收，正式包沿用最终候选原字节。公告审核后完成推送与六附件公开发布，旧版更新线路仍为 2.0.3；详见[正式记录](docs/releases/2.0.7.md)。
 
 研讨间研究资料保留归档，不属于当前产品功能；当前版本不含课程编辑、导出或课程提醒；待办提醒独立提供。校园卡充值的来源、实现与验证见 [集成记录](docs/releases/2.0.6-card-recharge.md)。

@@ -36,8 +36,12 @@ val TODO_ROUTE: PluginRouteId = PluginRouteId.parse("todo.list")
  */
 class TodoPlugin(
     context: Context,
+    private val onTasksChanged: () -> Unit,
     openAppIntent: (String) -> PendingIntent,
 ) : Plugin, PluginUiContributor, PluginAppLifecycle {
+
+    constructor(context: Context, openAppIntent: (String) -> PendingIntent) :
+        this(context, {}, openAppIntent)
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = TODO_PLUGIN_ID,
@@ -45,7 +49,7 @@ class TodoPlugin(
         capabilities = setOf(TodoCapabilities.store.id),
     )
 
-    val service: TodoService = TodoService(context, openAppIntent)
+    val service: TodoService = TodoService(context, onTasksChanged, openAppIntent)
 
     override fun capabilities(): List<PluginCapability> =
         listOf(PluginCapability(TodoCapabilities.store, service))

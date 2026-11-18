@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_todo_title">待办</string>
+    <string name="widget_todo_description">显示本机未完成待办及截止时间</string>
+    <string name="widget_todo_glass_title">待办清单 · 玻璃版</string>
+    <string name="widget_todo_glass_description">待办清单组件，固定静态玻璃外观</string>
+    <string name="widget_todo_count">%1$d 项未完成</string>
+    <string name="widget_todo_count_preview">待办</string>
+    <string name="widget_todo_count_unknown">—</string>
+    <string name="widget_todo_create_glyph">+</string>
+    <string name="widget_todo_create_description">新建待办</string>
+    <string name="widget_todo_check_preview">完成待办</string>
+    <string name="widget_todo_check_description">完成待办：%1$s</string>
+    <string name="widget_todo_unavailable">待办功能不可用</string>
+    <string name="widget_todo_not_restored">正在恢复本机待办</string>
+    <string name="widget_todo_read_failed">读取失败 · 打开应用重试</string>
+    <string name="widget_todo_empty">暂无待办</string>
+    <string name="widget_todo_expand">增加组件高度以显示待办</string>
+    <string name="widget_todo_due">截止 %1$s</string>
+    <string name="widget_todo_overdue">已逾期 · 截止 %1$s</string>
+    <string name="widget_todo_more">还有 %1$d 项</string>
+</resources>

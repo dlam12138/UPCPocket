@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.RemoteViews
 import androidx.compose.ui.graphics.toArgb
 import com.upcpocket.app.designsystem.R as DesignSystemR
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.feature.timetable.R
 import java.time.LocalDate
@@ -32,15 +33,17 @@ object TimetableWidgetRenderer {
         refreshing: Boolean,
         failed: Boolean,
         openIntent: PendingIntent,
+        appearance: WidgetAppearance = WidgetAppearance.SOLID,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_timetable_today)
+        WidgetRenderSupport.applyAppearance(views, R.id.widget_timetable_root, appearance)
         views.setOnClickPendingIntent(R.id.widget_timetable_root, openIntent)
 
-        val primary = context.getColor(DesignSystemR.color.widget_primary)
-        val secondary = context.getColor(DesignSystemR.color.widget_secondary)
-        val tertiary = context.getColor(DesignSystemR.color.widget_tertiary)
-        val accent = context.getColor(DesignSystemR.color.widget_accent)
-        val error = context.getColor(DesignSystemR.color.widget_error)
+        val primary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_primary))
+        val secondary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_secondary))
+        val tertiary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_tertiary))
+        val accent = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_accent))
+        val error = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_error))
 
         views.setTextViewTextSize(
             R.id.widget_timetable_course,
@@ -79,12 +82,18 @@ object TimetableWidgetRenderer {
         views.setViewVisibility(R.id.widget_timetable_date, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_status, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_secondary, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_side_panel, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_upcoming_1, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_upcoming_2, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_upcoming_3, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_upcoming_more, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_footer, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_bar, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_time, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_location, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_main, View.VISIBLE)
         views.setTextColor(R.id.widget_timetable_course, primary)
+        views.setTextColor(R.id.widget_timetable_date, secondary)
         views.setTextColor(R.id.widget_timetable_time, secondary)
         views.setTextColor(R.id.widget_timetable_location, secondary)
         views.setTextColor(R.id.widget_timetable_footer, tertiary)
@@ -215,7 +224,7 @@ object TimetableWidgetRenderer {
                 hint = context.getString(R.string.widget_timetable_empty_hint),
                 hintColor = secondary,
                 footer = footerText(context, snapshot, layout, refreshing, failed),
-                footerColor = footerColor(context, refreshing, failed),
+                footerColor = footerColor(context, refreshing, failed, appearance),
                 primary = primary,
                 layout = layout,
             )
@@ -274,7 +283,7 @@ object TimetableWidgetRenderer {
             views.setTextViewText(R.id.widget_timetable_footer, footer)
             views.setTextColor(
                 R.id.widget_timetable_footer,
-                footerColor(context, refreshing, failed),
+                footerColor(context, refreshing, failed, appearance),
             )
             views.setViewVisibility(R.id.widget_timetable_footer, View.VISIBLE)
         } else if (failed) {
@@ -287,32 +296,85 @@ object TimetableWidgetRenderer {
             views.setViewVisibility(R.id.widget_timetable_location, View.VISIBLE)
         }
 
-        val secondaryCourse = when {
-            current != null -> next
-            next != null -> snapshot.courses.firstOrNull { course ->
-                course.startMinute != null && course.startMinute > (next.startMinute ?: 0)
-            }
-            else -> null
+        val mainIndex = snapshot.courses.indexOf(main).coerceAtLeast(0)
+        val hasActiveOrUpcoming = current != null || next != null || unknownTime != null
+        val upcomingList = if (hasActiveOrUpcoming) {
+            snapshot.courses.drop(mainIndex + 1)
+        } else {
+            snapshot.courses.dropLast(1)
         }
-        if (layout.showSecondary && secondaryCourse != null) {
-            views.setViewVisibility(R.id.widget_timetable_secondary, View.VISIBLE)
-            // 2×2 只有一行：用开始时间 + 课程名，给名称多留几个字；4×2 才展示完整起止。
-            val secondaryTime = if (layout.compact) {
-                secondaryCourse.startMinute?.let(::clock) ?: secondaryCourse.periodLabel
-            } else {
-                secondaryCourse.timeLabel ?: secondaryCourse.periodLabel
-            }
+
+        if (layout.showSidePanel && upcomingList.isNotEmpty()) {
+            views.setViewVisibility(R.id.widget_timetable_side_panel, View.VISIBLE)
             views.setTextViewText(
-                R.id.widget_timetable_secondary_text,
-                listOf(secondaryTime, secondaryCourse.name).joinToString(" · "),
+                R.id.widget_timetable_side_header,
+                context.getString(
+                    if (hasActiveOrUpcoming) {
+                        R.string.widget_timetable_upcoming_header
+                    } else {
+                        R.string.widget_timetable_earlier_header
+                    },
+                ),
             )
-            val secondarySlot = secondaryCourse.colorSlot
-                ?: coursePaletteIndex(secondaryCourse.name)
-            views.setInt(
-                R.id.widget_timetable_secondary_bar,
-                "setBackgroundColor",
-                courseToneColors(secondarySlot, dark = false).container.toArgb(),
+            views.setTextColor(R.id.widget_timetable_side_header, secondary)
+            val maxItems = layout.maxSideCourses.coerceIn(1, 3)
+            val overflow = (upcomingList.size - maxItems).coerceAtLeast(0)
+            val visibleCount = if (overflow > 0) (maxItems - 1).coerceAtLeast(1) else upcomingList.size.coerceAtMost(maxItems)
+            val slots = listOf(
+                Triple(R.id.widget_timetable_upcoming_1, R.id.widget_timetable_upcoming_bar_1, R.id.widget_timetable_upcoming_name_1 to R.id.widget_timetable_upcoming_meta_1),
+                Triple(R.id.widget_timetable_upcoming_2, R.id.widget_timetable_upcoming_bar_2, R.id.widget_timetable_upcoming_name_2 to R.id.widget_timetable_upcoming_meta_2),
+                Triple(R.id.widget_timetable_upcoming_3, R.id.widget_timetable_upcoming_bar_3, R.id.widget_timetable_upcoming_name_3 to R.id.widget_timetable_upcoming_meta_3),
             )
+            upcomingList.take(visibleCount).forEachIndexed { index, course ->
+                val (containerId, barId, textPair) = slots[index]
+                val (nameId, metaId) = textPair
+                views.setViewVisibility(containerId, View.VISIBLE)
+                views.setTextViewText(nameId, course.name)
+                views.setTextColor(nameId, primary)
+                val timePart = course.startMinute?.let(::clock) ?: course.periodLabel
+                val locPart = course.location?.trim().orEmpty()
+                val meta = if (locPart.isNotEmpty()) "$timePart · $locPart" else (course.timeLabel ?: course.periodLabel)
+                views.setTextViewText(metaId, meta)
+                views.setTextColor(metaId, secondary)
+                val courseSlot = course.colorSlot ?: coursePaletteIndex(course.name)
+                views.setInt(
+                    barId,
+                    "setBackgroundColor",
+                    courseToneColors(courseSlot, dark = false).container.toArgb(),
+                )
+            }
+            val remainingCount = upcomingList.size - visibleCount
+            if (remainingCount > 0) {
+                views.setViewVisibility(R.id.widget_timetable_upcoming_more, View.VISIBLE)
+                views.setTextViewText(
+                    R.id.widget_timetable_upcoming_more,
+                    context.getString(R.string.widget_timetable_upcoming_more, remainingCount),
+                )
+                views.setTextColor(R.id.widget_timetable_upcoming_more, tertiary)
+            }
+        } else {
+            val secondaryCourse = if (hasActiveOrUpcoming) upcomingList.firstOrNull() else null
+            if (layout.showSecondary && secondaryCourse != null) {
+                views.setViewVisibility(R.id.widget_timetable_secondary, View.VISIBLE)
+                // 2×2 只有一行：用开始时间 + 课程名，给名称多留几个字；宽卡按完整起止显示。
+                val secondaryTime = if (layout.compact) {
+                    secondaryCourse.startMinute?.let(::clock) ?: secondaryCourse.periodLabel
+                } else {
+                    secondaryCourse.timeLabel ?: secondaryCourse.periodLabel
+                }
+                views.setTextViewText(
+                    R.id.widget_timetable_secondary_text,
+                    listOf(secondaryTime, secondaryCourse.name).joinToString(" · "),
+                )
+                views.setTextColor(R.id.widget_timetable_secondary_text, secondary)
+                val secondarySlot = secondaryCourse.colorSlot
+                    ?: coursePaletteIndex(secondaryCourse.name)
+                views.setInt(
+                    R.id.widget_timetable_secondary_bar,
+                    "setBackgroundColor",
+                    courseToneColors(secondarySlot, dark = false).container.toArgb(),
+                )
+            }
         }
         return views
     }
@@ -382,8 +444,14 @@ object TimetableWidgetRenderer {
         }
     }
 
-    private fun footerColor(context: Context, refreshing: Boolean, failed: Boolean): Int =
-        context.getColor(WidgetRenderSupport.metaColor(refreshing, failed))
+    private fun footerColor(
+        context: Context,
+        refreshing: Boolean,
+        failed: Boolean,
+        appearance: WidgetAppearance,
+    ): Int = context.getColor(
+        appearance.textColorResource(WidgetRenderSupport.metaColor(refreshing, failed)),
+    )
 
     private fun formatDate(date: LocalDate): String =
         "${date.monthValue}月${date.dayOfMonth}日 ${weekday(date.dayOfWeek.value)}"

@@ -69,6 +69,7 @@ import com.upcpocket.app.todo.data.TodoOrdering
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,16 +80,24 @@ fun TodoScreen(store: TodoStore) {
     val active = LocalPluginPageActive.current
     val dockClearance = LocalDockClearance.current
     val snackbar = remember { SnackbarHostState() }
-    val tasks by store.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val taskSnapshotFlow = remember(store) {
+        store.tasks.map<List<TodoTask>, List<TodoTask>?> { it }
+    }
+    val taskSnapshot by taskSnapshotFlow.collectAsStateWithLifecycle(initialValue = null)
+    val tasks = taskSnapshot.orEmpty()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var access by remember { mutableStateOf(store.reminderAccess()) }
     var showCompleted by rememberSaveable { mutableStateOf(false) }
-    var editorTask by remember { mutableStateOf<TodoTask?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    var editorTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    val editorTask = remember(tasks, editorTaskId) {
+        tasks.firstOrNull { it.id == editorTaskId }
+    }
+    var adding by rememberSaveable { mutableStateOf(false) }
     var completionOverrides by remember {
         mutableStateOf(emptyMap<String, TodoCompletionOverride>())
     }
     val pendingOpenTask by store.pendingOpenTask.collectAsStateWithLifecycle()
+    val pendingCreateRequest by store.pendingCreateRequest.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -190,21 +199,54 @@ fun TodoScreen(store: TodoStore) {
         }
     }
 
-    // 通知点击后只消费确实存在的任务；列表尚未加载或页面只是 Pager 预加载时保留
-    // pending，等页面稳定活动后再打开编辑器。
-    LaunchedEffect(pendingOpenTask, tasks, active) {
+    LaunchedEffect(editorTaskId, taskSnapshot) {
+        val id = editorTaskId ?: return@LaunchedEffect
+        val loadedTasks = taskSnapshot ?: return@LaunchedEffect
+        if (loadedTasks.none { it.id == id }) editorTaskId = null
+    }
+
+    // 任务还未从 Room 发出首个快照时保留请求；不存在或已删除的目标在快照到达后清除。
+    LaunchedEffect(pendingOpenTask, taskSnapshot, active) {
         if (!active) return@LaunchedEffect
         val id = pendingOpenTask ?: return@LaunchedEffect
-        tasks.firstOrNull { it.id == id }?.let { task ->
+        val loadedTasks = taskSnapshot ?: return@LaunchedEffect
+        val task = loadedTasks.firstOrNull { it.id == id }
+        if (task == null) {
+            store.consumeOpenTask()
+        } else {
             adding = false
-            editorTask = task
+            editorTaskId = task.id
             store.consumeOpenTask()
         }
     }
 
+    // 新建请求只由活动待办页消费，离开/预加载期间保留在 Store 中。
+    LaunchedEffect(pendingCreateRequest, active) {
+        if (!active || pendingCreateRequest == null) return@LaunchedEffect
+        editorTaskId = null
+        adding = true
+        store.consumeCreateRequest()
+    }
+
+    fun startAdding() {
+        editorTaskId = null
+        adding = true
+    }
+
+    fun editTask(task: TodoTask) {
+        adding = false
+        editorTaskId = task.id
+    }
+
+    fun dismissEditor() {
+        adding = false
+        editorTaskId = null
+    }
+
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(title = { Text("待办") })
+            com.upcpocket.app.ui.components.CampusTopAppBar(title = { Text("待办") })
         },
         snackbarHost = {
             SnackbarHost(
@@ -213,20 +255,16 @@ fun TodoScreen(store: TodoStore) {
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    editorTask = null
-                    adding = true
-                },
+            com.upcpocket.app.ui.components.CampusFloatingActionButton(
+                onClick = ::startAdding,
                 modifier = Modifier
+                    .padding(bottom = dockClearance)
                     .semantics { contentDescription = "新增待办" }
-                    .testTag("todo_add")
-                    .padding(bottom = dockClearance),
+                    .testTag("todo_add"),
             ) {
                 Icon(Icons.Filled.Add, contentDescription = null)
             }
         },
-        containerColor = MaterialTheme.colorScheme.surface,
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
@@ -250,12 +288,13 @@ fun TodoScreen(store: TodoStore) {
                 }
             }
 
-            if (incomplete.isEmpty()) {
+            if (taskSnapshot == null) {
+                item(key = "loading", contentType = "loading") {
+                    Text("正在读取待办", style = MaterialTheme.typography.bodyMedium)
+                }
+            } else if (incomplete.isEmpty()) {
                 item(key = "empty", contentType = "empty") {
-                    EmptyTodoState(onAdd = {
-                        editorTask = null
-                        adding = true
-                    })
+                    EmptyTodoState(onAdd = ::startAdding)
                 }
             } else {
                 items(
@@ -269,7 +308,7 @@ fun TodoScreen(store: TodoStore) {
                         completionOverride = { completionOverrides[task.id]?.completed },
                         modifier = Modifier.animateItem(),
                         onToggle = { toggleCompletion(task) },
-                        onEdit = { editorTask = task },
+                        onEdit = { editTask(task) },
                     )
                 }
             }
@@ -308,7 +347,7 @@ fun TodoScreen(store: TodoStore) {
                             completionOverride = { completionOverrides[task.id]?.completed },
                             modifier = Modifier.animateItem(),
                             onToggle = { toggleCompletion(task) },
-                            onEdit = { editorTask = task },
+                            onEdit = { editTask(task) },
                         )
                     }
                 }
@@ -320,10 +359,7 @@ fun TodoScreen(store: TodoStore) {
         TodoEditorSheet(
             store = store,
             initialTask = editorTask,
-            onDismiss = {
-                adding = false
-                editorTask = null
-            },
+            onDismiss = ::dismissEditor,
             onDeleted = { deleted ->
                 scope.launch {
                     val result = snackbar.showSnackbar(
@@ -347,7 +383,7 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("暂无待办", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        TextButton(onClick = onAdd) { Text("添加一条") }
+        com.upcpocket.app.ui.components.CampusTextButton(onClick = onAdd) { Text("添加一条") }
     }
 }
 
@@ -400,11 +436,22 @@ private fun TodoRow(
                 },
                 textDecoration = if (completed) TextDecoration.LineThrough else null,
             )
+            task.dueAt?.let { deadline ->
+                Text(
+                    text = "截止 ${TodoFormat.shortTime(deadline, now)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (!completed && deadline <= now) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             task.reminderAt?.let { reminder ->
                 Text(
-                    text = TodoFormat.shortTime(reminder, now),
+                    text = "提醒 ${TodoFormat.shortTime(reminder, now)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (!completed && reminder <= now) {
+                    color = if (!completed && reminder <= now && task.reminderFiredAt == null) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -447,7 +494,7 @@ private fun TodoReminderBanner(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(
+            com.upcpocket.app.ui.components.CampusTextButton(
                 onClick = if (notificationIssue) onNotificationSettings else onExactAlarmSettings,
             ) { Text("去设置") }
         }

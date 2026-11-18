@@ -7,37 +7,24 @@ import java.time.ZoneId
 /**
  * 首页与待办页共用的稳定排序。
  *
- * 未完成：提醒时间早于明天 0 点的“逾期/今天”项优先，按提醒时刻升序；其余按创建
- * 时间倒序。所有分组最终用 id 做 tie-break，避免同一毫秒创建时顺序漂移。
+ * 未完成：有截止时间的任务按 dueAt 升序；无截止时间的任务按创建时间倒序。
+ * 两组都用 id 作最终 tie-break，避免顺序漂移。提醒时间不参与任务优先级。
  */
 object TodoOrdering {
 
+    @Suppress("UNUSED_PARAMETER") // Kept for call-site compatibility; absolute deadlines need no clock conversion.
     fun incomplete(
         tasks: List<TodoTask>,
         nowMillis: Long,
         zone: ZoneId = ZoneId.systemDefault(),
     ): List<TodoTask> {
-        val tomorrowStart = Instant.ofEpochMilli(nowMillis)
-            .atZone(zone)
-            .toLocalDate()
-            .plusDays(1)
-            .atStartOfDay(zone)
-            .toInstant()
-            .toEpochMilli()
-        val (dueOrToday, rest) = tasks
+        val (withDeadline, withoutDeadline) = tasks
             .asSequence()
             .filterNot { it.completed }
-            .partition { task ->
-                val reminder = task.reminderAt
-                reminder != null && reminder < tomorrowStart
-            }
-        return dueOrToday.sortedWith(
-            compareBy<TodoTask>(
-                { it.reminderAt ?: Long.MAX_VALUE },
-                { it.createdAt },
-                { it.id },
-            ),
-        ) + rest.sortedWith(
+            .partition { it.dueAt != null }
+        return withDeadline.sortedWith(
+            compareBy<TodoTask> { it.dueAt!! }.thenBy { it.id },
+        ) + withoutDeadline.sortedWith(
             compareByDescending<TodoTask> { it.createdAt }.thenBy { it.id },
         )
     }
@@ -63,9 +50,9 @@ object TodoOrdering {
         nowMillis: Long,
         zone: ZoneId = ZoneId.systemDefault(),
     ): Boolean {
-        val reminder = task.reminderAt ?: return false
+        val deadline = task.dueAt ?: return false
         val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
-        val day = Instant.ofEpochMilli(reminder).atZone(zone).toLocalDate()
+        val day = Instant.ofEpochMilli(deadline).atZone(zone).toLocalDate()
         return !day.isAfter(today)
     }
 

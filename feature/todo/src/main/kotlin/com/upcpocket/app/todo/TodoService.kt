@@ -3,8 +3,10 @@ package com.upcpocket.app.todo
 import android.app.PendingIntent
 import android.content.Context
 import com.upcpocket.app.todo.data.TodoDatabase
+import com.upcpocket.app.todo.data.TodoOrdering
 import com.upcpocket.app.todo.data.TodoRepository
 import com.upcpocket.app.todo.data.TodoTask
+import com.upcpocket.app.todo.data.TodoWidgetSnapshotResult
 import com.upcpocket.app.todo.reminder.TodoAlarmScheduler
 import com.upcpocket.app.todo.reminder.TodoNotifier
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
@@ -12,6 +14,8 @@ import com.upcpocket.app.todo.reminder.TodoReminderAccessProvider
 import com.upcpocket.app.todo.reminder.TodoReminderPlan
 import com.upcpocket.app.todo.reminder.TodoReminderPlanner
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,12 +28,23 @@ import kotlinx.coroutines.withContext
 interface TodoStore {
     val tasks: Flow<List<TodoTask>>
     val pendingOpenTask: StateFlow<String?>
+    val pendingCreateRequest: StateFlow<String?> get() = EMPTY_PENDING_CREATE_REQUEST
 
     fun reminderAccess(): TodoReminderAccess
 
     suspend fun add(title: String, reminderAt: Long?): TodoTask
 
+    suspend fun add(title: String, reminderAt: Long?, dueAt: Long?): TodoTask {
+        check(dueAt == null) { "This TodoStore does not support deadlines" }
+        return add(title, reminderAt)
+    }
+
     suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean
+
+    suspend fun edit(id: String, title: String, reminderAt: Long?, dueAt: Long?): Boolean {
+        check(dueAt == null) { "This TodoStore does not support deadlines" }
+        return edit(id, title, reminderAt)
+    }
 
     suspend fun setCompleted(id: String, completed: Boolean): Boolean
 
@@ -48,10 +63,22 @@ interface TodoStore {
 
     fun consumeOpenTask()
 
+    fun openCreate(): String = throw UnsupportedOperationException("Create requests are not supported")
+
+    fun openCreate(requestId: String): Boolean = false
+
+    fun consumeCreateRequest() = Unit
+
+    /** Null plugin capability is handled by the host; this result separates not-restored, failed and valid-empty. */
+    suspend fun readWidgetSnapshot(maxVisibleRows: Int = 4): TodoWidgetSnapshotResult =
+        TodoWidgetSnapshotResult.NotRestored
+
     fun ensureNotificationChannel()
 
     suspend fun reconcileAll()
 }
+
+private val EMPTY_PENDING_CREATE_REQUEST: StateFlow<String?> = MutableStateFlow(null)
 
 internal interface TodoAlarmSchedulerApi {
     fun schedule(taskId: String, revision: Int, atMillis: Long, exact: Boolean)
@@ -100,17 +127,34 @@ internal class TodoServiceDependencies(
  * Room 是事实来源；AlarmManager 与通知都是可重建的副作用。所有读写、调度和
  * 通知副作用在同一 service Mutex 内串行，外部接收器协程不会用旧快照覆盖新状态。
  * 旧 taskId+revision 动作在数据库条件更新失败时直接返回，不取消当前 Alarm/通知。
+ * onTasksChanged 在 Mutex 内调用；宿主必须异步排入组件更新，不能同步重入本服务。
  */
 class TodoService internal constructor(
     private val dependencies: TodoServiceDependencies,
-    private val clock: () -> Long = System::currentTimeMillis,
+    private val clock: () -> Long,
+    private val onTasksChanged: () -> Unit,
 ) : TodoStore {
+
+    internal constructor(
+        dependencies: TodoServiceDependencies,
+        clock: () -> Long = System::currentTimeMillis,
+    ) : this(dependencies, clock, {})
 
     constructor(
         context: Context,
         openAppIntent: (String) -> PendingIntent,
         clock: () -> Long = System::currentTimeMillis,
-    ) : this(TodoServiceDependencies.forContext(context, openAppIntent), clock)
+    ) : this(TodoServiceDependencies.forContext(context, openAppIntent), clock, {})
+
+    constructor(
+        context: Context,
+        onTasksChanged: () -> Unit,
+        openAppIntent: (String) -> PendingIntent,
+    ) : this(
+        TodoServiceDependencies.forContext(context, openAppIntent),
+        System::currentTimeMillis,
+        onTasksChanged,
+    )
 
     private val repository by lazy { dependencies.repository() }
     private val alarms by lazy { dependencies.alarms() }
@@ -119,9 +163,13 @@ class TodoService internal constructor(
 
     private val mutex = Mutex()
     private val openTaskId = MutableStateFlow<String?>(null)
+    private val createRequestId = MutableStateFlow<String?>(null)
+    private var restored = false
+    private var restoreFailed = false
 
     override val tasks: Flow<List<TodoTask>> get() = repository.tasks
     override val pendingOpenTask: StateFlow<String?> = openTaskId.asStateFlow()
+    override val pendingCreateRequest: StateFlow<String?> = createRequestId.asStateFlow()
 
     override fun ensureNotificationChannel() = notifier.ensureChannel()
 
@@ -130,7 +178,10 @@ class TodoService internal constructor(
         return accessProvider.current()
     }
 
-    override suspend fun add(title: String, reminderAt: Long?): TodoTask = mutex.withLock {
+    override suspend fun add(title: String, reminderAt: Long?): TodoTask =
+        add(title, reminderAt, dueAt = null)
+
+    override suspend fun add(title: String, reminderAt: Long?, dueAt: Long?): TodoTask = mutex.withLock {
         val normalized = title.trim()
         require(normalized.isNotEmpty()) { "待办标题不能为空" }
         val now = clock()
@@ -144,31 +195,52 @@ class TodoService internal constructor(
             reminderAt = reminderAt,
             reminderFiredAt = null,
             revision = 1,
+            dueAt = dueAt,
         )
         repository.insert(task)
+        notifyTasksChangedSafely()
         reconcileLocked(task)
         task
     }
 
     override suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean =
-        mutex.withLock {
-            val normalized = title.trim()
-            if (normalized.isEmpty()) return@withLock false
-            val old = repository.byId(id) ?: return@withLock false
-            val reminderChanged = old.reminderAt != reminderAt
-            val firedAt = if (reminderChanged) null else old.reminderFiredAt
-            val updated = repository.updateContent(
-                id = id,
-                title = normalized,
-                reminderAt = reminderAt,
-                firedAt = firedAt,
-                now = clock(),
-            ) ?: return@withLock false
-            alarms.cancel(id)
-            notifier.cancel(id)
-            if (!updated.completed) reconcileLocked(updated)
-            true
-        }
+        mutex.withLock { editLocked(id, title, reminderAt, dueAt = null, preserveExistingDueAt = true) }
+
+    override suspend fun edit(
+        id: String,
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+    ): Boolean = mutex.withLock {
+        editLocked(id, title, reminderAt, dueAt, preserveExistingDueAt = false)
+    }
+
+    private suspend fun editLocked(
+        id: String,
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+        preserveExistingDueAt: Boolean,
+    ): Boolean {
+        val normalized = title.trim()
+        if (normalized.isEmpty()) return false
+        val old = repository.byId(id) ?: return false
+        val reminderChanged = old.reminderAt != reminderAt
+        val firedAt = if (reminderChanged) null else old.reminderFiredAt
+        val updated = repository.updateContent(
+            id = id,
+            title = normalized,
+            reminderAt = reminderAt,
+            dueAt = if (preserveExistingDueAt) old.dueAt else dueAt,
+            firedAt = firedAt,
+            now = clock(),
+        ) ?: return false
+        notifyTasksChangedSafely()
+        alarms.cancel(id)
+        notifier.cancel(id)
+        if (!updated.completed) reconcileLocked(updated)
+        return true
+    }
 
     override suspend fun setCompleted(id: String, completed: Boolean): Boolean =
         mutex.withLock {
@@ -186,6 +258,7 @@ class TodoService internal constructor(
 
     override suspend fun delete(id: String): TodoTask? = mutex.withLock {
         val deleted = repository.delete(id) ?: return@withLock null
+        notifyTasksChangedSafely()
         alarms.cancel(id)
         notifier.cancel(id)
         deleted
@@ -198,6 +271,7 @@ class TodoService internal constructor(
             updatedAt = now,
         )
         repository.insert(restored)
+        notifyTasksChangedSafely()
         alarms.cancel(restored.id)
         notifier.cancel(restored.id)
         reconcileLocked(restored)
@@ -205,30 +279,89 @@ class TodoService internal constructor(
     }
 
     override fun openTask(taskId: String) {
-        if (isUuid(taskId)) openTaskId.value = taskId
+        TodoLaunchContract.canonicalUuid(taskId)?.let { openTaskId.value = it }
     }
 
     override fun consumeOpenTask() {
         openTaskId.value = null
     }
 
+    override fun openCreate(): String {
+        val requestId = UUID.randomUUID().toString()
+        createRequestId.value = requestId
+        return requestId
+    }
+
+    override fun openCreate(requestId: String): Boolean {
+        val canonical = TodoLaunchContract.canonicalUuid(requestId) ?: return false
+        createRequestId.value = canonical
+        return true
+    }
+
+    override fun consumeCreateRequest() {
+        createRequestId.value = null
+    }
+
     /** 重启、包更新、时间/时区变化和授权变化后从数据库重建。 */
-    override suspend fun reconcileAll(): Unit = mutex.withLock {
-        val now = clock()
-        val access = accessProvider.current()
-        repository.all().forEach { task ->
-            alarms.cancel(task.id)
-            when (val plan = TodoReminderPlanner.plan(task, now, access)) {
-                is TodoReminderPlan.Schedule -> alarms.schedule(
-                    task.id,
-                    task.revision,
-                    plan.at,
-                    plan.exact,
-                )
-                is TodoReminderPlan.NotifyNow -> fireLocked(task.id, task.revision, now)
-                is TodoReminderPlan.Blocked -> Unit
-                TodoReminderPlan.Nothing -> Unit
+    override suspend fun readWidgetSnapshot(maxVisibleRows: Int): TodoWidgetSnapshotResult {
+        require(maxVisibleRows in 0..4)
+        return withContext(Dispatchers.IO) {
+            mutex.withLock {
+                if (!restored) {
+                    return@withLock if (restoreFailed) {
+                        TodoWidgetSnapshotResult.ReadFailed
+                    } else {
+                        TodoWidgetSnapshotResult.NotRestored
+                    }
+                }
+                try {
+                    val incomplete = TodoOrdering.incomplete(repository.all(), clock())
+                    TodoWidgetSnapshotResult.Ready(
+                        tasks = incomplete.take(maxVisibleRows),
+                        incompleteCount = incomplete.size,
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    TodoWidgetSnapshotResult.ReadFailed
+                }
             }
+        }
+    }
+
+    override suspend fun reconcileAll(): Unit = mutex.withLock {
+        try {
+            val now = clock()
+            val access = accessProvider.current()
+            val tasks = repository.all()
+            tasks.forEach { task ->
+                alarms.cancel(task.id)
+                when (val plan = TodoReminderPlanner.plan(task, now, access)) {
+                    is TodoReminderPlan.Schedule -> alarms.schedule(
+                        task.id,
+                        task.revision,
+                        plan.at,
+                        plan.exact,
+                    )
+                    is TodoReminderPlan.NotifyNow -> fireLocked(task.id, task.revision, now)
+                    is TodoReminderPlan.Blocked -> Unit
+                    TodoReminderPlan.Nothing -> Unit
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            if (!restored && !restoreFailed) {
+                restoreFailed = true
+                notifyTasksChangedSafely()
+            }
+            throw failure
+        }
+
+        restoreFailed = false
+        if (!restored) {
+            restored = true
+            notifyTasksChangedSafely()
         }
     }
 
@@ -259,6 +392,7 @@ class TodoService internal constructor(
         mutex.withLock {
             // 条件更新失败 = 旧动作/任务不存在；绝不再按 taskId 取消当前调度。
             repository.completeIfRevision(taskId, revision, clock()) ?: return@withLock
+            notifyTasksChangedSafely()
             alarms.cancel(taskId)
             notifier.cancel(taskId)
         }
@@ -273,6 +407,7 @@ class TodoService internal constructor(
                 until = now + SNOOZE_MILLIS,
                 now = now,
             ) ?: return@withLock
+            notifyTasksChangedSafely()
             alarms.cancel(taskId)
             notifier.cancel(taskId)
             reconcileLocked(updated)
@@ -311,6 +446,7 @@ class TodoService internal constructor(
             completed = completed,
             now = clock(),
         ) ?: return@withContext null
+        notifyTasksChangedSafely()
         alarms.cancel(id)
         notifier.cancel(id)
         if (!updated.completed) reconcileLocked(updated)
@@ -324,15 +460,19 @@ class TodoService internal constructor(
             firedAt = now,
             now = now,
         ) ?: return
+        notifyTasksChangedSafely()
         val posted = notifier.post(marked, marked.revision, now)
         if (!posted) {
             // 权限/channel 可能在调度后被关闭；回滚 firedAt，避免把未显示的通知当成已发送。
-            repository.clearFiredIfRevision(marked.id, marked.revision, now)
+            if (repository.clearFiredIfRevision(marked.id, marked.revision, now) != null) {
+                notifyTasksChangedSafely()
+            }
         }
     }
 
-    private fun isUuid(value: String): Boolean =
-        runCatching { UUID.fromString(value) }.isSuccess
+    private fun notifyTasksChangedSafely() {
+        runCatching { onTasksChanged() }
+    }
 
     companion object {
         const val SNOOZE_MILLIS = 10 * 60 * 1000L

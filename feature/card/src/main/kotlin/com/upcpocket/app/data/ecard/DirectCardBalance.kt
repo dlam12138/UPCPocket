@@ -64,7 +64,7 @@ object DirectCardBalanceProtocol {
     fun validStudentId(value: String) = StudentIdFormat.isValid(value)
 
     fun form(studentId: String): String {
-        require(validStudentId(studentId)) { "请输入 8–16 位数字学号（当前输入限制）" }
+        require(validStudentId(studentId)) { "学号格式无效" }
         val id = URLEncoder.encode(studentId, "UTF-8")
         return "sno=$id&xxbh=synjones&idtype=sno&id=$id"
     }

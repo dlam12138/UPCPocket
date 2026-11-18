@@ -30,6 +30,7 @@ interface TodoTaskDao {
         SET title = :title,
             reminderAt = :reminderAt,
             reminderFiredAt = :firedAt,
+            dueAt = :dueAt,
             updatedAt = :now,
             revision = revision + 1
         WHERE id = :id
@@ -40,6 +41,7 @@ interface TodoTaskDao {
         title: String,
         reminderAt: Long?,
         firedAt: Long?,
+        dueAt: Long?,
         now: Long,
     ): Int
 

@@ -2,7 +2,7 @@
  * 悬浮胶囊 dock 的视觉/覆盖层结构移植自 ZZUPocket（3beuml/ZZUPocket），
  * AppNav.kt at commit dda318e9b37d8b65991a965e72fd4dd40b630a20。
  * Copyright (c) 2026 3beuml, MIT License；完整许可见仓库根 LICENSE。
- * 本项目只保留四个 UPC 一级入口，并补足 Pager、主题/无障碍与页面安全余量适配。
+ * 本项目只保留首页、课表、服务、待办、专注五个一级入口，并补足 Pager、主题/无障碍与页面安全余量适配。
  */
 package com.upcpocket.app.ui.nav
 
@@ -34,7 +34,9 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +86,7 @@ import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.official.OfficialWebScreen
+import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
@@ -119,10 +122,18 @@ private val hostHome = Destination(
     order = 0,
 )
 
+private val hostServices = Destination(
+    route = AppRoutes.SERVICES,
+    label = "服务",
+    icon = Icons.Filled.Apps,
+    outlinedIcon = Icons.Outlined.Apps,
+    order = 6,
+)
+
 /**
  * 宿主固定首页，课表/待办/专注 tab 来自已激活插件。
  *
- * 四个一级页由同一个 [HorizontalPager] 承载，tab 入口不再压入 NavController；设置、
+ * 五个一级页由同一个 [HorizontalPager] 承载，tab 入口不再压入 NavController；设置、
  * 账号、WebView 和插件二级页仍走 NavHost。这样整页拖动、胶囊连续动画和通知/组件
  * 深链只共享一个页面索引事实源。
  */
@@ -153,18 +164,24 @@ fun AppNav(
             page = pluginUi.page(tab.route),
         )
     }.sortedWith(compareBy({ it.order }, { it.route }))
-    // 首页由宿主固定在最左，即使未来某个插件贡献了更小的 order 也不能抢占宿主 tab。
-    val destinations = listOf(hostHome) + pluginDestinations
-    val tabRoutes = remember(destinations) { destinations.map { it.route }.toSet() }
-
-    val initialPage = remember {
-        when {
-            openTodo -> destinations.indexOfFirst { it.route == TODO_ROUTE.value }
-            launchTarget == WidgetLaunchTarget.TIMETABLE ->
-                destinations.indexOfFirst { it.route == TIMETABLE_ROUTE.value }
-            else -> 0
-        }.coerceAtLeast(0)
+    // 首页由宿主固定在最左，服务广场排在课表之后；插件 tab 按各自 order 排序合并。
+    val destinations = listOf(hostHome) +
+        (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
+    val allServiceEntries = remember(pluginUi) {
+        pluginUi.entriesIn(UiSurface.HOME_SERVICES, UiSurface.SERVICE_DIRECTORY)
     }
+    val destinationRoutes = remember(destinations) { destinations.map { it.route } }
+    val tabRoutes = remember(destinationRoutes) { destinationRoutes.toSet() }
+
+    val initialRoute = when {
+        openTodo -> TODO_ROUTE.value
+        launchTarget == WidgetLaunchTarget.TODO -> TODO_ROUTE.value
+        launchTarget == WidgetLaunchTarget.TIMETABLE -> TIMETABLE_ROUTE.value
+        else -> AppRoutes.HOME
+    }
+    val initialPage = pageIndexForRoute(destinationRoutes, initialRoute)
+        .takeIf { it >= 0 }
+        ?: pageIndexForRoute(destinationRoutes, AppRoutes.HOME).coerceAtLeast(0)
     val pagerState = rememberPagerState(
         initialPage = initialPage,
         pageCount = { destinations.size },
@@ -179,13 +196,13 @@ fun AppNav(
     val dockClearance = if (dockVisible) DOCK_CLEARANCE + navigationBottom else 0.dp
 
     /**
-     * 四个一级页只由一个 PagerState 表示；不把 tab 压进 NavController。
+     * 五个一级页只由一个 PagerState 表示；不把 tab 压进 NavController。
      *
      * 点击/组件/通知/返回都走这里。二级页存在时先回 main，再平滑切页；重复调用会
      * 取消上一次动画，不会叠加返回栈。
      */
     fun switchTab(route: String) {
-        val index = destinations.indexOfFirst { it.route == route }
+        val index = pageIndexForRoute(destinationRoutes, route)
         if (index < 0) return
         if (navController.currentDestination?.route != MAIN_ROUTE) {
             navController.popBackStack(MAIN_ROUTE, inclusive = false)
@@ -262,20 +279,28 @@ fun AppNav(
             WidgetLaunchTarget.TIMETABLE -> {
                 switchTab(TIMETABLE_ROUTE.value)
             }
+            WidgetLaunchTarget.TODO -> {
+                if (pluginUi.page(TODO_ROUTE) != null) {
+                    switchTab(TODO_ROUTE.value)
+                } else {
+                    switchTab(AppRoutes.HOME)
+                }
+            }
             null -> return@LaunchedEffect
         }
         onLaunchConsumed()
     }
 
+    val homePageIndex = pageIndexForRoute(destinationRoutes, AppRoutes.HOME).coerceAtLeast(0)
     BackHandler(
         enabled = onMain && (
-            pagerState.currentPage != 0 || pagerState.currentPageOffsetFraction != 0f
+            pagerState.currentPage != homePageIndex || pagerState.currentPageOffsetFraction != 0f
             ),
     ) {
         tabSwitch[0]?.cancel()
         tabSwitch[0] = scope.launch {
             pagerState.animateScrollToPage(
-                page = 0,
+                page = homePageIndex,
                 animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
             )
         }
@@ -286,23 +311,23 @@ fun AppNav(
         DarkMode.LIGHT -> false
         DarkMode.SYSTEM -> isSystemInDarkTheme()
     }
-
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
         Box(
             Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.surface),
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = MAIN_ROUTE,
-                modifier = Modifier.fillMaxSize(),
-            ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                NavHost(
+                    navController = navController,
+                    startDestination = MAIN_ROUTE,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
                 composable(MAIN_ROUTE) {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
-                        // 四页全部保留状态；活动页由 LocalPluginPageActive 控制自动查询/
+                        // 五页全部保留状态；活动页由 LocalPluginPageActive 控制自动查询/
                         // 权限/通知消费，预加载不会触发学校登录或刷新。
                         beyondViewportPageCount = destinations.lastIndex.coerceAtLeast(0),
                         userScrollEnabled = !imeVisible,
@@ -317,15 +342,28 @@ fun AppNav(
                         }
                         CompositionLocalProvider(LocalPluginPageActive provides active) {
                             Box(pageModifier) {
-                                when (page) {
-                                    0 -> HomeScreen(
-                                        serviceEntries = pluginUi.entriesFor(UiSurface.HOME_SERVICES),
+                                when (destinations.getOrNull(page)?.route) {
+                                    AppRoutes.HOME -> HomeScreen(
+                                        serviceEntries = allServiceEntries,
                                         timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
                                         cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
                                         todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
                                         sectionHost = sectionHost,
                                         onOpenRoute = pageHost::open,
                                         onOpenSettings = ::openSettings,
+                                        onOpenOfficialWeb = {
+                                            navController.navigate(AppRoutes.OFFICIAL_WEB)
+                                        },
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onOpenServices = { switchTab(AppRoutes.SERVICES) },
+                                    )
+                                    AppRoutes.SERVICES -> ServicesScreen(
+                                        entries = allServiceEntries,
+                                        pinnedServiceIds = prefs.pinnedServiceIds,
+                                        onTogglePin = { entryId ->
+                                            scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
+                                        },
+                                        onOpenRoute = pageHost::open,
                                         onOpenOfficialWeb = {
                                             navController.navigate(AppRoutes.OFFICIAL_WEB)
                                         },
@@ -378,13 +416,14 @@ fun AppNav(
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
             }
+            }
 
             if (dockVisible) {
                 FloatingDock(
                     destinations = destinations,
                     pagerState = pagerState,
                     dockDark = dockDark,
-                    selectedIndex = pagerState.currentPage,
+                    selectedIndex = pagerState.targetPage,
                     onSelect = { index ->
                         destinations.getOrNull(index)?.let { switchTab(it.route) }
                     },
@@ -395,8 +434,10 @@ fun AppNav(
     }
 }
 
+internal fun pageIndexForRoute(routes: List<String>, route: String): Int = routes.indexOf(route)
+
 /**
- * 四项悬浮胶囊 dock（基于 3beuml/ZZUPocket MIT AppNav 的视觉/覆盖结构）。
+ * 五项悬浮胶囊 dock（基于 3beuml/ZZUPocket MIT AppNav 的视觉/覆盖结构）。
  *
  * 外层只吞 tap，不吃 move：胶囊四周留白不会穿透到下面的校园卡按钮，页面横向
  * Pager 仍可从胶囊外起手。选中泡随 PagerState 的连续位置滑动，图标颜色/填充

@@ -8,11 +8,12 @@ import android.content.Intent
 class WidgetTimeReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!accepts(intent.action)) return
-        // WorkManager delay uses elapsed time. Even when the next wall-clock
-        // boundary has the same timestamp, a clock correction needs a new delay.
+        // WorkManager delay uses elapsed time. Recompute local deadline/midnight
+        // boundaries after wall-clock or time-zone changes.
         TimetableWidgetTicker.reschedule(context)
         WidgetAutoRefresh.reconcile(context)
         WidgetAutoRefresh.requestLocalRecovery(context)
+        TodoWidgetTicker.requestLocalRecovery(context)
     }
 
     companion object {

@@ -28,7 +28,7 @@ internal fun CardHistoryMonthDialog(
     var month by rememberSaveable { mutableIntStateOf(initialMonth.monthValue) }
     var choosingYear by rememberSaveable { mutableStateOf(false) }
 
-    AlertDialog(
+    com.upcpocket.app.ui.components.CampusAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("选择月份") },
         text = {
@@ -40,7 +40,7 @@ internal fun CardHistoryMonthDialog(
                     IconButton(onClick = { year-- }, enabled = year > 2000, modifier = Modifier.size(48.dp)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "上一年")
                     }
-                    TextButton(
+                    com.upcpocket.app.ui.components.CampusTextButton(
                         onClick = { choosingYear = !choosingYear },
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     ) { Text("${year}年") }
@@ -53,7 +53,7 @@ internal fun CardHistoryMonthDialog(
                     LazyColumn(Modifier.fillMaxWidth().height(240.dp), state = years) {
                         items(count = 8000, key = { it + 2000 }) { index ->
                             val value = index + 2000
-                            TextButton(
+                            com.upcpocket.app.ui.components.CampusTextButton(
                                 onClick = { year = value; choosingYear = false },
                                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                     .semantics { selected = value == year },
@@ -66,25 +66,29 @@ internal fun CardHistoryMonthDialog(
                             repeat(3) { column ->
                                 val value = row * 3 + column + 1
                                 val isSelected = value == month
-                                TextButton(
-                                    onClick = { month = value },
-                                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                                        .semantics { selected = isSelected },
-                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
-                                    colors = ButtonDefaults.textButtonColors(
-                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                                            else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                                            else MaterialTheme.colorScheme.onSurface,
-                                    ),
-                                ) { Text("${value}月") }
+                                val btnModifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                                    .semantics { selected = isSelected }
+                                val btnPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp)
+                                if (isSelected) {
+                                    com.upcpocket.app.ui.components.CampusTonalButton(
+                                        onClick = { month = value },
+                                        modifier = btnModifier,
+                                        contentPadding = btnPadding,
+                                    ) { Text("${value}月") }
+                                } else {
+                                    com.upcpocket.app.ui.components.CampusOutlinedButton(
+                                        onClick = { month = value },
+                                        modifier = btnModifier,
+                                        contentPadding = btnPadding,
+                                    ) { Text("${value}月") }
+                                }
                             }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(YearMonth.of(year, month)) }) { Text("确定") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        confirmButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = { onConfirm(YearMonth.of(year, month)) }) { Text("确定") } },
+        dismissButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = onDismiss) { Text("取消") } },
     )
 }

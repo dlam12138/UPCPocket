@@ -7,7 +7,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | [TodoService.kt](src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | TodoStore、串行写入、提醒重建与旧动作守卫 |
-| [TodoDatabase.kt](src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) | 独立 Room `upcpocket-todo.db` v1 |
+| [TodoDatabase.kt](src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) | 独立 Room `upcpocket-todo.db` v2；v1 显式无损增加可空截止 |
 | [TodoReminderPlanner.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoReminderPlanner.kt) | 提醒时间/可用权限派生 |
 | [TodoAlarmScheduler.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoAlarmScheduler.kt) | AlarmManager 单次调度 |
 | [TodoIntents.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoIntents.kt) | 显式 PendingIntent 与身份 |
@@ -16,6 +16,7 @@
 ## 独有约束
 
 - Room 是待办事实来源，提醒/通知是可重建副作用；首页摘要与待办页共用 Repository Flow，不另存两套任务或计数。
+- `dueAt` 为独立可空截止，不能由 `reminderAt` 推断；旧任务迁移后截止为空，旧字段与 revision 保留。设置截止不自动申请通知或精确闹钟权限。
 - 本机待办与学校账号独立，换号/删号不删除任务、提醒或专注记录；不为此接入校园接口或账号权限。
 - 编辑、完成、删除与稍后提醒要取消旧调度并更新持久化 revision；通知/闹钟动作以 taskId+revision 条件更新，不允许迟到动作完成或改写新版本任务。
 - `reconcileAll()` 基于当前数据库和真实权限恢复提醒；不依赖常驻 Worker。普通进程退出、重启、包更新、授权变化后的行为按现有系统事件恢复。

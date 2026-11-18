@@ -17,12 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
@@ -32,19 +31,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginSectionHost
+import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
+import com.upcpocket.app.ui.components.CampusIconButton
 import com.upcpocket.app.ui.nav.filledIcon
+import com.upcpocket.app.ui.official.OfficialWebCatalog
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
@@ -60,6 +65,11 @@ private data class QuickAction(
     val icon: ImageVector,
     val onClick: () -> Unit,
 )
+
+internal fun pinnedPluginEntries(
+    availableEntries: List<PluginEntry>,
+    pinnedIds: Set<String>,
+): List<PluginEntry> = availableEntries.filter { it.entryId.value in pinnedIds }
 
 /**
  * 「首页」= 今天的入口和校园服务，不再复制课表或“更多”的整套目录。
@@ -78,14 +88,24 @@ fun HomeScreen(
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenOfficialWeb: () -> Unit,
+    pinnedServiceIds: Set<String> = UiPrefs.DEFAULT_PINNED_SERVICES,
+    onOpenServices: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
     val dateLabel = today.format(
         DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
     )
+    val pinnedEntries = remember(serviceEntries, pinnedServiceIds) {
+        pinnedPluginEntries(serviceEntries, pinnedServiceIds)
+    }
+    val pinnedOfficialLinks = remember(pinnedServiceIds) {
+        OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY)
+            .filter { it.serviceId?.let(pinnedServiceIds::contains) == true }
+    }
     val actions = buildList {
-        serviceEntries.forEach { entry ->
+        pinnedEntries.forEach { entry ->
             add(
                 QuickAction(
                     title = entry.title,
@@ -94,13 +114,24 @@ fun HomeScreen(
                 ),
             )
         }
-        add(
-            QuickAction(
-                title = "校园网页",
-                icon = Icons.Outlined.Public,
-                onClick = onOpenOfficialWeb,
-            ),
-        )
+        pinnedOfficialLinks.forEach { link ->
+            add(
+                QuickAction(
+                    title = link.title,
+                    icon = link.icon,
+                    onClick = { OfficialWebCatalog.open(context, link) },
+                ),
+            )
+        }
+        if (isEmpty()) {
+            add(
+                QuickAction(
+                    title = "选择常用服务",
+                    icon = Icons.Outlined.Apps,
+                    onClick = onOpenServices ?: onOpenOfficialWeb,
+                ),
+            )
+        }
     }
 
     Scaffold(
@@ -143,6 +174,8 @@ fun HomeScreen(
             if (actions.isNotEmpty()) {
                 SectionHeader(
                     title = "常用服务",
+                    actionLabel = if (onOpenServices != null) "全部服务" else null,
+                    onAction = onOpenServices,
                     modifier = Modifier.padding(top = 16.dp, bottom = 2.dp),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -158,17 +191,6 @@ fun HomeScreen(
                                 Spacer(Modifier.weight(1f))
                             }
                         }
-                    }
-                }
-            } else {
-                GlassCard(Modifier.fillMaxWidth().padding(top = 16.dp)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("校园服务暂不可用", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "请检查插件是否启用。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
             }
@@ -224,16 +246,21 @@ private fun Header(
                 color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 1.4.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                softWrap = false,
             )
             Text(
                 text = date,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleLarge.copy(fontSize = 19.sp),
                 color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
         androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
-        androidx.compose.material3.FilledTonalIconButton(
+        CampusIconButton(
             onClick = onOpenSettings,
+            tonal = true,
             modifier = Modifier.size(48.dp),
         ) {
             Icon(
@@ -250,11 +277,9 @@ private fun ServiceTile(
     action: QuickAction,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        onClick = action.onClick,
+    GlassCard(
         modifier = modifier.heightIn(min = 56.dp),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        onClick = action.onClick,
     ) {
         Row(
             modifier = Modifier
@@ -270,8 +295,11 @@ private fun ServiceTile(
             Spacer(Modifier.size(8.dp))
             Text(
                 text = action.title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
                 color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
         }

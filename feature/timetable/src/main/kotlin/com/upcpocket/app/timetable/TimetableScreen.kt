@@ -34,8 +34,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,8 +47,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,6 +60,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -162,7 +160,7 @@ internal fun TimetableScreen(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("课表") },
                 actions = {
                     IconButton(onClick = { infoVisible = true }) {
@@ -361,7 +359,7 @@ private fun AccountBlockedCard(message: String, onOpenAccountSettings: () -> Uni
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onOpenAccountSettings) { Text("更新账号") }
+            com.upcpocket.app.ui.components.CampusButton(onClick = onOpenAccountSettings) { Text("更新账号") }
         }
     }
 }
@@ -387,7 +385,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
             if (isLoading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
             }
-            Button(
+            com.upcpocket.app.ui.components.CampusButton(
                 onClick = onOpenAccountSettings,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("设置学校账号") }
@@ -439,134 +437,196 @@ internal fun TermAndWeekHeader(
     onSelectWeek: (Int) -> Unit,
 ) {
     val term = state.selectedTermOrNull ?: return
-    var menuOpen by remember { mutableStateOf(false) }
-    var weekMenuOpen by remember { mutableStateOf(false) }
     val rangeStart = state.weekDates.minOrNull()
     val rangeEnd = state.weekDates.maxOrNull()
     val selectedWeek = state.selectedWeek
+    val fontScale = LocalDensity.current.fontScale
 
     GlassCard(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        BoxWithConstraints(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
         ) {
-            Box(Modifier.weight(1f, fill = false)) {
-                TextButton(
-                    onClick = { menuOpen = true },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        term.label,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelLarge,
+            val stackRows = maxWidth < 300.dp || fontScale > 1.15f
+            if (stackRows) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TermSelector(
+                        term = term,
+                        terms = state.terms,
+                        onSelectTerm = onSelectTerm,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    Icon(
-                        Icons.Filled.ArrowDropDown,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                    WeekSelector(
+                        term = term,
+                        selectedWeek = selectedWeek,
+                        rangeStart = rangeStart,
+                        rangeEnd = rangeEnd,
+                        onSelectWeek = onSelectWeek,
+                        modifier = Modifier.fillMaxWidth(),
+                        fillWeekButton = true,
                     )
                 }
-                DropdownMenu(
-                    expanded = menuOpen,
-                    onDismissRequest = { menuOpen = false },
+            } else {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    state.terms.forEach { item ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    item.label,
-                                    fontWeight = if (item == term) {
-                                        FontWeight.Bold
-                                    } else {
-                                        FontWeight.Normal
-                                    },
-                                )
-                            },
-                            onClick = {
-                                menuOpen = false
-                                onSelectTerm(item)
-                            },
-                        )
-                    }
+                    TermSelector(
+                        term = term,
+                        terms = state.terms,
+                        onSelectTerm = onSelectTerm,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    WeekSelector(
+                        term = term,
+                        selectedWeek = selectedWeek,
+                        rangeStart = rangeStart,
+                        rangeEnd = rangeEnd,
+                        onSelectWeek = onSelectWeek,
+                        fillWeekButton = false,
+                    )
                 }
             }
-            Text(
-                "共 ${term.totalWeeks} 周",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+        }
+    }
+}
+
+@Composable
+private fun TermSelector(
+    term: TimetableTerm,
+    terms: List<TimetableTerm>,
+    onSelectTerm: (TimetableTerm) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box(modifier) {
+        com.upcpocket.app.ui.components.CampusTextButton(
+            onClick = { menuOpen = true },
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+        ) {
+            Column(
+                Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+            ) {
+                Text(
+                    term.label,
+                    modifier = Modifier.fillMaxWidth().testTag("timetable_term_label"),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "共 ${term.totalWeeks} 周",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            Icon(
+                Icons.Filled.ArrowDropDown,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
             )
-            Spacer(Modifier.weight(1f))
-            IconButton(
-                onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
-                enabled = selectedWeek != null && selectedWeek > 1,
-                modifier = Modifier.size(34.dp),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                    contentDescription = "上一周",
-                )
-            }
-            Box {
-                TextButton(
-                    onClick = { weekMenuOpen = true },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        }
+        DropdownMenu(
+            expanded = menuOpen,
+            onDismissRequest = { menuOpen = false },
+        ) {
+            terms.forEach { item ->
+                DropdownMenuItem(
+                    text = {
                         Text(
-                            "第 ${selectedWeek ?: "–"} 周",
-                            style = MaterialTheme.typography.titleSmall,
+                            item.label,
+                            fontWeight = if (item == term) FontWeight.Bold else FontWeight.Normal,
                         )
-                        if (rangeStart != null && rangeEnd != null) {
-                            Text(
-                                "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
-                                    " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                }
-                // 用下拉周选择替代占一整行的周次条，节省的纵向空间留给完整七天网格。
-                DropdownMenu(
-                    expanded = weekMenuOpen,
-                    onDismissRequest = { weekMenuOpen = false },
-                ) {
-                    (1..term.totalWeeks).forEach { week ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    "第 $week 周",
-                                    fontWeight = if (state.selectedWeek == week) {
-                                        FontWeight.Bold
-                                    } else {
-                                        FontWeight.Normal
-                                    },
-                                )
-                            },
-                            onClick = {
-                                weekMenuOpen = false
-                                onSelectWeek(week)
-                            },
-                        )
-                    }
-                }
-            }
-            IconButton(
-                onClick = {
-                    selectedWeek?.let {
-                        onSelectWeek((it + 1).coerceAtMost(term.totalWeeks))
-                    }
-                },
-                enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
-                modifier = Modifier.size(34.dp),
-            ) {
-                Icon(
-                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "下一周",
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onSelectTerm(item)
+                    },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun WeekSelector(
+    term: TimetableTerm,
+    selectedWeek: Int?,
+    rangeStart: LocalDate?,
+    rangeEnd: LocalDate?,
+    onSelectWeek: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    fillWeekButton: Boolean,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        IconButton(
+            onClick = { selectedWeek?.let { onSelectWeek((it - 1).coerceAtLeast(1)) } },
+            enabled = selectedWeek != null && selectedWeek > 1,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "上一周")
+        }
+        Box(Modifier.then(if (fillWeekButton) Modifier.weight(1f) else Modifier)) {
+            com.upcpocket.app.ui.components.CampusTextButton(
+                onClick = { menuOpen = true },
+                modifier = if (fillWeekButton) Modifier.fillMaxWidth() else Modifier,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        "第 ${selectedWeek ?: "–"} 周",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    if (rangeStart != null && rangeEnd != null) {
+                        Text(
+                            "${rangeStart.monthValue}/${rangeStart.dayOfMonth}" +
+                                " – ${rangeEnd.monthValue}/${rangeEnd.dayOfMonth}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+            ) {
+                (1..term.totalWeeks).forEach { week ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "第 $week 周",
+                                fontWeight = if (selectedWeek == week) {
+                                    FontWeight.Bold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onSelectWeek(week)
+                        },
+                    )
+                }
+            }
+        }
+        IconButton(
+            onClick = {
+                selectedWeek?.let { onSelectWeek((it + 1).coerceAtMost(term.totalWeeks)) }
+            },
+            enabled = selectedWeek != null && selectedWeek < term.totalWeeks,
+            modifier = Modifier.size(48.dp),
+        ) {
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "下一周")
         }
     }
 }
@@ -636,22 +696,22 @@ internal fun ConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
-                    Button(onClick = onOpenLogin) { Text("学校登录") }
+                    com.upcpocket.app.ui.components.CampusButton(onClick = onOpenLogin) { Text("学校登录") }
                 }
                 if (state.canRetry && !state.isBusy) {
-                    TextButton(onClick = onRetry) { Text("重试") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry) { Text("重试") }
                 }
                 if (state.connection == TimetableConnection.NOT_CONFIGURED ||
                     state.connection == TimetableConnection.AUTH_FAILED ||
                     state.accountSavedUnverified
                 ) {
-                    TextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
                 }
                 if (state.connection != TimetableConnection.INTERACTION_REQUIRED &&
                     state.connection != TimetableConnection.NOT_CONFIGURED &&
                     !state.accountBlocked
                 ) {
-                    TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onOpenWebLogin) { Text("网页登录") }
                 }
             }
         }
@@ -732,13 +792,13 @@ private fun EmptyWeekHint(text: String) {
     }
 }
 
-// 14 节 × 44dp：左轴可读优先，常规竖屏仍保持完整七天；纵向随页面滚动。
+// 常规行高沿用原版 44dp；大字号按比例扩展，窄窗口通过横滑保持可读宽度。
 // 13–14 节没有学校官方时刻，显示“待确认”，不按等差推算，也不新增第 15 节。
-private val SLOT_HEIGHT = 44.dp
+private val BASE_SLOT_HEIGHT = 44.dp
 private const val PERIODS = 14
 private val PERIOD_COLUMN_WIDTH = 48.dp
-private val DAY_HEADER_HEIGHT = 40.dp
-private val MIN_DAY_WIDTH = 38.dp
+private val BASE_DAY_HEADER_HEIGHT = 40.dp
+private val BASE_MIN_DAY_WIDTH = 37.dp
 
 @Composable
 private fun WeekGrid(
@@ -758,11 +818,24 @@ private fun WeekGrid(
         runCatching { buildTimetableWeekView(state.weekDates, state.meetings) }.getOrNull()
     } ?: return
     val byDate = view.meetings.groupBy { it.date }
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val standardSlotHeight = if (fontScale > 1.15f) {
+        58.dp * fontScale
+    } else {
+        maxOf(BASE_SLOT_HEIGHT, BASE_SLOT_HEIGHT * fontScale)
+    }
+    val dayHeaderHeight = maxOf(BASE_DAY_HEADER_HEIGHT, BASE_DAY_HEADER_HEIGHT * fontScale)
+    val periodColumnWidth = maxOf(PERIOD_COLUMN_WIDTH, 34.dp * fontScale)
+    val minDayWidth = maxOf(BASE_MIN_DAY_WIDTH, BASE_MIN_DAY_WIDTH * fontScale)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val available = maxWidth - PERIOD_COLUMN_WIDTH
-        val dayWidth = (available / 7f).coerceAtLeast(MIN_DAY_WIDTH)
-        // 极窄窗口（分屏/超大字体）才退回横滑；常规手机宽度七天直接同屏。
-        val needsScroll = dayWidth * 7 + PERIOD_COLUMN_WIDTH > maxWidth
+        val available = (maxWidth - periodColumnWidth).coerceAtLeast(0.dp)
+        val dayWidth = (available / 7f).coerceAtLeast(minDayWidth)
+        val slotHeight = standardSlotHeight
+        val courseTitleMaxLines = if (dayWidth < 48.dp) 1 else 3
+        val courseLocationMaxLines = 2
+        // 仅当最小日宽也放不下七天时横滑，避免平均除法的浮点余差误触发。
+        val needsScroll = minDayWidth * 7 + periodColumnWidth > maxWidth
         Row(
             Modifier.then(
                 if (needsScroll) {
@@ -770,16 +843,16 @@ private fun WeekGrid(
                 } else {
                     Modifier
                 },
-            ),
+            ).testTag("timetable_week_grid"),
         ) {
-            Column(Modifier.width(PERIOD_COLUMN_WIDTH)) {
-                Spacer(Modifier.height(DAY_HEADER_HEIGHT))
+            Column(Modifier.width(periodColumnWidth)) {
+                Spacer(Modifier.height(dayHeaderHeight))
                 repeat(PERIODS) { index ->
                     val period = index + 1
                     val range = UpcTimetableSchedule.period(period)
                     Column(
                         Modifier
-                            .height(SLOT_HEIGHT)
+                            .height(slotHeight)
                             .fillMaxWidth()
                             .padding(top = 2.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -796,24 +869,27 @@ private fun WeekGrid(
                             Text(
                                 range.startLabel,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 7.sp,
-                                lineHeight = 8.sp,
+                                fontSize = 9.sp,
+                                lineHeight = 10.sp,
                                 maxLines = 1,
+                                textAlign = TextAlign.Center,
                             )
                             Text(
                                 range.endLabel,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 7.sp,
-                                lineHeight = 8.sp,
+                                fontSize = 9.sp,
+                                lineHeight = 10.sp,
                                 maxLines = 1,
+                                textAlign = TextAlign.Center,
                             )
                         } else {
                             Text(
                                 "待确认",
                                 color = MaterialTheme.colorScheme.outline,
-                                fontSize = 7.sp,
-                                lineHeight = 8.sp,
+                                fontSize = 9.sp,
+                                lineHeight = 10.sp,
                                 maxLines = 1,
+                                textAlign = TextAlign.Center,
                             )
                         }
                     }
@@ -823,10 +899,14 @@ private fun WeekGrid(
                 DayColumn(
                     date = date,
                     width = dayWidth,
+                    slotHeight = slotHeight,
+                    dayHeaderHeight = dayHeaderHeight,
                     isToday = date == actualToday,
                     known = date in view.knownDates,
                     meetings = byDate[date].orEmpty(),
                     colorSlots = state.courseColorSlots,
+                    courseTitleMaxLines = courseTitleMaxLines,
+                    courseLocationMaxLines = courseLocationMaxLines,
                     onCourseClick = onCourseClick,
                 )
             }
@@ -838,10 +918,14 @@ private fun WeekGrid(
 private fun DayColumn(
     date: LocalDate,
     width: Dp,
+    slotHeight: Dp,
+    dayHeaderHeight: Dp,
     isToday: Boolean,
     known: Boolean,
     meetings: List<TimetableMeeting>,
     colorSlots: Map<String, Int>,
+    courseTitleMaxLines: Int,
+    courseLocationMaxLines: Int,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val laneInfo = remember(meetings) { assignLanes(meetings) }
@@ -853,7 +937,8 @@ private fun DayColumn(
         Column(
             Modifier
                 .fillMaxWidth()
-                .height(DAY_HEADER_HEIGHT)
+                .height(dayHeaderHeight)
+                .testTag("timetable_day_header_$date")
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                 .background(
                     if (isToday) {
@@ -899,24 +984,25 @@ private fun DayColumn(
         BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
-                .height(SLOT_HEIGHT * PERIODS)
+                .height(slotHeight * PERIODS)
+                .testTag("timetable_day_slots_$date")
                 .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
                 .background(
                     if (isToday) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
                     } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
+                        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.74f)
                     },
                 ),
         ) {
-            val gridLine = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+            val gridLine = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f)
             Box(
                 Modifier
                     .fillMaxSize()
                     .drawBehind {
                         val stroke = 0.5.dp.toPx()
                         for (period in 2 until PERIODS step 2) {
-                            val y = SLOT_HEIGHT.toPx() * period
+                            val y = slotHeight.toPx() * period
                             drawLine(
                                 color = gridLine,
                                 start = Offset(0f, y),
@@ -927,7 +1013,7 @@ private fun DayColumn(
                     }
                     .border(
                         0.5.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
                         RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp),
                     ),
             )
@@ -946,9 +1032,16 @@ private fun DayColumn(
             val laneWidth = maxWidth / lanes
             meetings.forEachIndexed { index, meeting ->
                 val lane = laneInfo.first.getOrElse(index) { 0 }
-                val top = SLOT_HEIGHT * (meeting.startPeriod - 1)
-                val height = SLOT_HEIGHT * (meeting.endPeriod - meeting.startPeriod + 1) - 2.dp
+                val periodCount = meeting.endPeriod - meeting.startPeriod + 1
+                val top = slotHeight * (meeting.startPeriod - 1)
+                val height = slotHeight * periodCount - 2.dp
                 val tone = courseTone(meeting, colorSlots[courseColorKey(meeting)])
+                val timeLabel = UpcTimetableSchedule.label(meeting)
+                val timeLines = timeLabel?.split('–', limit = 2)?.let { parts ->
+                    if (parts.size == 2) "${parts[0]}\n${parts[1]}" else timeLabel
+                } ?: "时间待确认"
+                val location = meeting.location?.takeIf(String::isNotBlank) ?: "地点未提供"
+                val courseTag = "timetable_course_${meeting.date}_${meeting.startPeriod}_$index"
                 Surface(
                     modifier = Modifier
                         .offset(x = laneWidth * lane + 1.dp, y = top + 1.dp)
@@ -957,8 +1050,12 @@ private fun DayColumn(
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { onCourseClick(meeting) }
                         .semantics {
-                            contentDescription =
-                                "课程详情 ${meeting.courseName} ${meeting.sourcePeriodsLabel()}"
+                            contentDescription = listOfNotNull(
+                                "课程详情 ${meeting.courseName}",
+                                meeting.sourcePeriodsLabel(),
+                                "上课时间 ${timeLabel ?: "时间待确认"}",
+                                meeting.location?.takeIf(String::isNotBlank)?.let { "地点 $it" },
+                            ).joinToString("，")
                         },
                     shape = RoundedCornerShape(6.dp),
                     color = tone.container,
@@ -968,7 +1065,7 @@ private fun DayColumn(
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .padding(horizontal = 2.dp, vertical = 2.dp),
+                            .padding(horizontal = 0.5.dp, vertical = 1.dp),
                     ) {
                         Text(
                             meeting.courseName,
@@ -976,30 +1073,38 @@ private fun DayColumn(
                             color = tone.content,
                             fontSize = 11.sp,
                             lineHeight = 12.sp,
+                            letterSpacing = 0.sp,
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
+                            maxLines = courseTitleMaxLines,
                             overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.fillMaxWidth().testTag("${courseTag}_title"),
                         )
-                        if (height >= 58.dp) {
+                        if (periodCount >= 2) {
                             Text(
-                                UpcTimetableSchedule.label(meeting) ?: "时间待确认",
+                                timeLines,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = tone.content.copy(alpha = 0.9f),
-                                fontSize = 8.sp,
-                                lineHeight = 9.sp,
-                                maxLines = 1,
+                                fontSize = 10.sp,
+                                lineHeight = 11.sp,
+                                letterSpacing = 0.sp,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("${courseTag}_time"),
                             )
-                        }
-                        if (height >= 76.dp) {
                             Text(
-                                meeting.location ?: "地点未提供",
+                                location,
                                 style = MaterialTheme.typography.labelSmall,
                                 color = tone.content.copy(alpha = 0.85f),
-                                fontSize = 8.sp,
-                                lineHeight = 9.sp,
-                                maxLines = 1,
+                                fontSize = 10.sp,
+                                lineHeight = 11.sp,
+                                letterSpacing = 0.sp,
+                                maxLines = courseLocationMaxLines,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("${courseTag}_location"),
                             )
                         }
                     }
@@ -1177,6 +1282,26 @@ internal fun TodayPanel(
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (isCurrent && range != null) {
+                                val duration = (range.endMinute - range.startMinute).coerceAtLeast(1)
+                                val elapsed = (nowMinute - range.startMinute).coerceIn(0, duration)
+                                val remaining = (duration - elapsed).coerceAtLeast(0)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    LinearProgressIndicator(
+                                        progress = { elapsed.toFloat() / duration.toFloat() },
+                                        modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(999.dp)),
+                                    )
+                                    Text(
+                                        "剩 $remaining 分钟",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
                         }
                         if (ended) {
                             Text(
@@ -1205,7 +1330,7 @@ private fun TodayStatus(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (actionLabel != null && action != null) {
-            TextButton(
+            com.upcpocket.app.ui.components.CampusTextButton(
                 onClick = action,
                 modifier = Modifier.heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
@@ -1235,6 +1360,7 @@ internal fun CourseDetailBottomSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
             Modifier
@@ -1281,7 +1407,7 @@ internal fun CourseDetailBottomSheet(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(
+            com.upcpocket.app.ui.components.CampusTextButton(
                 onClick = onDismiss,
                 modifier = Modifier
                     .align(Alignment.End)
@@ -1311,7 +1437,7 @@ private fun TimetableInfoDialog(
     onDismiss: () -> Unit,
     onOpenWebLogin: () -> Unit,
 ) {
-    AlertDialog(
+    com.upcpocket.app.ui.components.CampusAlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("课表说明") },
         text = {
@@ -1346,8 +1472,8 @@ private fun TimetableInfoDialog(
         },
         confirmButton = {
             Row {
-                TextButton(onClick = onOpenWebLogin) { Text("网页登录") }
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onOpenWebLogin) { Text("网页登录") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onDismiss) { Text("关闭") }
             }
         },
     )

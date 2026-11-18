@@ -43,6 +43,7 @@ class LibrarySeatSelectionValidityTest {
         endTimes = if (start != null && end != null) listOf(end) else emptyList(),
         start = start,
         end = end,
+        hiddenLoaded = true,
     )
 
     @Test
@@ -68,5 +69,15 @@ class LibrarySeatSelectionValidityTest {
             state(seat("FREE"), end = wrongEnd).copy(endTimes = listOf(end)).canConfirmReservation(),
         )
         assertFalse(state(seat("FREE"), end = start).canConfirmReservation())
+    }
+
+    @Test
+    fun `hidden preferences must be restored and selected seat must not be hidden`() {
+        val valid = state(seat("FREE"))
+
+        assertFalse(valid.copy(hiddenLoaded = false).canConfirmReservation())
+        assertFalse(valid.copy(hiddenBusy = true).canConfirmReservation())
+        assertFalse(valid.copy(hiddenError = "读取失败").canConfirmReservation())
+        assertFalse(valid.copy(hiddenSeatIds = setOf("s1")).canConfirmReservation())
     }
 }

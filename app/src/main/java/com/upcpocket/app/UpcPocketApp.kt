@@ -4,6 +4,7 @@ import android.app.Application
 import android.webkit.WebView
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.widget.WidgetAutoRefresh
+import com.upcpocket.app.widget.WidgetUpdates
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -40,13 +41,19 @@ class UpcPocketApp : Application() {
         appScope.launch {
             AppGraph.account.restore()
             AppGraph.restorePlugins()
+            WidgetUpdates.requestTodo(this@UpcPocketApp)
             WidgetAutoRefresh.reconcile(this@UpcPocketApp)
         }
 
         // 诊断开关是用户偏好；DataStore 读取完成前使用默认开启，之后立即同步。
         appScope.launch {
+            var lastWidgetAppearance: com.upcpocket.app.designsystem.WidgetAppearance? = null
             AppGraph.uiPrefsStore.flow.collect { prefs ->
                 AppGraph.diagnostics.setEnabled(prefs.diagnosticsEnabled)
+                if (lastWidgetAppearance != prefs.widgetAppearance) {
+                    lastWidgetAppearance = prefs.widgetAppearance
+                    WidgetUpdates.requestAppearanceRedraw(this@UpcPocketApp)
+                }
             }
         }
 

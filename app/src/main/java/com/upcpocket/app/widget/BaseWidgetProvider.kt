@@ -2,17 +2,16 @@ package com.upcpocket.app.widget
 
 import android.appwidget.AppWidgetManager as WidgetManager
 import android.appwidget.AppWidgetProvider
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import com.upcpocket.app.core.AppGraph
 
 /**
- * 三个组件的共同入口。
+ * 桌面组件的共同入口。
  *
  * 安全：
  *  - manifest 里 `exported=false`，自定义刷新广播只接受本应用显式 PendingIntent；
- *  - 刷新前用 [WidgetIntents.isOwnedBy] 校验 appWidgetId 确实属于本 provider；
+ *  - 刷新前用 [WidgetIntents.isOwnedBy] 校验 appWidgetId 确实属于当前 provider；
  *  - 广播里只有 appWidgetId，学号/房间号从不进入 Intent。
  *
  * 刷新语义：
@@ -22,7 +21,9 @@ import com.upcpocket.app.core.AppGraph
  */
 abstract class BaseWidgetProvider : AppWidgetProvider() {
 
-    protected abstract val kind: WidgetKind
+    protected abstract val variant: WidgetProviderVariant
+
+    protected val kind: WidgetKind get() = variant.kind
 
     override fun onUpdate(
         context: Context,
@@ -47,29 +48,25 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
         WidgetAutoRefresh.reconcile(context)
     }
 
-    override fun onDisabled(context: Context) {
-        WidgetWork.cancel(context, kind)
-        WidgetAutoRefresh.cancel(context, kind)
-        WidgetStateStore(context).clear(kind)
+    final override fun onDisabled(context: Context) {
+        reconcileAfterRemoval(context)
     }
 
-    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        val remaining = WidgetManager.getInstance(context)
-            .getAppWidgetIds(ComponentName(context, kind.providerClass))
-        if (remaining.isEmpty()) {
-            WidgetWork.cancel(context, kind)
-            WidgetAutoRefresh.cancel(context, kind)
-            WidgetStateStore(context).clear(kind)
-        }
+    final override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        reconcileAfterRemoval(context)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        if (kind == WidgetKind.TODO) {
+            super.onReceive(context, intent)
+            return
+        }
         if (intent.action == kind.refreshAction) {
             val widgetId = intent.getIntExtra(
                 WidgetManager.EXTRA_APPWIDGET_ID,
                 WidgetManager.INVALID_APPWIDGET_ID,
             )
-            if (!WidgetIntents.isOwnedBy(context, kind, widgetId)) return
+            if (!WidgetIntents.isOwnedBy(context, variant, widgetId)) return
             requestRefresh(context)
             return
         }
@@ -101,8 +98,19 @@ abstract class BaseWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    /** 仅供调试/测试确认 provider 身份；运行时也用于判断是否最后一个小部件。 */
+    private fun reconcileAfterRemoval(context: Context) {
+        if (hasWidgetInstances(context, kind)) {
+            WidgetAutoRefresh.reconcile(context)
+            WidgetUpdates.updateKindNow(context, kind)
+            return
+        }
+        WidgetWork.cancel(context, kind)
+        WidgetAutoRefresh.cancel(context, kind)
+        WidgetStateStore(context).clear(kind)
+    }
+
+    /** 仅供调试/测试确认当前 provider 的实例身份。 */
     internal fun ids(context: Context): IntArray =
         WidgetManager.getInstance(context)
-            .getAppWidgetIds(ComponentName(context, kind.providerClass))
+            .getAppWidgetIds(android.content.ComponentName(context, variant.providerClass))
 }

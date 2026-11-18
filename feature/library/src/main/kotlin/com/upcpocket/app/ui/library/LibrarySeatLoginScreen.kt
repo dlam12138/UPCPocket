@@ -150,8 +150,9 @@ fun LibrarySeatLoginScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("学校登录") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -179,7 +180,7 @@ fun LibrarySeatLoginScreen(
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
-                TextButton(onClick = {
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = {
                     webView?.let { view -> loginClient?.load(view, LibrarySeatProtocol.LOGIN_URL) }
                 }) { Text("重新加载") }
             }

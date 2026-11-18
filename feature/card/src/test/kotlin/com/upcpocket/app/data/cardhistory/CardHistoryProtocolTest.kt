@@ -29,6 +29,24 @@ class CardHistoryProtocolTest {
         CardHistoryProtocol.verifyIdentity("""{"code":200,"data":{"user":{"sno":"2099999999"}}}""", "2099999999")
     }
 
+    @Test fun `identity comparison preserves supported student id prefix`() {
+        CardHistoryProtocol.verifyIdentity(
+            """{"code":200,"data":{"user":{"sno":"S99999999","studentNo":"S99999999"}}}""",
+            "S99999999",
+        )
+    }
+
+    @Test fun `every returned identity field must be a complete exact match`() {
+        listOf(
+            """{"code":200,"data":{"sno":"S99999999","username":"S99999998"}}""",
+            """{"code":200,"data":{"sno":"S99999999","username":"99999999"}}""",
+            """{"code":200,"data":{"sno":"S99999999","username":"s99999999"}}""",
+            """{"code":200,"data":{"sno":"S99999999","studentId":"unsupported"}}""",
+        ).forEach { body ->
+            assertThrows(IOException::class.java) { CardHistoryProtocol.verifyIdentity(body, "S99999999") }
+        }
+    }
+
     @Test(expected = IOException::class) fun `different logged in account is rejected`() {
         CardHistoryProtocol.verifyIdentity("""{"code":200,"data":{"sno":"2099999998"}}""", "2099999999")
     }

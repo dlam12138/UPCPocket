@@ -45,6 +45,8 @@ import com.upcpocket.app.domain.FocusSummary
 import com.upcpocket.app.domain.FocusTotals
 import com.upcpocket.app.domain.TagTotal
 import com.upcpocket.app.focus.FocusService
+import com.upcpocket.app.ui.components.ChartBarItem
+import com.upcpocket.app.ui.components.DailyBarChart
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
@@ -75,8 +77,9 @@ fun FocusStatsScreen(
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("学习统计") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -121,6 +124,13 @@ fun FocusStatsScreen(
             }
 
             PeriodCard(summary)
+
+            WeeklyTrendCard(
+                secondsByDay = secondsByDay,
+                today = today,
+                selectedDay = selectedDay,
+                onSelectDay = { day -> selectedDay = if (selectedDay == day) null else day },
+            )
 
             TagCard(summary.perTag)
 
@@ -279,6 +289,55 @@ private fun TagRow(tag: TagTotal, maxSeconds: Int) {
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(3.dp))
                     .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+    }
+}
+
+@Composable
+private fun WeeklyTrendCard(
+    secondsByDay: Map<LocalDate, Int>,
+    today: LocalDate,
+    selectedDay: LocalDate?,
+    onSelectDay: (LocalDate) -> Unit,
+) {
+    val days = remember(today) { (6L downTo 0L).map { today.minusDays(it) } }
+    val selectedIdx = selectedDay?.let { days.indexOf(it).takeIf { idx -> idx >= 0 } }
+    val labelFmt = remember { DateTimeFormatter.ofPattern("M/d") }
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "近 7 天趋势",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                val weekSeconds = days.sumOf { secondsByDay[it] ?: 0 }
+                Text(
+                    text = "7 日共 ${FocusStats.humanDuration(weekSeconds)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            DailyBarChart(
+                bars = days.map { day ->
+                    val secs = secondsByDay[day] ?: 0
+                    val mins = secs / 60
+                    val valueLabel = when {
+                        secs <= 0 -> "0"
+                        mins >= 60 -> "${mins / 60}h"
+                        else -> "${mins}m"
+                    }
+                    ChartBarItem(
+                        label = if (day == today) "今天" else day.format(labelFmt),
+                        value = secs.toFloat(),
+                        valueLabel = valueLabel,
+                        highlighted = day == today,
+                    )
+                },
+                selectedIndex = selectedIdx,
+                onSelect = { idx -> days.getOrNull(idx)?.let(onSelectDay) },
             )
         }
     }

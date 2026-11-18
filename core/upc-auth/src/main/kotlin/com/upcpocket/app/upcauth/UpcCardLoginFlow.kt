@@ -5,6 +5,7 @@ import java.net.URI
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Locale
+import com.upcpocket.app.account.api.StudentIdFormat
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
 import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
@@ -165,7 +166,7 @@ internal object CardCasProtocol {
         CasCaptchaChallengeDetector.inspect(html).active || parseCasLoginForm(html).hasSecondFactor
 
     fun body(form: CardCasForm, username: String, password: String, captcha: String): String {
-        require(username.matches(Regex("[0-9]{8,16}")) && password.isNotBlank())
+        require(StudentIdFormat.isValid(username) && password.isNotBlank())
         if (form.interactionRequired) throw IOException("N-CAS：请在学校页面继续登录")
         if (form.captchaId != null && captcha.isBlank()) throw IOException("N-CAS-CAPTCHA：请输入图片验证码")
         val submit = form.fields["submit"]?.takeIf { value ->

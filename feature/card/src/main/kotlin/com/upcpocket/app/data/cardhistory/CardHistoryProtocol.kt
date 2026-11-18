@@ -2,6 +2,7 @@ package com.upcpocket.app.data.cardhistory
 
 import java.io.IOException
 import java.net.URI
+import com.upcpocket.app.account.api.StudentIdFormat
 import kotlinx.serialization.json.*
 
 data class CardHistoryRow(val id: String, val title: String, val time: String, val amountFen: Long)
@@ -35,21 +36,27 @@ internal object CardHistoryProtocol {
     }
 
     fun verifyIdentity(body: String, expected: String) {
-        require(expected.matches(Regex("[0-9]{8,16}")))
+        require(StudentIdFormat.isValid(expected))
         val info = data(body)
-        val ids = mutableSetOf<String>()
+        val ids = mutableListOf<String>()
+        var invalidIdentity = false
         fun visit(value: JsonObject, depth: Int) {
             if (depth > 3) return
             for ((key, item) in value) {
                 if (key in setOf("sno", "username", "userName", "studentId", "studentNo")) {
-                    (item as? JsonPrimitive)?.contentOrNull?.takeIf { it.matches(Regex("[0-9]{8,16}")) }?.let(ids::add)
+                    val candidate = (item as? JsonPrimitive)?.contentOrNull
+                    if (candidate == null || !StudentIdFormat.isValid(candidate)) {
+                        invalidIdentity = true
+                    } else {
+                        ids += candidate
+                    }
                 }
                 if (item is JsonObject) visit(item, depth + 1)
             }
         }
         visit(info, 0)
-        if (ids.isEmpty()) throw IOException("N-ID-FORMAT：尚不能核对登录学号，请反馈此错误码")
-        if (ids != setOf(expected)) throw IOException("N-ID：登录账号与饭卡页学号不一致，请核对后重试")
+        if (ids.isEmpty() || invalidIdentity) throw IOException("N-ID-FORMAT：尚不能核对登录学号，请反馈此错误码")
+        if (ids.any { it != expected }) throw IOException("N-ID：登录账号与饭卡页学号不一致，请核对后重试")
     }
 
     /**

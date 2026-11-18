@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="70dp"
+    android:height="62dp"
+    android:viewportWidth="70"
+    android:viewportHeight="62">
+
+    <!-- A full rounded-corner wash fades before its inner edges. -->
+    <path android:pathData="M24,0 L70,0 L70,62 L0,62 L0,24 A24,24 0,0 1,24,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="12"
+                android:centerY="12"
+                android:gradientRadius="66">
+                <item android:color="@color/widget_frosted_lens_haze" android:offset="0.0" />
+                <item android:color="@android:color/transparent" android:offset="0.82" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- The curved lens highlight narrows to a point at both ends and fades before them. -->
+    <path android:pathData="M24,0 C40,0 56,0 68,2 C56,0 40,3.5 24,3.5 A20.5,20.5 0,0 0,3.5,24 C3.5,36 2,52 0,62 L0,24 A24,24 0,0 1,24,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="12"
+                android:centerY="12"
+                android:gradientRadius="54">
+                <item android:color="@color/widget_frosted_lens_arc" android:offset="0.0" />
+                <item android:color="@color/widget_frosted_lens_arc_soft" android:offset="0.44" />
+                <item android:color="@android:color/transparent" android:offset="0.84" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

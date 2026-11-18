@@ -5,7 +5,7 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "UPC Pocket v2.0.4 (published) / v2.0.5 (development, unreleased)",
+  "release": "UPC Pocket v2.0.7 (published) / v2.0.8 (local development, unreleased); dated verification entries retain their historical scope",
   "source_references": [
     {
       "id": "upc-mcp",
@@ -35,8 +35,8 @@
         "checked_on": "2026-11-17"
       },
       "authentication": "Public official pages; no UPC account or CAS required for the reviewed content",
-      "integration": "planned_official_browser_entry_2.0.8_not_implemented",
-      "verification": "2026-11-17: the official HTTPS academic-calendar column, latest observed annual article and its two semester JPGs were reviewed without authentication. The default planned target is the column, not a pinned annual image or automatic current-academic-year inference. No Android entry, browser-navigation or mobile-reading acceptance has been performed. The images include undergraduate, graduate and general student notes but do not split the two campuses or prove identical individual schedules. This development-catalog entry is a plan, not runtime API configuration."
+      "integration": "local_development_fixed_official_browser_entry_2.0.8_unreleased",
+      "verification": "2026-11-17: the official HTTPS academic-calendar column, latest observed annual article and its two semester JPGs were reviewed without authentication. The local 2.0.8 host implementation shares the fixed column URL across service directory, optional home pin and official web catalog; it requires neither an account nor the timetable plugin. Browser-navigation and mobile-reading acceptance remain pending; see docs/releases/2.0.8-development.md. The target is the column, not a pinned annual image or automatic current-academic-year inference. The images include undergraduate, graduate and general student notes but do not split the two campuses or prove identical individual schedules. This development catalog is not runtime API configuration."
     },
     {
       "id": "shiguang",

@@ -11,6 +11,7 @@ import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginUiContributor
 import com.upcpocket.app.plugin.ui.PluginUiRegistry
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -31,6 +32,7 @@ class ShiguangPlugin(account: SchoolAccountReferenceReader, authenticator: Shigu
             ShiguangScreen(service, host::back, host::openSchoolAccountSettings)
         })
         registry.addEntry(PluginEntry(UiEntryId.parse("shiguang.home"), pluginId, UiSurface.HOME_SERVICES,
-            40, "石光", "活动与学时", UiIcon.INSIGHTS, SHIGUANG_ROUTE))
+            40, "石光", "活动与学时", UiIcon.INSIGHTS, SHIGUANG_ROUTE,
+            category = UiCategory.CAMPUS, keywords = "石光 第二课堂 活动 学分 学时 社会实践"))
     }
 }

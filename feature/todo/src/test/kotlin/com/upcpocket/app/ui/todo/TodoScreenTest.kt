@@ -2,27 +2,43 @@ package com.upcpocket.app.ui.todo
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -30,7 +46,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [31])
+@Config(sdk = [31], qualifiers = "w411dp-h891dp")
 class TodoScreenTest {
 
     @get:Rule
@@ -144,10 +160,151 @@ class TodoScreenTest {
         assertEquals(listOf("第一条", "第二条"), store.current.map { it.title })
     }
 
+    @Test
+    fun `editing deadline and clearing reminder saves them independently`() {
+        val original = task(
+            title = "实验报告",
+            createdAt = 10,
+            reminderAt = System.currentTimeMillis() + 86_400_000,
+        )
+        val store = FakeTodoStore(listOf(original))
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("实验报告").performClick()
+        rule.onNodeWithTag("todo_due_date").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_due_date")
+        waitForTag("todo_due_date_confirm")
+        rule.onNodeWithTag("todo_due_date_confirm").assertIsDisplayed()
+        performClickSemantics("todo_due_date_confirm")
+        rule.onNodeWithTag("todo_due_time").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_due_time")
+        rule.onNodeWithText("选择截止时间").assertIsDisplayed()
+        waitForTag("todo_due_time_confirm")
+        performClickSemantics("todo_due_time_confirm")
+        rule.onNodeWithTag("todo_reminder_switch").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_reminder_switch")
+        performClickSemantics("todo_save")
+
+        rule.waitUntil(5_000) { store.current.single().revision == original.revision + 1 }
+        assertTrue(store.current.single().dueAt != null)
+        assertNull(store.current.single().reminderAt)
+    }
+
+    @Test
+    fun `editor drafts restore independently without turning an edit into a create`() {
+        val zone = ZoneId.systemDefault()
+        val dueAt = LocalDate.of(2035, 6, 7)
+            .atTime(16, 30)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val reminderAt = LocalDate.now(zone).plusYears(5)
+            .atTime(9, 45)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val original = task(
+            title = "原始标题",
+            createdAt = 10,
+            reminderAt = reminderAt,
+            dueAt = dueAt,
+        )
+        val store = FakeTodoStore(listOf(original))
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("原始标题").performClick()
+        rule.onNodeWithTag("todo_title_input").performTextReplacement("恢复后的草稿")
+        rule.onNodeWithTag("todo_clear_due").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_clear_due")
+        rule.onNodeWithTag("todo_due_value").assertTextEquals("不设截止")
+
+        rule.onNodeWithTag("todo_reminder_switch").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_reminder_switch")
+        rule.waitForIdle()
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithTag("todo_reminder_date").fetchSemanticsNodes().isEmpty()
+        }
+        performClickSemantics("todo_reminder_switch")
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithTag("todo_reminder_date").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.waitForIdle()
+
+        val reminderDateDraft = textForTag("todo_reminder_date")
+        val reminderTimeDraft = textForTag("todo_reminder_time")
+        assertTrue(
+            reminderDateDraft != TodoFormat.date(reminderAt, zone) ||
+                reminderTimeDraft != TodoFormat.clock(reminderAt, zone),
+        )
+        restoration.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+
+        assertEquals("恢复后的草稿", editableTextForTag("todo_title_input"))
+        rule.onNodeWithTag("todo_due_value").assertTextEquals("不设截止")
+        rule.onNodeWithTag("todo_reminder_date").assertTextEquals(reminderDateDraft)
+        rule.onNodeWithTag("todo_reminder_time").assertTextEquals(reminderTimeDraft)
+        performClickSemantics("todo_save")
+
+        rule.waitUntil(5_000) { store.current.single().revision == original.revision + 1 }
+        val saved = store.current.single()
+        assertEquals(original.id, saved.id)
+        assertEquals("恢复后的草稿", saved.title)
+        assertNull(saved.dueAt)
+        val savedReminderAt = requireNotNull(saved.reminderAt)
+        assertTrue(savedReminderAt != reminderAt)
+        assertEquals(reminderDateDraft, TodoFormat.date(savedReminderAt, zone))
+        assertEquals(reminderTimeDraft, TodoFormat.clock(savedReminderAt, zone))
+        assertEquals(0, store.addCalls)
+    }
+
+    @Test
+    fun `active page consumes one create request and closing it does not reopen`() {
+        val store = FakeTodoStore(emptyList())
+        val requestId = "11111111-1111-4111-8111-111111111111"
+        store.openCreate(requestId)
+        val active = mutableStateOf(false)
+        rule.setContent {
+            CompositionLocalProvider(LocalPluginPageActive provides active.value) {
+                MaterialTheme { TodoScreen(store = store) }
+            }
+        }
+
+        rule.waitForIdle()
+        assertEquals(0, store.createRequestConsumptions)
+        assertEquals(requestId, store.pendingCreateRequest.value)
+        rule.onNodeWithText("新增待办").assertDoesNotExist()
+
+        rule.runOnIdle { active.value = true }
+        rule.waitForIdle()
+
+        rule.waitUntil(5_000) { store.createRequestConsumptions == 1 }
+        rule.onNodeWithText("新增待办").assertIsDisplayed()
+        rule.onNodeWithTag("todo_editor_cancel").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_editor_cancel")
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+
+        rule.onNodeWithText("新增待办").assertDoesNotExist()
+        assertEquals(1, store.createRequestConsumptions)
+    }
+
+    @Test
+    fun `pending open for a deleted task clears without showing stale editor`() {
+        val store = FakeTodoStore(emptyList())
+        store.openTask(UUID.randomUUID().toString())
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.waitUntil(5_000) { store.pendingOpenTask.value == null }
+        rule.onNodeWithText("编辑待办").assertDoesNotExist()
+    }
+
     private fun task(
         title: String,
         createdAt: Long,
         completed: Boolean = false,
+        reminderAt: Long? = null,
+        dueAt: Long? = null,
     ) = TodoTask(
         id = UUID.randomUUID().toString(),
         title = title,
@@ -155,10 +312,35 @@ class TodoScreenTest {
         createdAt = createdAt,
         updatedAt = createdAt,
         completedAt = if (completed) createdAt else null,
-        reminderAt = null,
+        reminderAt = reminderAt,
         reminderFiredAt = null,
         revision = 1,
+        dueAt = dueAt,
     )
+
+    private fun textForTag(tag: String): String = rule.onNodeWithTag(tag)
+        .fetchSemanticsNode()
+        .config
+        .getOrNull(SemanticsProperties.Text)
+        .orEmpty()
+        .joinToString(separator = "") { it.text }
+
+    private fun editableTextForTag(tag: String): String = rule.onNodeWithTag(tag)
+        .fetchSemanticsNode()
+        .config
+        .getOrNull(SemanticsProperties.EditableText)
+        ?.text
+        .orEmpty()
+
+    private fun performClickSemantics(tag: String) {
+        rule.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.OnClick)
+    }
+
+    private fun waitForTag(tag: String) {
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
 
     private class FakeHost : PluginSectionHost {
         var opened: PluginRouteId? = null
@@ -174,6 +356,7 @@ class TodoScreenTest {
         private val state = MutableStateFlow(initial)
         override val tasks: StateFlow<List<TodoTask>> = state
         override val pendingOpenTask = MutableStateFlow<String?>(null)
+        override val pendingCreateRequest = MutableStateFlow<String?>(null)
         val current: List<TodoTask> get() = state.value
         private var access = TodoReminderAccess(
             notificationsEnabled = true,
@@ -181,10 +364,16 @@ class TodoScreenTest {
         )
         var revisionUpdates = 0
         var completionGate: CompletableDeferred<Unit>? = null
+        var createRequestConsumptions = 0
+        var addCalls = 0
 
         override fun reminderAccess(): TodoReminderAccess = access
 
-        override suspend fun add(title: String, reminderAt: Long?): TodoTask {
+        override suspend fun add(title: String, reminderAt: Long?): TodoTask =
+            add(title, reminderAt, dueAt = null)
+
+        override suspend fun add(title: String, reminderAt: Long?, dueAt: Long?): TodoTask {
+            addCalls++
             val now = 1_000L + state.value.size
             val task = TodoTask(
                 id = UUID.randomUUID().toString(),
@@ -196,14 +385,35 @@ class TodoScreenTest {
                 reminderAt = reminderAt,
                 reminderFiredAt = null,
                 revision = 1,
+                dueAt = dueAt,
             )
             state.value = state.value + task
             return task
         }
 
         override suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean {
+            val task = state.value.firstOrNull { it.id == id } ?: return false
+            return edit(id, title, reminderAt, task.dueAt)
+        }
+
+        override suspend fun edit(id: String, title: String, reminderAt: Long?, dueAt: Long?): Boolean {
+            val task = state.value.firstOrNull { it.id == id } ?: return false
             state.value = state.value.map {
-                if (it.id == id) it.copy(title = title, reminderAt = reminderAt, revision = it.revision + 1) else it
+                if (it.id == id) {
+                    it.copy(
+                        title = title,
+                        reminderAt = reminderAt,
+                        reminderFiredAt = if (task.reminderAt == reminderAt) {
+                            task.reminderFiredAt
+                        } else {
+                            null
+                        },
+                        dueAt = dueAt,
+                        revision = it.revision + 1,
+                    )
+                } else {
+                    it
+                }
             }
             return true
         }
@@ -259,6 +469,22 @@ class TodoScreenTest {
 
         override fun consumeOpenTask() {
             pendingOpenTask.value = null
+        }
+
+        override fun openCreate(): String {
+            val requestId = UUID.randomUUID().toString()
+            pendingCreateRequest.value = requestId
+            return requestId
+        }
+
+        override fun openCreate(requestId: String): Boolean {
+            pendingCreateRequest.value = requestId
+            return true
+        }
+
+        override fun consumeCreateRequest() {
+            createRequestConsumptions++
+            pendingCreateRequest.value = null
         }
 
         override fun ensureNotificationChannel() = Unit

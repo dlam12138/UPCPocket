@@ -49,6 +49,6 @@ internal fun LibraryAccountBlocked(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
-        Button(onClick = onBack) { Text("返回") }
+        com.upcpocket.app.ui.components.CampusButton(onClick = onBack) { Text("返回") }
     }
 }

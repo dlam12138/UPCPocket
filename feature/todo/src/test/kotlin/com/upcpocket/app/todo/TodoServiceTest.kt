@@ -4,6 +4,7 @@ import com.upcpocket.app.todo.data.TodoRepository
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.data.TodoTaskDao
 import com.upcpocket.app.todo.data.TodoTaskEntity
+import com.upcpocket.app.todo.data.TodoWidgetSnapshotResult
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -222,15 +223,167 @@ class TodoServiceTest {
         val afterFailure = harness.repository.byId(task.id)!!
         assertNull(afterFailure.reminderFiredAt)
         assertFalse(harness.notifier.active.containsKey(task.id))
+        assertEquals(1, harness.notifier.posts)
+        assertEquals(0, harness.notifier.successfulPosts)
+        assertEquals(3, harness.taskChanges)
 
         harness.notifier.result = true
         harness.service.reconcileAll()
         assertTrue(harness.notifier.active.containsKey(task.id))
+        assertEquals(2, harness.notifier.posts)
+        assertEquals(1, harness.notifier.successfulPosts)
         assertEquals(1, harness.notifier.active.size)
+        assertEquals(5, harness.taskChanges)
 
         harness.service.reconcileAll()
         assertEquals(2, harness.notifier.posts)
+        assertEquals(1, harness.notifier.successfulPosts)
         assertEquals(1, harness.notifier.active.size)
+        assertEquals(5, harness.taskChanges)
+    }
+
+    @Test
+    fun `successful persisted changes publish refresh and stale or rejected edits do not`() = runTest {
+        val harness = Harness()
+        val reminderAt = harness.now + 60_000
+        val task = harness.service.add("A", reminderAt = reminderAt, dueAt = 10_000)
+        assertEquals(1, harness.taskChanges)
+
+        assertTrue(harness.service.edit(task.id, "B", reminderAt = reminderAt, dueAt = 20_000))
+        assertEquals(2, harness.taskChanges)
+        val edited = harness.repository.byId(task.id)!!
+        assertEquals(2, edited.revision)
+        assertEquals(20_000L, edited.dueAt!!)
+        assertEquals(reminderAt, edited.reminderAt!!)
+        assertEquals(edited.revision, harness.scheduler.scheduled[task.id]?.revision)
+        assertTrue(harness.service.edit(task.id, "legacy edit", reminderAt = reminderAt))
+        assertEquals(3, harness.taskChanges)
+        val legacyEdited = harness.repository.byId(task.id)!!
+        assertEquals(20_000L, legacyEdited.dueAt!!)
+        assertEquals(reminderAt, legacyEdited.reminderAt!!)
+
+        val completed = harness.service.setCompletedIfRevision(
+            task.id,
+            harness.repository.byId(task.id)!!.revision,
+            true,
+        )!!
+        assertEquals(4, harness.taskChanges)
+        assertNull(harness.service.setCompletedIfRevision(task.id, completed.revision - 1, false))
+        assertEquals(4, harness.taskChanges)
+        val reopened = harness.service.setCompletedIfRevision(task.id, completed.revision, false)!!
+        assertEquals(5, harness.taskChanges)
+        assertEquals(20_000L, reopened.dueAt!!)
+
+        val deleted = harness.service.delete(task.id)!!
+        assertEquals(6, harness.taskChanges)
+        assertTrue(harness.service.restore(deleted))
+        assertEquals(7, harness.taskChanges)
+        val restored = harness.repository.byId(task.id)!!
+        harness.service.onActionComplete(task.id, restored.revision)
+        assertEquals(8, harness.taskChanges)
+        assertTrue(harness.repository.byId(task.id)!!.completed)
+
+        val snoozeTask = harness.service.add("Snooze", harness.now + 60_000)
+        val snoozeRevision = harness.repository.byId(snoozeTask.id)!!.revision
+        assertEquals(9, harness.taskChanges)
+        harness.service.onActionSnooze(snoozeTask.id, snoozeRevision)
+        assertEquals(10, harness.taskChanges)
+
+        assertFalse(harness.service.edit("missing", "No task", null, null))
+        assertFalse(harness.service.edit(snoozeTask.id, "   ", null, null))
+        assertEquals(10, harness.taskChanges)
+    }
+
+    @Test
+    fun `deadline without a reminder does not schedule or send a notification`() = runTest {
+        val harness = Harness()
+        val task = harness.service.add("Deadline only", reminderAt = null, dueAt = harness.now - 1)
+
+        assertEquals(harness.now - 1, harness.repository.byId(task.id)!!.dueAt!!)
+        assertNull(harness.repository.byId(task.id)!!.reminderAt)
+        assertTrue(harness.scheduler.scheduled.isEmpty())
+        assertEquals(0, harness.notifier.posts)
+    }
+
+    @Test
+    fun `widget snapshot distinguishes restore empty and failed local reads`() = runTest {
+        val harness = Harness()
+        assertEquals(TodoWidgetSnapshotResult.NotRestored, harness.service.readWidgetSnapshot())
+
+        harness.service.reconcileAll()
+        assertEquals(
+            TodoWidgetSnapshotResult.Ready(emptyList(), incompleteCount = 0),
+            harness.service.readWidgetSnapshot(),
+        )
+
+        val later = harness.service.add("Later", reminderAt = null, dueAt = 300)
+        val earlier = harness.service.add("Earlier", reminderAt = null, dueAt = 200)
+        harness.service.add("Undated", reminderAt = null)
+        harness.service.reconcileAll()
+        val snapshot = harness.service.readWidgetSnapshot(maxVisibleRows = 1)
+        assertEquals(
+            TodoWidgetSnapshotResult.Ready(listOf(earlier), incompleteCount = 3),
+            snapshot,
+        )
+        assertTrue(later.id != earlier.id)
+
+        harness.dao.allFailure = IllegalStateException("local read failed")
+        assertEquals(TodoWidgetSnapshotResult.ReadFailed, harness.service.readWidgetSnapshot())
+    }
+
+    @Test
+    fun `create requests are one shot and open task ids remain supported`() = runTest {
+        val harness = Harness()
+        val requestId = harness.service.openCreate()
+        assertEquals(requestId, harness.service.pendingCreateRequest.value)
+        assertFalse(harness.service.openCreate("invalid"))
+        assertFalse(harness.service.openCreate("1-1-1-1-1"))
+        val uppercaseRequestId = "22222222-2222-4222-8222-22222222ABCD"
+        assertTrue(harness.service.openCreate(uppercaseRequestId))
+        assertEquals(uppercaseRequestId.lowercase(), harness.service.pendingCreateRequest.value)
+        harness.service.consumeCreateRequest()
+        assertNull(harness.service.pendingCreateRequest.value)
+
+        val taskId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        harness.service.openTask(taskId.uppercase())
+        assertEquals(taskId, harness.service.pendingOpenTask.value)
+        harness.service.consumeOpenTask()
+        harness.service.openTask("1-1-1-1-1")
+        assertNull(harness.service.pendingOpenTask.value)
+        harness.service.consumeOpenTask()
+        assertNull(harness.service.pendingOpenTask.value)
+    }
+
+    @Test
+    fun `restore failure is observable and successful restore refreshes once`() = runTest {
+        val harness = Harness()
+        assertEquals(TodoWidgetSnapshotResult.NotRestored, harness.service.readWidgetSnapshot())
+
+        harness.dao.allFailure = IllegalStateException("local restore failed")
+        assertTrue(runCatching { harness.service.reconcileAll() }.isFailure)
+        assertEquals(TodoWidgetSnapshotResult.ReadFailed, harness.service.readWidgetSnapshot())
+        assertEquals(1, harness.taskChanges)
+        assertTrue(runCatching { harness.service.reconcileAll() }.isFailure)
+        assertEquals(1, harness.taskChanges)
+
+        harness.dao.allFailure = null
+        harness.service.reconcileAll()
+        assertEquals(TodoWidgetSnapshotResult.Ready(emptyList(), incompleteCount = 0), harness.service.readWidgetSnapshot())
+        assertEquals(2, harness.taskChanges)
+
+        harness.service.reconcileAll()
+        assertEquals(2, harness.taskChanges)
+    }
+
+    @Test
+    fun `callback failures do not turn committed todo changes into failures`() = runTest {
+        val harness = Harness()
+        harness.failTaskChangedCallback = true
+
+        val task = harness.service.add("Committed", reminderAt = null, dueAt = 4_000)
+
+        assertEquals(task.id, harness.repository.byId(task.id)!!.id)
+        assertEquals(1, harness.taskChanges)
     }
 
     private class Harness {
@@ -240,6 +393,8 @@ class TodoServiceTest {
         val notifier = FakeNotifier()
         val access = FakeAccess(TodoReminderAccess(true, true))
         var now = 1_000L
+        var taskChanges = 0
+        var failTaskChangedCallback = false
         val service = TodoService(
             TodoServiceDependencies(
                 repository = { repository },
@@ -248,6 +403,10 @@ class TodoServiceTest {
                 accessProvider = { access },
             ),
             clock = { now },
+            onTasksChanged = {
+                taskChanges++
+                if (failTaskChangedCallback) error("callback failure")
+            },
         )
     }
 
@@ -279,6 +438,7 @@ class TodoServiceTest {
     private class FakeNotifier : TodoNotifierApi {
         val active = mutableMapOf<String, Int>()
         var posts = 0
+        var successfulPosts = 0
         var cancelCalls = 0
         var result = true
 
@@ -288,6 +448,7 @@ class TodoServiceTest {
             posts++
             if (!result) return false
             active[task.id] = revision
+            successfulPosts++
             return true
         }
 
@@ -300,6 +461,7 @@ class TodoServiceTest {
     private class FakeTodoDao : TodoTaskDao {
         private val state = MutableStateFlow<List<TodoTaskEntity>>(emptyList())
         var allGate: CompletableDeferred<Unit>? = null
+        var allFailure: Exception? = null
         private var nextByIdStarted: CompletableDeferred<Unit>? = null
         private var nextByIdGate: CompletableDeferred<Unit>? = null
 
@@ -315,6 +477,7 @@ class TodoServiceTest {
 
         override suspend fun all(): List<TodoTaskEntity> {
             allGate?.await()
+            allFailure?.let { throw it }
             return state.value
         }
 
@@ -342,12 +505,14 @@ class TodoServiceTest {
             title: String,
             reminderAt: Long?,
             firedAt: Long?,
+            dueAt: Long?,
             now: Long,
         ): Int = mutate(id) {
             it.copy(
                 title = title,
                 reminderAt = reminderAt,
                 reminderFiredAt = firedAt,
+                dueAt = dueAt,
                 updatedAt = now,
                 revision = it.revision + 1,
             )

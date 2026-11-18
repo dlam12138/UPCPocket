@@ -8,6 +8,7 @@ import android.widget.RemoteViews
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.designsystem.R as DesignSystemR
 import com.upcpocket.app.feature.card.R
@@ -29,8 +30,10 @@ class CardWidgetRenderer(private val context: Context) {
         refreshing: Boolean,
         failed: Boolean,
         openApp: () -> PendingIntent,
+        appearance: WidgetAppearance = WidgetAppearance.SOLID,
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_card_balance)
+        WidgetRenderSupport.applyAppearance(views, R.id.widget_card_root, appearance)
         views.setOnClickPendingIntent(R.id.widget_card_root, openApp())
         val binding = status.binding
         val ownedSnapshot = snapshot?.takeIf {
@@ -39,9 +42,10 @@ class CardWidgetRenderer(private val context: Context) {
                 it.sameOwnerAs(binding)
         }
 
-        val primary = context.getColor(DesignSystemR.color.widget_primary)
-        val secondary = context.getColor(DesignSystemR.color.widget_secondary)
+        val primary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_primary))
+        val secondary = context.getColor(appearance.textColorResource(DesignSystemR.color.widget_secondary))
         views.setTextColor(R.id.widget_card_balance, primary)
+        views.setTextColor(R.id.widget_card_transition, secondary)
         views.setViewVisibility(R.id.widget_card_transition, View.GONE)
 
         if (binding == null || ownedSnapshot == null) {
@@ -86,6 +90,7 @@ class CardWidgetRenderer(private val context: Context) {
                     failed -> DesignSystemR.color.widget_error
                     else -> DesignSystemR.color.widget_tertiary
                 },
+                appearance = appearance,
             )
 
             return views
@@ -129,6 +134,7 @@ class CardWidgetRenderer(private val context: Context) {
                 meta
             },
             colorRes = WidgetRenderSupport.metaColor(refreshing, failed),
+            appearance = appearance,
         )
 
         return views

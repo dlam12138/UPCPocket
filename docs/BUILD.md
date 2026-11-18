@@ -6,12 +6,12 @@
 | --- | --- |
 | Android | minSdk 31 / compileSdk 与 targetSdk 36 |
 | JDK | 17+（本机 Android Studio JBR 21） |
-| Android Gradle Plugin | 8.7.3 |
-| Gradle wrapper | 8.9 |
-| Kotlin | 2.0.21 |
-| KSP | 2.0.21-1.0.28 |
-| Compose BOM | 2024.12.01 |
-| Room | 2.6.1 |
+| Android Gradle Plugin | 8.13.2 |
+| Gradle wrapper | 8.13 |
+| Kotlin | 2.3.10 |
+| KSP | 2.3.6 |
+| Compose BOM | 2026.02.01 |
+| Room | 2.8.5（2.0.8 开发基线，验证范围见开发记录） |
 
 安装 Android SDK 36 与项目所需 Build Tools。通过环境变量配置本机 JDK，SDK 路径写入根目录 `local.properties`，例如 `sdk.dir=/your/android-sdk`。不提交本机路径或签名文件。
 
@@ -49,7 +49,7 @@ sh ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 .\gradlew.bat :app:assembleRelease
 ```
 
-当前 `app/build.gradle.kts` 已启用 `isMinifyEnabled=true`、`isShrinkResources=true`，未升级 AGP/R8，也未删除既有 keep 规则。2026-11-05 晚本机同一源码树实测：
+当前 `app/build.gradle.kts` 已启用 `isMinifyEnabled=true`、`isShrinkResources=true`。2.0.8 为 Kotlin 2.3 采用 AGP 8.13.2 / R8 8.13.19，理由及边界见 [ADR 005](adr/005-2.0.8-toolchain-and-widget-state.md)；本轮构建结果另见 [开发记录](releases/2.0.8-development.md)。以下为 2026-11-05 历史实测，不是当前产物：
 
 | 产物 | 字节数 | SHA-256 |
 | --- | ---: | --- |

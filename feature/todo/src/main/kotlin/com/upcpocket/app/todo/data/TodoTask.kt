@@ -16,4 +16,6 @@ data class TodoTask(
     val reminderAt: Long?,
     val reminderFiredAt: Long?,
     val revision: Int,
+    /** Optional deadline instant; independent from the reminder schedule. */
+    val dueAt: Long? = null,
 )

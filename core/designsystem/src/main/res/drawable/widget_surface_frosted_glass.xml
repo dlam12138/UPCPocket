@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="@color/widget_frosted_top"
+                android:centerColor="@color/widget_frosted_mid"
+                android:endColor="@color/widget_frosted_bottom"
+                android:type="linear" />
+            <corners android:radius="24dp" />
+            <stroke
+                android:width="0.75dp"
+                android:color="@color/widget_frosted_edge" />
+        </shape>
+    </item>
+
+    <item
+        android:width="70dp"
+        android:height="62dp"
+        android:gravity="top|left"
+        android:drawable="@drawable/widget_frosted_corner_lens" />
+    <item
+        android:width="70dp"
+        android:height="62dp"
+        android:gravity="bottom|right">
+        <rotate
+            android:fromDegrees="180"
+            android:toDegrees="180"
+            android:pivotX="50%"
+            android:pivotY="50%"
+            android:drawable="@drawable/widget_frosted_corner_lens" />
+    </item>
+</layer-list>

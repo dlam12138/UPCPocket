@@ -121,7 +121,7 @@ fun AboutScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("关于") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -139,11 +139,11 @@ fun AboutScreen(onBack: () -> Unit) {
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Surface(
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
+            com.upcpocket.app.ui.components.CampusPanel(
                 modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
             ) {
+                val heroContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 Column(
                     Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -151,24 +151,24 @@ fun AboutScreen(onBack: () -> Unit) {
                     IconBadge(
                         icon = Icons.Outlined.Info,
                         contentDescription = null,
-                        containerColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        containerColor = heroContentColor.copy(alpha = 0.12f),
+                        contentColor = heroContentColor,
                         size = 44.dp,
                     )
                     Text(
                         "UPC Pocket",
                         style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = heroContentColor,
                     )
                     Text(
                         "中国石油大学（华东）的校园日常工具。非学校官方应用。",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = heroContentColor,
                     )
                     Text(
                         "版本 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                        color = heroContentColor.copy(alpha = 0.8f),
                     )
                 }
             }
@@ -229,7 +229,7 @@ fun AboutScreen(onBack: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        Switch(
+                        com.upcpocket.app.ui.components.CampusSwitch(
                             checked = diagnosticsEnabled,
                             onCheckedChange = { enabled ->
                                 diagnosticsEnabled = enabled
@@ -244,13 +244,13 @@ fun AboutScreen(onBack: () -> Unit) {
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        TextButton(
+                        com.upcpocket.app.ui.components.CampusTextButton(
                             onClick = { exportDiagnostics() },
                             enabled = !exporting && !clearing,
                         ) {
                             Text(if (exporting) "正在生成…" else "导出诊断报告")
                         }
-                        TextButton(
+                        com.upcpocket.app.ui.components.CampusTextButton(
                             onClick = { clearDiagnostics() },
                             enabled = !exporting && !clearing,
                         ) {
@@ -295,7 +295,7 @@ fun AboutScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = { uriHandler.openUri(UPSTREAM_REPO) }) {
                         Text("上游项目 3beuml/ZZUPocket（MIT）")
                     }
                 }

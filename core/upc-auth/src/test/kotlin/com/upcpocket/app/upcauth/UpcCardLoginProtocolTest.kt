@@ -10,7 +10,7 @@ class UpcCardLoginProtocolTest {
     private val html = """<form method="post" id="loginForm">
         <input name="username"><input name="password" type="password"><input name="type" value="username_password">
         <input name="execution" value="example-execution"><input name="_eventId" value="submit"></form>"""
-    private val id = "2099999999"
+    private val id = "TS999999999"
 
     @Test fun `native login submits observed fields with escaped credentials`() {
         val form = CardCasProtocol.form(html, url)
@@ -19,6 +19,7 @@ class UpcCardLoginProtocolTest {
             URLDecoder.decode(parts[0], "UTF-8") to URLDecoder.decode(parts[1], "UTF-8")
         }
         assertEquals("test+&=%", fields["password"])
+        assertEquals(id, fields["username"])
         assertEquals("example-execution", fields["execution"])
         assertEquals("submit", fields["_eventId"])
         assertEquals("username_password", fields["type"])

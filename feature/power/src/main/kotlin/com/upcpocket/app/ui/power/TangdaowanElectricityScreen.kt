@@ -209,7 +209,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     }
 
     if (showPicker) {
-        AlertDialog(
+        com.upcpocket.app.ui.components.CampusAlertDialog(
             onDismissRequest = { showPicker = false },
             title = { Text("选择楼号") },
             text = {
@@ -228,11 +228,11 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                 "楼号加载失败，请重试。",
                                 color = MaterialTheme.colorScheme.error,
                             )
-                            TextButton(onClick = ::loadBuildings) { Text("重试") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         buildings.isEmpty() -> Column {
                             Text("没有返回楼号列表。")
-                            TextButton(onClick = ::loadBuildings) { Text("重试") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
                         else -> LazyColumn {
                             items(
@@ -259,14 +259,15 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showPicker = false }) { Text("关闭") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = { showPicker = false }) { Text("关闭") }
             },
         )
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("唐岛湾电费") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -285,7 +286,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column {
-                OutlinedButton(
+                com.upcpocket.app.ui.components.CampusOutlinedButton(
                     onClick = { showPicker = true },
                     enabled = !loading,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -313,7 +314,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重试") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     buildings.isEmpty() -> {
                         Text(
@@ -322,7 +323,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                         )
-                        TextButton(onClick = ::loadBuildings) { Text("重试") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                     }
                     else -> Unit
                 }
@@ -354,7 +355,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                 },
             )
 
-            Button(
+            com.upcpocket.app.ui.components.CampusButton(
                 onClick = ::runQuery,
                 enabled = !loading && building.isNotBlank() && room.isNotBlank(),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -364,7 +365,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
 
             if (building.isNotBlank() || room.isNotBlank()) {
-                TextButton(onClick = ::clearInput, enabled = !loading) {
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = ::clearInput, enabled = !loading) {
                     Text("清除记录")
                 }
             }
@@ -381,12 +382,11 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
             }
 
             snapshot?.takeIf { it.matches(building, room) }?.let { value ->
-                Card(
+                com.upcpocket.app.ui.components.CampusPanel(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
                 ) {
+                    val resultContent = MaterialTheme.colorScheme.onPrimaryContainer
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             when {
@@ -397,20 +397,20 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                     .format(Instant.ofEpochMilli(value.fetchedAt))
                             },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent.copy(alpha = 0.8f),
                         )
                         Text(
                             text = value.kwh + " 度",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent,
                         )
                         Text(
                             text = listOf(value.building, value.room)
                                 .filter { it.isNotBlank() }
                                 .joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = resultContent.copy(alpha = 0.85f),
                         )
                     }
                 }
@@ -422,7 +422,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 candidates.forEach { candidate ->
-                    Card(Modifier.fillMaxWidth()) {
+                    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(candidate.room, style = MaterialTheme.typography.titleMedium)
                             Text(
@@ -430,7 +430,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            TextButton(onClick = {
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = {
                                 changeRoom(candidate.room)
                                 candidates = emptyList()
                             }) { Text("选择") }

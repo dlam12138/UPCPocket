@@ -118,7 +118,7 @@ internal fun CardHistoryLoginDialog(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "关闭")
                 }
                 Text("学校验证", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                TextButton(onClick = currentOnClose) { Text("关闭") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = currentOnClose) { Text("关闭") }
             }
             Text(
                 "请在学校页面完成登录。",
@@ -335,7 +335,7 @@ internal fun CardHistoryLoginDialog(
                         ) {
                             Text("学校验证未完成", style = MaterialTheme.typography.titleMedium)
                             Text(message, Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.error)
-                            Button(
+                            com.upcpocket.app.ui.components.CampusButton(
                                 onClick = {
                                     // New factory creation can precede the old AndroidView's
                                     // onRelease. Finish release here before changing its key.
@@ -352,7 +352,7 @@ internal fun CardHistoryLoginDialog(
                                 },
                                 modifier = Modifier.padding(top = 12.dp),
                             ) { Text("重新加载") }
-                            TextButton(onClick = currentOnClose) { Text("关闭") }
+                            com.upcpocket.app.ui.components.CampusTextButton(onClick = currentOnClose) { Text("关闭") }
                         }
                     }
                 }

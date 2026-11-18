@@ -1,7 +1,5 @@
 package com.upcpocket.app.widget
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -14,7 +12,7 @@ import androidx.work.workDataOf
 import com.upcpocket.app.core.AppGraph
 import java.util.concurrent.TimeUnit
 
-/** Only placed widgets retain work. KEEP preserves the cadence across redraws. */
+/** Only placed widgets retain periodic or local redraw work. KEEP preserves existing cadence. */
 object WidgetAutoRefresh {
     const val CARD_WORK_NAME = "widget-auto-card"
     const val TIMETABLE_WORK_NAME = "widget-auto-timetable-local"
@@ -23,8 +21,7 @@ object WidgetAutoRefresh {
     const val INTERVAL_MINUTES = 30L
 
     fun hasWidgets(context: Context, kind: WidgetKind): Boolean =
-        AppWidgetManager.getInstance(context.applicationContext)
-            .getAppWidgetIds(ComponentName(context, kind.providerClass)).isNotEmpty()
+        hasWidgetInstances(context, kind)
 
     fun reconcile(context: Context) {
         val appContext = context.applicationContext
@@ -57,6 +54,11 @@ object WidgetAutoRefresh {
                 work.cancelUniqueWork(TIMETABLE_WORK_NAME)
                 TimetableWidgetTicker.cancel(appContext)
             }
+            if (hasWidgets(appContext, WidgetKind.TODO) && AppGraph.todoStoreOrNull != null) {
+                TodoWidgetTicker.schedule(appContext)
+            } else {
+                TodoWidgetTicker.cancel(appContext)
+            }
         }
     }
 
@@ -84,6 +86,7 @@ object WidgetAutoRefresh {
                     work.cancelUniqueWork(LOCAL_RECOVERY_WORK_NAME)
                     TimetableWidgetTicker.cancel(context)
                 }
+                WidgetKind.TODO -> TodoWidgetTicker.cancel(context)
                 WidgetKind.POWER -> Unit
             }
         }

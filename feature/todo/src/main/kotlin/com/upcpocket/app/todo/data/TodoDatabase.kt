@@ -4,13 +4,15 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * 本机待办数据库与学校账号数据分离；换号清理不会删除这个文件。
  */
 @Database(
     entities = [TodoTaskEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class TodoDatabase : RoomDatabase() {
@@ -28,7 +30,13 @@ abstract class TodoDatabase : RoomDatabase() {
                 context.applicationContext,
                 TodoDatabase::class.java,
                 DB_NAME,
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+        }
+
+        val MIGRATION_1_2: Migration = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `todo_tasks` ADD COLUMN `dueAt` INTEGER")
+            }
         }
     }
 }

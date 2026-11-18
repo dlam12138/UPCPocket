@@ -25,11 +25,31 @@ class TodoRepository(
         id: String,
         title: String,
         reminderAt: Long?,
+        dueAt: Long?,
         firedAt: Long?,
         now: Long,
     ): TodoTask? {
-        if (dao.updateContent(id, title, reminderAt, firedAt, now) == 0) return null
+        if (dao.updateContent(id, title, reminderAt, firedAt, dueAt, now) == 0) return null
         return byId(id)
+    }
+
+    /** Legacy edit path: update reminder content without clearing a deadline it cannot express. */
+    suspend fun updateContent(
+        id: String,
+        title: String,
+        reminderAt: Long?,
+        firedAt: Long?,
+        now: Long,
+    ): TodoTask? {
+        val current = byId(id) ?: return null
+        return updateContent(
+            id = id,
+            title = title,
+            reminderAt = reminderAt,
+            dueAt = current.dueAt,
+            firedAt = firedAt,
+            now = now,
+        )
     }
 
     suspend fun setCompleted(id: String, completed: Boolean, now: Long): TodoTask? {
@@ -83,7 +103,7 @@ class TodoRepository(
 
     suspend fun delete(id: String): TodoTask? {
         val task = byId(id) ?: return null
-        dao.delete(id)
+        if (dao.delete(id) == 0) return null
         return task
     }
 }

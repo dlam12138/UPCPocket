@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_card_glass_preview_title">校园卡余额</string>
+    <string name="widget_card_glass_preview_label">余额示例</string>
+    <string name="widget_card_glass_preview_value">¥ 128.00</string>
+    <string name="widget_power_glass_preview_title">唐岛湾电量</string>
+    <string name="widget_power_glass_preview_label">电量示例</string>
+    <string name="widget_power_glass_preview_value">23.4 度</string>
+    <string name="widget_power_glass_preview_hint">房间示例</string>
+
+    <string name="widget_timetable_glass_preview_title">今日课表</string>
+    <string name="widget_timetable_glass_preview_time">09:00 · 第 1 节</string>
+    <string name="widget_timetable_glass_preview_course">示例课程</string>
+    <string name="widget_timetable_glass_preview_hint">示例安排</string>
+
+    <string name="widget_todo_glass_preview_title">待办清单</string>
+    <string name="widget_todo_glass_preview_task">示例待办</string>
+    <string name="widget_todo_glass_preview_due">今天 · 16:00</string>
+</resources>

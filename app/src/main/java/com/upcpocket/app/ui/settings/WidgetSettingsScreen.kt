@@ -2,8 +2,10 @@ package com.upcpocket.app.ui.settings
 
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
+import android.view.View
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,25 +24,41 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.designsystem.R as DesignSystemR
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.widget.CardBalanceWidgetProvider
+import com.upcpocket.app.widget.CardBalanceGlassWidgetProvider
 import com.upcpocket.app.widget.PowerWidgetProvider
+import com.upcpocket.app.widget.PowerGlassWidgetProvider
 import com.upcpocket.app.widget.TimetableWidgetProvider
+import com.upcpocket.app.widget.TimetableGlassWidgetProvider
+import com.upcpocket.app.widget.TodoWidgetProvider
+import com.upcpocket.app.widget.TodoGlassWidgetProvider
+import kotlinx.coroutines.launch
 
 /**
  * 「设置 → 桌面组件」。
@@ -53,6 +71,8 @@ import com.upcpocket.app.widget.TimetableWidgetProvider
 @Composable
 fun WidgetSettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val prefs by AppGraph.uiPrefsStore.flow.collectAsStateWithLifecycle(initialValue = UiPrefs())
+    val scope = rememberCoroutineScope()
     val manager = remember { AppWidgetManager.getInstance(context) }
     val supported = remember(manager) { manager.isRequestPinAppWidgetSupported }
 
@@ -78,7 +98,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("桌面组件") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -102,6 +122,41 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            GlassCard(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("组件外观", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "标准版使用这里的背景；玻璃版固定为静态玻璃。桌面效果取决于系统桌面。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    WidgetAppearanceOption(
+                        title = "近实底",
+                        description = "默认外观，背景遮挡更充分。",
+                        appearance = WidgetAppearance.SOLID,
+                        selected = prefs.widgetAppearance == WidgetAppearance.SOLID,
+                    ) {
+                        scope.launch { AppGraph.uiPrefsStore.setWidgetAppearance(WidgetAppearance.SOLID) }
+                    }
+                    WidgetAppearanceOption(
+                        title = "通透",
+                        description = "轻度透出桌面背景。",
+                        appearance = WidgetAppearance.TRANSLUCENT,
+                        selected = prefs.widgetAppearance == WidgetAppearance.TRANSLUCENT,
+                    ) {
+                        scope.launch { AppGraph.uiPrefsStore.setWidgetAppearance(WidgetAppearance.TRANSLUCENT) }
+                    }
+                    WidgetAppearanceOption(
+                        title = "静态玻璃",
+                        description = "半透明底色与静态高光；不读取壁纸或捕获屏幕。",
+                        appearance = WidgetAppearance.GLASS,
+                        selected = prefs.widgetAppearance == WidgetAppearance.GLASS,
+                    ) {
+                        scope.launch { AppGraph.uiPrefsStore.setWidgetAppearance(WidgetAppearance.GLASS) }
+                    }
+                }
+            }
+
             WidgetCard(
                 title = "校园卡余额",
                 description = "自动更新总余额，下方显示过渡余额；换号后旧值会清除。",
@@ -112,6 +167,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                         ComponentName(context, CardBalanceWidgetProvider::class.java),
                     )
                 },
+                onPinGlass = { pin(ComponentName(context, CardBalanceGlassWidgetProvider::class.java)) },
             )
             WidgetCard(
                 title = "唐岛湾电量",
@@ -123,6 +179,7 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                         ComponentName(context, PowerWidgetProvider::class.java),
                     )
                 },
+                onPinGlass = { pin(ComponentName(context, PowerGlassWidgetProvider::class.java)) },
             )
             WidgetCard(
                 title = "今日课表",
@@ -135,6 +192,24 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                         ComponentName(context, TimetableWidgetProvider::class.java),
                     )
                 },
+                onPinGlass = { pin(ComponentName(context, TimetableGlassWidgetProvider::class.java)) },
+            )
+            WidgetCard(
+                title = "待办清单",
+                description = "显示本机未完成待办；可在桌面完成事项或新建。",
+                icon = Icons.Outlined.CheckBox,
+                supported = supported,
+                sizeLabel = "2×2 · 可拉伸",
+                onPin = {
+                    pin(ComponentName(context, TodoWidgetProvider::class.java))
+                },
+                onPinGlass = { pin(ComponentName(context, TodoGlassWidgetProvider::class.java)) },
+            )
+
+            Text(
+                text = "桌面小组件列表中也可选择标有“玻璃版”的组件。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Text(
@@ -157,6 +232,103 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
 }
 
 @Composable
+private fun WidgetAppearanceOption(
+    title: String,
+    description: String,
+    appearance: WidgetAppearance,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        WidgetAppearancePreview(appearance)
+    }
+}
+
+@Composable
+private fun WidgetAppearancePreview(appearance: WidgetAppearance) {
+    val surfaceColor = colorResource(
+        when (appearance) {
+            WidgetAppearance.SOLID -> DesignSystemR.color.widget_surface
+            WidgetAppearance.TRANSLUCENT -> DesignSystemR.color.widget_surface_translucent
+            WidgetAppearance.GLASS,
+            WidgetAppearance.FROSTED_GLASS -> DesignSystemR.color.widget_surface_glass
+        },
+    )
+    val glassDrawable = when (appearance) {
+        WidgetAppearance.GLASS -> DesignSystemR.drawable.widget_surface_glass
+        WidgetAppearance.FROSTED_GLASS -> DesignSystemR.drawable.widget_surface_frosted_glass
+        else -> null
+    }
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        Modifier.size(width = 88.dp, height = 56.dp),
+    ) {
+        if (glassDrawable != null) {
+            AndroidView(
+                factory = { context ->
+                    View(context).apply {
+                        background = context.getDrawable(glassDrawable)
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(Modifier.fillMaxSize().background(surfaceColor, shape))
+        }
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                "今日课表",
+                color = colorResource(DesignSystemR.color.widget_primary),
+                fontSize = 8.sp,
+                lineHeight = 9.sp,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(width = 2.dp, height = 21.dp)
+                        .background(colorResource(DesignSystemR.color.widget_accent)),
+                )
+                Column(Modifier.padding(start = 5.dp)) {
+                    Text(
+                        "上课中 · 09:55",
+                        color = colorResource(DesignSystemR.color.widget_secondary),
+                        fontSize = 6.sp,
+                        lineHeight = 7.sp,
+                    )
+                    Text(
+                        "计算机组成原理",
+                        color = colorResource(DesignSystemR.color.widget_primary),
+                        fontSize = 7.sp,
+                        lineHeight = 8.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun WidgetCard(
     title: String,
     description: String,
@@ -164,6 +336,7 @@ private fun WidgetCard(
     supported: Boolean,
     sizeLabel: String = "2×2",
     onPin: () -> Unit,
+    onPinGlass: () -> Unit,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -184,11 +357,17 @@ private fun WidgetCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(
+            com.upcpocket.app.ui.components.CampusButton(
                 onClick = onPin,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (supported) "添加到桌面" else "查看添加方法")
+            }
+            com.upcpocket.app.ui.components.CampusTextButton(
+                onClick = onPinGlass,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (supported) "添加玻璃版" else "桌面列表中添加玻璃版")
             }
         }
     }

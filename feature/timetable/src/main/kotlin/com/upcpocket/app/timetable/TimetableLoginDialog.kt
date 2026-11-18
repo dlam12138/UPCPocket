@@ -194,8 +194,8 @@ fun TimetableLoginDialog(
                         modifier = Modifier.padding(start = 16.dp),
                     )
                     Row {
-                        TextButton(onClick = { verifyCookies() }) { Text("完成") }
-                        TextButton(onClick = onClose) { Text("关闭") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = { verifyCookies() }) { Text("完成") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = onClose) { Text("关闭") }
                     }
                 }
                 Text(
@@ -515,11 +515,11 @@ fun TimetableLoginDialog(
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.padding(top = 8.dp),
                                 )
-                                Button(
+                                com.upcpocket.app.ui.components.CampusButton(
                                     onClick = { reload() },
                                     modifier = Modifier.padding(top = 12.dp),
                                 ) { Text("重新加载") }
-                                TextButton(onClick = onClose) { Text("关闭") }
+                                com.upcpocket.app.ui.components.CampusTextButton(onClick = onClose) { Text("关闭") }
                             }
                         }
                     }

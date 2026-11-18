@@ -1,12 +1,11 @@
 package com.upcpocket.app.widget
 
 import android.annotation.SuppressLint
-import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.SharedPreferences
 
 /**
- * 三个桌面组件各自的刷新身份。
+ * 桌面组件各自的刷新身份。
  *
  * 组件通知、唯一任务名、状态键和 PendingIntent action 全部按类型隔离：
  * 刷校园卡不会碰电费或课表，反之亦然。
@@ -14,26 +13,27 @@ import android.content.SharedPreferences
 enum class WidgetKind(
     val key: String,
     val refreshAction: String,
-    val providerClass: Class<out AppWidgetProvider>,
     val uniqueWorkName: String,
 ) {
     CARD(
         key = "card",
         refreshAction = "com.upcpocket.app.action.REFRESH_CARD_WIDGET",
-        providerClass = CardBalanceWidgetProvider::class.java,
         uniqueWorkName = "widget-refresh-card",
     ),
     POWER(
         key = "power",
         refreshAction = "com.upcpocket.app.action.REFRESH_POWER_WIDGET",
-        providerClass = PowerWidgetProvider::class.java,
         uniqueWorkName = "widget-refresh-power",
     ),
     TIMETABLE(
         key = "timetable",
         refreshAction = "com.upcpocket.app.action.REFRESH_TIMETABLE_WIDGET",
-        providerClass = TimetableWidgetProvider::class.java,
         uniqueWorkName = "widget-refresh-timetable",
+    ),
+    TODO(
+        key = "todo",
+        refreshAction = "com.upcpocket.app.action.REFRESH_TODO_WIDGET",
+        uniqueWorkName = "widget-refresh-todo",
     ),
     ;
 

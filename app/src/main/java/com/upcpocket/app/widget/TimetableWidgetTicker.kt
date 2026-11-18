@@ -1,7 +1,5 @@
 package com.upcpocket.app.widget
 
-import android.appwidget.AppWidgetManager
-import android.content.ComponentName
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -75,8 +73,8 @@ object TimetableWidgetTicker {
         }
     }
 
-    private fun hasWidgets(context: Context): Boolean = AppWidgetManager.getInstance(context)
-        .getAppWidgetIds(ComponentName(context, TimetableWidgetProvider::class.java)).isNotEmpty()
+    private fun hasWidgets(context: Context): Boolean =
+        hasWidgetInstances(context, WidgetKind.TIMETABLE)
 
     private fun enqueueNext(context: Context, policy: ExistingWorkPolicy) {
         if (!hasWidgets(context) || AppGraph.timetableServiceOrNull == null) {

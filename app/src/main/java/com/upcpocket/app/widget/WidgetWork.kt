@@ -30,7 +30,9 @@ object WidgetWork {
         context: Context,
         kind: WidgetKind,
         bindingToken: String? = null,
-    ): Boolean = runCatching {
+    ): Boolean {
+        if (kind == WidgetKind.TODO) return false
+        return runCatching {
         val data = Data.Builder()
             .putString(KEY_KIND, kind.key)
             .apply {
@@ -47,7 +49,8 @@ object WidgetWork {
             request,
         )
         true
-    }.getOrDefault(false)
+        }.getOrDefault(false)
+    }
 
     fun cancel(context: Context, kind: WidgetKind) {
         runCatching {

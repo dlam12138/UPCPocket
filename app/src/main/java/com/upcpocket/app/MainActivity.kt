@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // 只在真正新建时消费组件入口。配置变更/旋转时 savedInstanceState 非空，
         // 不再从旧 Intent 重新导航，避免把用户已切走的页面又弹回来。
-        if (savedInstanceState == null) {
+        if (TodoActivityLaunch.shouldConsumeOnCreate(savedInstanceState)) {
             widgetTarget.value = WidgetLaunchTarget.fromIntent(intent)
             consumeTodoIntent(intent)
         } else {
@@ -94,8 +94,35 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun consumeTodoIntent(intent: Intent?) {
-        val taskId = TodoLaunchContract.taskId(intent) ?: return
-        AppGraph.todoStoreOrNull?.openTask(taskId)
-        openTodo.value = true
+        when (val request = TodoActivityLaunch.fromIntent(intent)) {
+            is TodoActivityLaunchRequest.OpenTask -> {
+                val store = AppGraph.todoStoreOrNull ?: return
+                store.openTask(request.taskId)
+                openTodo.value = true
+            }
+            is TodoActivityLaunchRequest.CreateTask -> {
+                if (AppGraph.todoStoreOrNull?.openCreate(request.requestId) == true) {
+                    openTodo.value = true
+                }
+            }
+            null -> Unit
+        }
     }
+}
+
+internal sealed interface TodoActivityLaunchRequest {
+    data class OpenTask(val taskId: String) : TodoActivityLaunchRequest
+    data class CreateTask(val requestId: String) : TodoActivityLaunchRequest
+}
+
+internal object TodoActivityLaunch {
+    fun fromIntent(intent: Intent?): TodoActivityLaunchRequest? = when (intent?.action) {
+        TodoLaunchContract.ACTION_OPEN -> TodoLaunchContract.taskId(intent)
+            ?.let { TodoActivityLaunchRequest.OpenTask(it) }
+        TodoLaunchContract.ACTION_CREATE -> TodoLaunchContract.createRequestId(intent)
+            ?.let { TodoActivityLaunchRequest.CreateTask(it) }
+        else -> null
+    }
+
+    fun shouldConsumeOnCreate(savedInstanceState: Bundle?): Boolean = savedInstanceState == null
 }

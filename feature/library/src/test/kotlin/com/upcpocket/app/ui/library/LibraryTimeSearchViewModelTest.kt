@@ -9,6 +9,7 @@ import com.upcpocket.app.data.library.LibraryReservationPreflightFailedException
 import com.upcpocket.app.data.library.LibraryReservationRequest
 import com.upcpocket.app.data.library.LibraryRoom
 import com.upcpocket.app.data.library.LibrarySeat
+import com.upcpocket.app.data.library.LibrarySeatLayout
 import com.upcpocket.app.data.library.LibrarySeatOps
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.library.LibrarySeatSession
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -51,13 +53,22 @@ class LibraryTimeSearchViewModelTest {
     private lateinit var ops: FakeOps
     private lateinit var store: FakeHiddenStore
     private lateinit var vm: LibrarySeatViewModel
+    private var startTimesLoads = 0
 
     /** 用给定初始状态构造（或重建）ViewModel，模拟关闭重进 / 新 VM。 */
-    private fun newVm(state: LibrarySeatViewModel.UiState = LibrarySeatViewModel.UiState()): LibrarySeatViewModel =
+    private fun newVm(
+        state: LibrarySeatViewModel.UiState = LibrarySeatViewModel.UiState(),
+        layoutLoader: (suspend (String, String) -> LibrarySeatLayout)? = null,
+    ): LibrarySeatViewModel =
         LibrarySeatViewModel(
             repo = repo,
             hiddenSeatsStore = store,
             ops = ops,
+            startTimesLoader = { _, _ ->
+                startTimesLoads++
+                listOf(LibraryTimeOption("840", "14:00"))
+            },
+            layoutLoader = layoutLoader ?: repo::layout,
             initialState = state,
         )
 
@@ -79,6 +90,7 @@ class LibraryTimeSearchViewModelTest {
         seatMode = RoomSeatMode.TIME,
         timeBegin = "14:00",
         timeFinish = "16:00",
+        hiddenLoaded = true,
     )
 
     @Before
@@ -86,6 +98,7 @@ class LibraryTimeSearchViewModelTest {
         Dispatchers.setMain(dispatcher)
         ops = FakeOps()
         store = FakeHiddenStore()
+        startTimesLoads = 0
         vm = newVm()
     }
 
@@ -148,6 +161,9 @@ class LibraryTimeSearchViewModelTest {
         vm.hideSeat(seat("s1"))
         advanceUntilIdle()
         assertTrue(vm.state.hiddenSeatIds.isEmpty())
+        assertFalse(vm.state.hiddenBusy)
+        assertFalse(vm.state.hiddenLoaded)
+        assertTrue(vm.state.hiddenError?.contains("保存失败") == true)
         assertTrue(vm.state.hiddenActionError?.contains("保存失败") == true)
     }
 
@@ -157,8 +173,235 @@ class LibraryTimeSearchViewModelTest {
         store.entriesThrows = true
         vm.openHiddenSheet()
         advanceUntilIdle()
-        assertTrue(vm.state.hiddenActionError?.contains("读取失败") == true)
+        assertTrue(vm.state.hiddenError?.contains("读取失败") == true)
+        assertFalse(vm.state.hiddenLoaded)
+        assertFalse(vm.state.hiddenBusy)
         assertTrue(vm.state.hiddenSeatIds.isEmpty())
+    }
+
+    @Test
+    fun `pending hide blocks selection and confirmation and later writes retain both names`() = runTest(dispatcher) {
+        val firstSeat = seat("first").copy(col = 0)
+        val secondSeat = seat("second").copy(col = 1)
+        val start = LibraryTimeOption("480", "08:00")
+        val end = LibraryTimeOption("600", "10:00")
+        vm.setState(
+            baseState(roomA).copy(
+                seatMode = RoomSeatMode.SEAT,
+                layout = LibrarySeatLayout(rows = 1, cols = 2, seats = listOf(firstSeat, secondSeat)),
+                seat = firstSeat,
+                startTimes = listOf(start),
+                endTimes = listOf(end),
+                start = start,
+                end = end,
+            ),
+        )
+        assertTrue(vm.state.canConfirmReservation())
+
+        val hideGate = CompletableDeferred<Unit>()
+        store.hideGate = hideGate
+        vm.hideSeat(firstSeat)
+
+        assertTrue(vm.state.hiddenBusy)
+        assertEquals(null, vm.state.seat)
+        assertEquals(null, vm.state.start)
+        assertFalse(vm.state.canConfirmReservation())
+        vm.chooseSeat(firstSeat)
+        assertEquals(null, vm.state.seat)
+        assertEquals(0, startTimesLoads)
+        vm.requestReservation()
+        assertFalse(vm.state.showConfirm)
+
+        // A second hide while the first write is suspended is rejected without
+        // changing its generation; after completion a new hide can be applied.
+        vm.hideSeat(secondSeat)
+        assertTrue(vm.state.hiddenBusy)
+        runCurrent()
+        assertTrue(vm.state.hiddenBusy)
+        assertEquals(null, vm.state.seat)
+        assertEquals(0, startTimesLoads)
+        hideGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertFalse(vm.state.hiddenBusy)
+        assertTrue(vm.state.hiddenLoaded)
+        assertEquals(setOf(firstSeat.id), vm.state.hiddenSeatIds)
+        assertEquals(listOf(firstSeat.id), vm.state.hiddenEntries.map { it.seatId })
+
+        store.hideGate = null
+        vm.hideSeat(secondSeat)
+        advanceUntilIdle()
+        assertFalse(vm.state.hiddenBusy)
+        assertEquals(setOf(firstSeat.id, secondSeat.id), vm.state.hiddenSeatIds)
+        assertEquals(setOf(firstSeat.id, secondSeat.id), vm.state.hiddenEntries.map { it.seatId }.toSet())
+    }
+
+    @Test
+    fun `reopening a room waits for its pending hidden write before restoring the list`() = runTest(dispatcher) {
+        val hiddenSeat = seat("hidden").copy(col = 0)
+        val availableSeat = seat("available").copy(col = 1)
+        val layoutA = LibrarySeatLayout(rows = 1, cols = 2, seats = listOf(hiddenSeat, availableSeat))
+        val layoutB = LibrarySeatLayout(rows = 1, cols = 1, seats = listOf(seat("other-room")))
+        val layouts = mapOf(roomA.roomId to layoutA, roomB.roomId to layoutB)
+        vm = newVm(
+            state = baseState(roomA).copy(
+                seatMode = RoomSeatMode.SEAT,
+                layout = layoutA,
+                hiddenLoaded = true,
+            ),
+            layoutLoader = { roomId, _ -> layouts.getValue(roomId) },
+        )
+
+        val hideStarted = CompletableDeferred<Unit>()
+        val hideGate = CompletableDeferred<Unit>()
+        store.hideStarted = hideStarted
+        store.hideGate = hideGate
+        vm.hideSeat(hiddenSeat)
+        runCurrent()
+        assertTrue("hide must be suspended inside the fake store", hideStarted.isCompleted)
+        assertTrue(vm.state.hiddenBusy)
+
+        vm.openRoom(roomB)
+        runCurrent()
+        assertEquals(roomB.roomId, vm.state.room?.roomId)
+        assertTrue(vm.state.hiddenSeatIds.isEmpty())
+        assertFalse(vm.state.hiddenLoaded)
+        assertTrue(vm.state.hiddenBusy)
+
+        vm.openRoom(roomA)
+        runCurrent()
+
+        assertEquals(roomA.roomId, vm.state.room?.roomId)
+        assertFalse(vm.state.hiddenLoaded)
+        assertTrue(vm.state.hiddenBusy)
+        assertEquals("the re-entry read must wait behind the pending write", 0, store.entriesCalls)
+        vm.chooseSeat(hiddenSeat)
+        assertEquals(null, vm.state.seat)
+
+        hideGate.complete(Unit)
+        advanceUntilIdle()
+
+        assertTrue(vm.state.hiddenLoaded)
+        assertFalse(vm.state.hiddenBusy)
+        assertEquals(setOf(hiddenSeat.id), vm.state.hiddenSeatIds)
+        assertEquals(listOf(hiddenSeat.id), vm.state.hiddenEntries.map { it.seatId })
+        assertEquals(roomA.roomId, vm.state.room?.roomId)
+        vm.chooseSeat(hiddenSeat)
+        assertEquals(null, vm.state.seat)
+
+        val start = LibraryTimeOption("480", "08:00")
+        val end = LibraryTimeOption("600", "10:00")
+        vm.setState(
+            vm.state.copy(
+                seat = hiddenSeat,
+                startTimes = listOf(start),
+                endTimes = listOf(end),
+                start = start,
+                end = end,
+            ),
+        )
+        vm.requestReservation()
+        assertFalse(vm.state.showConfirm)
+        assertFalse(vm.state.canConfirmReservation())
+        vm.confirmReservation()
+        assertEquals(0, ops.reserveCalls)
+    }
+
+    @Test
+    fun `hidden read failure retry restores persistent preferences before allowing a real seat selection`() = runTest(dispatcher) {
+        val hiddenSeat = seat("hidden").copy(col = 0)
+        val availableSeat = seat("available").copy(col = 1)
+        val layout = com.upcpocket.app.data.library.LibrarySeatLayout(
+            rows = 1,
+            cols = 2,
+            seats = listOf(hiddenSeat, availableSeat),
+        )
+        store.seed(
+            LibraryHiddenSeat(
+                system = LibraryHiddenSeat.SYSTEM_LIBSEAT,
+                buildingId = "1",
+                roomId = roomA.roomId,
+                seatId = hiddenSeat.id,
+                nameSnapshot = hiddenSeat.name,
+            ),
+        )
+        vm.setState(
+            baseState(roomA).copy(
+                seatMode = RoomSeatMode.SEAT,
+                layout = layout,
+                hiddenLoaded = false,
+                hiddenBusy = false,
+            ),
+        )
+        store.entriesThrows = true
+
+        vm.retryHiddenSeats()
+        advanceUntilIdle()
+        assertFalse(vm.state.hiddenLoaded)
+        assertFalse(vm.state.hiddenBusy)
+        assertTrue(vm.state.hiddenError?.contains("读取失败") == true)
+        vm.chooseSeat(availableSeat)
+        assertEquals(null, vm.state.seat)
+        assertEquals(0, startTimesLoads)
+        vm.requestReservation()
+        assertFalse(vm.state.showConfirm)
+        assertFalse(vm.state.canConfirmReservation())
+
+        store.entriesThrows = false
+        vm.retryHiddenSeats()
+        advanceUntilIdle()
+        assertTrue(vm.state.hiddenLoaded)
+        assertFalse(vm.state.hiddenBusy)
+        assertEquals(setOf(hiddenSeat.id), vm.state.hiddenSeatIds)
+
+        vm.chooseSeat(hiddenSeat)
+        assertEquals(null, vm.state.seat)
+        assertEquals(0, startTimesLoads)
+        vm.chooseSeat(availableSeat)
+        advanceUntilIdle()
+        assertEquals(availableSeat.id, vm.state.seat?.id)
+        assertEquals(1, startTimesLoads)
+        assertEquals(listOf(LibraryTimeOption("840", "14:00")), vm.state.startTimes)
+    }
+
+    @Test
+    fun `time search selection and confirmation are blocked while hidden preferences have failed`() = runTest(dispatcher) {
+        val candidate = seat("time-candidate")
+        val queryResult = LibraryTimeSearchResult(
+            key = keyA,
+            seats = listOf(candidate),
+            complete = true,
+        )
+        vm.setState(
+            baseState(roomA).copy(
+                timeResult = queryResult,
+                hiddenLoaded = false,
+                hiddenError = "隐藏名单读取失败",
+            ),
+        )
+
+        vm.selectTimeCandidate(candidate)
+        assertEquals(null, vm.state.timeSelectedSeat)
+        assertFalse(vm.state.timeSelecting)
+        assertTrue(vm.state.error?.contains("隐藏偏好未恢复") == true)
+
+        vm.setState(
+            baseState(roomA).copy(
+                timeResult = queryResult,
+                timeSelectedSeat = candidate,
+                timeStartTimes = listOf(LibraryTimeOption("840", "14:00")),
+                timeEndTimes = listOf(LibraryTimeOption("960", "16:00")),
+                timeStart = LibraryTimeOption("840", "14:00"),
+                timeStop = LibraryTimeOption("960", "16:00"),
+                hiddenLoaded = false,
+                hiddenError = "隐藏名单读取失败",
+            ),
+        )
+        vm.requestTimeReservation()
+        assertFalse(vm.state.showConfirm)
+        vm.confirmTimeReservation()
+        advanceUntilIdle()
+        assertEquals(0, ops.reserveCalls)
     }
 
     // ── 3. 分页失败 / 不前进后重试真的发请求 ───────────────────
@@ -508,11 +751,18 @@ class LibraryTimeSearchViewModelTest {
     private class FakeHiddenStore : LibraryHiddenSeatsStore {
         private val data = linkedMapOf<String, LibraryHiddenSeat>()
         var hideGate: CompletableDeferred<Unit>? = null
+        var hideStarted: CompletableDeferred<Unit>? = null
         var hideResult: CompletableDeferred<Boolean>? = null
         var hideThrows = false
         var entriesThrows = false
+        var entriesCalls = 0
+
+        fun seed(entry: LibraryHiddenSeat) {
+            data["${entry.buildingId}|${entry.roomId}|${entry.seatId}"] = entry
+        }
 
         override suspend fun entries(buildingId: String, roomId: String): List<LibraryHiddenSeat> {
+            entriesCalls++
             if (entriesThrows) throw IllegalStateException("read failed")
             return data.values.filter {
                 it.buildingId == buildingId && it.roomId == roomId
@@ -523,6 +773,7 @@ class LibraryTimeSearchViewModelTest {
             entries(buildingId, roomId).mapTo(linkedSetOf()) { it.seatId }
 
         override suspend fun hide(entry: LibraryHiddenSeat): Boolean {
+            hideStarted?.complete(Unit)
             hideGate?.await()
             if (hideThrows) throw IllegalStateException("write failed")
             val ok = hideResult?.await() ?: true

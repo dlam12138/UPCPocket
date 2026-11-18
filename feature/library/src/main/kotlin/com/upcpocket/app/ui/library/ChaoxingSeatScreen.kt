@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -68,20 +70,32 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,6 +112,9 @@ import com.upcpocket.app.library.ChaoxingService
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +129,8 @@ fun ChaoxingSeatScreen(
     val vm: ChaoxingSeatViewModel = viewModel(
         factory = ChaoxingSeatViewModel.factory(service, initialKind, hiddenSeatsStore),
     )
-    val state by vm.state.collectAsStateWithLifecycle()
+    val observedState by vm.state.collectAsStateWithLifecycle()
+    val state = observedState
     val context = LocalContext.current
     val accountState by service.accountState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
@@ -134,8 +152,9 @@ fun ChaoxingSeatScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            TopAppBar(
+            com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = {
                     Column {
                         Text("超星座位")
@@ -179,9 +198,9 @@ fun ChaoxingSeatScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             if (canAutoLogin) {
-                                Button(
+                                com.upcpocket.app.ui.components.CampusButton(
                                     onClick = {
-                                        if (autoLoginBusy) return@Button
+                                        if (autoLoginBusy) return@CampusButton
                                         autoLoginBusy = true
                                         autoLoginError = null
                                         scope.launch {
@@ -213,10 +232,10 @@ fun ChaoxingSeatScreen(
                                 }
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(onClick = onOpenLogin, enabled = !autoLoginBusy) {
+                                com.upcpocket.app.ui.components.CampusOutlinedButton(onClick = onOpenLogin, enabled = !autoLoginBusy) {
                                     Text("网页登录")
                                 }
-                                OutlinedButton(onClick = { openChaoxingOfficial(context, state.officialUrl) }) {
+                                com.upcpocket.app.ui.components.CampusOutlinedButton(onClick = { openChaoxingOfficial(context, state.officialUrl) }) {
                                     Text("学校页面")
                                 }
                             }
@@ -235,7 +254,7 @@ fun ChaoxingSeatScreen(
                 state.error?.let { message ->
                     item(contentType = "error") {
                         CompactNotice("暂时无法读取", message)
-                        TextButton(onClick = vm::refresh, enabled = !state.busy) { Text("重试") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = vm::refresh, enabled = !state.busy) { Text("重试") }
                     }
                 }
                 if (state.detailBusy) {
@@ -280,7 +299,7 @@ fun ChaoxingSeatScreen(
                     )
                 }
                 item(contentType = "official_page") {
-                    OutlinedButton(
+                    com.upcpocket.app.ui.components.CampusOutlinedButton(
                         onClick = { openChaoxingOfficial(context, state.officialUrl) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -323,7 +342,7 @@ internal fun ChaoxingFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             ChaoxingSeatKind.entries.forEach { kind ->
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.kind == kind,
                     onClick = { onKind(kind) },
                     enabled = !state.busy,
@@ -341,7 +360,7 @@ internal fun ChaoxingFilterPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             state.dates.forEach { date ->
-                FilterChip(
+                com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = state.selectedDate == date,
                     onClick = { onDate(date) },
                     enabled = !state.busy,
@@ -409,7 +428,7 @@ internal fun ChaoxingAreaRow(
                     )
                 }
             }
-            OutlinedButton(
+            com.upcpocket.app.ui.components.CampusOutlinedButton(
                 onClick = onClick,
                 modifier = Modifier.widthIn(min = 76.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp),
@@ -458,6 +477,26 @@ internal fun ChaoxingSeatDetailContent(
     var timePart by remember { mutableStateOf<String?>(null) }
     var confirmKey by remember { mutableStateOf<ChaoxingSeatUiState?>(null) }
     var menu by remember { mutableStateOf(false) }
+    val presentationAreaKey = state.kind.hiddenBuilding
+    val presentationRoomKey = detail.roomId.toString()
+    val mapViewportState = rememberSeatMapViewportState(
+        state.kind.hiddenSystem,
+        presentationAreaKey,
+        presentationRoomKey,
+    )
+    var showSeatMap by rememberSeatPresentationMapState(
+        state.kind.hiddenSystem,
+        presentationAreaKey,
+        presentationRoomKey,
+    )
+    val sortedPlaces = remember(detail.roomId, detail.places) {
+        sortSeatPresentations(
+            detail.places,
+            nameOf = ChaoxingSeatPlace::seatNum,
+            stableIdOf = ChaoxingSeatPlace::seatNum,
+        )
+    }
+    val density = LocalDensity.current
     val snack = remember { SnackbarHostState() }
     LaunchedEffect(state.undoHidden) {
         val entry = state.undoHidden ?: return@LaunchedEffect
@@ -480,27 +519,31 @@ internal fun ChaoxingSeatDetailContent(
     LaunchedEffect(state.kind, state.detail, state.selectedDate, state.seatMode,
         state.queryGeneration, state.selectedSeat, state.hiddenBusy, state.canConfirm()) { confirmKey = null }
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         snackbarHost = { SnackbarHost(snack) },
         topBar = {
-            Surface {
-              Row(Modifier.fillMaxWidth().statusBarsPadding().padding(vertical = 8.dp),
-                  verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回区域") }
-                Column(Modifier.weight(1f)) {
-                    Text(detail.name, style = MaterialTheme.typography.titleMedium)
-                    Text("${state.kind.campusLabel} · ${shortChaoxingDate(state.selectedDate)}",
-                        style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Box {
-                    IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多") }
-                    DropdownMenu(menu, { menu = false }) {
-                        DropdownMenuItem(text = { Text("隐藏的座位（${state.hiddenEntries.size}）") },
-                            onClick = { menu = false; onOpenHidden() })
-                        DropdownMenuItem(text = { Text("学校页面") }, onClick = { menu = false; onOpenOfficial() })
+            com.upcpocket.app.ui.components.CampusTopAppBar(
+                title = {
+                    Column {
+                        Text(detail.name, style = MaterialTheme.typography.titleMedium)
+                        Text("${state.kind.campusLabel} · ${shortChaoxingDate(state.selectedDate)}",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-              }
-            }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onExit) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回区域") }
+                },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menu = true }) { Icon(Icons.Filled.MoreVert, "更多") }
+                        DropdownMenu(menu, { menu = false }) {
+                            DropdownMenuItem(text = { Text("隐藏的座位（${state.hiddenEntries.size}）") },
+                                onClick = { menu = false; onOpenHidden() })
+                            DropdownMenuItem(text = { Text("学校页面") }, onClick = { menu = false; onOpenOfficial() })
+                        }
+                    }
+                },
+            )
         },
         bottomBar = {
             val official = state.reservationUnknown || state.reservationSucceeded || state.interactionRequired
@@ -515,12 +558,18 @@ internal fun ChaoxingSeatDetailContent(
                 })
         },
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding),
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            val listColumns = seatListColumnCount(
+                availableWidthDp = (maxWidth - 32.dp).coerceAtLeast(1.dp).value,
+                fontScale = density.fontScale,
+            )
+            val seatRows = remember(sortedPlaces, listColumns) { sortedPlaces.chunked(listColumns) }
+            LazyColumn(Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item(contentType = "seat_mode_controls") { Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
-                FilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
+                com.upcpocket.app.ui.components.CampusFilterChip(state.seatMode == RoomSeatMode.SEAT, { onMode(RoomSeatMode.SEAT) }, label = { Text("按座位选") })
+                com.upcpocket.app.ui.components.CampusFilterChip(state.seatMode == RoomSeatMode.TIME, { onMode(RoomSeatMode.TIME) }, label = { Text("按时段找") })
             } }
             item(contentType = "time_controls") {
                 if (state.seatMode == RoomSeatMode.TIME) {
@@ -535,7 +584,7 @@ internal fun ChaoxingSeatDetailContent(
                             Text("开放 ${formatMinute(detail.startMinute)}–${formatMinute(detail.endMinute)}",
                                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        TextButton(onClick = { timePart = "start" }) { Text("更改") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = { timePart = "start" }) { Text("更改") }
                     }
                 }
             }
@@ -544,8 +593,14 @@ internal fun ChaoxingSeatDetailContent(
             }
             state.hiddenError?.let { item(contentType = "hidden_error") {
                 Text(it, color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = onReloadHidden, enabled = !state.hiddenBusy) { Text("重试") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onReloadHidden, enabled = !state.hiddenBusy) { Text("重试") }
             } }
+            if (state.hiddenBusy && !state.hiddenLoaded) item(contentType = "hidden_loading") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Text("正在恢复本机隐藏偏好…", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             state.reservationMessage?.let { item(contentType = "reservation_status") { CompactNotice(if (state.reservationUnknown) "提交结果未知" else "预约状态", it) } }
             if (state.seatMode == RoomSeatMode.TIME) {
                 item(contentType = "time_results") { ChaoxingTimeResults(state, onSelect, onHide, onSearch) }
@@ -553,7 +608,7 @@ internal fun ChaoxingSeatDetailContent(
                 if (state.querying) item(contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
                 state.detailError?.let { item(contentType = "detail_error") {
                     CompactNotice("查询失败", it)
-                    TextButton(onClick = onSearch) { Text("重试") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = onSearch) { Text("重试") }
                 } }
                 item(contentType = "seat_legend") { FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     LegendDot(MaterialTheme.colorScheme.primary, "可选")
@@ -561,27 +616,79 @@ internal fun ChaoxingSeatDetailContent(
                     LegendDot(MaterialTheme.colorScheme.tertiary, "已选")
                     if (state.hiddenIds.isNotEmpty()) LegendDot(MaterialTheme.colorScheme.outline, "已隐藏")
                 } }
-                item(contentType = "seat_map") { ChaoxingSeatMap(detail.places, state.usedSeats, state.usedSeatsLoaded,
-                    state.selectedSeat, onSelect, state.hiddenIds, onHide, detail.disabledSeatNums) }
+                item(contentType = "seat_presentation_control") {
+                    SeatPresentationModeControl(showMap = showSeatMap, onShowMapChange = { showSeatMap = it })
+                }
+                if (showSeatMap) {
+                    item(contentType = "seat_map") {
+                        ChaoxingSeatMap(
+                            places = detail.places,
+                            usedSeats = state.usedSeats,
+                            usedSeatsLoaded = state.usedSeatsLoaded,
+                            selectedSeat = state.selectedSeat,
+                            onSelect = onSelect,
+                            hiddenIds = state.hiddenIds,
+                            onHide = onHide,
+                            disabledIds = detail.disabledSeatNums,
+                            selectionEnabled = state.hiddenLoaded && !state.hiddenBusy &&
+                                !state.querying && !state.reserving,
+                            mapScopeKey = "${state.kind.hiddenSystem}|$presentationAreaKey|$presentationRoomKey",
+                            viewportState = mapViewportState,
+                        )
+                    }
+                    item(contentType = "seat_map_help") {
+                        Text("点可用位置选择；长按可隐藏；双指缩放或拖动查看，复位返回概览。",
+                            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                } else {
+                    items(
+                        items = seatRows,
+                        key = { row -> "chaoxing-row-${state.kind.name}-${presentationRoomKey}-${row.first().seatNum}" },
+                        contentType = { "chaoxing_seat_list_row" },
+                    ) { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            row.forEach { place ->
+                                ChaoxingSeatListTile(
+                                    modifier = Modifier.weight(1f),
+                                    seatNum = place.seatNum,
+                                    selected = state.selectedSeat == place.seatNum,
+                                    hidden = place.seatNum in state.hiddenIds,
+                                    disabled = place.seatNum in detail.disabledSeatNums,
+                                    used = place.seatNum in state.usedSeats,
+                                    usedSeatsLoaded = state.usedSeatsLoaded,
+                                    hiddenLoaded = state.hiddenLoaded,
+                                    hiddenBusy = state.hiddenBusy,
+                                    querying = state.querying,
+                                    reserving = state.reserving,
+                                    onSelect = { onSelect(place.seatNum) },
+                                    onHide = { onHide(place.seatNum) },
+                                )
+                            }
+                            repeat(listColumns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                }
                 state.selectedSeat?.let { seat -> item(contentType = "selected_seat") {
-                    TextButton(onClick = { onHide(seat) }, enabled = !state.hiddenBusy) { Text("隐藏座位 $seat") }
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = { onHide(seat) }, enabled = !state.hiddenBusy) { Text("隐藏座位 $seat") }
                 } }
             }
         }
     }
-    if (confirm != null) AlertDialog(
+    }
+    if (confirm != null) com.upcpocket.app.ui.components.CampusAlertDialog(
         onDismissRequest = { confirmKey = null }, title = { Text("确认预约") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${state.kind.campusLabel} · ${detail.name} · ${state.selectedSeat}")
             Text("${state.selectedDate} · $range")
             Text("提交后占用座位；结果未知时请先核对学校记录。", style = MaterialTheme.typography.bodySmall)
         } },
-        confirmButton = { TextButton(onClick = { confirmKey = null; onReserve() }, enabled = state.canConfirm()) { Text("确认预约") } },
-        dismissButton = { TextButton(onClick = { confirmKey = null }) { Text("取消") } },
+        confirmButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = { confirmKey = null; onReserve() }, enabled = state.canConfirm()) { Text("确认预约") } },
+        dismissButton = { com.upcpocket.app.ui.components.CampusTextButton(onClick = { confirmKey = null }) { Text("取消") } },
     )
     if (state.showHiddenSheet) HiddenSeatManagementSheet(state.hiddenEntries, onCloseHidden, onRestore, onRestoreAll)
     if (timePart != null) ModalBottomSheet(onDismissRequest = { timePart = null },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(if (timePart == "start") "开始时间" else "结束时间", style = MaterialTheme.typography.titleMedium)
@@ -589,7 +696,7 @@ internal fun ChaoxingSeatDetailContent(
                 else state.selectedStart?.let { chaoxingEndOptions(detail, it, state.selectedDate) }.orEmpty()
             if (options.isEmpty()) Text(state.timeUnavailableReason ?: "没有可选时间")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                options.forEach { minute -> FilterChip(
+                options.forEach { minute -> com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = minute == if (timePart == "start") state.selectedStart else state.selectedEnd,
                     onClick = {
                         if (timePart == "start") { onStart(minute); timePart = "end" }
@@ -611,7 +718,7 @@ internal fun ChaoxingTimeResults(state: ChaoxingSeatUiState, onSelect: (String) 
             state.querying -> CompactNotice("正在查找", "只查询当前房间。")
             state.detailError != null -> {
                 CompactNotice("查询失败", state.detailError)
-                TextButton(onClick = onRetry) { Text("重试") }
+                com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry) { Text("重试") }
             }
             !state.usedSeatsLoaded -> CompactNotice("按时段找", "选择时段，查找可约座位")
             candidates.isEmpty() -> CompactNotice("这个时段暂无可约座位", "可以修改时段再找。")
@@ -623,8 +730,109 @@ internal fun ChaoxingTimeResults(state: ChaoxingSeatUiState, onSelect: (String) 
                     val hidden = candidates.size - visible.size
                     if (hidden > 0) Text("隐藏 $hidden", style = MaterialTheme.typography.labelSmall)
                 }
-                visible.forEach { place -> SeatCandidateRow(place.seatNum, state.hiddenLoaded && !state.hiddenBusy && !state.reserving,
-                    state.selectedSeat == place.seatNum, { onSelect(place.seatNum) }, { onHide(place.seatNum) }) }
+                visible.forEach { place ->
+                    val hiddenPreferencesReady = state.hiddenLoaded && !state.hiddenBusy
+                    SeatCandidateRow(
+                        name = place.seatNum,
+                        selectable = hiddenPreferencesReady && !state.reserving,
+                        selected = state.selectedSeat == place.seatNum,
+                        onSelect = { onSelect(place.seatNum) },
+                        onHide = { onHide(place.seatNum) },
+                        canHide = hiddenPreferencesReady,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun ChaoxingSeatListTile(
+    modifier: Modifier,
+    seatNum: String,
+    selected: Boolean,
+    hidden: Boolean,
+    disabled: Boolean,
+    used: Boolean,
+    usedSeatsLoaded: Boolean,
+    hiddenLoaded: Boolean,
+    hiddenBusy: Boolean,
+    querying: Boolean,
+    reserving: Boolean,
+    onSelect: () -> Unit,
+    onHide: () -> Unit,
+) {
+    val canSelect = hiddenLoaded && !hiddenBusy && !querying && !reserving &&
+        usedSeatsLoaded && !hidden && !disabled && !used
+    val canHide = hiddenLoaded && !hiddenBusy && !hidden
+    val status = when {
+        hidden -> "本机已隐藏"
+        disabled -> "不可预约"
+        hiddenBusy || !hiddenLoaded -> "隐藏偏好未就绪"
+        !usedSeatsLoaded -> "当前座位状态未读取"
+        used -> "当前时段已用"
+        selected -> "已选"
+        else -> "可选"
+    }
+    var menu by remember { mutableStateOf(false) }
+    Surface(
+        modifier = modifier.heightIn(min = 72.dp)
+            .semantics {
+                contentDescription = "座位 $seatNum，$status"
+                this.selected = selected
+            }
+            .testTag("chaoxing_seat_tile_$seatNum")
+            .combinedClickable(
+                enabled = canSelect || canHide,
+                role = Role.RadioButton,
+                onClick = { if (canSelect) onSelect() },
+                onLongClick = { if (canHide) onHide() },
+            ),
+        shape = RoundedCornerShape(12.dp),
+        color = when {
+            hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
+            selected -> MaterialTheme.colorScheme.tertiaryContainer
+            canSelect -> MaterialTheme.colorScheme.primaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerLow
+        },
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                seatNum,
+                modifier = Modifier.fillMaxWidth().testTag("chaoxing_seat_name_$seatNum"),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    status,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                androidx.compose.material3.RadioButton(
+                    selected = selected,
+                    onClick = null,
+                    enabled = canSelect,
+                    modifier = Modifier.clearAndSetSemantics {},
+                )
+                Box {
+                    IconButton(onClick = { menu = true }, enabled = canHide) {
+                        Icon(Icons.Filled.MoreVert, contentDescription = "隐藏座位 $seatNum")
+                    }
+                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("隐藏此座位") },
+                            enabled = canHide,
+                            onClick = { menu = false; onHide() },
+                        )
+                    }
+                }
             }
         }
     }
@@ -641,83 +849,221 @@ internal fun ChaoxingSeatMap(
     hiddenIds: Set<String> = emptySet(),
     onHide: (String) -> Unit = {},
     disabledIds: Set<String> = emptySet(),
+    selectionEnabled: Boolean = true,
+    mapScopeKey: String = "chaoxing|default",
+    viewportState: SeatMapViewportState? = null,
 ) {
     if (places.isEmpty()) return
-    val minX = places.minOf { it.x }
-    val minY = places.minOf { it.y }
-    val maxX = places.maxOf { it.x + it.width }
-    val maxY = places.maxOf { it.y + it.height }
-    val contentWidth = (maxX - minX).coerceAtLeast(1f)
-    val contentHeight = (maxY - minY).coerceAtLeast(1f)
+    val rectangles = remember(places) {
+        places.mapNotNull { place ->
+            SeatMapRect(place.x, place.y, place.x + place.width, place.y + place.height)
+                .rotatedBounds(place.rotate)
+        }
+    }
+    val bounds = remember(rectangles) { seatMapBoundsFromRects(rectangles) } ?: return
+    val smallestSeatDimension = remember(places) {
+        places.mapNotNull { place ->
+            val rect = SeatMapRect(place.x, place.y, place.x + place.width, place.y + place.height)
+            minOf(rect.width, rect.height).takeIf { rect.isUsable() && it.isFinite() && it > 0f }
+        }.minOrNull() ?: 1f
+    }
+    val density = LocalDensity.current
+    var fallbackZoom by rememberSaveable("chaoxing", mapScopeKey, "zoom") { mutableStateOf(1f) }
+    var fallbackCenterX by rememberSaveable("chaoxing", mapScopeKey, "center-x") { mutableStateOf(0.5f) }
+    var fallbackCenterY by rememberSaveable("chaoxing", mapScopeKey, "center-y") { mutableStateOf(0.5f) }
+    val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
+    val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
+    val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
 
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        // 画布坐标来自学校，不能假设是 px/dp。优先按宽度完整放下；但长排座位图
-        // 缩到整屏会让座位只有几 dp、无法点选，因此保留一个可读下限并允许横滑。
-        val available = (maxWidth - 24.dp).value.coerceAtLeast(240f)
-        val fitScale = available / contentWidth
-        val scale = fitScale.coerceIn(0.28f, 0.9f)
-        val mapWidth = (contentWidth * scale + 16f).dp
-        val mapHeight = (contentHeight * scale + 16f).dp
-        Box(
-            Modifier.fillMaxWidth().heightIn(max = 430.dp)
-                .horizontalScroll(rememberScrollState())
-                .verticalScroll(rememberScrollState()),
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth()
+                .height(368.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
-            Box(Modifier.width(mapWidth).height(mapHeight).padding(8.dp)) {
-                places.forEach { place ->
-                    val hidden = place.seatNum in hiddenIds
-                    val disabled = place.seatNum in disabledIds
-                    val used = place.seatNum in usedSeats
-                    val selected = place.seatNum == selectedSeat
-                    val color = when {
-                        hidden -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        disabled -> MaterialTheme.colorScheme.surfaceVariant
-                        selected -> MaterialTheme.colorScheme.tertiaryContainer
-                        !usedSeatsLoaded -> MaterialTheme.colorScheme.surfaceVariant
-                        used -> MaterialTheme.colorScheme.errorContainer
-                        else -> MaterialTheme.colorScheme.primaryContainer
+            val controlsHeightPx = with(density) { 48.dp.toPx() }
+            val viewportSize = SeatMapSize(
+                width = constraints.maxWidth.toFloat(),
+                height = (constraints.maxHeight - controlsHeightPx).coerceAtLeast(1f),
+            )
+            val paddingPx = with(density) { 12.dp.toPx() }
+            val targetSeatPx = with(density) { 48.dp.toPx() }
+            val overview = SeatMapViewportTransform.overview(bounds, viewportSize, paddingPx)
+            if (overview == null) {
+                CompactNotice("无法显示布局", "当前窗口空间不足，请调整窗口后重试。")
+            } else {
+                val maxZoom = max(4f, targetSeatPx / (smallestSeatDimension * overview.scale))
+                    .coerceAtMost(64f)
+                val pose = SeatMapViewportPose(zoom, centerX, centerY)
+                val transform = remember(bounds, viewportSize, pose, maxZoom) {
+                    pose.toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                }
+                val currentTransform = rememberUpdatedState(transform)
+                val currentPlaces = rememberUpdatedState(places)
+                val currentHiddenIds = rememberUpdatedState(hiddenIds)
+                val currentUsedSeats = rememberUpdatedState(usedSeats)
+                val currentDisabledIds = rememberUpdatedState(disabledIds)
+                val currentInteractionsEnabled = rememberUpdatedState(selectionEnabled)
+                val currentUsedSeatsLoaded = rememberUpdatedState(usedSeatsLoaded)
+                val currentOnSelect = rememberUpdatedState(onSelect)
+                val currentOnHide = rememberUpdatedState(onHide)
+
+                fun saveTransform(next: SeatMapViewportTransform) {
+                    val nextPose = SeatMapViewportPose.from(next)
+                    if (viewportState == null) {
+                        fallbackZoom = nextPose.zoomMultiplier
+                        fallbackCenterX = nextPose.centerXFraction
+                        fallbackCenterY = nextPose.centerYFraction
+                    } else {
+                        viewportState.zoomMultiplier.value = nextPose.zoomMultiplier
+                        viewportState.centerXFraction.value = nextPose.centerXFraction
+                        viewportState.centerYFraction.value = nextPose.centerYFraction
                     }
-                    val textColor = when {
-                        selected -> MaterialTheme.colorScheme.onTertiaryContainer
-                        !usedSeatsLoaded -> MaterialTheme.colorScheme.onSurfaceVariant
-                        used -> MaterialTheme.colorScheme.onErrorContainer
-                        else -> MaterialTheme.colorScheme.onPrimaryContainer
+                }
+
+                val gestureModifier = Modifier
+                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom) {
+                        detectTransformGestures { centroid, pan, zoomChange, _ ->
+                            val next = currentTransform.value
+                                .zoomAt(SeatMapPoint(centroid.x, centroid.y), zoomChange)
+                                .panBy(SeatMapPoint(pan.x, pan.y))
+                            saveTransform(next)
+                        }
                     }
-                    val seatWidth = (place.width * scale).dp.coerceAtLeast(22.dp)
-                    val seatHeight = (place.height * scale).dp.coerceAtLeast(22.dp)
-                    Surface(
-                        modifier = Modifier
-                            .offset(
-                                x = ((place.x - minX) * scale).dp,
-                                y = ((place.y - minY) * scale).dp,
-                            )
-                            .size(width = seatWidth, height = seatHeight)
-                            .graphicsLayer(rotationZ = place.rotate)
-                            .semantics {
-                                contentDescription = "座位 ${place.seatNum}，" + when {
-                                    hidden -> "已在本机隐藏"
+                    .pointerInput(mapScopeKey, bounds, viewportSize) {
+                        detectTapGestures(
+                            onTap = { offset ->
+                                val contentPoint = currentTransform.value.displayToContent(
+                                    SeatMapPoint(offset.x, offset.y),
+                                )
+                                val target = currentPlaces.value.asReversed().firstOrNull { place ->
+                                    SeatMapRect(place.x, place.y, place.x + place.width, place.y + place.height)
+                                        .containsRotated(contentPoint, place.rotate)
+                                } ?: return@detectTapGestures
+                                if (currentInteractionsEnabled.value && currentUsedSeatsLoaded.value &&
+                                    target.seatNum !in currentUsedSeats.value &&
+                                    target.seatNum !in currentHiddenIds.value &&
+                                    target.seatNum !in currentDisabledIds.value
+                                ) {
+                                    currentOnSelect.value(target.seatNum)
+                                }
+                            },
+                            onLongPress = { offset ->
+                                val contentPoint = currentTransform.value.displayToContent(
+                                    SeatMapPoint(offset.x, offset.y),
+                                )
+                                val target = currentPlaces.value.asReversed().firstOrNull { place ->
+                                    SeatMapRect(place.x, place.y, place.x + place.width, place.y + place.height)
+                                        .containsRotated(contentPoint, place.rotate)
+                                } ?: return@detectTapGestures
+                                if (currentInteractionsEnabled.value && target.seatNum !in currentHiddenIds.value) {
+                                    currentOnHide.value(target.seatNum)
+                                }
+                            },
+                        )
+                    }
+
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SeatMapZoomControls(
+                        onZoomOut = {
+                            val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
+                            saveTransform(transform.zoomAt(center, 1f / 1.6f))
+                        },
+                        onZoomIn = {
+                            val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
+                            saveTransform(transform.zoomAt(center, 1.6f))
+                        },
+                        onReset = { transform.reset()?.let(::saveTransform) },
+                    )
+                    Box(Modifier.fillMaxWidth().weight(1f).then(gestureModifier)) {
+                        val showLabels = with(density) {
+                            (smallestSeatDimension * transform.scale).toDp() >= 24.dp
+                        }
+                        Box(
+                            Modifier
+                                .offset {
+                                    val current = currentTransform.value
+                                    IntOffset(
+                                        x = (current.translationX + current.contentBounds.left * current.scale).roundToInt(),
+                                        y = (current.translationY + current.contentBounds.top * current.scale).roundToInt(),
+                                    )
+                                }
+                                .graphicsLayer {
+                                    val current = currentTransform.value
+                                    val densityScale = current.scale / density.density
+                                    scaleX = densityScale
+                                    scaleY = densityScale
+                                    transformOrigin = TransformOrigin(0f, 0f)
+                                }
+                                .size(bounds.width.dp, bounds.height.dp),
+                        ) {
+                            places.forEach { place ->
+                                val rect = SeatMapRect(place.x, place.y, place.x + place.width, place.y + place.height)
+                                if (!rect.isUsable()) return@forEach
+                                val hidden = place.seatNum in hiddenIds
+                                val disabled = place.seatNum in disabledIds
+                                val used = place.seatNum in usedSeats
+                                val selected = place.seatNum == selectedSeat
+                                val status = when {
+                                    hidden -> "本机已隐藏"
                                     disabled -> "不可预约"
                                     !usedSeatsLoaded -> "当前时段已用状态未取得"
                                     used -> "当前时段已用"
                                     else -> "当前时段可用"
                                 }
+                                val color = when {
+                                    hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                    disabled -> MaterialTheme.colorScheme.surfaceVariant
+                                    selected -> MaterialTheme.colorScheme.tertiaryContainer
+                                    !usedSeatsLoaded -> MaterialTheme.colorScheme.surfaceVariant
+                                    used -> MaterialTheme.colorScheme.errorContainer
+                                    else -> MaterialTheme.colorScheme.primaryContainer
+                                }
+                                val textColor = when {
+                                    hidden -> MaterialTheme.colorScheme.outline
+                                    disabled || !usedSeatsLoaded -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    selected -> MaterialTheme.colorScheme.onTertiaryContainer
+                                    used -> MaterialTheme.colorScheme.onErrorContainer
+                                    else -> MaterialTheme.colorScheme.onPrimaryContainer
+                                }
+                                Box(
+                                    Modifier
+                                        .offset(
+                                            x = (place.x - bounds.left).dp,
+                                            y = (place.y - bounds.top).dp,
+                                        )
+                                        .size(place.width.dp, place.height.dp)
+                                        .graphicsLayer(rotationZ = place.rotate)
+                                        .padding(1.dp)
+                                        .clip(RoundedCornerShape(5.dp))
+                                        .background(color)
+                                        .then(if (hidden) Modifier.drawBehind {
+                                            drawLine(
+                                                color = Color.Gray,
+                                                start = Offset.Zero,
+                                                end = Offset(size.width, size.height),
+                                                strokeWidth = size.minDimension * 0.08f,
+                                            )
+                                        } else Modifier)
+                                        .semantics { contentDescription = "座位 ${place.seatNum}，$status" },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    if (showLabels && !hidden) {
+                                        Text(
+                                            place.seatNum,
+                                            color = textColor,
+                                            fontSize = with(density) { (12.dp.toPx() / transform.scale).sp },
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Clip,
+                                        )
+                                    } else if (showLabels) {
+                                        Text("·", color = textColor,
+                                            fontSize = with(density) { (12.dp.toPx() / transform.scale).sp }, maxLines = 1)
+                                    }
+                                }
                             }
-                            .combinedClickable(
-                                onClick = { if (usedSeatsLoaded && !used && !hidden && !disabled) onSelect(place.seatNum) },
-                                onLongClick = { if (!hidden) onHide(place.seatNum) },
-                            ),
-                        shape = RoundedCornerShape(5.dp),
-                        color = color,
-                        tonalElevation = if (selected) 3.dp else 0.dp,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                if (hidden) "·" else place.seatNum,
-                                color = textColor,
-                                fontSize = if (seatWidth >= 26.dp) 9.sp else 8.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Clip,
-                            )
                         }
                     }
                 }

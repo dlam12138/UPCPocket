@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -23,6 +26,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.upcpocket.app.ui.components.RatioSegment
+import com.upcpocket.app.ui.components.SegmentedRatioBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -154,9 +159,32 @@ fun DirectCardBalanceSection(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                onOpenHistory?.let { open -> TextButton(onClick = open) { Text("交易流水") } }
-                onOpenRecharge?.let { open -> TextButton(onClick = open) { Text("充值") } }
+            if (onOpenRecharge != null || onOpenHistory != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    onOpenRecharge?.let { open ->
+                        FilledTonalButton(
+                            onClick = open,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Outlined.Payments, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("充值")
+                        }
+                    }
+                    onOpenHistory?.let { open ->
+                        OutlinedButton(
+                            onClick = open,
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.AutoMirrored.Outlined.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("交易流水")
+                        }
+                    }
+                }
             }
 
             visibleSnapshot?.let { data ->
@@ -336,6 +364,25 @@ private fun BalanceSnapshot(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
+            if (data.balanceCents > 0L || data.transitionCents > 0L) {
+                SegmentedRatioBar(
+                    segments = listOf(
+                        RatioSegment(
+                            label = "卡内",
+                            value = data.balanceCents.coerceAtLeast(0L).toFloat(),
+                            color = MaterialTheme.colorScheme.primary,
+                            valueText = "${data.balanceText} 元",
+                        ),
+                        RatioSegment(
+                            label = "过渡",
+                            value = data.transitionCents.coerceAtLeast(0L).toFloat(),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            valueText = "${data.transitionText} 元",
+                        ),
+                    ),
+                    barHeight = 6.dp,
+                )
+            }
             val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
                 .withZone(ZoneId.systemDefault())
             Text(

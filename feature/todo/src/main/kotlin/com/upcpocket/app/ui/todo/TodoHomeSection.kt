@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,6 +43,7 @@ import com.upcpocket.app.todo.data.TodoOrdering
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -54,10 +56,14 @@ fun TodoHomeSection(
     store: TodoStore,
     host: PluginSectionHost,
 ) {
-    val tasks by store.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val taskSnapshotFlow = remember(store) {
+        store.tasks.map<List<TodoTask>, List<TodoTask>?> { it }
+    }
+    val taskSnapshot by taskSnapshotFlow.collectAsStateWithLifecycle(initialValue = null)
+    val tasks = taskSnapshot.orEmpty()
     val scope = rememberCoroutineScope()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var adding by remember { mutableStateOf(false) }
+    var adding by rememberSaveable { mutableStateOf(false) }
     var completionOverrides by remember {
         mutableStateOf(emptyMap<String, TodoCompletionOverride>())
     }
@@ -106,7 +112,7 @@ fun TodoHomeSection(
                         .padding(vertical = 4.dp),
                 )
                 Text(
-                    "$incompleteCount 项未完成",
+                    if (taskSnapshot == null) "正在读取" else "$incompleteCount 项未完成",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
@@ -133,7 +139,7 @@ fun TodoHomeSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
+                    com.upcpocket.app.ui.components.CampusTextButton(
                         onClick = {
                             if (pendingUndo == pending) pendingUndo = null
                             undoMessage = null
@@ -181,7 +187,14 @@ fun TodoHomeSection(
                 )
             }
 
-            if (summary.isEmpty()) {
+            if (taskSnapshot == null) {
+                Text(
+                    "正在读取待办",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            } else if (summary.isEmpty()) {
                 Row(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -300,11 +313,22 @@ private fun HomeTodoRow(
                     MaterialTheme.colorScheme.onSurface
                 },
             )
+            task.dueAt?.let { deadline ->
+                Text(
+                    "截止 ${TodoFormat.shortTime(deadline, now)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (!completionState && deadline <= now) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             task.reminderAt?.let { reminder ->
                 Text(
-                    TodoFormat.shortTime(reminder, now),
+                    "提醒 ${TodoFormat.shortTime(reminder, now)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (reminder <= now) {
+                    color = if (!completionState && reminder <= now && task.reminderFiredAt == null) {
                         MaterialTheme.colorScheme.error
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant

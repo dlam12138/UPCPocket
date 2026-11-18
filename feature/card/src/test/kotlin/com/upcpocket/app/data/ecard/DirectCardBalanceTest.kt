@@ -101,8 +101,8 @@ class DirectCardBalanceTest {
     private fun body(balance: String = "12345", transition: String = "678") =
         """{"retcode":"0","card":[{"sno":"$id","db_balance":"$balance","unsettle_amount":"$transition","name":"discard-fixture"}]}"""
 
-    private fun accountBinding(): FakeAccountIdentity = FakeAccountIdentity().also {
-        it.bind(studentId = id)
+    private fun accountBinding(studentId: String = id): FakeAccountIdentity = FakeAccountIdentity().also {
+        it.bind(studentId = studentId)
     }
 
     private fun store(): DirectCardBalanceStore = DirectCardBalanceStore(temp.newFolder())
@@ -110,9 +110,35 @@ class DirectCardBalanceTest {
     @Test
     fun `form uses supplied contract with matching student identifiers`() {
         assertEquals("sno=$id&xxbh=synjones&idtype=sno&id=$id", DirectCardBalanceProtocol.form(id))
-        listOf("", "123", "2099000123&token=x", "１２３４５６７８", "12345678901234567").forEach {
+        listOf("", "2099000123&token=x", "１２３４５６７８", "12345678901234567").forEach {
             assertThrows(IllegalArgumentException::class.java) { DirectCardBalanceProtocol.form(it) }
         }
+        val invalidId = assertThrows(IllegalArgumentException::class.java) { DirectCardBalanceProtocol.form("123") }
+        assertEquals("学号格式无效", invalidId.message)
+    }
+
+    @Test
+    fun `prefixed student id remains complete through balance and cache readback`() = runBlocking {
+        val studentId = "S99999999"
+        val response = """{"retcode":"0","card":[{"sno":"$studentId","db_balance":"12345","unsettle_amount":"678"}]}"""
+        assertEquals(
+            "sno=$studentId&xxbh=synjones&idtype=sno&id=$studentId",
+            DirectCardBalanceProtocol.form(studentId),
+        )
+        assertEquals(studentId, DirectCardBalanceProtocol.parse(response, studentId, 123).studentId)
+        assertThrows(CampusCardException::class.java) {
+            DirectCardBalanceProtocol.parse(response.replace(studentId, "99999999"), studentId, 123)
+        }
+
+        val cache = store()
+        val account = accountBinding(studentId)
+        val repository = DirectCardBalanceRepository(cache, account) { response }
+        val saved = repository.refreshCurrent()
+        assertEquals(studentId, saved.studentId)
+        assertTrue(saved.belongsTo(repository.currentBinding()!!))
+
+        val restored = DirectCardBalanceRepository(cache, accountBinding(studentId)) { error("no network") }.cached()
+        assertEquals(studentId, restored?.studentId)
     }
 
     @Test
