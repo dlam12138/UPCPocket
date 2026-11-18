@@ -9,14 +9,14 @@
 
 ## 项目与当前状态
 
-- 面向中国石油大学（华东）的非官方 Android 校园工具；当前产品范围、安装和使用见 [README](README.md)。保留校园卡余额/本人流水/微信充值、唐岛湾电量、两校区空闲教室、图书馆座位、只读课表、本机待办及一次性提醒、专注；正式 2.0.7 有三个 RemoteViews 组件，2.0.8 开发新增待办组件与独立截止。石光与 e站通只读；不扩展到报名、签到、事项提交等写操作。课表不含编辑、导出或提醒；古镇口电量走学校页面。数字石大与图书馆主页入口已移除。
-- 当前正式版本为 **2.0.7 / 28**，两部分及最终小组件候选均已验收，已于 2026-11-16 公开并设为 latest；正式 APK 沿用最终候选原字节。旧版线路仍为 **2.0.3 / 24**。详情及产物哈希见 [2.0.7 正式记录](docs/releases/2.0.7.md)与[开发记录](docs/releases/2.0.7-development.md)，此前正式版见 [2.0.6 记录](docs/releases/2.0.6.md)。已验收 APK 保留原字节，不能重编后冒充同一验收产物。
+- 面向中国石油大学（华东）的非官方 Android 校园工具；当前产品范围、安装和使用见 [README](README.md)。保留校园卡余额/本人流水/微信充值、唐岛湾电量、两校区空闲教室、图书馆座位、只读课表、本机待办及一次性提醒、专注。2.0.8 新增待办组件与独立截止，四类 RemoteViews 组件均可选独立静态磨砂版。石光与 e站通只读；不扩展到报名、签到、事项提交等写操作。课表不含编辑、导出或提醒；古镇口电量走学校页面。数字石大与图书馆主页入口已移除。
+- 当前正式版本为 **2.0.8 / 29**，已于 2026-11-18 公开并设为 latest，正式 APK 沿用固定磨砂候选原字节。旧版线路为 **2.0.3 / 24**。详情及产物哈希见 [2.0.8 正式记录](docs/releases/2.0.8.md)与[开发记录](docs/releases/2.0.8-development.md)，此前版本见 [2.0.7 正式记录](docs/releases/2.0.7.md)。已验收 APK 保留原字节，不能重编后冒充同一验收产物。
 - 新版 applicationId 为 `com.upcpocket.next`，Kotlin/资源 namespace 为 `com.upcpocket.app`；与旧包独立安装，不迁移、卸载或清除旧包数据。下载入口为 GitHub 与 gh-proxy。
 - 用户新指令优先于历史计划。原始 [总体计划](UPC-Pocket-总体计划-v0.1.md)、M0–M5、发布候选记录保留当时状态；旧根指令已[完整归档](docs/agent-native/legacy-agent-instructions-2026-11-16.md)。现行规则以本入口及适用局部指令为准，历史“未实现/未发布”不覆盖当前记录。
 
 ## 技术栈、目录与边界
 
-2.0.8 开发基线见 [构建指南](docs/BUILD.md)：Kotlin 2.3.10、AGP 8.13.2、Gradle 8.13、JDK 17+、minSdk 31 / compileSdk 与 targetSdk 36，兼容决定见 [ADR 005](docs/adr/005-2.0.8-toolchain-and-widget-state.md)。保留 Compose / Material 3、Navigation Compose、手动 AppGraph、Room / DataStore、OkHttp、WorkManager 与 RemoteViews；不因技能推荐而迁移 Hilt、Navigation 3、AGP 9 或 Glance。正式版仍为 2.0.7，开发与验证状态见 [2.0.8 记录](docs/releases/2.0.8-development.md)。
+2.0.8 基线见 [构建指南](docs/BUILD.md)：Kotlin 2.3.10、AGP 8.13.2、Gradle 8.13、JDK 17+、minSdk 31 / compileSdk 与 targetSdk 36，兼容决定见 [ADR 005](docs/adr/005-2.0.8-toolchain-and-widget-state.md)。保留 Compose / Material 3、Navigation Compose、手动 AppGraph、Room / DataStore、OkHttp、WorkManager 与 RemoteViews；不因技能推荐而迁移 Hilt、Navigation 3、AGP 9 或 Glance。开发与验证范围见 [2.0.8 记录](docs/releases/2.0.8-development.md)。
 
 | 目录/入口 | 职责与必读局部指令 |
 | --- | --- |
@@ -51,7 +51,7 @@
 ## 产品、安全与数据约束
 
 - UI、领域模型与数据来源分离。失败、离线、缓存、未验证、验证码、清理未完成、结果未知和有后果的确认必须真实表达；不把缺数据或请求失败显示成成功空结果。账号保存显示“已保存”，内部仍为 `SAVED_UNVERIFIED`，不得称“已登录”或“学校认证通过”。
-- 依用户 2.0.8 更新计划，开发代码五 tab 为“首页 / 课表 / 服务 / 待办 / 专注”（正式 2.0.7 为四项），Pager 与浮动胶囊联动；统一设置入口在首页右上角，不重建“更多”目录。快捷路径可以多处指向同一路由；改入口同步 M5 的旧→新映射与缺插件行为。用户文案短且具体，技术约束收进已有“数据说明/关于”，不新增说明入口。
+- 当前五 tab 为“首页 / 课表 / 服务 / 待办 / 专注”，Pager 与浮动胶囊联动；统一设置入口在首页右上角，不重建“更多”目录。快捷路径可以多处指向同一路由；改入口同步 M5 的旧→新映射与缺插件行为。用户文案短且具体，技术约束收进已有“数据说明/关于”，不新增说明入口。
 - 新增校园能力核对 UPC 来源，禁止套用 `docs/archive/zzu/` 中的域名、认证、Token、宿舍规则或验证结论。校园受保护接口以实际取得的授权为限；本地开发、构建和技能安装不构成学校接口授权。只读准备、下单、微信分发、付款与到账分别记录，不能互相替代。
 - 账号密码、Cookie、Token、私钥、未脱敏学生业务数据不写入源码、文档、日志、样本。根 `官方入口.txt` 可能含临时凭据，不原样提交、复制配置或输出日志。SDK 路径只放被忽略的 `local.properties`，JDK 走本机环境，不硬编码共享配置。
 - 诊断只允许固定枚举、有界数字、短随机 operationId 与过滤后的 `com.upcpocket.app.*` 帧；禁止账号标识、URL/query、请求响应、HTML、课程/房间/预约内容、异常消息及自由文本。用户主动导出，专用目录和临时 FileProvider 授权；诊断失败不得影响业务。
