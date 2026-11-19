@@ -1,6 +1,6 @@
 # UPC Pocket 2.0.9 宣传图
 
-- [宣传图（1920 × 1080）](UPC-Pocket-2.0.9-promo.png) 展示常用校区、校园官网和可选轻量玻璃。二维码指向 2.0.9 的固定 GitHub Release，随正式版公开生效。[目标页面](https://github.com/dlam12138/UPCPocket/releases/tag/v2.0.9)
+- [宣传图（1920 × 1080）](UPC-Pocket-2.0.9-promo.png) 展示常用校区、校园官网和可选轻量玻璃。二维码指向 2.0.9 的正式 GitHub Release。[目标页面](https://github.com/dlam12138/UPCPocket/releases/tag/v2.0.9)
 - [常用校区](campus.png) 为「首页 → 设置 → 校园」，选中唐岛湾。
 - [校园官网与轻量玻璃底栏](services.png) 为「服务 → 官方网页」，展示新加入的四个官网入口。
 
