@@ -37,15 +37,14 @@
 
 新版沿用长期 Release 签名，旧版更新线路继续指向 2.0.3。 [2.0.8 发布记录与校验值](docs/releases/2.0.8.md)
 
+## 2.0.9 · 发布送审预览
+
 <div align="center">
-<img src="docs/images/2.0.6/promo/01-home.png" width="230" alt="2.0.6 首页：今日课程与紧凑待办，合成演示数据" />
-<img src="docs/images/2.0.6/promo/02-timetable.png" width="230" alt="2.0.6 课表周网格，合成演示数据" />
-<img src="docs/images/2.0.6/promo/03-classroom.png" width="230" alt="2.0.6 空闲教室，合成演示数据" />
-<br />
-<img src="docs/images/2.0.6/promo/04-recharge.png" width="230" alt="2.0.6 微信充值页面，合成账号与金额" />
-<img src="docs/images/2.0.6/promo/05-todo.png" width="230" alt="2.0.6 待办页面，合成演示数据" />
-<br /><sub>真实页面，合成演示数据；不含个人校园记录。<a href="docs/images/2.0.6/promo/README.md">图片说明</a></sub>
+<img src="docs/images/2.0.9/promo/UPC-Pocket-2.0.9-promo.png" width="850" alt="UPC Pocket 2.0.9 宣传图，展示常用校区设置和轻量玻璃下的校园服务页" />
+<br /><sub>验收包界面实拍。二维码在 2.0.9 正式公开后生效。<a href="docs/images/2.0.9/promo/README.md">图片说明</a></sub>
 </div>
+
+[2.0.9 更新公告送审稿](docs/releases/2.0.9-notice.md)
 
 ## 常用的，都放在一起
 
