@@ -32,11 +32,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
@@ -48,8 +50,10 @@ import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.CampusIconButton
+import com.upcpocket.app.ui.components.glassBackground
 import com.upcpocket.app.ui.nav.filledIcon
 import com.upcpocket.app.ui.official.OfficialWebCatalog
+import com.upcpocket.app.ui.theme.LocalUiStyle
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
@@ -136,7 +140,13 @@ fun HomeScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.glassBackground(),
+        containerColor = if (LocalUiStyle.current == UiStyle.LIQUID_GLASS) {
+            Color.Transparent
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),

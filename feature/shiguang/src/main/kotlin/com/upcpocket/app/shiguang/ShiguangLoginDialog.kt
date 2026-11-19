@@ -32,6 +32,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.upcpocket.app.ui.components.GlassSurface as Surface
+import com.upcpocket.app.ui.components.GlassButton as Button
+import com.upcpocket.app.ui.components.GlassTextButton as TextButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 
 @Composable
 internal fun ShiguangLoginDialog(

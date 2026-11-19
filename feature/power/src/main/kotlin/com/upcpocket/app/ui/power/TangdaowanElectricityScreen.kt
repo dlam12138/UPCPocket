@@ -1,6 +1,8 @@
 package com.upcpocket.app.ui.power
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,11 +19,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import com.upcpocket.app.ui.components.GlassOutlinedTextField as OutlinedTextField
+import com.upcpocket.app.ui.components.GlassRadioButton as RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.upcpocket.app.ui.components.glassPressHighlight
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -276,16 +279,22 @@ internal fun TangdaowanElectricityContent(
                                 key = { it },
                                 contentType = { "building" },
                             ) { option ->
+                                val optionInteractions = remember(option) { MutableInteractionSource() }
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
-                                        .clickable { selectBuilding(option) }
+                                        .glassPressHighlight(MaterialTheme.shapes.medium, optionInteractions)
+                                        .clickable(
+                                            interactionSource = optionInteractions,
+                                            indication = LocalIndication.current,
+                                        ) { selectBuilding(option) }
                                         .padding(vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     RadioButton(
                                         selected = building == option,
                                         onClick = { selectBuilding(option) },
+                                        interactionSource = optionInteractions,
                                     )
                                     Text(option)
                                 }

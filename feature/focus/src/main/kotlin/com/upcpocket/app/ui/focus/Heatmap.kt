@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.domain.FocusHeatmap
 import com.upcpocket.app.domain.FocusStats
+import com.upcpocket.app.ui.components.glassHighlight
 import java.time.LocalDate
 
 /**
@@ -118,6 +119,7 @@ fun FocusHeatmap(
                                                 Modifier
                                             },
                                         )
+                                        .glassHighlight(shape)
                                         .then(
                                             if (ring != null) {
                                                 Modifier.border(
@@ -176,7 +178,8 @@ fun HeatmapLegend(modifier: Modifier = Modifier) {
                         } else {
                             Modifier
                         },
-                    ),
+                    )
+                    .glassHighlight(shape),
             )
         }
         Text("多", style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)

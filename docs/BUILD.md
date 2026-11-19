@@ -12,6 +12,7 @@
 | KSP | 2.3.6 |
 | Compose BOM | 2026.02.01 |
 | Room | 2.8.5（2.0.8 开发基线，验证范围见开发记录） |
+| Kyant | Backdrop 1.0.6 / Shapes 1.2.0 |
 
 安装 Android SDK 36 与项目所需 Build Tools。通过环境变量配置本机 JDK，SDK 路径写入根目录 `local.properties`，例如 `sdk.dir=/your/android-sdk`。不提交本机路径或签名文件。
 

@@ -41,9 +41,9 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.SnackbarHost
+import com.upcpocket.app.ui.components.GlassDropdownMenu as DropdownMenu
+import com.upcpocket.app.ui.components.GlassDropdownMenuItem as DropdownMenuItem
+import com.upcpocket.app.ui.components.GlassSnackbarHost as SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Button
@@ -52,13 +52,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.upcpocket.app.ui.components.GlassModalBottomSheet as ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -109,12 +109,14 @@ import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.library.ChaoxingAuthFailure
 import com.upcpocket.app.library.ChaoxingLoginResult
 import com.upcpocket.app.library.ChaoxingService
+import com.upcpocket.app.ui.components.glassPane
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
+import com.upcpocket.app.ui.components.GlassRadioButton as RadioButton
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -328,7 +330,7 @@ internal fun ChaoxingFilterPanel(
 ) {
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow)
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -815,7 +817,7 @@ internal fun ChaoxingSeatListTile(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                androidx.compose.material3.RadioButton(
+                RadioButton(
                     selected = selected,
                     onClick = null,
                     enabled = canSelect,
@@ -880,7 +882,7 @@ internal fun ChaoxingSeatMap(
             Modifier.fillMaxWidth()
                 .height(368.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             val controlsHeightPx = with(density) { 48.dp.toPx() }
             val viewportSize = SeatMapSize(

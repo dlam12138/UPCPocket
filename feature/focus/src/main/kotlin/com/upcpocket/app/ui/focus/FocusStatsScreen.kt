@@ -17,15 +17,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.MaterialTheme
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.glassHighlight
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -280,7 +280,8 @@ private fun TagRow(tag: TagTotal, maxSeconds: Int) {
                 .fillMaxWidth()
                 .height(6.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .glassHighlight(RoundedCornerShape(3.dp)),
         ) {
             val ratio = tag.totals.seconds.toFloat() / maxSeconds.toFloat()
             Box(
@@ -288,7 +289,8 @@ private fun TagRow(tag: TagTotal, maxSeconds: Int) {
                     .fillMaxWidth(ratio.coerceIn(0.02f, 1f))
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(3.dp))
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(MaterialTheme.colorScheme.primary)
+                    .glassHighlight(RoundedCornerShape(3.dp)),
             )
         }
     }

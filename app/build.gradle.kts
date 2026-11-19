@@ -199,6 +199,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.kyant.backdrop)
+    implementation(libs.kyant.shapes)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     // Material You 配色生成（由种子色算出整套 M3 浅/深配色，见 ui/theme/MaterialYouScheme.kt）

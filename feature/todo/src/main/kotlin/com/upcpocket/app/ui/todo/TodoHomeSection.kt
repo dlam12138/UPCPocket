@@ -1,6 +1,8 @@
 package com.upcpocket.app.ui.todo
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,13 +11,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Checkbox
+import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.upcpocket.app.ui.components.GlassTextButton as TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -27,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.upcpocket.app.ui.components.glassPressHighlight
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -96,6 +99,7 @@ fun TodoHomeSection(
         TodoOrdering.homeSummary(tasks, now, limit = 2)
     }
     val incompleteCount = tasks.count { !it.completed }
+    val titleInteractions = remember { MutableInteractionSource() }
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp)) {
@@ -108,7 +112,11 @@ fun TodoHomeSection(
                     "待办",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier
-                        .clickable { host.open(TODO_ROUTE) }
+                        .glassPressHighlight(MaterialTheme.shapes.small, titleInteractions)
+                        .clickable(
+                            interactionSource = titleInteractions,
+                            indication = LocalIndication.current,
+                        ) { host.open(TODO_ROUTE) }
                         .padding(vertical = 4.dp),
                 )
                 Text(
@@ -282,6 +290,7 @@ private fun HomeTodoRow(
     onToggle: () -> Unit,
     onOpen: () -> Unit,
 ) {
+    val openInteractions = remember(task.id) { MutableInteractionSource() }
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -298,7 +307,12 @@ private fun HomeTodoRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .clickable(onClick = onOpen)
+                .glassPressHighlight(MaterialTheme.shapes.medium, openInteractions)
+                .clickable(
+                    interactionSource = openInteractions,
+                    indication = LocalIndication.current,
+                    onClick = onOpen,
+                )
                 .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {

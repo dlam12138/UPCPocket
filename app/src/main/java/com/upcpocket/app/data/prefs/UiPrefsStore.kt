@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.designsystem.WidgetAppearance
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -59,6 +60,8 @@ data class UiPrefs(
      * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
      */
     val cardStudentId: String = "",
+    /** 应用内界面风格；独立于桌面组件，旧安装和未知取值保持 Material 3。旧候选的 `ui_style` 键不读取也不清除。 */
+    val uiStyle: UiStyle = UiStyle.MATERIAL3,
 ) {
     companion object {
         val DEFAULT_PINNED_SERVICES = setOf(
@@ -106,6 +109,8 @@ class UiPrefsStore internal constructor(
             },
             cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
             preferredCampus = PreferredCampus.fromStoredValue(p[KEY_PREFERRED_CAMPUS]),
+            uiStyle = p[KEY_UI_STYLE]?.let { runCatching { UiStyle.valueOf(it) }.getOrNull() }
+                ?: UiStyle.MATERIAL3,
         )
     }
 
@@ -154,6 +159,8 @@ class UiPrefsStore internal constructor(
     suspend fun setPreferredCampus(v: PreferredCampus) =
         store.edit { p -> p[KEY_PREFERRED_CAMPUS] = v.name }
 
+    suspend fun setUiStyle(v: UiStyle) = store.edit { p -> p[KEY_UI_STYLE] = v.name }
+
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
         widgetAppearanceSnapshot = v
@@ -163,6 +170,11 @@ class UiPrefsStore internal constructor(
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_WIDGET_APPEARANCE = stringPreferencesKey("widget_appearance")
+        /**
+         * 应用内界面风格。使用独立新键；旧候选的 `ui_style` 可能仍为有效枚举名，
+         * 但不能据此自动开启新外观。
+         */
+        val KEY_UI_STYLE = stringPreferencesKey("app_ui_style")
 
         /** 记住学校登录（只有图书馆 token 加密保存） */
         val KEY_REMEMBER_SCHOOL_LOGIN = booleanPreferencesKey("remember_school_login")

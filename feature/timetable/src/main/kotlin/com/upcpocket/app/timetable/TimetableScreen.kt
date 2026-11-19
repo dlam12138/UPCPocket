@@ -36,17 +36,17 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import com.upcpocket.app.ui.components.GlassDropdownMenu as DropdownMenu
+import com.upcpocket.app.ui.components.GlassDropdownMenuItem as DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.upcpocket.app.ui.components.GlassModalBottomSheet as ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -79,6 +79,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.glassHighlight
+import com.upcpocket.app.ui.components.glassPane
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.StatusPill
 import java.time.Duration
@@ -939,8 +941,9 @@ private fun DayColumn(
                 .height(dayHeaderHeight)
                 .testTag("timetable_day_header_$date")
                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
-                .background(
-                    if (isToday) {
+                .glassPane(
+                    shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
+                    color = if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                     } else {
                         Color.Transparent
@@ -986,8 +989,9 @@ private fun DayColumn(
                 .height(slotHeight * PERIODS)
                 .testTag("timetable_day_slots_$date")
                 .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
-                .background(
-                    if (isToday) {
+                .glassPane(
+                    shape = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp),
+                    color = if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.74f)
@@ -1047,6 +1051,8 @@ private fun DayColumn(
                         .width(cardWidth)
                         .height(height)
                         .clip(RoundedCornerShape(6.dp))
+                        .background(tone.container, RoundedCornerShape(6.dp))
+                        .glassHighlight(RoundedCornerShape(6.dp))
                         .clickable { onCourseClick(meeting) }
                         .semantics {
                             contentDescription = listOfNotNull(
@@ -1057,7 +1063,7 @@ private fun DayColumn(
                             ).joinToString("，")
                         },
                     shape = RoundedCornerShape(6.dp),
-                    color = tone.container,
+                    color = Color.Transparent,
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                 ) {
@@ -1264,7 +1270,8 @@ internal fun TodayPanel(
                             Modifier
                                 .width(4.dp)
                                 .height(32.dp)
-                                .background(tone.container, RoundedCornerShape(2.dp)),
+                                .background(tone.container, RoundedCornerShape(2.dp))
+                                .glassHighlight(RoundedCornerShape(2.dp)),
                         )
                         Spacer(Modifier.width(8.dp))
                         Column(
