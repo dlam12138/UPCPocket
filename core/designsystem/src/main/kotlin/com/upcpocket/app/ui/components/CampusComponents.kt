@@ -1,6 +1,5 @@
 package com.upcpocket.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -64,7 +62,7 @@ fun StatusPill(
     contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    GlassSurface(
         modifier = modifier,
         shape = RoundedCornerShape(999.dp),
         color = containerColor,
@@ -90,7 +88,7 @@ fun IconBadge(
     contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer,
     size: Dp = 42.dp,
 ) {
-    Surface(
+    GlassSurface(
         modifier = modifier.size(size),
         shape = CircleShape,
         color = containerColor,
@@ -121,7 +119,7 @@ fun NavigationRow(
     showChevron: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    Surface(
+    GlassSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
         color = Color.Transparent,
@@ -181,7 +179,7 @@ fun MetricTile(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.55f),
     contentColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
-    Surface(
+    GlassSurface(
         modifier = modifier,
         shape = MaterialTheme.shapes.medium,
         color = containerColor,

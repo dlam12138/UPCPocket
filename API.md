@@ -22,6 +22,12 @@
 
 2.0.8 增加 `UiSurface.SERVICE_DIRECTORY`，`PluginEntry.category: UiCategory = GENERAL` 和 `keywords: String = ""` 作为分类/搜索元数据；分类为学习与空间、校园生活、校务与成长、常用工具。稳定 ID 和路由保持；服务目录与首页固定共用贡献，不复制业务状态。宿主 `official.calendar` 是固定公开外链服务，不塞入课表领域契约，也不要求账号或课表插件。
 
+## 界面材质
+
+宿主通过 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt) 提供主题采样源。界面使用 `GlassCard`、`GlassSurface` 和设计系统的玻璃控件，继续向原生 Material 组件传递启用、选中、焦点与点击状态。自绘容器可使用 `Modifier.glassPane`。窗口内容可使用 `GlassNestedSurface`，限制嵌套控件对主题层的光学采样。
+
+浮层提示可将 `rememberGlassSnackbarBackdrop()` 的结果传给 `GlassSnackbarHost`，并在同一视图内仅对其下方内容使用 `recordContent`。原生 SnackbarHost 管理队列、超时及进出场，采样在提示退出后停止。
+
 ## 账号状态与受控身份
 
 所有公开类型来自 [SchoolAccount.kt](core/account-api/src/main/kotlin/com/upcpocket/app/account/api/SchoolAccount.kt)。账号 API 不返回密码或通用解密器。

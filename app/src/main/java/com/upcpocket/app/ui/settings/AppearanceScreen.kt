@@ -2,7 +2,6 @@ package com.upcpocket.app.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +20,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.CampusIconButton as IconButton
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -45,6 +45,7 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.ui.theme.MaterialYouScheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,6 +72,11 @@ private fun DarkMode.label(): String = when (this) {
     DarkMode.DARK -> "深色"
 }
 
+private fun UiStyle.label(): String = when (this) {
+    UiStyle.MATERIAL3 -> "Material 3"
+    UiStyle.LIQUID_GLASS -> "轻量玻璃"
+}
+
 class AppearanceViewModel : ViewModel() {
 
     private val store = AppGraph.uiPrefsStore
@@ -90,10 +96,13 @@ class AppearanceViewModel : ViewModel() {
         viewModelScope.launch { store.setDarkMode(mode) }
     }
 
+    fun setUiStyle(style: UiStyle) {
+        viewModelScope.launch { store.setUiStyle(style) }
+    }
 }
 
 /**
- * 「外观」页：设置深浅色与配色。
+ * 「外观」页：设置应用内界面风格、深浅色与配色；不改变桌面组件外观。
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -124,6 +133,21 @@ fun AppearanceScreen(
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Text(
+                text = "界面风格",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                UiStyle.entries.forEach { style ->
+                    CampusFilterChip(
+                        selected = prefs.uiStyle == style,
+                        onClick = { vm.setUiStyle(style) },
+                        label = { Text(style.label()) },
+                    )
+                }
+            }
+
             Text(
                 text = "深浅色",
                 style = MaterialTheme.typography.titleSmall,
@@ -166,31 +190,36 @@ private fun PresetRow(
     onClick: () -> Unit,
 ) {
     val swatches = rememberPresetSwatches(preset, dark)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        color = androidx.compose.ui.graphics.Color.Transparent,
     ) {
-        Box(Modifier.size(width = 56.dp, height = 28.dp)) {
-            swatches.forEachIndexed { index, color ->
-                Swatch(color = color, offsetIndex = index)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(Modifier.size(width = 56.dp, height = 28.dp)) {
+                swatches.forEachIndexed { index, color ->
+                    Swatch(color = color, offsetIndex = index)
+                }
             }
-        }
-        Text(
-            text = preset.label(),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        if (selected) {
-            Icon(
-                Icons.Filled.Check,
-                contentDescription = "已选中",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
+            Text(
+                text = preset.label(),
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f),
             )
+            if (selected) {
+                Icon(
+                    Icons.Filled.Check,
+                    contentDescription = "已选中",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }

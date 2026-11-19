@@ -4,8 +4,11 @@ import android.app.Application
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.upcpocket.app.data.power.ElectricityReading
 import com.upcpocket.app.data.prefs.UiPrefsStore
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.power.PowerInput
 import java.io.File
 import java.math.BigDecimal
@@ -58,6 +61,30 @@ class InputPersistenceTest {
 
     /** 每次新建 UiPrefsStore 视为“重启后重新读同一份持久配置”。 */
     private fun prefs() = UiPrefsStore(dataStore)
+
+    @Test
+    fun `旧安装与未知界面风格保持Material3`() = runBlocking {
+        assertEquals(UiStyle.MATERIAL3, prefs().flow.first().uiStyle)
+
+        dataStore.edit { it[stringPreferencesKey("ui_style")] = "FUTURE_STYLE" }
+
+        assertEquals(UiStyle.MATERIAL3, prefs().flow.first().uiStyle)
+    }
+
+    @Test
+    fun `界面风格恢复并独立于寝室偏好`() = runBlocking {
+        prefs().savePowerInput("01号楼(1)", "1101")
+        prefs().setUiStyle(UiStyle.LIQUID_GLASS)
+
+        val restored = prefs().flow.first()
+        assertEquals(UiStyle.LIQUID_GLASS, restored.uiStyle)
+        assertEquals("01号楼(1)", restored.powerBuilding)
+        assertEquals("1101", restored.powerRoom)
+
+        prefs().setUiStyle(UiStyle.MATERIAL3)
+
+        assertEquals(UiStyle.MATERIAL3, prefs().flow.first().uiStyle)
+    }
 
     @Test
     fun `楼号与房间号一起保存_重启后恢复`() = runBlocking {

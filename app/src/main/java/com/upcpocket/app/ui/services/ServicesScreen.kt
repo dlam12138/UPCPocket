@@ -31,7 +31,6 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -64,6 +63,7 @@ import com.upcpocket.app.ui.components.CampusIconButton
 import com.upcpocket.app.ui.components.CampusTopAppBar
 import com.upcpocket.app.ui.components.EmptyStateCard
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.GlassNestedSurface
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
@@ -233,7 +233,7 @@ fun ServicesScreen(
                         onAction = onOpenOfficialWeb,
                         modifier = Modifier.padding(top = 6.dp),
                     )
-                    GlassCard(Modifier.fillMaxWidth()) {
+                    ServiceDirectorySurface(Modifier.fillMaxWidth()) {
                         Column {
                             filteredOfficial.forEachIndexed { index, link ->
                                 val serviceId = link.serviceId
@@ -244,7 +244,7 @@ fun ServicesScreen(
                                     onClick = { OfficialWebCatalog.open(context, link) },
                                     trailing = if (serviceId == null) null else {
                                         {
-                                            IconButton(onClick = { onTogglePin(serviceId) }) {
+                                            CampusIconButton(onClick = { onTogglePin(serviceId) }) {
                                                 val pinned = serviceId in pinnedServiceIds
                                                 Icon(
                                                     imageVector = if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -272,6 +272,18 @@ fun ServicesScreen(
     }
 }
 
+/** Repeated cards and the tall link group use cached transparent material, without a lens. */
+@Composable
+private fun ServiceDirectorySurface(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    GlassNestedSurface {
+        GlassCard(modifier = modifier, onClick = onClick, content = content)
+    }
+}
+
 @Composable
 private fun ServiceDirectoryCard(
     entry: PluginEntry,
@@ -279,7 +291,7 @@ private fun ServiceDirectoryCard(
     onTogglePin: () -> Unit,
     onClick: () -> Unit,
 ) {
-    GlassCard(
+    ServiceDirectorySurface(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
     ) {

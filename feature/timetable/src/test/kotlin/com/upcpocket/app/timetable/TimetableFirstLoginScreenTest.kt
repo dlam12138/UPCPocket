@@ -3,6 +3,7 @@ package com.upcpocket.app.timetable
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -144,7 +145,10 @@ class TimetableFirstLoginScreenTest {
                 service.state.value.connection == TimetableConnection.CONNECTED
         }
         rule.waitForIdle()
-        rule.onNodeWithContentDescription("课程详情 示例课程A 第6节、第7节")
+        rule.onNode(
+            hasContentDescription("课程详情 示例课程A", substring = true) and
+                hasContentDescription("第6节、第7节", substring = true),
+        )
             .performSemanticsAction(SemanticsActions.OnClick)
         rule.waitForIdle()
         rule.onNodeWithText("日期").assertExists()

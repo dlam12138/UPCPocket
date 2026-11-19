@@ -68,6 +68,12 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 `core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。五项导航继续使用浮动胶囊与 Pager。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
+液态玻璃预研由宿主提供 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt)。Android 13 及以上的外层玻璃卡片共享一份可透出页面的半透明主题光源。小控件和独立弹窗使用透明或低不透明度的底色，辅以连续高光与描边。按压、焦点、选中值变化及弹窗展示时才播放短动效，沿用系统动画时长。底部导航独立采样当前页面，只在导航可见时启用页面采样。
+
+待办浮层提示使用独立的列表采样层，提示本体、浮动按钮和导航位于采样范围之外。仅在提示存在时录制列表，模糊和边缘折光限制在提示外形内。提示与操作按钮透出同一采样层，边缘高光在透明面上绘制。
+
+透明底部表单打开期间，宿主收起浮动导航，待办页收起浮动添加按钮，避免下方的操作控件与表单内容视觉重叠。
+
 ## 本机账号与业务会话
 
 [SchoolAccountRepository](core/account/src/main/kotlin/com/upcpocket/app/account/SchoolAccountRepository.kt) 保存当前一个账号；保存状态只表示本机密文可靠提交。UI 显示“已保存”，内部仍为 `SAVED_UNVERIFIED`，不代表学校认证或业务登录。

@@ -6,9 +6,17 @@
  */
 package com.upcpocket.app.ui.nav
 
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.AnimationSpec
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -44,13 +52,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -63,16 +73,21 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
+import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -84,18 +99,22 @@ import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
+import com.upcpocket.app.ui.components.glassBorder
+import com.upcpocket.app.ui.components.glassHighlight
+import com.upcpocket.app.ui.components.isGlassSheetVisible
 import com.upcpocket.app.ui.home.HomeScreen
+import com.upcpocket.app.ui.nav.kyant.LiquidBottomTab
+import com.upcpocket.app.ui.nav.kyant.LiquidBottomTabs
 import com.upcpocket.app.ui.official.OfficialWebScreen
 import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
+import com.upcpocket.app.ui.theme.LocalUiStyle
 import com.upcpocket.app.widget.WidgetLaunchTarget
 import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
 
 private data class Destination(
     val route: String,
@@ -201,7 +220,10 @@ fun AppNav(
      * 点击/组件/通知/返回都走这里。二级页存在时先回 main，再平滑切页；重复调用会
      * 取消上一次动画，不会叠加返回栈。
      */
-    fun switchTab(route: String) {
+    fun switchTab(
+        route: String,
+        animationSpec: AnimationSpec<Float> = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+    ) {
         val index = pageIndexForRoute(destinationRoutes, route)
         if (index < 0) return
         if (navController.currentDestination?.route != MAIN_ROUTE) {
@@ -211,7 +233,7 @@ fun AppNav(
         tabSwitch[0] = scope.launch {
             pagerState.animateScrollToPage(
                 page = index,
-                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                animationSpec = animationSpec,
             )
         }
     }
@@ -292,11 +314,12 @@ fun AppNav(
     }
 
     val homePageIndex = pageIndexForRoute(destinationRoutes, AppRoutes.HOME).coerceAtLeast(0)
-    BackHandler(
-        enabled = onMain && (
+    val awayFromHome by remember(pagerState, homePageIndex) {
+        derivedStateOf {
             pagerState.currentPage != homePageIndex || pagerState.currentPageOffsetFraction != 0f
-            ),
-    ) {
+        }
+    }
+    BackHandler(enabled = onMain && awayFromHome) {
         tabSwitch[0]?.cancel()
         tabSwitch[0] = scope.launch {
             pagerState.animateScrollToPage(
@@ -311,18 +334,27 @@ fun AppNav(
         DarkMode.LIGHT -> false
         DarkMode.SYSTEM -> isSystemInDarkTheme()
     }
+    val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
+    val drawDock = dockVisible && !isGlassSheetVisible()
+    val dockBackdrop = if (drawDock && glass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rememberLayerBackdrop()
+    } else null
+    val surface = MaterialTheme.colorScheme.surface
+
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surface),
+                .background(surface),
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                NavHost(
-                    navController = navController,
-                    startDestination = MAIN_ROUTE,
-                    modifier = Modifier.fillMaxSize(),
-                ) {
+            NavHost(
+                navController = navController,
+                startDestination = MAIN_ROUTE,
+                modifier = Modifier.fillMaxSize().then(
+                    if (dockBackdrop != null) Modifier.layerBackdrop(dockBackdrop).background(surface)
+                    else Modifier,
+                ),
+            ) {
                 composable(MAIN_ROUTE) {
                     HorizontalPager(
                         state = pagerState,
@@ -416,18 +448,82 @@ fun AppNav(
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
             }
-            }
 
-            if (dockVisible) {
-                FloatingDock(
-                    destinations = destinations,
-                    pagerState = pagerState,
-                    dockDark = dockDark,
-                    selectedIndex = pagerState.targetPage,
-                    onSelect = { index ->
-                        destinations.getOrNull(index)?.let { switchTab(it.route) }
-                    },
-                    modifier = Modifier.align(Alignment.BottomCenter),
+            if (drawDock) {
+                val dockAnimation: AnimationSpec<Float> = remember(glass) {
+                    if (glass) {
+                        spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium)
+                    } else {
+                        tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                    }
+                }
+                val selectTab: (Int) -> Unit = { index ->
+                    destinations.getOrNull(index)?.let { switchTab(it.route, dockAnimation) }
+                }
+                if (dockBackdrop != null) {
+                    KyantDock(
+                        destinations = destinations,
+                        pagerState = pagerState,
+                        backdrop = dockBackdrop,
+                        dockDark = dockDark,
+                        onSelect = selectTab,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                } else {
+                    FloatingDock(
+                        destinations = destinations,
+                        pagerState = pagerState,
+                        dockDark = dockDark,
+                        selectedIndex = pagerState.targetPage,
+                        onSelect = selectTab,
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KyantDock(
+    destinations: List<Destination>,
+    pagerState: PagerState,
+    backdrop: Backdrop,
+    dockDark: Boolean,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val targetPage = remember(pagerState) { { pagerState.targetPage } }
+    val selectTab: (Int) -> Unit = { index ->
+        if (index != pagerState.targetPage) onSelect(index)
+    }
+    LiquidBottomTabs(
+        selectedIndex = targetPage,
+        onTabSelected = selectTab,
+        backdrop = backdrop,
+        tabsCount = destinations.size,
+        darkTheme = dockDark,
+        modifier = modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) { detectTapGestures { } }
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .testTag("floating_dock"),
+    ) {
+        destinations.forEachIndexed { index, destination ->
+            val selected = pagerState.targetPage == index
+            LiquidBottomTab(
+                selected = selected,
+                onClick = { selectTab(index) },
+                modifier = Modifier
+                    .semantics { contentDescription = destination.label }
+                    .testTag("tab_${destination.route}"),
+            ) {
+                Icon(
+                    imageVector = if (selected) destination.icon else destination.outlinedIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(23.dp),
                 )
             }
         }
@@ -453,26 +549,31 @@ private fun FloatingDock(
     modifier: Modifier = Modifier,
 ) {
     if (destinations.isEmpty()) return
-    val dockColor = if (dockDark) {
-        MaterialTheme.colorScheme.surface
-    } else {
-        MaterialTheme.colorScheme.surface.copy(alpha = 0.5f)
+    val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
+    val scheme = MaterialTheme.colorScheme
+    val dockShape = RoundedCornerShape(28.dp)
+    val dockColor = when {
+        glass -> Color.White.copy(alpha = if (dockDark) 0.05f else 0.15f)
+        dockDark -> scheme.surface
+        else -> scheme.surface.copy(alpha = 0.5f)
     }
-    val dockElevation = if (dockDark) 1.dp else 6.dp
-    val selectedBubble = if (dockDark) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.85f)
+    val dockElevation = when {
+        glass -> 0.dp
+        dockDark -> 1.dp
+        else -> 6.dp
     }
-    val selectedTint = if (dockDark) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.primary
+    val selectedBubble = when {
+        glass -> scheme.primary.copy(alpha = 0.16f)
+        dockDark -> scheme.primaryContainer
+        else -> scheme.secondaryContainer.copy(alpha = 0.85f)
     }
-    val unselectedTint = MaterialTheme.colorScheme.onSurfaceVariant
+    val selectedTint = if (dockDark && !glass) scheme.onPrimaryContainer else scheme.primary
+    val unselectedTint = scheme.onSurfaceVariant
+    val liquidIndicator = if (glass) {
+        Modifier.liquidDockIndicator(pagerState, destinations.size, selectedBubble, glassBorder())
+    } else Modifier
+    val tabIndication = if (glass) null else LocalIndication.current
     val lastIndex = destinations.lastIndex
-    val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-        .coerceIn(0f, lastIndex.toFloat())
 
     Box(
         modifier = modifier
@@ -484,17 +585,17 @@ private fun FloatingDock(
             },
     ) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            shape = dockShape,
             color = dockColor,
             tonalElevation = dockElevation,
             shadowElevation = 0.dp,
-            border = BorderStroke(
+            border = if (glass) glassBorder(1.2.dp) else BorderStroke(
                 0.5.dp,
                 Brush.verticalGradient(
                     listOf(
                         Color.White.copy(alpha = 0.25f),
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                        scheme.outlineVariant.copy(alpha = 0.6f),
+                        scheme.outlineVariant.copy(alpha = 0.6f),
                     ),
                 ),
             ),
@@ -505,36 +606,50 @@ private fun FloatingDock(
                 .height(56.dp)
                 .shadow(
                     elevation = dockElevation,
-                    shape = RoundedCornerShape(28.dp),
+                    shape = dockShape,
                     clip = false,
                 )
                 .testTag("floating_dock"),
         ) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
+            BoxWithConstraints(Modifier.fillMaxSize().glassHighlight(dockShape)) {
                 val slotWidth = maxWidth / destinations.size
-                val bubbleSize = 40.dp
-                val bubbleX = slotWidth * position + (slotWidth - bubbleSize) / 2
-                Box(
-                    Modifier
-                        .offset(x = bubbleX, y = 8.dp)
-                        .size(bubbleSize)
-                        .clip(CircleShape)
-                        .background(selectedBubble),
-                )
+                if (!glass) {
+                    val bubbleSize = 40.dp
+                    Box(
+                        Modifier
+                            .offset {
+                                val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                                    .coerceIn(0f, lastIndex.toFloat())
+                                val bubbleX = slotWidth * position + (slotWidth - bubbleSize) / 2
+                                IntOffset(bubbleX.roundToPx(), 8.dp.roundToPx())
+                            }
+                            .size(bubbleSize)
+                            .background(selectedBubble, CircleShape),
+                    )
+                }
                 Row(
-                    Modifier.fillMaxSize().selectableGroup(),
+                    Modifier.fillMaxSize().then(liquidIndicator).selectableGroup(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     destinations.forEachIndexed { index, destination ->
-                        val selectedAmount = (1f - abs(position - index)).coerceIn(0f, 1f)
-                        val tint = lerp(unselectedTint, selectedTint, selectedAmount)
+                        val focusIndicator = if (glass) {
+                            val focused = remember { mutableStateOf(false) }
+                            Modifier.onFocusChanged { focused.value = it.isFocused }
+                                .then(
+                                    if (focused.value) Modifier.border(1.dp, scheme.primary, CircleShape)
+                                    else Modifier,
+                                )
+                        } else Modifier
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
+                                .then(focusIndicator)
                                 .selectable(
                                     selected = index == selectedIndex,
                                     role = Role.Tab,
+                                    interactionSource = null,
+                                    indication = tabIndication,
                                     onClick = { onSelect(index) },
                                 )
                                 .semantics {
@@ -543,28 +658,41 @@ private fun FloatingDock(
                                 .testTag("tab_${destination.route}"),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Box(Modifier.size(23.dp), contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = destination.outlinedIcon,
-                                    contentDescription = null,
-                                    tint = tint,
-                                    modifier = Modifier
-                                        .size(23.dp)
-                                        .graphicsLayer { alpha = 1f - selectedAmount },
-                                )
-                                Icon(
-                                    imageVector = destination.icon,
-                                    contentDescription = null,
-                                    tint = tint,
-                                    modifier = Modifier
-                                        .size(23.dp)
-                                        .graphicsLayer { alpha = selectedAmount },
-                                )
-                            }
+                            DockTabIcon(destination, pagerState, index, lastIndex, unselectedTint, selectedTint)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DockTabIcon(
+    destination: Destination,
+    pagerState: PagerState,
+    index: Int,
+    lastIndex: Int,
+    unselectedTint: Color,
+    selectedTint: Color,
+) {
+    val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+        .coerceIn(0f, lastIndex.toFloat())
+    val selectedAmount = (1f - abs(position - index)).coerceIn(0f, 1f)
+    val tint = lerp(unselectedTint, selectedTint, selectedAmount)
+
+    Box(Modifier.size(23.dp), contentAlignment = Alignment.Center) {
+        Icon(
+            imageVector = destination.outlinedIcon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(23.dp).graphicsLayer { alpha = 1f - selectedAmount },
+        )
+        Icon(
+            imageVector = destination.icon,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(23.dp).graphicsLayer { alpha = selectedAmount },
+        )
     }
 }

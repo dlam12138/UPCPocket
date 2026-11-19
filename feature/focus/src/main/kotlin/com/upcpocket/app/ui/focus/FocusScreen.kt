@@ -36,31 +36,29 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import com.upcpocket.app.ui.components.GlassAlertDialog as AlertDialog
+import com.upcpocket.app.ui.components.GlassButton as Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilterChip
+import com.upcpocket.app.ui.components.GlassFilledTonalIconButton as FilledTonalIconButton
+import com.upcpocket.app.ui.components.GlassFilterChip as FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.MaterialTheme
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import com.upcpocket.app.ui.components.GlassOutlinedButton as OutlinedButton
+import com.upcpocket.app.ui.components.GlassOutlinedTextField as OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
+import com.upcpocket.app.ui.components.GlassSegmentedButton as SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Switch
+import com.upcpocket.app.ui.components.GlassSingleChoiceSegmentedButtonRow as SingleChoiceSegmentedButtonRow
+import com.upcpocket.app.ui.components.GlassSwitch as Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.components.GlassTextButton as TextButton
+import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue

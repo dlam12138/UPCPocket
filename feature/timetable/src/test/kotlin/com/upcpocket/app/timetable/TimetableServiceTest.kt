@@ -130,6 +130,46 @@ class TimetableServiceTest {
     }
 
     @Test
+    fun repeatedTodayRestoreKeepsReadyCoursesVisibleUntilNewCacheIsPublished() = runTest {
+        seedTodayCache(courseName = "已显示的今日课程")
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        var cacheReads = 0
+        val transport = ProgrammedTransport { error("today restore must stay cache-only") }
+        val service = service(
+            transport = transport,
+            commitBarrier = { operation ->
+                if (operation == "today-cache" && ++cacheReads == 2) {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        service.restoreTodayFromCache()
+        val visible = service.todayState.value
+        assertEquals(TimetableTodayState.READY, visible.todayState)
+        assertEquals(listOf("已显示的今日课程"), visible.todayMeetings.map { it.courseName })
+
+        now += 60_000
+        seedTodayCache(courseName = "更新后的今日课程")
+        val restoring = launch { service.restoreTodayFromCache() }
+        try {
+            withTimeout(5_000) { entered.await() }
+            assertEquals(visible, service.todayState.value)
+        } finally {
+            release.complete(Unit)
+        }
+        withTimeout(5_000) { restoring.join() }
+
+        assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
+        assertEquals(listOf("更新后的今日课程"), service.todayState.value.todayMeetings.map { it.courseName })
+        assertEquals(now, service.todayState.value.todayFetchedAtEpochMillis)
+        assertEquals(0, auth.calls)
+        assertEquals(0, transport.count("GET"))
+        assertEquals(0, transport.count("POST"))
+    }
+
+    @Test
     fun restoreTodayFindsActualDateAcrossWeekBoundaryWhenIndexWeekIsStale() = runTest {
         today = LocalDate.parse("2026-11-01")
         val term = index().terms.first { it.term == "1" }

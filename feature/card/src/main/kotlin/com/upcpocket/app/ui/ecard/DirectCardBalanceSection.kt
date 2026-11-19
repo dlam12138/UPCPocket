@@ -15,17 +15,17 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material3.Button
+import com.upcpocket.app.ui.components.GlassButton as Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
+import com.upcpocket.app.ui.components.GlassFilledTonalButton as FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassOutlinedButton as OutlinedButton
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import com.upcpocket.app.ui.components.GlassTextButton as TextButton
 import com.upcpocket.app.ui.components.RatioSegment
 import com.upcpocket.app.ui.components.SegmentedRatioBar
 import androidx.compose.runtime.Composable

@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -25,20 +27,17 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.WarningAmber
-import androidx.compose.material3.Checkbox
+import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
+import com.upcpocket.app.ui.components.GlassSnackbarHost as SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +49,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.upcpocket.app.ui.components.glassPressHighlight
+import com.upcpocket.app.ui.components.isGlassSheetVisible
+import com.upcpocket.app.ui.components.rememberGlassSnackbarBackdrop
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -80,6 +82,7 @@ fun TodoScreen(store: TodoStore) {
     val active = LocalPluginPageActive.current
     val dockClearance = LocalDockClearance.current
     val snackbar = remember { SnackbarHostState() }
+    val snackbarBackdrop = rememberGlassSnackbarBackdrop()
     val taskSnapshotFlow = remember(store) {
         store.tasks.map<List<TodoTask>, List<TodoTask>?> { it }
     }
@@ -251,26 +254,31 @@ fun TodoScreen(store: TodoStore) {
         snackbarHost = {
             SnackbarHost(
                 snackbar,
-                modifier = Modifier.padding(bottom = dockClearance),
+                modifier = if (snackbarBackdrop == null) Modifier.padding(bottom = dockClearance) else Modifier,
+                backdrop = snackbarBackdrop,
             )
         },
         floatingActionButton = {
-            com.upcpocket.app.ui.components.CampusFloatingActionButton(
-                onClick = ::startAdding,
-                modifier = Modifier
-                    .padding(bottom = dockClearance)
-                    .semantics { contentDescription = "新增待办" }
-                    .testTag("todo_add"),
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = null)
+            if (!isGlassSheetVisible()) {
+                com.upcpocket.app.ui.components.CampusFloatingActionButton(
+                    onClick = ::startAdding,
+                    modifier = Modifier
+                        .padding(bottom = dockClearance)
+                        .semantics { contentDescription = "新增待办" }
+                        .testTag("todo_add"),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                }
             }
         },
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
     ) { padding ->
+        val background = MaterialTheme.colorScheme.surface
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding)
+                .then(snackbarBackdrop?.recordContent(background) ?: Modifier),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
@@ -315,10 +323,15 @@ fun TodoScreen(store: TodoStore) {
 
             if (completed.isNotEmpty()) {
                 item(key = "completed_header", contentType = "completed_header") {
+                    val completedHeaderInteractions = remember { MutableInteractionSource() }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { showCompleted = !showCompleted }
+                            .glassPressHighlight(MaterialTheme.shapes.medium, completedHeaderInteractions)
+                            .clickable(
+                                interactionSource = completedHeaderInteractions,
+                                indication = LocalIndication.current,
+                            ) { showCompleted = !showCompleted }
                             .padding(top = 14.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -396,6 +409,7 @@ private fun TodoRow(
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val editInteractions = remember(task.id) { MutableInteractionSource() }
     val override = completionOverride()
     val pending = override != null
     val completed = override ?: task.completed
@@ -422,7 +436,12 @@ private fun TodoRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .clickable(onClick = onEdit)
+                .glassPressHighlight(MaterialTheme.shapes.medium, editInteractions)
+                .clickable(
+                    interactionSource = editInteractions,
+                    indication = LocalIndication.current,
+                    onClick = onEdit,
+                )
                 .padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {

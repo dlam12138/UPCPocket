@@ -3,7 +3,6 @@ package com.upcpocket.app.ui.about
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,15 +14,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,9 +36,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.CampusAlertDialog
 import com.upcpocket.app.ui.components.CampusSwitch
+import com.upcpocket.app.ui.components.CampusTextButton
 import com.upcpocket.app.update.DownloadUiState
 import com.upcpocket.app.update.InstallAction
 import com.upcpocket.app.update.InstallUnavailable
@@ -117,38 +115,43 @@ fun UpdateSection() {
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = ::onCheckOrView)
-                    .padding(horizontal = 16.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Surface(
+                onClick = ::onCheckOrView,
+                modifier = Modifier.fillMaxWidth(),
+                color = androidx.compose.ui.graphics.Color.Transparent,
             ) {
-                IconBadge(
-                    icon = Icons.Outlined.Refresh,
-                    contentDescription = null,
-                    size = 38.dp,
-                )
-                Spacer(Modifier.width(12.dp))
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 13.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("检查更新", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        text = updateSubtitle(state),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    IconBadge(
+                        icon = Icons.Outlined.Refresh,
+                        contentDescription = null,
+                        size = 38.dp,
                     )
-                }
-                if (state.checking) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    com.upcpocket.app.ui.components.CampusTextButton(onClick = ::onCheckOrView) {
-                        Text(if (state.available != null) "查看" else "检查")
+                    Spacer(Modifier.width(12.dp))
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text("检查更新", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = updateSubtitle(state),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (state.checking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        CampusTextButton(onClick = ::onCheckOrView) {
+                            Text(if (state.available != null) "查看" else "检查")
+                        }
                     }
                 }
             }

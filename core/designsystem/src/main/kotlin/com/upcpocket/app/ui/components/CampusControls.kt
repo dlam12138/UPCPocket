@@ -3,26 +3,10 @@ package com.upcpocket.app.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -35,7 +19,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ExperimentalMaterial3Api
 
-/** Shared Material 3 controls used across the host and feature screens. */
+/** Shared theme-aware controls; public upstream APIs keep native Material 3 semantics. */
 @Composable
 fun CampusButton(
     onClick: () -> Unit,
@@ -45,7 +29,7 @@ fun CampusButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
-    Button(
+    GlassButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
@@ -64,7 +48,7 @@ fun CampusTonalButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
-    FilledTonalButton(
+    GlassFilledTonalButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
@@ -83,7 +67,7 @@ fun CampusOutlinedButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable RowScope.() -> Unit,
 ) {
-    OutlinedButton(
+    GlassOutlinedButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
@@ -103,7 +87,7 @@ fun CampusTextButton(
     contentColor: Color = MaterialTheme.colorScheme.primary,
     content: @Composable RowScope.() -> Unit,
 ) {
-    TextButton(
+    GlassTextButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
@@ -123,7 +107,7 @@ fun CampusFilterChip(
     enabled: Boolean = true,
     leadingIcon: (@Composable () -> Unit)? = null,
 ) {
-    FilterChip(
+    GlassFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
@@ -140,7 +124,7 @@ fun CampusSwitch(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    Switch(
+    GlassSwitch(
         checked = checked,
         onCheckedChange = onCheckedChange,
         modifier = modifier,
@@ -157,7 +141,7 @@ fun CampusTopAppBar(
     actions: @Composable RowScope.() -> Unit = {},
     windowInsets: WindowInsets = TopAppBarDefaults.windowInsets,
 ) {
-    TopAppBar(
+    GlassTopAppBar(
         title = title,
         modifier = modifier,
         navigationIcon = navigationIcon,
@@ -177,7 +161,7 @@ fun CampusAlertDialog(
     text: (@Composable () -> Unit)? = null,
     properties: DialogProperties = DialogProperties(),
 ) {
-    AlertDialog(
+    GlassAlertDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = confirmButton,
         modifier = modifier,
@@ -196,13 +180,14 @@ fun CampusPanel(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Surface(
+    GlassSurface(
         modifier = modifier,
         shape = shape,
         color = containerColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,
+        optical = true,
     ) {
         Box(content = content)
     }
@@ -216,8 +201,8 @@ fun CampusIconButton(
     tonal: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    if (tonal) FilledTonalIconButton(onClick, modifier, enabled, content = content)
-    else IconButton(onClick, modifier, enabled, content = content)
+    if (tonal) GlassFilledTonalIconButton(onClick, modifier, enabled, content = content)
+    else GlassIconButton(onClick, modifier, enabled, content = content)
 }
 
 @Composable
@@ -226,7 +211,7 @@ fun CampusFloatingActionButton(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    FloatingActionButton(onClick = onClick, modifier = modifier, content = content)
+    GlassFloatingActionButton(onClick = onClick, modifier = modifier, content = content)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -242,9 +227,9 @@ fun CampusSegmentedTabs(
     if (tabs.isEmpty()) return
     val selected = selectedIndex.coerceIn(0, tabs.lastIndex)
     if (tabStyle) {
-        TabRow(selectedTabIndex = selected, modifier = modifier) {
+        GlassTabRow(selectedTabIndex = selected, modifier = modifier) {
             tabs.forEachIndexed { index, label ->
-                Tab(
+                GlassTab(
                     selected = index == selected,
                     enabled = enabled,
                     onClick = { onSelect(index) },
@@ -253,9 +238,9 @@ fun CampusSegmentedTabs(
             }
         }
     } else {
-        SingleChoiceSegmentedButtonRow(modifier = modifier) {
+        GlassSingleChoiceSegmentedButtonRow(modifier = modifier) {
             tabs.forEachIndexed { index, label ->
-                SegmentedButton(
+                GlassSegmentedButton(
                     selected = index == selected,
                     enabled = enabled,
                     onClick = { onSelect(index) },

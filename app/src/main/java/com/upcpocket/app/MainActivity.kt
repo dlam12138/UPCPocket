@@ -6,8 +6,13 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -15,7 +20,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.todo.TodoLaunchContract
+import com.upcpocket.app.ui.components.GlassEnvironment
 import com.upcpocket.app.ui.nav.AppNav
+import com.upcpocket.app.ui.theme.LocalUiStyle
 import com.upcpocket.app.ui.theme.UpcPocketTheme
 import com.upcpocket.app.widget.WidgetLaunchTarget
 import kotlinx.coroutines.flow.collect
@@ -56,19 +63,28 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // 配色与深浅色是全局设置，直接在这里喂给主题（改完立刻全应用生效）
+            // 界面风格、配色与深浅色由同一份全局偏好驱动，保存后立即生效。
             val prefs by AppGraph.uiPrefsStore.flow
                 .collectAsStateWithLifecycle(initialValue = UiPrefs())
-            UpcPocketTheme(
-                darkMode = prefs.darkMode,
-                preset = prefs.themePreset,
-            ) {
-                AppNav(
-                    launchTarget = widgetTarget.value,
-                    onLaunchConsumed = { widgetTarget.value = null },
-                    openTodo = openTodo.value,
-                    onTodoConsumed = { openTodo.value = false },
-                )
+            CompositionLocalProvider(LocalUiStyle provides prefs.uiStyle) {
+                UpcPocketTheme(
+                    darkMode = prefs.darkMode,
+                    preset = prefs.themePreset,
+                ) {
+                    val lightStatusBar = MaterialTheme.colorScheme.surface.luminance() > 0.5f
+                    LaunchedEffect(lightStatusBar) {
+                        WindowCompat.getInsetsController(window, window.decorView)
+                            .isAppearanceLightStatusBars = lightStatusBar
+                    }
+                    GlassEnvironment {
+                        AppNav(
+                            launchTarget = widgetTarget.value,
+                            onLaunchConsumed = { widgetTarget.value = null },
+                            openTodo = openTodo.value,
+                            onTodoConsumed = { openTodo.value = false },
+                        )
+                    }
+                }
             }
         }
     }

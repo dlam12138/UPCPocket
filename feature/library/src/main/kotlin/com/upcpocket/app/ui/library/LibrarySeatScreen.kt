@@ -47,25 +47,25 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import com.upcpocket.app.ui.components.GlassDropdownMenu as DropdownMenu
+import com.upcpocket.app.ui.components.GlassDropdownMenuItem as DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import com.upcpocket.app.ui.components.GlassModalBottomSheet as ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
+import com.upcpocket.app.ui.components.GlassSnackbarHost as SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
+import com.upcpocket.app.ui.components.GlassTimePicker as TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
@@ -131,6 +131,7 @@ import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.library.LibraryAccountAuthFailure
 import com.upcpocket.app.library.LibraryAccountLoginResult
 import com.upcpocket.app.library.LibraryService
+import com.upcpocket.app.ui.components.glassPane
 import com.upcpocket.app.ui.components.GlassCard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -138,6 +139,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlin.math.max
 import kotlin.math.roundToInt
+import com.upcpocket.app.ui.components.GlassRadioButton as RadioButton
 
 /** 原生座位预约：登录走官方网页，查询、选座、确认、取消都在 App 内完成。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1436,7 +1438,7 @@ internal fun SeatCandidateRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            androidx.compose.material3.RadioButton(
+            RadioButton(
                 selected = selected,
                 onClick = null,
                 enabled = selectable,
@@ -1979,7 +1981,7 @@ internal fun SeatMap(
             Modifier.fillMaxWidth()
                 .height(368.dp)
                 .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow)
                 .testTag("seat_map_viewport"),
         ) {
             val controlsHeightPx = with(density) { 48.dp.toPx() }

@@ -12,8 +12,9 @@
 | KSP | 2.3.6 |
 | Compose BOM | 2026.02.01 |
 | Room | 2.8.5（2.0.8 开发基线，验证范围见开发记录） |
+| Kyant | Backdrop 1.0.6 / Shapes 1.2.0 |
 
-安装 Android SDK 36 与项目所需 Build Tools。通过环境变量配置本机 JDK，SDK 路径写入根目录 `local.properties`，例如 `sdk.dir=/your/android-sdk`。不提交本机路径或签名文件。
+安装 Android SDK 36 与 Build Tools 35.0.0。通过环境变量配置本机 JDK，SDK 路径写入根目录 `local.properties`，例如 `sdk.dir=/your/android-sdk`。不提交本机路径或签名文件。
 
 版本依据为 [libs.versions.toml](../gradle/libs.versions.toml)、[wrapper](../gradle/wrapper/gradle-wrapper.properties)与 [app Gradle](../app/build.gradle.kts)。Java/Kotlin 目标为 17；本机 JBR 21 是环境实例，不应硬编码进共享配置。开发流程与按模块选择验证见 [CONTRIBUTING](../CONTRIBUTING.md)，Agent 先读[根指令](../AGENTS.md)。
 

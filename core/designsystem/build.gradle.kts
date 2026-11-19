@@ -42,6 +42,7 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.material.color.utilities)
+    implementation(libs.kyant.backdrop)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

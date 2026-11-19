@@ -26,6 +26,12 @@ import java.math.BigDecimal
 import java.time.YearMonth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import com.upcpocket.app.ui.components.GlassButton as Button
+import com.upcpocket.app.ui.components.GlassOutlinedButton as OutlinedButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
+import com.upcpocket.app.ui.components.GlassFilterChip as FilterChip
+import com.upcpocket.app.ui.components.GlassOutlinedTextField as OutlinedTextField
+import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 
 /** The host already owns native, encrypted school-account settings; this page never reads passwords. */
 @OptIn(ExperimentalMaterial3Api::class)

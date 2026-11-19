@@ -1,6 +1,5 @@
 package com.upcpocket.app.ui.settings
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,12 +22,12 @@ import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,7 +120,7 @@ fun SettingsScreen(
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     SettingsNavigationRow(
-                        title = "配色与深色模式",
+                        title = "外观",
                         icon = Icons.Filled.Palette,
                         onClick = onOpenAppearance,
                     )
@@ -143,7 +142,8 @@ private fun AccountCard(
     onClick: () -> Unit,
 ) {
     GlassCard(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),

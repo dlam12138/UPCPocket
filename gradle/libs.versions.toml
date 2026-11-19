@@ -8,6 +8,8 @@ activityCompose = "1.9.3"
 composeBom = "2026.02.01"
 navigation = "2.8.5"
 room = "2.8.5"
+kyantBackdrop = "1.0.6"
+kyantShapes = "1.2.0"
 okhttp = "4.12.0"
 serialization = "1.7.3"
 coroutines = "1.9.0"
@@ -40,6 +42,7 @@ androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling
 androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
 androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-core = { module = "androidx.compose.material:material-icons-core" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 
@@ -66,6 +69,8 @@ androidx-security-crypto = { module = "androidx.security:security-crypto", versi
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 vico-compose-m3 = { module = "com.patrykandpatrick.vico:compose-m3", version.ref = "vico" }
 material-color-utilities = { module = "com.materialkolor:material-color-utilities", version.ref = "materialColorUtilities" }
+kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "kyantBackdrop" }
+kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }
 wechat-sdk = { module = "com.tencent.mm.opensdk:wechat-sdk-android", version.ref = "wechatSdk" }
 
 junit = { module = "junit:junit", version = "4.13.2" }
