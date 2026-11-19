@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -85,10 +86,10 @@ private fun Modifier.glassWindowMaterial(
 ): Modifier {
     if (LocalUiStyle.current != UiStyle.LIQUID_GLASS || baseColor.alpha == 0f) return this
     val dark = baseColor.luminance() < 0.5f
-    // A continuous neutral veil lets the underlying window remain visible. No dark plate or
-    // transparent middle stripe is inserted between two bright bands.
-    val top = Color.White.copy(alpha = if (dark) 0.075f else 0.11f)
-    val bottom = Color.White.copy(alpha = if (dark) 0.025f else 0.045f)
+    // Keep a continuous themed body behind text and the existing cached sheen.
+    val backing = baseColor.copy(alpha = 0.96f)
+    val top = Color.White.copy(alpha = if (dark) 0.075f else 0.11f).compositeOver(backing)
+    val bottom = Color.White.copy(alpha = if (dark) 0.025f else 0.045f).compositeOver(backing)
     val edgeTop = Color.White.copy(alpha = if (dark) 0.24f else 0.40f)
     val edgeBottom = Color.White.copy(alpha = if (dark) 0.08f else 0.14f)
     return drawWithCache {
@@ -283,7 +284,7 @@ fun GlassModalBottomSheet(
             sheetGesturesEnabled = sheetGesturesEnabled,
             shape = shape,
             containerColor = if (glass && containerColor.alpha > 0f) {
-                Color.White.copy(alpha = if (containerColor.luminance() < 0.5f) 0.055f else 0.09f)
+                containerColor.copy(alpha = 0.96f)
             } else containerColor,
             contentColor = contentColor,
             tonalElevation = if (glass) 0.dp else tonalElevation,

@@ -403,7 +403,9 @@ fun GlassFilterChip(
         selected = selected,
         onClick = onClick,
         label = label,
-        modifier = modifier.glassControlDecoration(shape, interactions, enabled),
+        modifier = if (isGlassControl() && enabled) {
+            modifier.glassPressHighlight(shape, interactions, compress = true)
+        } else modifier,
         enabled = enabled,
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,

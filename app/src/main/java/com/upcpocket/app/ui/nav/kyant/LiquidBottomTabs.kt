@@ -22,6 +22,8 @@ package com.upcpocket.app.ui.nav.kyant
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -33,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -68,11 +71,11 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberCombinedBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.shapes.Capsule
+import com.upcpocket.app.ui.components.glassBorder
+import com.upcpocket.app.ui.components.glassHighlight
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -83,7 +86,7 @@ private class LensTap {
 }
 
 /**
- * Kyant 1.0.6 bottom tabs with one optical panel and an interaction-only combined lens.
+ * Kyant 1.0.6 bottom tabs with a static glass panel and an interaction-only combined lens.
  *
  * [selectedIndex] is the host's controlled selection. Dragging reports [onTabSelected] once
  * when released; host-driven changes animate the pill without emitting another navigation.
@@ -110,7 +113,11 @@ fun LiquidBottomTabs(
     val accentColor =
         if (isLightTheme) Color(0xFF0088FF)
         else Color(0xFF0091FF)
-    val containerColor = Color.White.copy(alpha = if (isLightTheme) 0.15f else 0.05f)
+    val panelShape = remember { Capsule() }
+    val panelColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+        alpha = if (isLightTheme) 0.62f else 0.70f,
+    )
+    val panelBorder = glassBorder(0.85.dp)
     val accentFilter = remember(accentColor) { ColorFilter.tint(accentColor) }
 
     val tabsBackdrop = rememberLayerBackdrop()
@@ -240,24 +247,16 @@ fun LiquidBottomTabs(
                     .selectableGroup()
                     .graphicsLayer {
                         translationX = panelOffset
+                        val progress = dampedDragAnimation.pressProgress
+                        val scale = 1f + (16f.dp.toPx() / size.width.coerceAtLeast(1f)) * progress
+                        scaleX = scale
+                        scaleY = scale
+                        shape = panelShape
+                        clip = true
                     }
-                    .drawBackdrop(
-                        backdrop = backdrop,
-                        shape = { Capsule() },
-                        effects = {
-                            vibrancy()
-                            blur(8f.dp.toPx())
-                            lens(24f.dp.toPx(), 24f.dp.toPx())
-                        },
-                        shadow = null,
-                        layerBlock = {
-                            val progress = dampedDragAnimation.pressProgress
-                            val scale = lerp(1f, 1f + 16f.dp.toPx() / size.width, progress)
-                            scaleX = scale
-                            scaleY = scale
-                        },
-                        onDrawSurface = { drawRect(containerColor) }
-                    )
+                    .background(panelColor, panelShape)
+                    .glassHighlight(panelShape)
+                    .border(panelBorder, panelShape)
                     .then(interactiveHighlight.modifier)
                     .height(64f.dp)
                     .fillMaxWidth()
