@@ -68,6 +68,32 @@ class LibraryReserveSessionContextTest {
     }
 
     @Test
+    fun `现在哨兵原样进入唯一一次 POST 且重复仍拒绝`() = runTest(dispatcher) {
+        publish(session("token-A", "user-A"))
+        val first = repo.reserve("2026-11-07", "s1", "-1", "1320")
+        assertEquals(LibraryReservationAttempt.SENT, first)
+        assertEquals(1, transport.postCalls)
+        assertEquals(listOf("-1" to "1320"), transport.postIds)
+
+        val second = runCatching { repo.reserve("2026-11-07", "s1", "-1", "1320") }
+        assertTrue(second.exceptionOrNull() is LibraryReservationDuplicateException)
+        assertEquals("重复提交不得再次发出 POST", 1, transport.postCalls)
+    }
+
+    @Test
+    fun `now 与 -1 等价复用同一防重键且只发一次 POST`() = runTest(dispatcher) {
+        publish(session("token-A", "user-A"))
+        val first = repo.reserve("2026-11-07", "s1", "now", "1320")
+        assertEquals(LibraryReservationAttempt.SENT, first)
+        assertEquals(1, transport.postCalls)
+        assertEquals(listOf("-1" to "1320"), transport.postIds)
+
+        val second = runCatching { repo.reserve("2026-11-07", "s1", "-1", "1320") }
+        assertTrue(second.exceptionOrNull() is LibraryReservationDuplicateException)
+        assertEquals("另一别名不得再次发出 POST", 1, transport.postCalls)
+    }
+
+    @Test
     fun `预检期间换号恢复后 0 次 POST 不占新会话防重键`() = runTest(dispatcher) {
         publish(session("token-A", "user-A"))
         val gate = CompletableDeferred<Boolean>()
@@ -232,6 +258,7 @@ class LibraryReserveSessionContextTest {
         var onBeforePost: (() -> Unit)? = null
         var postCalls = 0
         val postTokens = mutableListOf<String>()
+        val postIds = mutableListOf<Pair<String, String>>()
 
         override suspend fun captchaEnabled(token: String): Boolean {
             captchaEntered.complete(Unit)
@@ -248,6 +275,7 @@ class LibraryReserveSessionContextTest {
             onBeforePost?.invoke()
             postCalls++
             postTokens += token
+            postIds += startId to endId
             return """{"status":true,"data":null}"""
         }
     }

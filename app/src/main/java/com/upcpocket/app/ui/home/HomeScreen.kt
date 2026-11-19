@@ -94,6 +94,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
+    val scrollState = rememberScrollState()
     val dateLabel = today.format(
         DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
     )
@@ -144,7 +145,10 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(
+                    state = scrollState,
+                    overscrollEffect = null,
+                )
                 .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 28.dp + dockClearance),
         ) {
             Header(

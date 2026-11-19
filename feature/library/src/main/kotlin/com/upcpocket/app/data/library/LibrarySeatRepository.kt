@@ -290,12 +290,14 @@ class LibrarySeatRepository private constructor(
         val snapshot = captureSession() ?: throw LibrarySessionExpiredException()
         val token = snapshot.token
         val user = snapshot.user
+        val normalizedStartId =
+            if (startId in LIBSEAT_NOW_START_IDS) LIBSEAT_NOW_START_ID else startId
         val requestKey = LibraryReservationRequest(
             system = LibraryReservationRequest.SYSTEM_LIBSEAT,
             userId = user.id,
             date = date,
             seatId = seatId,
-            startId = startId,
+            startId = normalizedStartId,
             endId = endId,
         )
 
@@ -337,14 +339,14 @@ class LibrarySeatRepository private constructor(
         if (!isSameSession(snapshot)) throw LibraryReservationContextStaleException()
 
         val body = if (reserveTransport != null) {
-            reserveTransport.postReservation(token, date, seatId, startId, endId, user)
+            reserveTransport.postReservation(token, date, seatId, normalizedStartId, endId, user)
         } else {
             request(
                 "POST",
                 "/rest/v2/freeBook",
                 mapOf("token" to token),
                 form = mapOf(
-                    "startTime" to if (startId == "now") "-1" else startId,
+                    "startTime" to normalizedStartId,
                     "endTime" to endId,
                     "seat" to seatId,
                     "date" to date,

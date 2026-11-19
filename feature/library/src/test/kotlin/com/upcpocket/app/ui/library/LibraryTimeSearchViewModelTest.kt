@@ -19,6 +19,7 @@ import com.upcpocket.app.data.library.LibraryTimeSearchPage
 import com.upcpocket.app.data.library.LibraryTimeSearchResult
 import com.upcpocket.app.data.library.ReservationAttemptLatch
 import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
+import java.time.LocalDateTime
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,6 +34,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -54,6 +56,7 @@ class LibraryTimeSearchViewModelTest {
     private lateinit var store: FakeHiddenStore
     private lateinit var vm: LibrarySeatViewModel
     private var startTimesLoads = 0
+    private var fixedNow = LocalDateTime.of(2026, 11, 7, 12, 0)
 
     /** 用给定初始状态构造（或重建）ViewModel，模拟关闭重进 / 新 VM。 */
     private fun newVm(
@@ -69,6 +72,7 @@ class LibraryTimeSearchViewModelTest {
                 listOf(LibraryTimeOption("840", "14:00"))
             },
             layoutLoader = layoutLoader ?: repo::layout,
+            shanghaiNow = { fixedNow },
             initialState = state,
         )
 
@@ -404,6 +408,96 @@ class LibraryTimeSearchViewModelTest {
         assertEquals(0, ops.reserveCalls)
     }
 
+    @Test
+    fun `按座位选现在确认前零写原 id 一次提交且快速重复确认只调用一次`() = runTest(dispatcher) {
+        val now = LibraryTimeOption("-1", "现在")
+        val end = LibraryTimeOption("1320", "22:00")
+        val selected = seat("s-now")
+        vm.setState(
+            baseState(roomA).copy(
+                seatMode = RoomSeatMode.SEAT,
+                layout = LibrarySeatLayout(rows = 1, cols = 1, seats = listOf(selected)),
+                seat = selected,
+                startTimes = listOf(now),
+                endTimes = listOf(end),
+                start = now,
+                end = end,
+            ),
+        )
+
+        assertTrue(vm.canConfirmSeatReservation())
+        assertEquals("确认前不得提交", 0, ops.reserveInvocations)
+
+        vm.requestReservation()
+        assertTrue(vm.state.showConfirm)
+        assertEquals("用户最后确认前不得提交", 0, ops.reserveInvocations)
+
+        vm.confirmReservation()
+        vm.confirmReservation()
+        advanceUntilIdle()
+
+        assertEquals(1, ops.reserveInvocations)
+        assertEquals(listOf("-1" to "1320"), ops.reserveIds)
+        assertTrue(vm.state.reservationSubmitted)
+        assertFalse(vm.canConfirmSeatReservation())
+
+        vm.confirmReservation()
+        advanceUntilIdle()
+        assertEquals("已提交后不得再次调用", 1, ops.reserveInvocations)
+    }
+
+    @Test
+    fun `现在结束已到或跨日不可确认且最终确认不再发送`() = runTest(dispatcher) {
+        val nowOption = LibraryTimeOption("-1", "现在")
+        val closing = LibraryTimeOption("1320", "22:00")
+        val selected = seat("s-now")
+        fun seatState(end: LibraryTimeOption, date: String = "2026-11-07") =
+            baseState(roomA).copy(
+                date = date,
+                seatMode = RoomSeatMode.SEAT,
+                layout = LibrarySeatLayout(rows = 1, cols = 1, seats = listOf(selected)),
+                seat = selected,
+                startTimes = listOf(nowOption),
+                endTimes = listOf(end),
+                start = nowOption,
+                end = end,
+            )
+
+        val reached = LibraryTimeOption("720", "12:00")
+        vm.setState(seatState(reached))
+        assertTrue(vm.seatTimeExpired())
+        assertNull(vm.nowSeatRefreshDelayMillis())
+        assertFalse(vm.canConfirmSeatReservation())
+        vm.requestReservation()
+        assertFalse(vm.state.showConfirm)
+        assertTrue(vm.state.error != null)
+
+        val sentinelEnd = LibraryTimeOption("-1", "22:00")
+        vm.setState(seatState(sentinelEnd))
+        assertNull(vm.nowSeatRefreshDelayMillis())
+
+        vm.setState(seatState(closing, date = "2026-11-08"))
+        assertTrue(vm.seatTimeExpired())
+        assertFalse(vm.canConfirmSeatReservation())
+        vm.requestReservation()
+        assertFalse(vm.state.showConfirm)
+
+        vm.setState(seatState(closing))
+        assertFalse(vm.seatTimeExpired())
+        assertEquals(10 * 60 * 60 * 1000L, vm.nowSeatRefreshDelayMillis())
+        assertTrue(vm.canConfirmSeatReservation())
+        vm.requestReservation()
+        assertTrue(vm.state.showConfirm)
+        fixedNow = LocalDateTime.of(2026, 11, 7, 22, 0)
+        assertTrue(vm.seatTimeExpired())
+        assertNull(vm.nowSeatRefreshDelayMillis())
+        vm.confirmReservation()
+        advanceUntilIdle()
+        assertEquals(0, ops.reserveInvocations)
+        assertFalse(vm.state.showConfirm)
+        assertTrue(vm.state.error != null)
+    }
+
     // ── 3. 分页失败 / 不前进后重试真的发请求 ───────────────────
 
     @Test
@@ -692,6 +786,8 @@ class LibraryTimeSearchViewModelTest {
         var reserveThrowsUnknown = false
         var reservePreflightFails = false
         var reserveCalls = 0
+        var reserveInvocations = 0
+        val reserveIds = mutableListOf<Pair<String, String>>()
         var reserveGate: CompletableDeferred<LibraryReservationAttempt>? = null
         var reservationReads = 0
         // 与生产 Repository 共用的会话范围防重闩，供 close/reenter/新 VM 全链路验证。
@@ -721,6 +817,8 @@ class LibraryTimeSearchViewModelTest {
         override suspend fun reserve(
             date: String, seatId: String, startId: String, endId: String,
         ): LibraryReservationAttempt {
+            reserveInvocations++
+            reserveIds += startId to endId
             if (reserveResult == LibraryReservationAttempt.NOT_SENT) {
                 // POST 前验证/CAPTCHA：不发 POST、不登记。
                 return LibraryReservationAttempt.NOT_SENT

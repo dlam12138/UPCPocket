@@ -106,6 +106,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.data.library.LIBSEAT_NOW_START_IDS
 import com.upcpocket.app.data.library.LibraryBuilding
 import com.upcpocket.app.data.library.LibraryCaptchaRequiredException
 import com.upcpocket.app.data.library.LibraryFilters
@@ -132,7 +133,11 @@ import com.upcpocket.app.library.LibraryAccountAuthFailure
 import com.upcpocket.app.library.LibraryAccountLoginResult
 import com.upcpocket.app.library.LibraryService
 import com.upcpocket.app.ui.components.GlassCard
+import java.time.Duration
+import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -609,6 +614,21 @@ internal fun LibrarySeatDetailPage(
         }
     }
 
+    var clockNow by remember { mutableStateOf(vm.currentShanghaiNow()) }
+    LaunchedEffect(
+        state.date,
+        state.start,
+        state.end,
+        state.startTimes,
+        state.endTimes,
+        state.seatMode,
+    ) {
+        clockNow = vm.currentShanghaiNow()
+        val refreshDelay = vm.nowSeatRefreshDelayMillis() ?: return@LaunchedEffect
+        delay(refreshDelay)
+        clockNow = vm.currentShanghaiNow()
+    }
+
     val timeMode = state.seatMode == RoomSeatMode.TIME
     val timeSummary = if (state.timeStart != null && state.timeStop != null) {
         "${state.timeStart.value}–${state.timeStop.value}" +
@@ -693,7 +713,7 @@ internal fun LibrarySeatDetailPage(
                                 state.start == null || state.end == null ->
                                     seat.selectable && state.hiddenLoaded && !state.hiddenBusy &&
                                         state.hiddenError == null && seat.id !in state.hiddenSeatIds && !state.loading
-                                else -> state.canConfirmReservation()
+                                else -> vm.canConfirmSeatReservation(clockNow)
                             },
                         ) {
                             Text(
@@ -765,6 +785,7 @@ internal fun LibrarySeatDetailPage(
                         onShowMapChange = { showSeatMap = it },
                         mapScopeKey = "$buildingKey|$roomKey",
                         mapViewportState = mapViewportState,
+                        expiredNow = vm.seatTimeExpired(clockNow),
                     )
                     item(contentType = "seat_mode_notice") {
                         state.notice?.let { notice ->
@@ -813,10 +834,16 @@ internal fun LibrarySeatDetailPage(
                 onDismissRequest = vm::dismissConfirm,
                 title = { Text("确认预约") },
                 text = {
+                    val expiredLine = if (!timeMode && vm.seatTimeExpired(clockNow)) {
+                        "所选时段已过期，请重新选择\n\n"
+                    } else {
+                        ""
+                    }
                     Text(
                         "${room?.name.orEmpty()} · ${confirmSeat.name}\n" +
                             "${state.date.orEmpty()} ${confirmStart?.value.orEmpty()}–${confirmEnd?.value.orEmpty()}" +
                             (durationText(confirmStart, confirmEnd)?.let { " · $it" } ?: "") + "\n\n" +
+                            expiredLine +
                             "提交后以学校结果为准。",
                     )
                 },
@@ -825,7 +852,7 @@ internal fun LibrarySeatDetailPage(
                         enabled = if (timeMode) {
                             state.hiddenLoaded && !state.hiddenBusy && state.hiddenError == null &&
                                 state.canConfirmTimeReservation()
-                        } else state.canConfirmReservation(),
+                        } else vm.canConfirmSeatReservation(clockNow),
                         onClick = if (timeMode) vm::confirmTimeReservation else vm::confirmReservation,
                     ) { Text("确认预约") }
                 },
@@ -853,6 +880,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
     onShowMapChange: (Boolean) -> Unit,
     mapScopeKey: String,
     mapViewportState: SeatMapViewportState,
+    expiredNow: Boolean,
 ) {
     item(contentType = "seat_time_summary") {
         com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
@@ -875,6 +903,13 @@ private fun androidx.compose.foundation.lazy.LazyListScope.seatModeContent(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    if (expiredNow) {
+                        Text(
+                            "所选时段已过期，请重新选择",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
                 }
                 com.upcpocket.app.ui.components.CampusTextButton(onClick = vm::openTimeSheet, enabled = seat != null) { Text("改时间") }
             }
@@ -1741,7 +1776,9 @@ internal fun LibrarySeatViewModel.UiState.afterCloseRoom(): LibrarySeatViewModel
         undoHidden = null,
     )
 
-internal fun LibrarySeatViewModel.UiState.canConfirmReservation(): Boolean {
+internal fun LibrarySeatViewModel.UiState.canConfirmReservation(
+    shanghaiNow: LocalDateTime? = null,
+): Boolean {
     if (reservationSubmitted) return false
     if (!hiddenLoaded || hiddenBusy || hiddenError != null) return false
     val selectedSeat = seat ?: return false
@@ -1751,23 +1788,68 @@ internal fun LibrarySeatViewModel.UiState.canConfirmReservation(): Boolean {
     val currentLayout = layout ?: return false
     if (loading || !selectedSeat.selectable) return false
     if (currentLayout.seats.none { it.id == selectedSeat.id && it.selectable }) return false
-    if (endTimes.none { it.id == selectedEnd.id }) return false
-    return timeDurationMinutes(selectedStart, selectedEnd) != null
+    if (selectedStart !in startTimes) return false
+    if (selectedEnd !in endTimes) return false
+    return validSeatTimeSelection(selectedStart, selectedEnd, date, shanghaiNow)
+}
+
+private fun validSeatTimeSelection(
+    start: LibraryTimeOption,
+    end: LibraryTimeOption,
+    date: String?,
+    shanghaiNow: LocalDateTime?,
+): Boolean {
+    if (start.id in LIBSEAT_NOW_START_IDS) {
+        if (end.id in LIBSEAT_NOW_START_IDS) return false
+        if (clockMinutesOrNull(end.value) == null || shanghaiNow == null) return false
+        return !nowStartExpired(start, end, date, shanghaiNow)
+    }
+    return timeDurationMinutes(start, end) != null
+}
+
+internal fun nowStartExpired(
+    start: LibraryTimeOption?,
+    end: LibraryTimeOption?,
+    date: String?,
+    shanghaiNow: LocalDateTime?,
+): Boolean {
+    if (start == null || start.id !in LIBSEAT_NOW_START_IDS) return false
+    if (end == null || end.id in LIBSEAT_NOW_START_IDS) return false
+    val endMinute = clockMinutesOrNull(end.value) ?: return false
+    val now = shanghaiNow ?: return false
+    return date != now.toLocalDate().toString() || endMinute <= now.hour * 60 + now.minute
+}
+
+internal fun seatNowRefreshDelayMillis(
+    start: LibraryTimeOption?,
+    end: LibraryTimeOption?,
+    date: String?,
+    shanghaiNow: LocalDateTime?,
+): Long? {
+    if (start == null || end == null || shanghaiNow == null) return null
+    if (start.id !in LIBSEAT_NOW_START_IDS) return null
+    if (!validSeatTimeSelection(start, end, date, shanghaiNow)) return null
+    val endMinute = clockMinutesOrNull(end.value) ?: return null
+    val endsAt = shanghaiNow.toLocalDate().atTime(endMinute / 60, endMinute % 60)
+    val remainingNanos = Duration.between(shanghaiNow, endsAt).toNanos()
+    return ((remainingNanos + 999_999) / 1_000_000).takeIf { it > 0 }
 }
 
 internal fun timeDurationMinutes(start: LibraryTimeOption?, end: LibraryTimeOption?): Int? {
     if (start == null || end == null) return null
-    fun parse(value: String): Int? {
-        val parts = value.trim().split(':')
-        if (parts.size < 2) return null
-        val hour = parts[0].toIntOrNull() ?: return null
-        val minute = parts[1].toIntOrNull() ?: return null
-        if (hour !in 0..23 || minute !in 0..59) return null
-        return hour * 60 + minute
-    }
-    val startMinute = parse(start.value) ?: return null
-    val endMinute = parse(end.value) ?: return null
+    if (start.id in LIBSEAT_NOW_START_IDS || end.id in LIBSEAT_NOW_START_IDS) return null
+    val startMinute = clockMinutesOrNull(start.value) ?: return null
+    val endMinute = clockMinutesOrNull(end.value) ?: return null
     return (endMinute - startMinute).takeIf { it > 0 }
+}
+
+private fun clockMinutesOrNull(value: String): Int? {
+    val parts = value.trim().split(':')
+    if (parts.size < 2) return null
+    val hour = parts[0].toIntOrNull() ?: return null
+    val minute = parts[1].toIntOrNull() ?: return null
+    if (hour !in 0..23 || minute !in 0..59) return null
+    return hour * 60 + minute
 }
 
 internal fun durationText(start: LibraryTimeOption?, end: LibraryTimeOption?): String? =
@@ -2199,6 +2281,7 @@ internal class LibrarySeatViewModel(
     /** 默认读取原房间布局；测试可注入本地布局，避免触发学校请求。 */
     private val layoutLoader: suspend (String, String) -> LibrarySeatLayout = repo::layout,
     private val logoutCleanup: () -> Unit = {},
+    private val shanghaiNow: () -> LocalDateTime = { LocalDateTime.now(ZoneId.of("Asia/Shanghai")) },
     /** 仅供状态恢复/测试注入初始状态；生产 factory 不传。 */
     initialState: UiState = UiState(),
 ) : ViewModel() {
@@ -2507,8 +2590,24 @@ internal class LibrarySeatViewModel(
         state = state.copy(showTimeDialog = false, showConfirm = false)
     }
 
+    internal fun currentShanghaiNow(): LocalDateTime = shanghaiNow()
+
+    internal fun canConfirmSeatReservation(now: LocalDateTime? = null): Boolean =
+        state.canConfirmReservation(now ?: shanghaiNow())
+
+    internal fun seatTimeExpired(now: LocalDateTime? = null): Boolean =
+        nowStartExpired(state.start, state.end, state.date, now ?: shanghaiNow())
+
+    internal fun nowSeatRefreshDelayMillis(): Long? {
+        if (state.seatMode != RoomSeatMode.SEAT) return null
+        val start = state.start ?: return null
+        val end = state.end ?: return null
+        if (start !in state.startTimes || end !in state.endTimes) return null
+        return seatNowRefreshDelayMillis(start, end, state.date, shanghaiNow())
+    }
+
     fun requestReservation() {
-        if (!state.canConfirmReservation()) {
+        if (!canConfirmSeatReservation()) {
             state = state.copy(error = "所选座位或时段已不可用，请重新选择")
             return
         }
@@ -2790,7 +2889,7 @@ internal class LibrarySeatViewModel(
     /** 按座位模式最终提交，复用同一防重闩与响应校验。 */
     fun confirmReservation() {
         if (state.reservationSubmitted) return
-        if (!state.canConfirmReservation()) {
+        if (!canConfirmSeatReservation()) {
             state = state.copy(showConfirm = false, error = "所选座位或时段已不可用，请重新选择")
             return
         }
@@ -2829,7 +2928,11 @@ internal class LibrarySeatViewModel(
         val roomId: String?,
     )
 
+    private var reservationSubmitting = false
+
     private fun submitReservation(context: ReservationContext, mode: RoomSeatMode) {
+        if (reservationSubmitting) return
+        reservationSubmitting = true
         val beforeIds = state.reservations.map { it.id }.toSet()
         viewModelScope.launch {
             if (!isReservationContextCurrent(context, mode)) return@launch
@@ -2897,7 +3000,7 @@ internal class LibrarySeatViewModel(
                     checkReservationsAfterAttempt(context, mode, beforeIds, null)
                 }
             }
-        }
+        }.invokeOnCompletion { reservationSubmitting = false }
     }
 
     private fun isReservationContextCurrent(context: ReservationContext, mode: RoomSeatMode): Boolean =

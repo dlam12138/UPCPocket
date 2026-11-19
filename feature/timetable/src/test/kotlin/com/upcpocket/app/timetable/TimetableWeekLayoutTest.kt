@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -273,6 +274,132 @@ class TimetableWeekLayoutTest {
         rule.onNodeWithTag("timetable_week_grid").performTouchInput { swipeLeft() }
         rule.onNodeWithText("周六").assertIsDisplayed()
     }
+
+    @Test
+    @Config(qualifiers = "w363dp-h800dp")
+    fun `report device keeps independent courses full width and overlapping cards in lanes`() {
+        val weekStart = LocalDate.of(2026, 11, 15)
+        val monday = weekStart.plusDays(1)
+        val first = meeting("高等数学", monday, 1, 2, "东环301")
+        val second = meeting("大学物理", monday, 3, 4, "南教101")
+        val overlapLeft = meeting("数据结构", monday, 6, 7, "文理楼A203")
+        val overlapRight = meeting("计算机网络", monday, 6, 7, "文理楼A204")
+        val nestedOuter = meeting("信号与系统", monday, 9, 11, "南教201")
+        val nestedInner = meeting("概率论", monday, 10, 10, "南教202")
+        val state = weekState(
+            weekStart,
+            listOf(first, second, overlapLeft, overlapRight, nestedOuter, nestedInner),
+        )
+        var selected by mutableStateOf<TimetableMeeting?>(null)
+
+        rule.setContent {
+            val systemDensity = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(systemDensity.density, 1.15f)) {
+                MaterialTheme {
+                    Column(
+                        Modifier
+                            .width(363.dp)
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp),
+                    ) {
+                        TermAndWeekHeader(state, onSelectTerm = {}, onSelectWeek = {})
+                        WeekPanel(state = state, onCourseClick = { selected = it })
+                    }
+                    selected?.let {
+                        CourseDetailBottomSheet(meeting = it, onDismiss = { selected = null })
+                    }
+                }
+            }
+        }
+
+        val density = rule.activity.resources.displayMetrics.density
+        val dayWidth = rule.onNodeWithTag("timetable_day_slots_$monday")
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .width
+
+        val firstBounds = cardBounds(first)
+        val secondBounds = cardBounds(second)
+        assertTrue(
+            "孤立课应占满日列：课卡 ${firstBounds.width / density}dp，日列 ${dayWidth / density}dp",
+            firstBounds.width >= dayWidth * 0.9f,
+        )
+        assertTrue(
+            "相邻但不共节次的孤立课卡不应被压成半宽",
+            secondBounds.width >= dayWidth * 0.9f,
+        )
+
+        val leftBounds = cardBounds(overlapLeft)
+        val rightBounds = cardBounds(overlapRight)
+        assertTrue(
+            "重叠课卡应各占半列，实际 ${leftBounds.width / density}dp",
+            leftBounds.width <= dayWidth * 0.6f && leftBounds.width >= dayWidth * 0.35f,
+        )
+        assertTrue(
+            "同一时段卡片应等宽，实际 ${leftBounds.width}px / ${rightBounds.width}px",
+            kotlin.math.abs(leftBounds.width - rightBounds.width) <= 1f,
+        )
+        assertTrue(
+            "重叠课卡不能互相遮挡",
+            leftBounds.right <= rightBounds.left + 1f || rightBounds.right <= leftBounds.left + 1f,
+        )
+        rule.onNodeWithContentDescription(cardDescription(overlapLeft)).assertHasClickAction()
+        rule.onNodeWithContentDescription(cardDescription(overlapRight)).assertHasClickAction()
+
+        val outerBounds = cardBounds(nestedOuter)
+        val innerBounds = cardBounds(nestedInner)
+        assertTrue(
+            "嵌套课卡不能互相遮挡",
+            outerBounds.right <= innerBounds.left + 1f || innerBounds.right <= outerBounds.left + 1f,
+        )
+        rule.onNodeWithContentDescription(cardDescription(nestedOuter)).assertHasClickAction()
+        rule.onNodeWithContentDescription(cardDescription(nestedInner)).assertHasClickAction()
+
+        val card = firstBounds
+        val titleBounds = rule.onNodeWithTag(courseTag(first, "title"), useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val timeBounds = rule.onNodeWithTag(courseTag(first, "time"), useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val locationBounds = rule.onNodeWithTag(courseTag(first, "location"), useUnmergedTree = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val third = card.height / 3f
+        assertTrue("课名应在第一区域居中", titleBounds.center.y in card.top..(card.top + third))
+        assertTrue(
+            "时间应在第二区域居中",
+            timeBounds.center.y in (card.top + third)..(card.top + 2 * third),
+        )
+        assertTrue("地点应在第三区域居中", locationBounds.center.y in (card.top + 2 * third)..card.bottom)
+        listOf(titleBounds, timeBounds, locationBounds).forEach { bounds ->
+            assertTrue(
+                "三段文字应水平居中，实际 ${bounds.center.x} 与 ${card.center.x}",
+                kotlin.math.abs(bounds.center.x - card.center.x) <= 2f * density,
+            )
+        }
+        val title = assertNoVisualOverflow(courseTag(first, "title"))
+        assertTrue("独立课卡应显示完整短课名", title.layoutInput.text.text == "高等数学")
+
+        rule.onNodeWithContentDescription(cardDescription(overlapLeft)).performClick()
+        rule.onAllNodesWithText("数据结构", useUnmergedTree = true).assertCountEquals(2)
+        rule.onNodeWithText("关闭").performClick()
+        rule.onNodeWithContentDescription(cardDescription(overlapRight)).performClick()
+        rule.onAllNodesWithText("计算机网络", useUnmergedTree = true).assertCountEquals(2)
+        rule.onNodeWithText("关闭").performClick()
+    }
+
+    private fun cardDescription(meeting: TimetableMeeting): String = listOfNotNull(
+        "课程详情 ${meeting.courseName}",
+        meeting.sourcePeriodsLabel(),
+        "上课时间 ${UpcTimetableSchedule.label(meeting) ?: "时间待确认"}",
+        meeting.location?.let { "地点 $it" },
+    ).joinToString("，")
+
+    private fun cardBounds(meeting: TimetableMeeting) =
+        rule.onNodeWithContentDescription(cardDescription(meeting))
+            .fetchSemanticsNode()
+            .boundsInRoot
 
     private fun textLayout(tag: String): TextLayoutResult {
         val results = mutableListOf<TextLayoutResult>()

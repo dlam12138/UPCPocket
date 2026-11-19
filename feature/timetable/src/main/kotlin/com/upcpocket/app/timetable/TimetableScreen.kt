@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -68,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -800,6 +802,9 @@ private val PERIOD_COLUMN_WIDTH = 48.dp
 private val BASE_DAY_HEADER_HEIGHT = 40.dp
 private val BASE_MIN_DAY_WIDTH = 37.dp
 
+private val CARD_DETAIL_MIN_WIDTH = 30.dp
+private val CARD_COMPACT_MIN_WIDTH = 24.dp
+
 @Composable
 private fun WeekGrid(
     state: TimetableUiState,
@@ -832,8 +837,6 @@ private fun WeekGrid(
         val available = (maxWidth - periodColumnWidth).coerceAtLeast(0.dp)
         val dayWidth = (available / 7f).coerceAtLeast(minDayWidth)
         val slotHeight = standardSlotHeight
-        val courseTitleMaxLines = if (dayWidth < 48.dp) 1 else 3
-        val courseLocationMaxLines = 2
         // 仅当最小日宽也放不下七天时横滑，避免平均除法的浮点余差误触发。
         val needsScroll = minDayWidth * 7 + periodColumnWidth > maxWidth
         Row(
@@ -905,8 +908,6 @@ private fun WeekGrid(
                     known = date in view.knownDates,
                     meetings = byDate[date].orEmpty(),
                     colorSlots = state.courseColorSlots,
-                    courseTitleMaxLines = courseTitleMaxLines,
-                    courseLocationMaxLines = courseLocationMaxLines,
                     onCourseClick = onCourseClick,
                 )
             }
@@ -924,8 +925,6 @@ private fun DayColumn(
     known: Boolean,
     meetings: List<TimetableMeeting>,
     colorSlots: Map<String, Int>,
-    courseTitleMaxLines: Int,
-    courseLocationMaxLines: Int,
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val laneInfo = remember(meetings) { assignLanes(meetings) }
@@ -1028,10 +1027,10 @@ private fun DayColumn(
                 )
             }
 
-            val lanes = laneInfo.second.coerceAtLeast(1)
-            val laneWidth = maxWidth / lanes
             meetings.forEachIndexed { index, meeting ->
-                val lane = laneInfo.first.getOrElse(index) { 0 }
+                val dayLane = laneInfo.getOrElse(index) { DayLane(lane = 0, laneCount = 1) }
+                val laneWidth = maxWidth / dayLane.laneCount.coerceAtLeast(1)
+                val cardWidth = (laneWidth - 2.dp).coerceAtLeast(1.dp)
                 val periodCount = meeting.endPeriod - meeting.startPeriod + 1
                 val top = slotHeight * (meeting.startPeriod - 1)
                 val height = slotHeight * periodCount - 2.dp
@@ -1044,8 +1043,8 @@ private fun DayColumn(
                 val courseTag = "timetable_course_${meeting.date}_${meeting.startPeriod}_$index"
                 Surface(
                     modifier = Modifier
-                        .offset(x = laneWidth * lane + 1.dp, y = top + 1.dp)
-                        .width((laneWidth - 2.dp).coerceAtLeast(14.dp))
+                        .offset(x = laneWidth * dayLane.lane + 1.dp, y = top + 1.dp)
+                        .width(cardWidth)
                         .height(height)
                         .clip(RoundedCornerShape(6.dp))
                         .clickable { onCourseClick(meeting) }
@@ -1062,49 +1061,60 @@ private fun DayColumn(
                     tonalElevation = 0.dp,
                     shadowElevation = 0.dp,
                 ) {
-                    Column(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 0.5.dp, vertical = 1.dp),
-                    ) {
-                        Text(
-                            meeting.courseName,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = tone.content,
-                            fontSize = 11.sp,
-                            lineHeight = 12.sp,
-                            letterSpacing = 0.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = courseTitleMaxLines,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.fillMaxWidth().testTag("${courseTag}_title"),
-                        )
-                        if (periodCount >= 2) {
-                            Text(
-                                timeLines,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = tone.content.copy(alpha = 0.9f),
-                                fontSize = 10.sp,
-                                lineHeight = 11.sp,
-                                letterSpacing = 0.sp,
+                    if (periodCount >= 2 && cardWidth >= CARD_DETAIL_MIN_WIDTH) {
+                        Column(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 1.dp, vertical = 1.dp),
+                        ) {
+                            TimetableCardRegion {
+                                TimetableCardText(
+                                    text = meeting.courseName,
+                                    color = tone.content,
+                                    fontSize = 9.sp,
+                                    lineHeight = 10.sp,
+                                    maxLines = 2,
+                                    fontWeight = FontWeight.SemiBold,
+                                    testTag = "${courseTag}_title",
+                                )
+                            }
+                            TimetableCardRegion {
+                                TimetableCardText(
+                                    text = timeLines,
+                                    color = tone.content.copy(alpha = 0.9f),
+                                    fontSize = 8.sp,
+                                    lineHeight = 9.sp,
+                                    maxLines = 2,
+                                    testTag = "${courseTag}_time",
+                                )
+                            }
+                            TimetableCardRegion {
+                                TimetableCardText(
+                                    text = location,
+                                    color = tone.content.copy(alpha = 0.85f),
+                                    fontSize = 8.sp,
+                                    lineHeight = 9.sp,
+                                    maxLines = 2,
+                                    testTag = "${courseTag}_location",
+                                )
+                            }
+                        }
+                    } else {
+                        val narrow = cardWidth < CARD_COMPACT_MIN_WIDTH
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 0.5.dp, vertical = 1.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            TimetableCardText(
+                                text = meeting.courseName,
+                                color = tone.content,
+                                fontSize = if (narrow) 7.sp else 9.sp,
+                                lineHeight = if (narrow) 8.sp else 10.sp,
                                 maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("${courseTag}_time"),
-                            )
-                            Text(
-                                location,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = tone.content.copy(alpha = 0.85f),
-                                fontSize = 10.sp,
-                                lineHeight = 11.sp,
-                                letterSpacing = 0.sp,
-                                maxLines = courseLocationMaxLines,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("${courseTag}_location"),
+                                fontWeight = FontWeight.SemiBold,
+                                testTag = "${courseTag}_title",
                             )
                         }
                     }
@@ -1499,20 +1509,82 @@ private fun connectionTone(connection: TimetableConnection): ToneColors {
     }
 }
 
-private fun assignLanes(meetings: List<TimetableMeeting>): Pair<List<Int>, Int> {
-    val ends = mutableListOf<Int>()
+private data class DayLane(val lane: Int, val laneCount: Int)
+
+private fun assignLanes(meetings: List<TimetableMeeting>): List<DayLane> {
+    if (meetings.isEmpty()) return emptyList()
+    val result = MutableList(meetings.size) { DayLane(lane = 0, laneCount = 1) }
     val lanes = IntArray(meetings.size)
+    val laneEnds = mutableListOf<Int>()
+    var groupStart = 0
+    var groupMaxEnd = 0
     meetings.forEachIndexed { index, meeting ->
-        var lane = ends.indexOfFirst { it < meeting.startPeriod }
-        if (lane < 0) {
-            lane = ends.size
-            ends += meeting.endPeriod
-        } else {
-            ends[lane] = meeting.endPeriod
+        if (index > groupStart && meeting.startPeriod > groupMaxEnd) {
+            val laneCount = laneEnds.size
+            for (member in groupStart until index) {
+                result[member] = DayLane(lanes[member], laneCount)
+            }
+            laneEnds.clear()
+            groupStart = index
         }
-        lanes[index] = lane
+        groupMaxEnd = if (index == groupStart) {
+            meeting.endPeriod
+        } else {
+            maxOf(groupMaxEnd, meeting.endPeriod)
+        }
+        val freeLane = laneEnds.indexOfFirst { end -> end < meeting.startPeriod }
+        if (freeLane >= 0) {
+            laneEnds[freeLane] = meeting.endPeriod
+            lanes[index] = freeLane
+        } else {
+            laneEnds += meeting.endPeriod
+            lanes[index] = laneEnds.lastIndex
+        }
     }
-    return lanes.toList() to ends.size.coerceAtLeast(1)
+    val laneCount = laneEnds.size.coerceAtLeast(1)
+    for (member in groupStart until meetings.size) {
+        result[member] = DayLane(lanes[member], laneCount)
+    }
+    return result
+}
+
+@Composable
+private fun ColumnScope.TimetableCardRegion(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .weight(1f),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun TimetableCardText(
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    maxLines: Int,
+    testTag: String,
+    fontWeight: FontWeight? = null,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = color,
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        letterSpacing = 0.sp,
+        fontWeight = fontWeight,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag),
+    )
 }
 
 private fun periodLabel(meeting: TimetableMeeting): String =

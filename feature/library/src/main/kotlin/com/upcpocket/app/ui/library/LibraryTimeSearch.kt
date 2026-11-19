@@ -250,8 +250,8 @@ internal fun LibrarySeatViewModel.UiState.canConfirmTimeReservation(): Boolean {
     val key = currentTimeSearchKey() ?: return false
     if (result.key != key) return false
     if (start.value != timeBegin || stop.value != timeFinish) return false
-    if (timeStartTimes.none { it.id == start.id }) return false
-    if (timeEndTimes.none { it.id == stop.id }) return false
+    if (start !in timeStartTimes) return false
+    if (stop !in timeEndTimes) return false
     return timeDurationMinutes(start, stop) != null
 }
 

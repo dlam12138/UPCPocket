@@ -86,6 +86,11 @@ data class LibrarySeatLayout(
     val seats: List<LibrarySeat>,
 )
 
+/** libseat「现在」开始选项的原始 id；提交层也接受 `now` 别名，两者等价。 */
+internal const val LIBSEAT_NOW_START_ID = "-1"
+
+internal val LIBSEAT_NOW_START_IDS = setOf(LIBSEAT_NOW_START_ID, "now")
+
 data class LibraryTimeOption(val id: String, val value: String)
 
 /**

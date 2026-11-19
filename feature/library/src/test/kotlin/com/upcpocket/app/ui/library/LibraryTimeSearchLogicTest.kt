@@ -261,6 +261,11 @@ class LibraryTimeSearchLogicTest {
         assertTrue(base.canConfirmTimeReservation())
         // 结束时间不在官方列表：拒绝
         assertFalse(base.copy(timeStop = LibraryTimeOption("999", "23:00")).canConfirmTimeReservation())
+        val sentinelStop = LibraryTimeOption("-1", "16:00")
+        assertFalse(
+            base.copy(timeStop = sentinelStop, timeEndTimes = listOf(sentinelStop))
+                .canConfirmTimeReservation(),
+        )
         // 时段文字变化：结果键与当前条件不一致，拒绝
         assertFalse(base.copy(timeFinish = "17:00").canConfirmTimeReservation())
     }
