@@ -47,6 +47,13 @@ data class UiPrefs(
     /** 首页置顶的常用服务 ID 集合；默认置顶高频四项，用户可在「服务」页调整。 */
     val pinnedServiceIds: Set<String> = DEFAULT_PINNED_SERVICES,
     /**
+     * 常用校区：设置里选择的默认展示校区。
+     *
+     * 只改变各功能页的默认范围；页内临时切换不改写这里。缺键或未知值按
+     * [PreferredCampus.ALL] 处理，保持旧安装原有的多校区/上次校区行为。
+     */
+    val preferredCampus: PreferredCampus = PreferredCampus.ALL,
+    /**
      * 旧版校园卡余额功能区学号草稿。
      *
      * M2 起仅用于账号设置提示/迁移清理，不再作为余额查询来源；账号绑定后删除。
@@ -98,6 +105,7 @@ class UiPrefsStore internal constructor(
                 UiPrefs.DEFAULT_PINNED_SERVICES
             },
             cardStudentId = p[KEY_CARD_STUDENT_ID].orEmpty(),
+            preferredCampus = PreferredCampus.fromStoredValue(p[KEY_PREFERRED_CAMPUS]),
         )
     }
 
@@ -142,6 +150,10 @@ class UiPrefsStore internal constructor(
 
     suspend fun setDarkMode(v: DarkMode) = store.edit { p -> p[KEY_DARK_MODE] = v.name }
 
+    /** 只保存本机默认展示校区；不触发任何校园请求。 */
+    suspend fun setPreferredCampus(v: PreferredCampus) =
+        store.edit { p -> p[KEY_PREFERRED_CAMPUS] = v.name }
+
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
         widgetAppearanceSnapshot = v
@@ -167,5 +179,8 @@ class UiPrefsStore internal constructor(
 
         /** 首页置顶的服务入口 ID */
         val KEY_PINNED_SERVICES = stringSetPreferencesKey("pinned_service_ids")
+
+        /** 常用校区（仅本机默认展示范围） */
+        val KEY_PREFERRED_CAMPUS = stringPreferencesKey("preferred_campus")
     }
 }

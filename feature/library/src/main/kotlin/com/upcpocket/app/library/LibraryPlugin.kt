@@ -5,6 +5,8 @@ import com.upcpocket.app.account.api.SchoolAccountIdentityVerifier
 import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.blocksPersonalSessions
 import com.upcpocket.app.data.chaoxing.ChaoxingRepository
+import com.upcpocket.app.data.library.AllLibraryCampusPreferenceProvider
+import com.upcpocket.app.data.library.LibraryCampusPreferenceProvider
 import com.upcpocket.app.data.library.LibrarySeatRepository
 import com.upcpocket.app.data.prefs.DataStoreLibraryHiddenSeatsStore
 import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
@@ -39,6 +41,8 @@ class LibraryPlugin(
     identityVerifier: SchoolAccountIdentityVerifier,
     authenticator: LibraryAccountAuthenticator,
     chaoxingAuthenticator: ChaoxingAccountAuthenticator,
+    private val preferredCampus: LibraryCampusPreferenceProvider =
+        AllLibraryCampusPreferenceProvider,
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = LIBRARY_PLUGIN_ID,
@@ -86,5 +90,5 @@ class LibraryPlugin(
     override val pluginId get() = descriptor.id
 
     override fun contribute(registry: PluginUiRegistry) =
-        LibraryUi(service, chaoxingService, hiddenSeatsStore).contribute(registry)
+        LibraryUi(service, chaoxingService, hiddenSeatsStore, preferredCampus).contribute(registry)
 }

@@ -14,23 +14,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +46,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +64,48 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
+    val pageScope = rememberCoroutineScope()
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
+        topBar = {
+            com.upcpocket.app.ui.components.CampusTopAppBar(
+                title = { Text("唐岛湾电费") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            TangdaowanElectricityContent(service, persistenceScope = pageScope)
+        }
+    }
+}
+
+/**
+ * 唐岛湾电量原生内容，不含 Scaffold。
+ *
+ * 「电费」页选择常用唐岛湾时直接嵌入本内容；独立路由再用整页 Scaffold 包裹。
+ * 未渲染本内容时不会加载楼号，也不会发起任何请求。
+ *
+ * 输入保存与清除使用 [persistenceScope]（页面根作用域），切到古镇口离开组合后仍能完成；
+ * 查询和楼号加载仍用内容自己的作用域，切走即取消。
+ */
+@Composable
+internal fun TangdaowanElectricityContent(
+    service: PowerService,
+    persistenceScope: CoroutineScope,
+    modifier: Modifier = Modifier,
+) {
     val scope = rememberCoroutineScope()
     val snapshot by service.snapshot.collectAsStateWithLifecycle(initialValue = null)
     val savedInput by service.savedInput
@@ -89,7 +125,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     var requestId by remember { mutableIntStateOf(0) }
 
     fun persist(buildingValue: String = building, roomValue: String = room) {
-        scope.launch { service.saveInput(buildingValue, roomValue) }
+        persistenceScope.launch { service.saveInput(buildingValue, roomValue) }
     }
 
     /** 输入一变就作废旧结果，避免旧房间的电量被当成新输入的结果。 */
@@ -121,7 +157,7 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
         room = ""
         showPicker = false
         invalidateResult()
-        scope.launch {
+        persistenceScope.launch {
             // 清除输入也清除“最后一次成功查询”，否则桌面组件会继续显示旧房间。
             service.clear()
         }
@@ -264,177 +300,159 @@ fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
-        topBar = {
-            com.upcpocket.app.ui.components.CampusTopAppBar(
-                title = { Text("唐岛湾电费") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column {
-                com.upcpocket.app.ui.components.CampusOutlinedButton(
-                    onClick = { showPicker = true },
-                    enabled = !loading,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                ) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column {
+            com.upcpocket.app.ui.components.CampusOutlinedButton(
+                onClick = { showPicker = true },
+                enabled = !loading,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
+                Text(
+                    when {
+                        building.isNotBlank() -> "楼号 $building"
+                        buildingsLoading -> "正在加载楼号…"
+                        else -> "选择楼号"
+                    },
+                    maxLines = 1,
+                )
+            }
+            when {
+                buildingsLoading -> Text(
+                    "正在加载楼号…",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                )
+                buildingsError != null -> {
                     Text(
-                        when {
-                            building.isNotBlank() -> "楼号 $building"
-                            buildingsLoading -> "正在加载楼号…"
-                            else -> "选择楼号"
-                        },
-                        maxLines = 1,
-                    )
-                }
-                when {
-                    buildingsLoading -> Text(
-                        "正在加载楼号…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-                    )
-                    buildingsError != null -> {
-                        Text(
-                            "楼号加载失败，请重试。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-                        )
-                        com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
-                    }
-                    buildings.isEmpty() -> {
-                        Text(
-                            "尚未加载楼号。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-                        )
-                        com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
-                    }
-                    else -> Unit
-                }
-                if (buildings.isNotEmpty() && building.isNotBlank() && building !in buildings) {
-                    Text(
-                        "上次保存的楼号不在学校当前列表里，请重新选择。",
+                        "楼号加载失败，请重试。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp),
                     )
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                 }
-            }
-
-            OutlinedTextField(
-                value = room,
-                onValueChange = ::changeRoom,
-                label = { Text("房间号") },
-                singleLine = true,
-                enabled = !loading,
-                modifier = Modifier.fillMaxWidth(),
-                supportingText = {
+                buildings.isEmpty() -> {
                     Text(
-                        when {
-                            building.isBlank() -> "先选楼号，再填房间号。"
-                            room.isBlank() -> "填写房间号后查询。"
-                            else -> "当前目标：$building · ${room.trim()}。清除记录也会清除组件数据。"
-                        },
-                    )
-                },
-            )
-
-            com.upcpocket.app.ui.components.CampusButton(
-                onClick = ::runQuery,
-                enabled = !loading && building.isNotBlank() && room.isNotBlank(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            ) {
-                Text(if (loading) "正在查询…" else "查询")
-            }
-            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-
-            if (building.isNotBlank() || room.isNotBlank()) {
-                com.upcpocket.app.ui.components.CampusTextButton(onClick = ::clearInput, enabled = !loading) {
-                    Text("清除记录")
-                }
-            }
-
-            error?.let {
-                Text(it, color = MaterialTheme.colorScheme.error)
-                if (it.contains("微信")) {
-                    Text(
-                        text = "学校要求微信授权时，请稍后重试或使用学校官方入口。",
+                        "尚未加载楼号。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    )
+                    com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
+                }
+                else -> Unit
+            }
+            if (buildings.isNotEmpty() && building.isNotBlank() && building !in buildings) {
+                Text(
+                    "上次保存的楼号不在学校当前列表里，请重新选择。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = room,
+            onValueChange = ::changeRoom,
+            label = { Text("房间号") },
+            singleLine = true,
+            enabled = !loading,
+            modifier = Modifier.fillMaxWidth(),
+            supportingText = {
+                Text(
+                    when {
+                        building.isBlank() -> "先选楼号，再填房间号。"
+                        room.isBlank() -> "填写房间号后查询。"
+                        else -> "当前目标：$building · ${room.trim()}。清除记录也会清除组件数据。"
+                    },
+                )
+            },
+        )
+
+        com.upcpocket.app.ui.components.CampusButton(
+            onClick = ::runQuery,
+            enabled = !loading && building.isNotBlank() && room.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            Text(if (loading) "正在查询…" else "查询")
+        }
+        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+
+        if (building.isNotBlank() || room.isNotBlank()) {
+            com.upcpocket.app.ui.components.CampusTextButton(onClick = ::clearInput, enabled = !loading) {
+                Text("清除记录")
+            }
+        }
+
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error)
+            if (it.contains("微信")) {
+                Text(
+                    text = "学校要求微信授权时，请稍后重试或使用学校官方入口。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+
+        snapshot?.takeIf { it.matches(building, room) }?.let { value ->
+            com.upcpocket.app.ui.components.CampusPanel(
+                modifier = Modifier.fillMaxWidth(),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                val resultContent = MaterialTheme.colorScheme.onPrimaryContainer
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        when {
+                            loading -> "更新中 · 保留上次结果"
+                            error != null -> "更新失败 · 上次读取"
+                            else -> "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
+                                .withZone(ZoneId.systemDefault())
+                                .format(Instant.ofEpochMilli(value.fetchedAt))
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = resultContent.copy(alpha = 0.8f),
+                    )
+                    Text(
+                        text = value.kwh + " 度",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = resultContent,
+                    )
+                    Text(
+                        text = listOf(value.building, value.room)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = resultContent.copy(alpha = 0.85f),
                     )
                 }
             }
+        }
 
-            snapshot?.takeIf { it.matches(building, room) }?.let { value ->
-                com.upcpocket.app.ui.components.CampusPanel(
-                    modifier = Modifier.fillMaxWidth(),
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    val resultContent = MaterialTheme.colorScheme.onPrimaryContainer
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (candidates.isNotEmpty()) {
+            Text(
+                text = "该房间号对应多个房间，请选择：",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            candidates.forEach { candidate ->
+                com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(candidate.room, style = MaterialTheme.typography.titleMedium)
                         Text(
-                            when {
-                                loading -> "更新中 · 保留上次结果"
-                                error != null -> "更新失败 · 上次读取"
-                                else -> "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                                    .withZone(ZoneId.systemDefault())
-                                    .format(Instant.ofEpochMilli(value.fetchedAt))
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = resultContent.copy(alpha = 0.8f),
-                        )
-                        Text(
-                            text = value.kwh + " 度",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = resultContent,
-                        )
-                        Text(
-                            text = listOf(value.building, value.room)
-                                .filter { it.isNotBlank() }
-                                .joinToString(" · "),
+                            "${candidate.building} · 编号 ${candidate.systemNo}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = resultContent.copy(alpha = 0.85f),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    }
-                }
-            }
-
-            if (candidates.isNotEmpty()) {
-                Text(
-                    text = "该房间号对应多个房间，请选择：",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                candidates.forEach { candidate ->
-                    com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text(candidate.room, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                "${candidate.building} · 编号 ${candidate.systemNo}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            com.upcpocket.app.ui.components.CampusTextButton(onClick = {
-                                changeRoom(candidate.room)
-                                candidates = emptyList()
-                            }) { Text("选择") }
-                        }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = {
+                            changeRoom(candidate.room)
+                            candidates = emptyList()
+                        }) { Text("选择") }
                     }
                 }
             }

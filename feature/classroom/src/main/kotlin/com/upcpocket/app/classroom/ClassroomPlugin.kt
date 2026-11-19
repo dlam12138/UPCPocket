@@ -1,6 +1,8 @@
 package com.upcpocket.app.classroom
 
+import com.upcpocket.app.data.classroom.AllFreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.NoOpFreeClassroomCampusStore
 import com.upcpocket.app.data.classroom.PublicFreeClassroomRepository
@@ -27,6 +29,7 @@ val CLASSROOM_PLUGIN_ID: PluginId = PluginId.parse("classroom")
  */
 class ClassroomPlugin(
     private val campusStore: FreeClassroomCampusStore = NoOpFreeClassroomCampusStore,
+    private val preferredCampus: FreeClassroomPreferredCampus = AllFreeClassroomPreferredCampus,
     private val repository: FreeClassroomRepository = PublicFreeClassroomRepository(),
 ) : Plugin, PluginUiContributor {
     override val descriptor: PluginDescriptor = PluginDescriptor(
@@ -41,5 +44,5 @@ class ClassroomPlugin(
     override val pluginId get() = descriptor.id
 
     override fun contribute(registry: PluginUiRegistry) =
-        ClassroomUi(repository, campusStore).contribute(registry)
+        ClassroomUi(repository, campusStore, preferredCampus).contribute(registry)
 }

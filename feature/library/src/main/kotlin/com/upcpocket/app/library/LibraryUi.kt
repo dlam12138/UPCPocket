@@ -1,6 +1,7 @@
 package com.upcpocket.app.library
 
 import com.upcpocket.app.data.chaoxing.ChaoxingSeatKind
+import com.upcpocket.app.data.library.LibraryCampusPreferenceProvider
 import com.upcpocket.app.data.prefs.LibraryHiddenSeatsStore
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -52,14 +53,15 @@ internal class LibraryUi(
     private val service: LibraryService,
     private val chaoxingService: ChaoxingService,
     private val hiddenSeatsStore: LibraryHiddenSeatsStore,
+    private val preferredCampus: LibraryCampusPreferenceProvider,
 ) : PluginUiContributor {
 
     override val pluginId = LIBRARY_PLUGIN_ID
 
     override fun contribute(registry: PluginUiRegistry) {
-        registry.addLibraryHubPage(LIBRARY_HOME_ROUTE, service, chaoxingService)
+        registry.addLibraryHubPage(LIBRARY_HOME_ROUTE, service, chaoxingService, preferredCampus)
         LEGACY_DISCUSSION_ROUTES.forEach { route ->
-            registry.addLibraryHubPage(route, service, chaoxingService)
+            registry.addLibraryHubPage(route, service, chaoxingService, preferredCampus)
         }
 
         registry.addPage(
@@ -143,12 +145,14 @@ private fun PluginUiRegistry.addLibraryHubPage(
     route: PluginRouteId,
     service: LibraryService,
     chaoxingService: ChaoxingService,
+    preferredCampus: LibraryCampusPreferenceProvider,
 ) {
     addPage(
         PluginPage(route, LIBRARY_PLUGIN_ID) { host ->
             LibraryHubScreen(
                 libraryService = service,
                 chaoxingService = chaoxingService,
+                preferredCampus = preferredCampus,
                 onBack = host::back,
                 onOpenSeat = { host.open(LIBRARY_SEAT_ROUTE) },
                 onOpenChaoxingSeat = { kind ->

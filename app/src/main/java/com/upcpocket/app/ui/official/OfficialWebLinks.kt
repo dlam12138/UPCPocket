@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.plugin.ui.UiCategory
 
 data class OfficialLink(
@@ -21,6 +22,12 @@ data class OfficialLink(
     val group: String,
     val serviceId: String? = null,
     val serviceCategory: UiCategory? = null,
+    /**
+     * 仅此校区专属的入口；null 表示两校区通用或不属于校区范围。
+     *
+     * 只用于「服务」页按常用校区收敛候选；完整目录仍展示全部入口。
+     */
+    val campus: PreferredCampus? = null,
 )
 
 /**
@@ -62,6 +69,7 @@ object OfficialWebCatalog {
             url = "https://libspace.upc.edu.cn/libseat/",
             icon = Icons.AutoMirrored.Outlined.MenuBook,
             group = "学习",
+            campus = PreferredCampus.TANGDAOWAN,
         ),
         calendar,
     )
@@ -73,6 +81,7 @@ object OfficialWebCatalog {
             url = "http://dfcz.upc.edu.cn/ShiYou/Default.aspx",
             icon = Icons.Filled.Bolt,
             group = "生活",
+            campus = PreferredCampus.TANGDAOWAN,
         ),
         OfficialLink(
             title = "古镇口电费",
@@ -80,6 +89,7 @@ object OfficialWebCatalog {
             url = "https://gzkdf.upc.edu.cn/acmswx/index.aspx",
             icon = Icons.Filled.Bolt,
             group = "生活",
+            campus = PreferredCampus.GUZHENKOU,
         ),
     )
 
@@ -88,6 +98,19 @@ object OfficialWebCatalog {
     /** Host-owned official pages that can be pinned alongside plugin service entries. */
     fun serviceLinksFor(category: UiCategory): List<OfficialLink> =
         all.filter { it.serviceId != null && it.serviceCategory == category }
+
+    /**
+     * 「服务」页候选：常用校区为单一校区时，隐藏另一校区专属入口，保留通用入口。
+     *
+     * null（尚未读取）与 [PreferredCampus.ALL] 都原样返回；完整目录不经过这里。
+     */
+    fun visibleFor(
+        links: List<OfficialLink>,
+        preferredCampus: PreferredCampus?,
+    ): List<OfficialLink> {
+        if (preferredCampus == null || preferredCampus == PreferredCampus.ALL) return links
+        return links.filter { link -> link.campus == null || link.campus == preferredCampus }
+    }
 
     fun browserIntent(link: OfficialLink): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(link.url)).apply {
         addCategory(Intent.CATEGORY_BROWSABLE)

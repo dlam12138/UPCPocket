@@ -1,9 +1,11 @@
 package com.upcpocket.app.ui.classroom
 
+import com.upcpocket.app.data.classroom.AllFreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.ClassroomPeriodGroup
 import com.upcpocket.app.data.classroom.ClassroomQueryMode
 import com.upcpocket.app.data.classroom.FreeClassroomCampus
 import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomQuery
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
@@ -91,6 +93,73 @@ class FreeClassroomViewModelTest {
         assertEquals(FreeClassroomCampus.GUZHENKOU, queries[0].campus)
         assertEquals(LocalDate.of(2026, 11, 5), queries[0].date)
         assertEquals(ClassroomPeriodGroup.MORNING.periods, queries[0].periods)
+    }
+
+    @Test
+    fun `preferred campus wins before the only initial query and skips the legacy record`() =
+        runTest(dispatcher) {
+            val store = FakeCampusStore(saved = FreeClassroomCampus.TANGDAOWAN)
+            val queries = mutableListOf<FreeClassroomQuery>()
+            val vm = viewModel(
+                store = store,
+                preferredCampus = FreeClassroomPreferredCampus {
+                    FreeClassroomCampus.GUZHENKOU
+                },
+                repository = FreeClassroomRepository { query ->
+                    queries += query
+                    result(query)
+                },
+            )
+
+            runCurrent()
+
+            assertFalse(vm.restoringCampus)
+            assertEquals(FreeClassroomCampus.GUZHENKOU, vm.campus)
+            assertEquals(0, store.reads)
+            assertEquals(1, queries.size)
+            assertEquals(FreeClassroomCampus.GUZHENKOU, queries[0].campus)
+        }
+
+    @Test
+    fun `page local switch under a single preferred campus does not write the legacy record`() =
+        runTest(dispatcher) {
+            val store = FakeCampusStore()
+            val vm = viewModel(
+                store = store,
+                preferredCampus = FreeClassroomPreferredCampus {
+                    FreeClassroomCampus.TANGDAOWAN
+                },
+            )
+            runCurrent()
+            assertEquals(FreeClassroomCampus.TANGDAOWAN, vm.campus)
+
+            vm.chooseCampus(FreeClassroomCampus.GUZHENKOU)
+            runCurrent()
+
+            assertEquals(FreeClassroomCampus.GUZHENKOU, vm.campus)
+            assertEquals(0, store.writes)
+            assertNull(store.saved)
+        }
+
+    @Test
+    fun `preferred campus read failure falls back to the legacy campus`() = runTest(dispatcher) {
+        val store = FakeCampusStore(saved = FreeClassroomCampus.GUZHENKOU)
+        val queries = mutableListOf<FreeClassroomQuery>()
+        val vm = viewModel(
+            store = store,
+            preferredCampus = FreeClassroomPreferredCampus { error("read failed") },
+            repository = FreeClassroomRepository { query ->
+                queries += query
+                result(query)
+            },
+        )
+
+        runCurrent()
+
+        assertEquals(FreeClassroomCampus.GUZHENKOU, vm.campus)
+        assertEquals(1, store.reads)
+        assertEquals(1, queries.size)
+        assertEquals(FreeClassroomCampus.GUZHENKOU, queries[0].campus)
     }
 
     @Test
@@ -449,6 +518,7 @@ class FreeClassroomViewModelTest {
 
     private fun viewModel(
         store: FreeClassroomCampusStore = FakeCampusStore(),
+        preferredCampus: FreeClassroomPreferredCampus = AllFreeClassroomPreferredCampus,
         clock: Clock = Clock.fixed(
             Instant.parse("2026-11-05T01:00:00Z"),
             ZoneId.of("Asia/Shanghai"),
@@ -457,6 +527,7 @@ class FreeClassroomViewModelTest {
     ) = FreeClassroomViewModel(
         repository = repository,
         campusStore = store,
+        preferredCampus = preferredCampus,
         clock = clock,
     )
 
@@ -471,6 +542,7 @@ class FreeClassroomViewModelTest {
         var saved: FreeClassroomCampus? = null,
     ) : FreeClassroomCampusStore {
         var reads = 0
+        var writes = 0
 
         override suspend fun read(): FreeClassroomCampus? {
             reads++
@@ -478,6 +550,7 @@ class FreeClassroomViewModelTest {
         }
 
         override suspend fun write(campus: FreeClassroomCampus) {
+            writes++
             saved = campus
         }
     }

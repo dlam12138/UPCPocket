@@ -55,12 +55,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.ui.components.CampusFilterChip
 import com.upcpocket.app.ui.components.CampusIconButton
+import com.upcpocket.app.ui.components.CampusTextButton
 import com.upcpocket.app.ui.components.CampusTopAppBar
 import com.upcpocket.app.ui.components.EmptyStateCard
 import com.upcpocket.app.ui.components.GlassCard
@@ -87,6 +89,7 @@ private enum class ServiceFilterTab(val label: String, val category: UiCategory?
 fun ServicesScreen(
     entries: List<PluginEntry>,
     pinnedServiceIds: Set<String>,
+    preferredCampus: PreferredCampus? = null,
     onTogglePin: (String) -> Unit,
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenOfficialWeb: () -> Unit,
@@ -122,11 +125,12 @@ fun ServicesScreen(
             .sortedBy { it.key.sortOrder }
     }
 
-    val officialCandidates = remember(selectedFilter) {
-        when (selectedFilter) {
+    val officialCandidates = remember(selectedFilter, preferredCampus) {
+        val candidates = when (selectedFilter) {
             ServiceFilterTab.ALL, ServiceFilterTab.OFFICIAL -> OfficialWebCatalog.all
             else -> selectedFilter.category?.let { OfficialWebCatalog.serviceLinksFor(it) }.orEmpty()
         }
+        OfficialWebCatalog.visibleFor(candidates, preferredCampus)
     }
     val filteredOfficial = remember(officialCandidates, normalizedQuery) {
         officialCandidates.filter { link ->
@@ -204,6 +208,11 @@ fun ServicesScreen(
                         { query = "" }
                     } else null,
                 )
+                if (officialCandidates.isNotEmpty()) {
+                    CampusTextButton(onClick = onOpenOfficialWeb) {
+                        Text("查看完整目录")
+                    }
+                }
             } else {
                 groupedEntries.forEach { (category, items) ->
                     SectionHeader(
@@ -214,6 +223,7 @@ fun ServicesScreen(
                         items.forEach { entry ->
                             ServiceDirectoryCard(
                                 entry = entry,
+                                subtitle = entry.subtitleWithDefaultCampus(preferredCampus),
                                 pinned = entry.entryId.value in pinnedServiceIds,
                                 onTogglePin = { onTogglePin(entry.entryId.value) },
                                 onClick = { entry.route?.let(onOpenRoute) },
@@ -272,9 +282,20 @@ fun ServicesScreen(
     }
 }
 
+/** 常用校区为单一校区时，给三张受其影响的服务卡加一句默认范围提示。 */
+private fun PluginEntry.subtitleWithDefaultCampus(preferredCampus: PreferredCampus?): String {
+    if (preferredCampus == null || preferredCampus == PreferredCampus.ALL) return subtitle
+    return when (entryId.value) {
+        "classroom.free", "library.home", "power.electricity" ->
+            "$subtitle · 默认${preferredCampus.label}"
+        else -> subtitle
+    }
+}
+
 @Composable
 private fun ServiceDirectoryCard(
     entry: PluginEntry,
+    subtitle: String,
     pinned: Boolean,
     onTogglePin: () -> Unit,
     onClick: () -> Unit,
@@ -306,7 +327,7 @@ private fun ServiceDirectoryCard(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = entry.subtitle,
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

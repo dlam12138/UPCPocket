@@ -1,5 +1,6 @@
 package com.upcpocket.app.power
 
+import com.upcpocket.app.data.power.PowerCampusPreferenceProvider
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -24,6 +25,7 @@ val POWER_TANGDAOWAN_ROUTE: PluginRouteId = PluginRouteId.parse("power.tangdaowa
  */
 internal class PowerUi(
     private val service: PowerService,
+    private val preferredCampus: PowerCampusPreferenceProvider,
 ) : PluginUiContributor {
 
     override val pluginId = POWER_PLUGIN_ID
@@ -32,6 +34,8 @@ internal class PowerUi(
         registry.addPage(
             PluginPage(POWER_ELECTRICITY_ROUTE, POWER_PLUGIN_ID) { host ->
                 ElectricityScreen(
+                    service = service,
+                    preferredCampus = preferredCampus,
                     onBack = host::back,
                     onOpenTangdaowan = { host.open(POWER_TANGDAOWAN_ROUTE) },
                 )

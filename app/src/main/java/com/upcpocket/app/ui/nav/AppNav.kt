@@ -152,7 +152,10 @@ fun AppNav(
     val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
     val legacyCardStudentId by AppGraph.cardInputRepository.studentId
         .collectAsStateWithLifecycle(initialValue = "")
-    val prefs by AppGraph.uiPrefsStore.flow.collectAsStateWithLifecycle(initialValue = UiPrefs())
+    val storedPrefs: UiPrefs? by AppGraph.uiPrefsStore.flow
+        .collectAsStateWithLifecycle(initialValue = null)
+    val prefs = storedPrefs ?: UiPrefs()
+    val preferredCampus = storedPrefs?.preferredCampus
 
     val pluginDestinations = pluginUi.bottomNav.map { tab ->
         Destination(
@@ -360,6 +363,7 @@ fun AppNav(
                                     AppRoutes.SERVICES -> ServicesScreen(
                                         entries = allServiceEntries,
                                         pinnedServiceIds = prefs.pinnedServiceIds,
+                                        preferredCampus = preferredCampus,
                                         onTogglePin = { entryId ->
                                             scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
                                         },
@@ -388,6 +392,10 @@ fun AppNav(
                             UiSurface.MORE_SCHOOL,
                         ),
                         sectionHost = sectionHost,
+                        preferredCampus = preferredCampus,
+                        onPreferredCampusChange = { campus ->
+                            scope.launch { AppGraph.uiPrefsStore.setPreferredCampus(campus) }
+                        },
                         onBack = { navController.popBackStack() },
                         onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
                         onOpenAppearance = { navController.navigate(AppRoutes.APPEARANCE) },

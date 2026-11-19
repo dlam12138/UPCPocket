@@ -3,6 +3,8 @@ package com.upcpocket.app.data.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.upcpocket.app.designsystem.WidgetAppearance
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -50,6 +52,18 @@ class UiPrefsStoreTest {
         UiPrefs.DEFAULT_PINNED_SERVICES.forEach { store.togglePinnedService(it) }
 
         assertEquals(emptySet<String>(), UiPrefsStore(dataStore).flow.first().pinnedServiceIds)
+    }
+
+    @Test
+    fun `preferred campus defaults to all when unset or unknown`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        assertEquals(PreferredCampus.ALL, store.flow.first().preferredCampus)
+
+        dataStore.edit { it[stringPreferencesKey("preferred_campus")] = "SYNTHETIC_CAMPUS" }
+        assertEquals(PreferredCampus.ALL, UiPrefsStore(dataStore).flow.first().preferredCampus)
+
+        store.setPreferredCampus(PreferredCampus.GUZHENKOU)
+        assertEquals(PreferredCampus.GUZHENKOU, UiPrefsStore(dataStore).flow.first().preferredCampus)
     }
 
     @Test

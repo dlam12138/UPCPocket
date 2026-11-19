@@ -1,6 +1,8 @@
 package com.upcpocket.app.power
 
 import android.content.Context
+import com.upcpocket.app.data.power.AllPowerCampusPreferenceProvider
+import com.upcpocket.app.data.power.PowerCampusPreferenceProvider
 import com.upcpocket.app.data.power.PowerReadingRepository
 import com.upcpocket.app.data.power.PowerSnapshotStore
 import com.upcpocket.app.data.power.TangdaowanElectricityService
@@ -30,6 +32,8 @@ class PowerPlugin(
     context: Context,
     inputStore: PowerInputStore,
     onSnapshotChanged: () -> Unit,
+    private val preferredCampus: PowerCampusPreferenceProvider =
+        AllPowerCampusPreferenceProvider,
 ) : Plugin, PluginUiContributor {
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
@@ -56,7 +60,8 @@ class PowerPlugin(
 
     override val pluginId get() = descriptor.id
 
-    override fun contribute(registry: PluginUiRegistry) = PowerUi(service).contribute(registry)
+    override fun contribute(registry: PluginUiRegistry) =
+        PowerUi(service, preferredCampus).contribute(registry)
 
     private companion object {
         const val SNAPSHOT_FILE = "power-reading-v1.json"

@@ -313,12 +313,14 @@ object AppGraph {
             context = appContext,
             inputStore = powerInputRepository,
             onSnapshotChanged = { WidgetUpdates.requestPower(appContext) },
+            preferredCampus = uiPrefsStore.powerCampusPreference(),
         )
     }
 
     private val classroomPlugin: ClassroomPlugin by lazy {
         ClassroomPlugin(
             campusStore = DataStoreFreeClassroomCampusStore(appContext),
+            preferredCampus = uiPrefsStore.classroomPreferredCampus(),
         )
     }
 
@@ -408,6 +410,7 @@ object AppGraph {
             identityVerifier = account,
             authenticator = libraryAuthenticator,
             chaoxingAuthenticator = chaoxingAuthenticator,
+            preferredCampus = uiPrefsStore.libraryCampusPreference(),
         )
     }
 

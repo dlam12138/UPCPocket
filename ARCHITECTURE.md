@@ -68,6 +68,8 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 `core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。五项导航继续使用浮动胶囊与 Pager。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
+2.0.9 开发版由宿主提供常用校区，教室、图书馆与电费在页面进入时以保存的偏好初始化。服务页的官方网页按条目校区展示，完整目录覆盖两校区。电量组件继续直达唐岛湾原生页。 [开发入口映射](docs/m5/README.md#209-开发入口映射2026-11-19)
+
 ## 本机账号与业务会话
 
 [SchoolAccountRepository](core/account/src/main/kotlin/com/upcpocket/app/account/SchoolAccountRepository.kt) 保存当前一个账号；保存状态只表示本机密文可靠提交。UI 显示“已保存”，内部仍为 `SAVED_UNVERIFIED`，不代表学校认证或业务登录。
@@ -130,6 +132,7 @@ sequenceDiagram
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
 | 待办/截止/提醒 revision | todo；Room `upcpocket-todo.db` v2 | v1 显式新增可空 dueAt，旧任务截止为空且原字段保留；任务为事实，Alarm/通知可重建；旧动作按 taskId+revision 拒绝 |
 | 配色与深色模式、桌面外观、首页固定、寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 学校账号清理保留这些本机选项；普通组件外观归 UiPrefsStore，固定玻璃版由 Provider 身份决定，首页固定项缺键与显式空集分别处理 |
+| 常用校区 | app 的 `UiPrefsStore` | 缺有效偏好默认全部校区。教室在全部校区模式下沿用原有上次校区记录 |
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 
 数据模型归业务模块，不能把所有表或凭据移到公共模块。Room schema/file name、Keystore alias、DataStore 文件/键、私有文件格式和稳定 PendingIntent 都属于兼容面；变更需给出迁移与恢复依据。见 [ADR 003](docs/adr/003-data-ownership-and-schema-compatibility.md)。

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiSurface
@@ -56,5 +57,27 @@ class ServicesCatalogTest {
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(Uri.parse(OfficialWebCatalog.CALENDAR_URL), intent.data)
         assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
+    }
+
+    @Test
+    fun `single preferred campus filters campus-owned links but keeps generic ones`() {
+        val all = OfficialWebCatalog.all
+        val tangdaowan = OfficialWebCatalog.visibleFor(all, PreferredCampus.TANGDAOWAN)
+        val guzhenkou = OfficialWebCatalog.visibleFor(all, PreferredCampus.GUZHENKOU)
+
+        assertTrue(tangdaowan.any { it.title == "图书馆座位系统" })
+        assertTrue(tangdaowan.any { it.title == "唐岛湾剩余电量" })
+        assertFalse(tangdaowan.any { it.title == "古镇口电费" })
+        assertFalse(guzhenkou.any { it.title == "图书馆座位系统" })
+        assertFalse(guzhenkou.any { it.title == "唐岛湾剩余电量" })
+        assertTrue(guzhenkou.any { it.title == "古镇口电费" })
+
+        for (links in listOf(tangdaowan, guzhenkou)) {
+            assertTrue(links.any { it.title == "空闲教室" })
+            assertTrue(links.any { it.serviceId == OfficialWebCatalog.CALENDAR_SERVICE_ID })
+        }
+
+        assertEquals(all, OfficialWebCatalog.visibleFor(all, PreferredCampus.ALL))
+        assertEquals(all, OfficialWebCatalog.visibleFor(all, null))
     }
 }

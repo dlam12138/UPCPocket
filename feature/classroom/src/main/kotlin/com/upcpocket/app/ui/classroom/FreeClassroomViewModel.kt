@@ -5,10 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.upcpocket.app.data.classroom.AllFreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.ClassroomPeriodGroup
 import com.upcpocket.app.data.classroom.ClassroomQueryMode
 import com.upcpocket.app.data.classroom.FreeClassroomCampus
 import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomQuery
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
@@ -39,8 +41,11 @@ private val CLASSROOM_ZONE: ZoneId = ZoneId.of("Asia/Shanghai")
 /**
  * 空闲教室页状态。
  *
- * 每次真正进入页面都从上海时区今天、上午和“全部教学楼”开始，只恢复上次校区；
- * 读取保存校区完成后才发一次初始查询，不会先用默认校区查一遍再换校区。
+ * 每次真正进入页面都从上海时区今天、上午和“全部教学楼”开始，只恢复常用校区或
+ * 上次校区；读取完成后才发一次初始查询，不会先用默认校区查一遍再换校区。
+ *
+ * 设置里选了单一常用校区时，本次进入直接使用该校区，页内临时切换不写回共用偏好，
+ * 也不覆盖本模块原有的“上次校区”记录；常用校区为“全部校区”时才沿用旧记录。
  *
  * 预设模式（上午/下午/晚上等快捷组）切换校区或有效日期后自动查询；自定义节次
  * 模式只更新条件，必须点“查询”。同一查询键已有成功结果或正在查询时不重复发请求。
@@ -52,6 +57,7 @@ private val CLASSROOM_ZONE: ZoneId = ZoneId.of("Asia/Shanghai")
 internal class FreeClassroomViewModel(
     private val repository: FreeClassroomRepository,
     private val campusStore: FreeClassroomCampusStore = NoOpFreeClassroomCampusStore,
+    private val preferredCampus: FreeClassroomPreferredCampus = AllFreeClassroomPreferredCampus,
     private val clock: Clock = Clock.system(CLASSROOM_ZONE),
 ) : ViewModel() {
 
@@ -87,16 +93,34 @@ internal class FreeClassroomViewModel(
     private var activeQuery: FreeClassroomQuery? = null
     private var lastSuccessfulQuery: FreeClassroomQuery? = null
 
+    /**
+     * 本次进入由常用校区锁定的校区；null 表示“全部校区”，继续沿用上次校区记录。
+     * 只在初始化时读取一次，离页重入会重新读取。
+     */
+    private var preferredCampusForVisit: FreeClassroomCampus? = null
+
     init {
         viewModelScope.launch {
-            val saved = try {
-                campusStore.read()
+            val preferred = try {
+                preferredCampus.read()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 null
             }
-            if (saved != null) campus = saved
+            preferredCampusForVisit = preferred
+            val saved = if (preferred == null) {
+                try {
+                    campusStore.read()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+            if (preferred != null) campus = preferred else if (saved != null) campus = saved
             restoringCampus = false
             autoSearch()
         }
@@ -132,7 +156,7 @@ internal class FreeClassroomViewModel(
         campus = value
         building = "全部"
         error = null
-        persistCampus(value)
+        if (preferredCampusForVisit == null) persistCampus(value)
         if (mode == ClassroomQueryMode.PRESET) autoSearch()
     }
 

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
@@ -53,11 +54,11 @@ class SettingsScreenTest {
 
         rule.onNodeWithText("已保存 · 2026***01").assertIsDisplayed()
         rule.onNodeWithText("校园").assertIsDisplayed()
-        rule.onNodeWithText("应用").assertIsDisplayed()
+        rule.onNodeWithText("应用").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("图书馆登录").assertDoesNotExist()
-        rule.onNodeWithText("桌面组件").assertIsDisplayed()
+        rule.onNodeWithText("桌面组件").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("校园卡 / 电量 / 课表").assertDoesNotExist()
-        rule.onNodeWithText("校园官方网页").performClick()
+        rule.onNodeWithText("校园官方网页").performScrollTo().performClick()
 
         assertTrue(officialWebOpened)
     }

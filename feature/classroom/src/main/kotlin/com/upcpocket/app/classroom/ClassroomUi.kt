@@ -1,6 +1,7 @@
 package com.upcpocket.app.classroom
 
 import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginPage
@@ -19,6 +20,7 @@ val CLASSROOM_ROUTE: PluginRouteId = PluginRouteId.parse("classroom.free")
 internal class ClassroomUi(
     private val repository: FreeClassroomRepository,
     private val campusStore: FreeClassroomCampusStore,
+    private val preferredCampus: FreeClassroomPreferredCampus,
 ) : PluginUiContributor {
 
     override val pluginId = CLASSROOM_PLUGIN_ID
@@ -29,6 +31,7 @@ internal class ClassroomUi(
                 FreeClassroomScreen(
                     repository = repository,
                     campusStore = campusStore,
+                    preferredCampus = preferredCampus,
                     onBack = host::back,
                 )
             },

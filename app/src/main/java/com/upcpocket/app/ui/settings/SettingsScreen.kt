@@ -3,6 +3,8 @@ package com.upcpocket.app.ui.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,8 +38,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.summaryText
+import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginSectionHost
+import com.upcpocket.app.ui.components.CampusFilterChip
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
@@ -48,12 +52,14 @@ import com.upcpocket.app.ui.components.SectionHeader
  * 账号、图书馆登录、桌面组件、官方网页、外观和关于都在这里；不再维护“更多”
  * 页的第二套目录。插件只贡献图书馆登录区，宿主不硬编码图书馆实现。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     accountState: SchoolAccountState,
     schoolSections: List<PluginSection>,
     sectionHost: PluginSectionHost,
+    preferredCampus: PreferredCampus? = null,
+    onPreferredCampusChange: (PreferredCampus) -> Unit = {},
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -92,6 +98,10 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 14.dp, bottom = 0.dp),
             )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PreferredCampusCard(
+                    preferredCampus = preferredCampus,
+                    onChange = onPreferredCampusChange,
+                )
                 schoolSections.forEach { section ->
                     androidx.compose.runtime.key(section.entryId) {
                         section.content(sectionHost)
@@ -133,6 +143,46 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 常用校区只保存本机默认展示范围，不触发任何校园请求。
+ *
+ * [preferredCampus] 为 null 表示 DataStore 尚未读完：此时禁用选项，不用默认的
+ * “全部校区”冒充真实偏好。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PreferredCampusCard(
+    preferredCampus: PreferredCampus?,
+    onChange: (PreferredCampus) -> Unit,
+) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("常用校区", style = MaterialTheme.typography.titleSmall)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                PreferredCampus.entries.forEach { campus ->
+                    CampusFilterChip(
+                        selected = preferredCampus == campus,
+                        onClick = { if (preferredCampus != campus) onChange(campus) },
+                        enabled = preferredCampus != null,
+                        label = { Text(campus.label) },
+                    )
+                }
+            }
+            Text(
+                text = "功能页默认打开所选校区，页面内可临时切换。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

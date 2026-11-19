@@ -79,10 +79,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.upcpocket.app.data.classroom.AllFreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.BuildingRoomGroup
 import com.upcpocket.app.data.classroom.ClassroomPeriodGroup
 import com.upcpocket.app.data.classroom.FreeClassroomCampus
 import com.upcpocket.app.data.classroom.FreeClassroomCampusStore
+import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.classroom.FreeClassroomRepository
 import com.upcpocket.app.data.classroom.FreeClassroomResult
 import com.upcpocket.app.data.classroom.FreeClassroomRoom
@@ -116,13 +118,14 @@ fun FreeClassroomScreen(
     onBack: () -> Unit,
     repository: FreeClassroomRepository? = null,
     campusStore: FreeClassroomCampusStore = NoOpFreeClassroomCampusStore,
+    preferredCampus: FreeClassroomPreferredCampus = AllFreeClassroomPreferredCampus,
 ) {
     val actualRepository = remember(repository) { repository ?: com.upcpocket.app.data.classroom.PublicFreeClassroomRepository() }
-    val factory = remember(actualRepository, campusStore) {
+    val factory = remember(actualRepository, campusStore, preferredCampus) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                FreeClassroomViewModel(actualRepository, campusStore) as T
+                FreeClassroomViewModel(actualRepository, campusStore, preferredCampus) as T
         }
     }
     val model: FreeClassroomViewModel = viewModel(factory = factory)
