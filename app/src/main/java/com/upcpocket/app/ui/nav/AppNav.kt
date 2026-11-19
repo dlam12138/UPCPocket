@@ -80,8 +80,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.UiPrefs
@@ -100,6 +98,7 @@ import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.components.glassBorder
 import com.upcpocket.app.ui.components.glassHighlight
+import com.upcpocket.app.ui.components.glassThemeBackdrop
 import com.upcpocket.app.ui.components.isGlassSheetVisible
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.nav.kyant.LiquidBottomTab
@@ -339,9 +338,7 @@ fun AppNav(
     // 光学底栏只在 API 33+ 启用；31–32 保留现有 Material 3 底栏。
     val opticalDock = glass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val drawDock = dockVisible && !isGlassSheetVisible()
-    val dockBackdrop = if (drawDock && opticalDock) {
-        rememberLayerBackdrop()
-    } else null
+    val dockBackdrop = if (drawDock && opticalDock) glassThemeBackdrop() else null
     val surface = MaterialTheme.colorScheme.surface
 
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
@@ -353,10 +350,7 @@ fun AppNav(
             NavHost(
                 navController = navController,
                 startDestination = MAIN_ROUTE,
-                modifier = Modifier.fillMaxSize().then(
-                    if (dockBackdrop != null) Modifier.layerBackdrop(dockBackdrop).background(surface)
-                    else Modifier,
-                ),
+                modifier = Modifier.fillMaxSize(),
             ) {
                 composable(MAIN_ROUTE) {
                     HorizontalPager(

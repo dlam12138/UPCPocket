@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -109,6 +110,7 @@ private fun DefaultGlassSnackbar(data: SnackbarData, backdrop: GlassSnackbarBack
     val source = capture?.layer
     val shape = RoundedCornerShape(20.dp)
     val dark = scheme.surface.luminance() < 0.5f
+    val backing = scheme.surfaceContainerHigh.copy(alpha = 0.92f)
     val reveal = rememberWindowReveal(key = data, durationMillis = 320)
     val inset = Modifier.padding(12.dp)
     val material = if (source != null) {
@@ -129,7 +131,7 @@ private fun DefaultGlassSnackbar(data: SnackbarData, backdrop: GlassSnackbarBack
 
     val visuals = data.visuals
     Row(
-        modifier = material.glassSnackbarReflections(shape, scheme.primary, dark) { reveal.value }
+        modifier = material.glassSnackbarReflections(shape, scheme.primary, dark, backing) { reveal.value }
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .padding(start = 16.dp, end = 8.dp),
@@ -167,6 +169,7 @@ private fun Modifier.glassSnackbarReflections(
     shape: Shape,
     accent: Color,
     dark: Boolean,
+    backing: Color,
     reveal: () -> Float,
 ): Modifier = drawWithCache {
     val outline = shape.createOutline(size, layoutDirection, this)
@@ -176,9 +179,9 @@ private fun Modifier.glassSnackbarReflections(
         is Outline.Generic -> outline.path
     }
     val face = Brush.verticalGradient(
-        0f to Color.White.copy(alpha = if (dark) 0.13f else 0.30f),
-        0.35f to Color.White.copy(alpha = if (dark) 0.035f else 0.07f),
-        1f to Color.Transparent,
+        0f to Color.White.copy(alpha = if (dark) 0.13f else 0.30f).compositeOver(backing),
+        0.35f to Color.White.copy(alpha = if (dark) 0.035f else 0.07f).compositeOver(backing),
+        1f to backing,
     )
     val rim = Brush.linearGradient(
         0f to Color.White.copy(alpha = if (dark) 0.72f else 0.90f),
