@@ -31,6 +31,7 @@
     <string name="widget_timetable_unknown">时间待确认</string>
 
     <string name="widget_timetable_status_current">上课中</string>
+    <string name="widget_timetable_remaining">剩 %d 分钟</string>
     <string name="widget_timetable_status_next">下一堂</string>
     <string name="widget_timetable_status_ended">已结束</string>
     <string name="widget_timetable_status_unknown">时间待确认</string>

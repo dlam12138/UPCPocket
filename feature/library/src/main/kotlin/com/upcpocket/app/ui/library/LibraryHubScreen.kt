@@ -17,7 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.EventSeat
+import androidx.compose.material.icons.filled.LocalLibrary
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -112,7 +114,7 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "东区座位",
             subtitle = "选座与按时段找",
-            icon = Icons.Filled.EventSeat,
+            icon = Icons.AutoMirrored.Filled.MenuBook,
             actionLabel = "查看座位",
             campus = LibraryCampus.GUZHENKOU,
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEAT) },
@@ -120,7 +122,7 @@ fun LibraryHubScreen(
         LibraryPlatform(
             title = "求是座位",
             subtitle = "选座与按时段找",
-            icon = Icons.Filled.EventSeat,
+            icon = Icons.Filled.LocalLibrary,
             actionLabel = "查看座位",
             campus = LibraryCampus.GUZHENKOU,
             action = { onOpenChaoxingSeat(ChaoxingSeatKind.SEATENGINE) },

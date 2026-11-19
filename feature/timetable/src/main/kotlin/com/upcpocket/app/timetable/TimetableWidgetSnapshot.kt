@@ -33,6 +33,39 @@ data class TimetableWidgetSnapshot(
 }
 
 /**
+ * 组件只使用一天内的半开区间 [startMinute, endMinute)，end 允许 24:00。
+ * 学校数据若为负值、颠倒或超过 24:00，一律视为“时间待确认”：既不参与上课中/倒计时，
+ * 也不交给边界调度去构造非法 LocalTime。
+ */
+data class TimetableWidgetMinuteRange(
+    val startMinute: Int,
+    val endMinute: Int,
+) {
+    init {
+        require(startMinute in 0 until endMinute) { "非法课程开始时间" }
+        require(endMinute <= MINUTES_PER_DAY) { "非法课程结束时间" }
+    }
+
+    fun contains(minute: Int): Boolean = minute >= startMinute && minute < endMinute
+
+    companion object {
+        const val MINUTES_PER_DAY: Int = 24 * 60
+
+        fun of(startMinute: Int?, endMinute: Int?): TimetableWidgetMinuteRange? {
+            if (startMinute == null || endMinute == null) return null
+            if (startMinute < 0 || startMinute >= endMinute || endMinute > MINUTES_PER_DAY) {
+                return null
+            }
+            return TimetableWidgetMinuteRange(startMinute, endMinute)
+        }
+    }
+}
+
+/** 越界或缺失的时刻不会变成范围，调用方按“时间待确认”处理。 */
+val TimetableWidgetCourse.minuteRange: TimetableWidgetMinuteRange?
+    get() = TimetableWidgetMinuteRange.of(startMinute, endMinute)
+
+/**
  * 由宿主按真实 widget options + 系统字体缩放算出，不在 XML 写死高度。
  *
  * - [dense]：短矮网格或大字号，使用更紧的内边距与 16sp 主课；
@@ -41,6 +74,7 @@ data class TimetableWidgetSnapshot(
  * - [showSidePanel]：4×2 宽卡启用右侧双栏后续课程列表（即使在 135~165dp 矮 2 行桌面下也能显示多节课）；
  * - [maxSideCourses]：右侧最多直接展开的后续课程条数（2 或 3 节）。
  * - [showFooter]：更新时间行，空间不足时先让位给主课/次课。
+ * - [tight]：过矮卡片。此时若显示“剩 N 分钟”，地点行让位，避免把主课行挤出卡片。
  */
 data class TimetableWidgetLayout(
     val showDate: Boolean = true,
@@ -51,6 +85,7 @@ data class TimetableWidgetLayout(
     val compact: Boolean = false,
     val showSidePanel: Boolean = false,
     val maxSideCourses: Int = 2,
+    val tight: Boolean = false,
 ) {
     companion object {
         /**
@@ -72,6 +107,7 @@ data class TimetableWidgetLayout(
             if (showSecondary && height < 215) showFooter = false
             val showDate = height >= if (fontScale >= 1.3f) 180 else if (wide) 135 else 150
             val showLocation = height >= if (fontScale >= 1.3f) 175 else if (wide) 135 else 155
+            val tight = (wide && height < 170) || (fontScale >= 1.3f && height < 210)
             return TimetableWidgetLayout(
                 showDate = showDate,
                 showFooter = showFooter,
@@ -81,6 +117,7 @@ data class TimetableWidgetLayout(
                 compact = !wide,
                 showSidePanel = showSidePanel,
                 maxSideCourses = maxSideCourses,
+                tight = tight,
             )
         }
     }

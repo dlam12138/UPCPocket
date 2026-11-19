@@ -53,7 +53,10 @@ class TimetableWidgetTickWorker(
             reason = if (restored == null) DiagnosticReason.ACCOUNT else null,
             durationMs = (System.currentTimeMillis() - restoreStarted).coerceAtLeast(0),
         )
-        AppGraph.timetableServiceOrNull?.refreshToday()
+        val deferTodayRefreshUntil = inputData.getLong(TimetableWidgetTicker.KEY_DEFER_TODAY_REFRESH_UNTIL, 0L)
+        if (System.currentTimeMillis() >= deferTodayRefreshUntil) {
+            AppGraph.timetableServiceOrNull?.refreshToday()
+        }
         WidgetUpdates.updateKindNow(
             applicationContext,
             WidgetKind.TIMETABLE,

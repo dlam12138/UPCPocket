@@ -11,15 +11,20 @@ import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.WidgetRenderSupport
 import com.upcpocket.app.feature.timetable.R
 import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * 课表组件 RemoteViews 渲染器。只接收最小今日快照和显式导航 PendingIntent，不读账号、
  * 不发网络；所有“无账号/未同步/清理中/非教学周/无课”状态都显式呈现。
  *
- * 空间顺序固定为：页头 → 日期/状态 → 主课（课程名最多两行、时间、地点）→ 次课 →
- * 更新时间。主课不在 weighted 容器里，空间再紧也不会先把课程名压没；短矮网格由
+ * 当前时刻由调用方注入（默认上海时区此刻），便于确定性测试；只有状态为今天且时刻落在
+ * 合法 [startMinute, endMinute) 内的当前课才显示“剩 N 分钟”。次课和页脚按
+ * [TimetableWidgetLayout] 既有规则让位；过矮卡片（[TimetableWidgetLayout.tight]）再让
+ * 地点行，失败提示仍保留。
+ *
+ * 空间顺序固定为：页头 → 日期/状态 → 主课（课程名最多两行、时间、剩余分钟、地点）→
+ * 次课 → 更新时间。主课不在 weighted 容器里，空间再紧也不会先把课程名压没；短矮网格由
  * [TimetableWidgetLayout.dense] 先删日期/页脚，而不是删主课。
  */
 object TimetableWidgetRenderer {
@@ -34,6 +39,7 @@ object TimetableWidgetRenderer {
         failed: Boolean,
         openIntent: PendingIntent,
         appearance: WidgetAppearance = WidgetAppearance.SOLID,
+        now: ZonedDateTime = ZonedDateTime.now(ZONE),
     ): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_timetable_today)
         WidgetRenderSupport.applyAppearance(views, R.id.widget_timetable_root, appearance)
@@ -53,6 +59,11 @@ object TimetableWidgetRenderer {
         val metaSize = if (layout.dense || layout.compact) 12f else 12.5f
         views.setTextViewTextSize(
             R.id.widget_timetable_time,
+            TypedValue.COMPLEX_UNIT_SP,
+            metaSize,
+        )
+        views.setTextViewTextSize(
+            R.id.widget_timetable_remaining,
             TypedValue.COMPLEX_UNIT_SP,
             metaSize,
         )
@@ -90,15 +101,18 @@ object TimetableWidgetRenderer {
         views.setViewVisibility(R.id.widget_timetable_footer, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_bar, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_time, View.GONE)
+        views.setViewVisibility(R.id.widget_timetable_remaining, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_location, View.GONE)
         views.setViewVisibility(R.id.widget_timetable_main, View.VISIBLE)
         views.setTextColor(R.id.widget_timetable_course, primary)
         views.setTextColor(R.id.widget_timetable_date, secondary)
         views.setTextColor(R.id.widget_timetable_time, secondary)
+        views.setTextColor(R.id.widget_timetable_remaining, accent)
         views.setTextColor(R.id.widget_timetable_location, secondary)
         views.setTextColor(R.id.widget_timetable_footer, tertiary)
 
-        val today = LocalDate.now(ZONE)
+        val localNow = now.withZoneSameInstant(ZONE)
+        val today = localNow.toLocalDate()
         val dateLabel = formatDate(today)
 
         when (snapshot.status) {
@@ -231,13 +245,14 @@ object TimetableWidgetRenderer {
             return views
         }
 
-        val nowMinute = LocalTime.now(ZONE).let { it.hour * 60 + it.minute }
-        val current = snapshot.courses.firstOrNull { course ->
-            course.startMinute != null && course.endMinute != null &&
-                nowMinute in course.startMinute until course.endMinute
+        val nowMinute = localNow.hour * 60 + localNow.minute
+        val currentEntry = snapshot.courses.firstNotNullOfOrNull { course ->
+            course.minuteRange?.takeIf { it.contains(nowMinute) }?.let { course to it }
         }
+        val current = currentEntry?.first
+        val currentRange = currentEntry?.second
         val next = snapshot.courses.firstOrNull { course ->
-            course.startMinute != null && course.startMinute > nowMinute
+            course.minuteRange?.let { it.startMinute > nowMinute } == true
         }
         val unknownTime = snapshot.courses.firstOrNull { it.timeLabel == null }
         val main = current ?: next ?: unknownTime ?: snapshot.courses.last()
@@ -255,8 +270,24 @@ object TimetableWidgetRenderer {
             main.timeLabel ?: main.periodLabel,
         )
         views.setViewVisibility(R.id.widget_timetable_time, View.VISIBLE)
+        val footer = if (layout.showFooter) {
+            footerText(context, snapshot, layout, refreshing, failed)
+        } else {
+            null
+        }
+        val countdownVisible = currentRange != null && !(failed && footer == null)
+        if (countdownVisible) {
+            views.setTextViewText(
+                R.id.widget_timetable_remaining,
+                context.getString(
+                    R.string.widget_timetable_remaining,
+                    currentRange.endMinute - nowMinute,
+                ),
+            )
+            views.setViewVisibility(R.id.widget_timetable_remaining, View.VISIBLE)
+        }
         val location = main.location?.trim().orEmpty()
-        if (layout.showLocation && location.isNotEmpty()) {
+        if (layout.showLocation && location.isNotEmpty() && !(countdownVisible && layout.tight)) {
             views.setTextViewText(R.id.widget_timetable_location, location)
             views.setViewVisibility(R.id.widget_timetable_location, View.VISIBLE)
         }
@@ -274,11 +305,6 @@ object TimetableWidgetRenderer {
         )
 
         showMeta(context, views, layout, dateLabel, statusText, statusColor)
-        val footer = if (layout.showFooter) {
-            footerText(context, snapshot, layout, refreshing, failed)
-        } else {
-            null
-        }
         if (footer != null) {
             views.setTextViewText(R.id.widget_timetable_footer, footer)
             views.setTextColor(

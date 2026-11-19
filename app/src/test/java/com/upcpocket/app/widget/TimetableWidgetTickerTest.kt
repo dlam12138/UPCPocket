@@ -74,14 +74,119 @@ class TimetableWidgetTickerTest {
     )
 
     @Test
-    fun `current course end is the next local boundary`() {
+    fun `active course redraws at the next whole local minute`() {
         val snapshot = TimetableWidgetSnapshot(
             status = TimetableWidgetStatus.OK,
             date = now.toLocalDate(),
             courses = listOf(course(12 * 60, 13 * 60)),
         )
         assertEquals(
+            ZonedDateTime.of(2026, 11, 5, 12, 31, 0, 0, zone),
+            TimetableWidgetTicker.nextBoundary(snapshot, now),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 5, 12, 31, 0, 0, zone),
+            TimetableWidgetTicker.nextBoundary(snapshot, now.withSecond(45)),
+        )
+    }
+
+    @Test
+    fun `class end inside the next minute still wins`() {
+        val lateNow = ZonedDateTime.of(2026, 11, 5, 12, 29, 30, 0, zone)
+        val snapshot = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = lateNow.toLocalDate(),
+            courses = listOf(course(12 * 60, 12 * 60 + 30)),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 5, 12, 30, 0, 0, zone),
+            TimetableWidgetTicker.nextBoundary(snapshot, lateNow),
+        )
+    }
+
+    @Test
+    fun `countdown only yields to class end and midnight`() {
+        val active = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = now.toLocalDate(),
+            courses = listOf(course(12 * 60, 13 * 60)),
+        )
+        val midClass = TimetableWidgetTicker.planRedraw(active, now.withSecond(45))
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 5, 12, 31, 0, 0, zone),
+            midClass.at,
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 5, 13, 0, 0, 0, zone).toInstant().toEpochMilli(),
+            midClass.deferTodayRefreshUntilEpochMillis,
+        )
+
+        val lastMinute = TimetableWidgetTicker.planRedraw(
+            active,
+            ZonedDateTime.of(2026, 11, 5, 12, 59, 30, 0, zone),
+        )
+        assertEquals(
             ZonedDateTime.of(2026, 11, 5, 13, 0, 0, 0, zone),
+            lastMinute.at,
+        )
+        assertEquals(0L, lastMinute.deferTodayRefreshUntilEpochMillis)
+
+        val untilMidnight = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = now.toLocalDate(),
+            courses = listOf(course(23 * 60, 24 * 60)),
+        )
+        val midnight = TimetableWidgetTicker.planRedraw(
+            untilMidnight,
+            ZonedDateTime.of(2026, 11, 5, 23, 59, 0, 0, zone),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 6, 0, 0, 0, 0, zone),
+            midnight.at,
+        )
+        assertEquals(0L, midnight.deferTodayRefreshUntilEpochMillis)
+    }
+
+    @Test
+    fun `after the class ends the next minute redraw stops`() {
+        val afterEnd = ZonedDateTime.of(2026, 11, 5, 13, 0, 0, 0, zone)
+        val snapshot = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = afterEnd.toLocalDate(),
+            courses = listOf(course(12 * 60, 13 * 60)),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 6, 0, 0, 0, 0, zone),
+            TimetableWidgetTicker.nextBoundary(snapshot, afterEnd),
+        )
+    }
+
+    @Test
+    fun `course ending at 24_00 maps to midnight without an invalid LocalTime`() {
+        val lateNow = ZonedDateTime.of(2026, 11, 5, 23, 59, 0, 0, zone)
+        val snapshot = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = lateNow.toLocalDate(),
+            courses = listOf(course(23 * 60, 24 * 60)),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 6, 0, 0, 0, 0, zone),
+            TimetableWidgetTicker.nextBoundary(snapshot, lateNow),
+        )
+    }
+
+    @Test
+    fun `out of range synthetic course times are ignored and never crash`() {
+        val snapshot = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = now.toLocalDate(),
+            courses = listOf(
+                course(23 * 60 + 59, 25 * 60),
+                course(25 * 60, 26 * 60),
+            ),
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 6, 0, 0, 0, 0, zone),
             TimetableWidgetTicker.nextBoundary(snapshot, now),
         )
     }

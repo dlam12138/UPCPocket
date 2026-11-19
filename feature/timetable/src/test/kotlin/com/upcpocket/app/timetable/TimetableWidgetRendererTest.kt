@@ -11,9 +11,12 @@ import android.widget.RemoteViews
 import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.upcpocket.app.designsystem.R as DesignSystemR
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.feature.timetable.R
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -30,6 +33,7 @@ class TimetableWidgetRendererTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val zone = ZoneId.of("Asia/Shanghai")
     private val today = LocalDate.now(zone)
+    private val testNow: ZonedDateTime = today.atTime(12, 0).atZone(zone)
     private val open = PendingIntent.getActivity(
         context,
         1,
@@ -60,6 +64,8 @@ class TimetableWidgetRendererTest {
             fetchedAtEpochMillis = 1_700_000_000_000,
         ),
         layout: TimetableWidgetLayout = TimetableWidgetLayout.forSize(172, 234, 1f),
+        appearance: WidgetAppearance = WidgetAppearance.SOLID,
+        now: ZonedDateTime = testNow,
     ): RemoteViews = TimetableWidgetRenderer.render(
         context = context,
         snapshot = snapshot,
@@ -67,6 +73,15 @@ class TimetableWidgetRendererTest {
         refreshing = false,
         failed = false,
         openIntent = open,
+        appearance = appearance,
+        now = now,
+    )
+
+    private fun snapshotOf(vararg courses: TimetableWidgetCourse) = TimetableWidgetSnapshot(
+        status = TimetableWidgetStatus.OK,
+        date = today,
+        courses = courses.toList(),
+        fetchedAtEpochMillis = 1_700_000_000_000,
     )
 
     private fun applied(views: RemoteViews, widthDp: Int, heightDp: Int, fontScale: Float = 1f): View {
@@ -198,10 +213,10 @@ class TimetableWidgetRendererTest {
         assertTrue(mediumFontFourByTwo.showSidePanel)
 
         val courses = listOf(
-            course(name = "高等数学", start = 0, end = 23 * 60 + 58),
-            course(name = "大学物理", location = "讲堂群 201", start = 23 * 60 + 59, end = 24 * 60 + 60),
-            course(name = "油气地质学", location = "工科楼 C102", start = 25 * 60, end = 26 * 60),
-            course(name = "英语读写", location = "南堂 305", start = 27 * 60, end = 28 * 60),
+            course(name = "高等数学", start = 8 * 60, end = 9 * 60 + 35),
+            course(name = "大学物理", location = "讲堂群 201", start = 10 * 60 + 45, end = 12 * 60 + 20),
+            course(name = "油气地质学", location = "工科楼 C102", start = 14 * 60, end = 15 * 60 + 35),
+            course(name = "英语读写", location = "南堂 305", start = 16 * 60 + 45, end = 17 * 60 + 30),
         )
         val snapshot = TimetableWidgetSnapshot(
             status = TimetableWidgetStatus.OK,
@@ -209,8 +224,13 @@ class TimetableWidgetRendererTest {
             courses = courses,
             fetchedAtEpochMillis = 1_700_000_000_000,
         )
+        val morning = today.atTime(8, 30).atZone(zone)
         val root = applied(
-            rendered(snapshot = snapshot, layout = TimetableWidgetLayout.forSize(340, 180, 1.0f)),
+            rendered(
+                snapshot = snapshot,
+                layout = TimetableWidgetLayout.forSize(340, 180, 1.0f),
+                now = morning,
+            ),
             widthDp = 340,
             heightDp = 180,
         )
@@ -223,16 +243,129 @@ class TimetableWidgetRendererTest {
         assertEquals("油气地质学", root.findViewById<TextView>(R.id.widget_timetable_upcoming_name_2).text.toString())
         assertEquals("英语读写", root.findViewById<TextView>(R.id.widget_timetable_upcoming_name_3).text.toString())
 
-        val fiveCourses = courses + course(name = "体育", location = "田径场", start = 29 * 60, end = 30 * 60)
+        val fiveCourses = courses +
+            course(name = "体育", location = "田径场", start = 19 * 60, end = 19 * 60 + 45)
         val overflowRoot = applied(
             rendered(
                 snapshot = snapshot.copy(courses = fiveCourses),
                 layout = TimetableWidgetLayout.forSize(320, 145, 1.0f),
+                now = morning,
             ),
             widthDp = 320,
             heightDp = 145,
         )
         assertEquals(View.VISIBLE, overflowRoot.findViewById<View>(R.id.widget_timetable_upcoming_1).visibility)
         assertEquals(View.VISIBLE, overflowRoot.findViewById<View>(R.id.widget_timetable_upcoming_more).visibility)
+    }
+
+    @Test
+    fun `active course counts whole minutes and clears at the end boundary`() {
+        val snapshot = snapshotOf(course(start = 12 * 60, end = 13 * 60))
+
+        fun remainingAt(hour: Int, minute: Int): TextView = applied(
+            rendered(snapshot = snapshot, now = today.atTime(hour, minute).atZone(zone)),
+            widthDp = 172,
+            heightDp = 234,
+        ).findViewById(R.id.widget_timetable_remaining)
+
+        val atStart = remainingAt(12, 0)
+        assertEquals(View.VISIBLE, atStart.visibility)
+        assertEquals("剩 60 分钟", atStart.text.toString())
+
+        assertEquals("剩 59 分钟", remainingAt(12, 1).text.toString())
+        assertEquals("剩 1 分钟", remainingAt(12, 59).text.toString())
+        assertEquals(View.GONE, remainingAt(13, 0).visibility)
+    }
+
+    @Test
+    fun `unknown or out of range course times never show a countdown`() {
+        val unknownTime = TimetableWidgetCourse(
+            name = "时间待确认课程",
+            location = null,
+            timeLabel = null,
+            startMinute = null,
+            endMinute = null,
+            periodLabel = "第13–14节",
+            colorSlot = null,
+        )
+        val outOfRange = course(start = 23 * 60 + 59, end = 25 * 60)
+        listOf(unknownTime, outOfRange).forEach { item ->
+            val root = applied(rendered(snapshot = snapshotOf(item)), widthDp = 172, heightDp = 234)
+            assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_remaining).visibility)
+        }
+    }
+
+    @Test
+    fun `countdown stays readable in real two by two widths with solid and glass`() {
+        val snapshot = snapshotOf(
+            course(name = "高等数学", location = "南堂 305", start = 12 * 60, end = 13 * 60),
+        )
+        val at = today.atTime(12, 30).atZone(zone)
+        listOf(112, 236).forEach { widthDp ->
+            listOf(WidgetAppearance.SOLID, WidgetAppearance.FROSTED_GLASS).forEach { appearance ->
+                val root = applied(
+                    rendered(
+                        snapshot = snapshot,
+                        layout = TimetableWidgetLayout.forSize(widthDp, 233, 1f),
+                        appearance = appearance,
+                        now = at,
+                    ),
+                    widthDp = widthDp,
+                    heightDp = 233,
+                )
+                val remaining = root.findViewById<TextView>(R.id.widget_timetable_remaining)
+                assertEquals(View.VISIBLE, remaining.visibility)
+                assertEquals("剩 30 分钟", remaining.text.toString())
+                assertNotNull(remaining.layout)
+                assertEquals(0, remaining.layout.getEllipsisCount(0))
+                assertTrue(remaining.bottom <= root.height)
+                assertEquals(
+                    context.getColor(appearance.textColorResource(DesignSystemR.color.widget_accent)),
+                    remaining.currentTextColor,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `short four by two yields the location line to the countdown`() {
+        val layout = TimetableWidgetLayout.forSize(320, 145, 1f)
+        assertTrue(layout.tight)
+        val root = applied(
+            rendered(
+                snapshot = snapshotOf(
+                    course(name = "高等数学", location = "南堂 305", start = 12 * 60, end = 13 * 60),
+                ),
+                layout = layout,
+                now = today.atTime(12, 30).atZone(zone),
+            ),
+            widthDp = 320,
+            heightDp = 145,
+        )
+        val remaining = root.findViewById<TextView>(R.id.widget_timetable_remaining)
+        assertEquals(View.VISIBLE, remaining.visibility)
+        assertEquals("剩 30 分钟", remaining.text.toString())
+        assertTrue(remaining.bottom <= root.height)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_location).visibility)
+    }
+
+    @Test
+    fun `compact failure keeps its hint and leaves the countdown out`() {
+        val views = TimetableWidgetRenderer.render(
+            context = context,
+            snapshot = snapshotOf(
+                course(name = "高等数学", location = null, start = 12 * 60, end = 13 * 60),
+            ),
+            layout = TimetableWidgetLayout.forSize(320, 145, 1f),
+            refreshing = false,
+            failed = true,
+            openIntent = open,
+            now = testNow,
+        )
+        val root = applied(views, widthDp = 320, heightDp = 145)
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_remaining).visibility)
+        val failedHint = root.findViewById<TextView>(R.id.widget_timetable_location)
+        assertEquals(View.VISIBLE, failedHint.visibility)
+        assertEquals("更新失败 · 显示缓存", failedHint.text.toString())
     }
 }
