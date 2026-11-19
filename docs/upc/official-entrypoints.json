@@ -5,7 +5,7 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "UPC Pocket v2.0.7 (published) / v2.0.8 (local development, unreleased); dated verification entries retain their historical scope",
+  "release": "UPC Pocket v2.0.8 (published) / v2.0.9 (local development). Dated verification entries retain their historical scope.",
   "source_references": [
     {
       "id": "upc-mcp",
@@ -35,8 +35,44 @@
         "checked_on": "2026-11-17"
       },
       "authentication": "Public official pages; no UPC account or CAS required for the reviewed content",
-      "integration": "local_development_fixed_official_browser_entry_2.0.8_unreleased",
+      "integration": "official_external_page",
       "verification": "2026-11-17: the official HTTPS academic-calendar column, latest observed annual article and its two semester JPGs were reviewed without authentication. The local 2.0.8 host implementation shares the fixed column URL across service directory, optional home pin and official web catalog; it requires neither an account nor the timetable plugin. Browser-navigation and mobile-reading acceptance remain pending; see docs/releases/2.0.8-development.md. The target is the column, not a pinned annual image or automatic current-academic-year inference. The images include undergraduate, graduate and general student notes but do not split the two campuses or prove identical individual schedules. This development catalog is not runtime API configuration."
+    },
+    {
+      "id": "academic_affairs_system",
+      "name": "教务系统",
+      "campus": null,
+      "url": "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
+      "official_source": "https://jwc.upc.edu.cn/",
+      "integration": "official_external_page",
+      "verification": "2026-11-19: the academic affairs homepage links to the same host at /sso.jsp. The student URL requested for 2.0.9 timed out in the public web check. Browser access and sign-in remain to be verified."
+    },
+    {
+      "id": "digital_upc",
+      "name": "数字石大",
+      "campus": null,
+      "url": "https://i.upc.edu.cn/",
+      "official_source": "https://www.upc.edu.cn/",
+      "integration": "official_external_page",
+      "verification": "2026-11-19: the university homepage links directly to this portal. The portal timed out in the public web check. Browser access and sign-in remain to be verified."
+    },
+    {
+      "id": "academic_affairs_website",
+      "name": "教务处官网",
+      "campus": null,
+      "url": "https://jwc.upc.edu.cn/",
+      "official_source": "https://www.upc.edu.cn/",
+      "integration": "official_external_page",
+      "verification": "2026-11-19: the homepage linked from the university's department navigation was publicly readable."
+    },
+    {
+      "id": "colleges_directory",
+      "name": "学院官网",
+      "campus": null,
+      "url": "https://www.upc.edu.cn/jxkydw.htm",
+      "official_source": "https://www.upc.edu.cn/",
+      "integration": "official_external_page",
+      "verification": "2026-11-19: the university's public 教学科研单位 directory lists links to individual college websites."
     },
     {
       "id": "shiguang",

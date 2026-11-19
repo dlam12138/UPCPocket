@@ -1,10 +1,10 @@
 # UPC Pocket 长期计划
 
-## 评估采用 MyGo 重构 UPC Pocket
+## MyGo 前端备选
 
-**待收集社区意见。** 先收集社区对 iOS 支持的需求和对项目整体重构的意见，再决定是否引入 MyGo。
+**待收集社区意见。** 继续收集 iOS 支持需求。MyGo 仅作为应用内界面的备选。若评估双端共用界面，可先用单页原型验证与 Kotlin 的桥接、真机体验和维护成本。 [MyGo 移动端文档](https://github.com/egoist/mygo/blob/v0.10.0/docs/mobile/README.md)
 
-如果决定引入 MyGo，将重构整个 UPC Pocket，让 Android 和 iOS 共用一套 Go 界面与业务代码，减少双端的重复开发和长期维护成本。系统集成、打包与发布按平台适配。 [MyGo 移动端文档](https://github.com/egoist/mygo/blob/v0.10.0/docs/mobile/README.md)
+校园接口、业务规则和数据层沿用 Kotlin，双端需要复用的逻辑可逐步抽到 Kotlin Multiplatform。桌面小组件、通知、打包和发布按平台适配。
 
 ## 桌面小组件玻璃质感
 

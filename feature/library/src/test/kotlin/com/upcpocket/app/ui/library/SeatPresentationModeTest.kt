@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -31,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -212,6 +215,155 @@ class SeatPresentationModeTest {
             rule.onNodeWithText("隐藏此座位").assertIsDisplayed().performClick()
             assertEquals(index + 1, hides)
         }
+    }
+
+    @Test
+    fun `libseat map renders complete real-size seat labels from rounded cells after zoom and taps resolve the same seat`() {
+        val rows = 8
+        val cols = 14
+        val layout = LibrarySeatLayout(
+            rows = rows,
+            cols = cols,
+            seats = buildList {
+                repeat(rows) { row ->
+                    repeat(cols) { col ->
+                        val number = 100 + row * cols + col
+                        add(
+                            LibrarySeat(
+                                id = "seat-$number",
+                                name = number.toString(),
+                                row = row,
+                                col = col,
+                                type = "seat",
+                                enabled = true,
+                                status = "FREE",
+                                localOnly = false,
+                            ),
+                        )
+                    }
+                }
+            },
+        )
+        var selectedId: String? = null
+
+        rule.setContent {
+            MaterialTheme {
+                Box(Modifier.requiredWidth(328.dp)) {
+                    SeatMap(
+                        layout = layout,
+                        selectedId = null,
+                        onSelect = { selectedId = it.id },
+                        mapScopeKey = "libseat-label-regression",
+                    )
+                }
+            }
+        }
+
+        val density = rule.activity.resources.displayMetrics.density
+        val card = rule.onNodeWithTag("seat_map_viewport").fetchSemanticsNode().size
+        val content = rule.onNodeWithTag("seat_map_content").fetchSemanticsNode().size
+        assertEquals(
+            "地图视口只应扣除精确 48dp 控制条",
+            48f,
+            (card.height - content.height) / density,
+            0.5f,
+        )
+
+        rule.onNodeWithText("放大").performClick()
+        rule.waitForIdle()
+
+        val first = requireNotNull(layout.seats.firstOrNull { it.name == "148" })
+        val adjacent = requireNotNull(layout.seats.firstOrNull { it.name == "149" })
+        assertMapLabelComplete(first)
+        assertMapLabelComplete(adjacent)
+        val firstBounds = rule.onNodeWithTag("seat_map_label_${first.id}", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        val adjacentBounds = rule.onNodeWithTag("seat_map_label_${adjacent.id}", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertTrue(
+            "相邻格座号不能叠字：${first.name} 与 ${adjacent.name}",
+            firstBounds.right <= adjacentBounds.left + 1f,
+        )
+
+        val contentOrigin = rule.onNodeWithTag("seat_map_content").fetchSemanticsNode().boundsInRoot.topLeft
+        tapSeatLabel(first, contentOrigin)
+        assertEquals(first.id, selectedId)
+        tapSeatLabel(adjacent, contentOrigin)
+        assertEquals(adjacent.id, selectedId)
+
+        val seamLeft = requireNotNull(layout.seats.firstOrNull { it.name == "147" })
+        val seamRight = requireNotNull(layout.seats.firstOrNull { it.name == "148" })
+        val leftCell = rule.onNodeWithContentDescription(
+            "座位 ${seamLeft.name}，可用",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        val rightCell = rule.onNodeWithContentDescription(
+            "座位 ${seamRight.name}，可用",
+            useUnmergedTree = true,
+        ).fetchSemanticsNode().boundsInRoot
+        assertEquals(
+            "相邻格必须共享同一条取整后的边：${seamLeft.name} 与 ${seamRight.name}",
+            leftCell.right,
+            rightCell.left,
+            0.5f,
+        )
+        val seamX = leftCell.right - contentOrigin.x
+        val seamY = leftCell.center.y - contentOrigin.y
+        rule.onNodeWithTag("seat_map_content").performTouchInput {
+            click(Offset(seamX - 0.05f, seamY))
+        }
+        rule.waitForIdle()
+        assertEquals("紧贴公共边左侧应命中 ${seamLeft.name}", seamLeft.id, selectedId)
+        rule.onNodeWithTag("seat_map_content").performTouchInput {
+            click(Offset(seamX + 0.05f, seamY))
+        }
+        rule.waitForIdle()
+        assertEquals("紧贴公共边右侧应命中 ${seamRight.name}", seamRight.id, selectedId)
+    }
+
+    private fun assertMapLabelComplete(seat: LibrarySeat) {
+        val text = textLayout("seat_map_label_${seat.id}")
+        assertEquals("TextLayoutResult must retain the source seat label", seat.name, text.layoutInput.text.text)
+        assertEquals("座号保持单行：${seat.name}", 1, text.lineCount)
+        assertEquals(
+            "The final character must be part of the visible line: ${seat.name}",
+            seat.name.length,
+            text.getLineEnd(text.lineCount - 1, visibleEnd = true),
+        )
+        assertFalse("座号不得被省略：${seat.name}", text.isLineEllipsized(0))
+        assertTrue(
+            "可见座号必须完整落在排版宽度内：${seat.name}；" +
+                "size=${text.size.width}x${text.size.height}，" +
+                "lineLeft=${text.getLineLeft(0)}，lineRight=${text.getLineRight(0)}",
+            text.getLineLeft(0) >= 0f && text.getLineRight(0) <= text.size.width.toFloat(),
+        )
+        assertTrue(
+            "可见座号必须完整落在排版高度内：${seat.name}；" +
+                "lineBottom=${text.getLineBottom(0)}，size=${text.size.height}",
+            text.getLineBottom(0) <= text.size.height.toFloat(),
+        )
+        val fontSize = text.layoutInput.style.fontSize.value
+        assertTrue("座号应使用约 12sp 的真实字号，实际 $fontSize", fontSize in 10f..14f)
+        val finalCharacter = text.getBoundingBox(seat.name.lastIndex)
+        assertTrue("The final character must have visible width: ${seat.name}", finalCharacter.width > 0f)
+        assertTrue(
+            "The final character must fit in the text width: ${seat.name}",
+            finalCharacter.right <= text.size.width.toFloat(),
+        )
+        assertTrue(
+            "The final character must fit in the text height: ${seat.name}",
+            finalCharacter.bottom <= text.size.height.toFloat(),
+        )
+    }
+
+    private fun tapSeatLabel(seat: LibrarySeat, contentOrigin: Offset) {
+        val center = rule.onNodeWithTag("seat_map_label_${seat.id}", useUnmergedTree = true)
+            .assertIsDisplayed()
+            .fetchSemanticsNode().boundsInRoot.center
+        rule.onNodeWithTag("seat_map_content").performTouchInput {
+            click(center - contentOrigin)
+        }
+        rule.waitForIdle()
     }
 
     private fun assertSeatLabelFullyVisible(tag: String, label: String) {

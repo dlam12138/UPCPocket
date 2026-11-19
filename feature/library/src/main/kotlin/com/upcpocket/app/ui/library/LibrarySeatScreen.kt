@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -81,13 +80,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
@@ -96,11 +97,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -2050,6 +2049,9 @@ internal fun SeatMap(
     }
 
     val byPosition = remember(layout) { layout.seats.associateBy { it.row to it.col } }
+    val cellSeats = remember(layout) {
+        byPosition.values.filter { it.row in 0 until layout.rows && it.col in 0 until layout.cols }
+    }
     val density = LocalDensity.current
     var fallbackZoom by rememberSaveable("libseat", mapScopeKey, "zoom") { mutableStateOf(1f) }
     var fallbackCenterX by rememberSaveable("libseat", mapScopeKey, "center-x") { mutableStateOf(0.5f) }
@@ -2058,7 +2060,7 @@ internal fun SeatMap(
     val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
     val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column {
         BoxWithConstraints(
             Modifier.fillMaxWidth()
                 .height(368.dp)
@@ -2066,10 +2068,10 @@ internal fun SeatMap(
                 .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow)
                 .testTag("seat_map_viewport"),
         ) {
-            val controlsHeightPx = with(density) { 48.dp.toPx() }
+            val controlsHeightPx = with(density) { 48.dp.roundToPx() }
             val viewportSize = SeatMapSize(
                 width = constraints.maxWidth.toFloat(),
-                height = (constraints.maxHeight - controlsHeightPx).coerceAtLeast(1f),
+                height = (constraints.maxHeight - controlsHeightPx).coerceAtLeast(1).toFloat(),
             )
             val paddingPx = with(density) { 12.dp.toPx() }
             val targetSeatPx = with(density) { 48.dp.toPx() }
@@ -2102,6 +2104,16 @@ internal fun SeatMap(
                     }
                 }
 
+                fun seatAt(offset: Offset): LibrarySeat? {
+                    val position = roundedSeatMapGridPosition(
+                        transform = currentTransform.value,
+                        point = SeatMapPoint(offset.x, offset.y),
+                        rows = layout.rows,
+                        cols = layout.cols,
+                    ) ?: return null
+                    return currentByPosition.value[position.row to position.col]
+                }
+
                 val gestureModifier = Modifier
                     .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom) {
                         detectTransformGestures { centroid, pan, zoomChange, _ ->
@@ -2112,14 +2124,10 @@ internal fun SeatMap(
                             saveTransform(next)
                         }
                     }
-                    .pointerInput(mapScopeKey, bounds, viewportSize) {
+                    .pointerInput(mapScopeKey, bounds, viewportSize, layout.rows, layout.cols) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val position = currentTransform.value.displayToGridPosition(
-                                    SeatMapPoint(offset.x, offset.y),
-                                ) ?: return@detectTapGestures
-                                val target = currentByPosition.value[position.row to position.col]
-                                    ?: return@detectTapGestures
+                                val target = seatAt(offset) ?: return@detectTapGestures
                                 if (currentSelectionEnabled.value && target.selectable &&
                                     target.id !in currentHiddenIds.value
                                 ) {
@@ -2127,11 +2135,7 @@ internal fun SeatMap(
                                 }
                             },
                             onLongPress = { offset ->
-                                val position = currentTransform.value.displayToGridPosition(
-                                    SeatMapPoint(offset.x, offset.y),
-                                ) ?: return@detectTapGestures
-                                val target = currentByPosition.value[position.row to position.col]
-                                    ?: return@detectTapGestures
+                                val target = seatAt(offset) ?: return@detectTapGestures
                                 if (target.isSeat && target.id !in currentHiddenIds.value &&
                                     currentSelectionEnabled.value
                                 ) {
@@ -2141,7 +2145,7 @@ internal fun SeatMap(
                         )
                     }
 
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxSize()) {
                     SeatMapZoomControls(
                         onZoomOut = {
                             val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
@@ -2152,107 +2156,228 @@ internal fun SeatMap(
                             saveTransform(transform.zoomAt(center, 1.6f))
                         },
                         onReset = { transform.reset()?.let(::saveTransform) },
+                        modifier = Modifier.height(48.dp),
                     )
-                    Box(Modifier.fillMaxWidth().weight(1f).then(gestureModifier)) {
-                    val drawnCellSize = with(density) { transform.scale.toDp() }
-                    val showLabels = drawnCellSize >= 24.dp
                     Box(
                         Modifier
-                            .offset {
-                                val current = currentTransform.value
-                                IntOffset(
-                                    x = (current.translationX + current.contentBounds.left * current.scale).roundToInt(),
-                                    y = (current.translationY + current.contentBounds.top * current.scale).roundToInt(),
-                                )
-                            }
-                            .graphicsLayer {
-                                val current = currentTransform.value
-                                val densityScale = current.scale / density.density
-                                scaleX = densityScale
-                                scaleY = densityScale
-                                transformOrigin = TransformOrigin(0f, 0f)
-                            }
-                            .size(bounds.width.dp, bounds.height.dp),
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clipToBounds()
+                            .then(gestureModifier)
+                            .testTag("seat_map_content"),
                     ) {
-                        layout.seats.forEach { item ->
-                            if (item.row !in 0 until layout.rows || item.col !in 0 until layout.cols) {
-                                return@forEach
-                            }
-                            val hidden = item.id in hiddenIds
-                            val selected = item.id == selectedId
-                            val positionStatus = if (!item.isSeat) "非座位布局元素" else when {
-                                hidden -> "本机已隐藏"
-                                item.localOnly || !item.enabled -> "不可预约"
-                                item.status == "FREE" || item.status == "YESSELECT" -> "可用"
-                                else -> com.upcpocket.app.data.library.LibrarySeatStatus.label(item.status)
-                            }
-                            val color = when {
-                                !item.isSeat -> MaterialTheme.colorScheme.surfaceVariant
-                                hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
-                                selected -> MaterialTheme.colorScheme.tertiary
-                                !item.enabled || item.localOnly -> MaterialTheme.colorScheme.surfaceContainerHighest
-                                item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.primaryContainer
-                                item.status == "AWAY" -> MaterialTheme.colorScheme.tertiaryContainer
-                                item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
-                                    MaterialTheme.colorScheme.errorContainer
-                                else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                            }
-                            val textColor = when {
-                                hidden -> MaterialTheme.colorScheme.outline
-                                selected -> MaterialTheme.colorScheme.onTertiary
-                                !item.enabled || item.localOnly -> MaterialTheme.colorScheme.onSurfaceVariant
-                                item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.onPrimaryContainer
-                                item.status == "AWAY" -> MaterialTheme.colorScheme.onTertiaryContainer
-                                item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
-                                    MaterialTheme.colorScheme.onErrorContainer
-                                else -> MaterialTheme.colorScheme.onSurfaceVariant
-                            }
-                            Box(
-                                Modifier
-                                    .offset(
-                                        x = (item.col.toFloat() - bounds.left).dp,
-                                        y = (item.row.toFloat() - bounds.top).dp,
-                                    )
-                                    .size(1.dp)
-                                    .padding(0.04.dp)
-                                    .clip(RoundedCornerShape(0.18.dp))
-                                    .background(color)
-                                    .then(if (hidden) Modifier.drawBehind {
-                                        drawLine(
-                                            color = Color.Gray,
-                                            start = Offset.Zero,
-                                            end = Offset(size.width, size.height),
-                                            strokeWidth = size.minDimension * 0.09f,
-                                        )
-                                    } else Modifier)
-                                    .semantics {
-                                        contentDescription = if (item.isSeat) {
-                                            "座位 ${item.name}，$positionStatus"
-                                        } else {
-                                            positionStatus
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                if (item.isSeat && showLabels && !hidden) {
-                                    Text(
-                                        item.name,
-                                        color = textColor,
-                                        fontSize = 0.38.sp,
-                                        lineHeight = 0.4.sp,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
-                                        textAlign = TextAlign.Center,
-                                    )
-                                } else if (hidden && showLabels) {
-                                    Text("·", color = textColor, fontSize = 0.5.sp, maxLines = 1)
-                                }
-                            }
-                        }
+                        SeatMapCells(
+                            cells = cellSeats,
+                            selectedId = selectedId,
+                            hiddenIds = hiddenIds,
+                            showLabels = with(density) { transform.scale.toDp() } >= 16.dp,
+                            transform = transform,
+                        )
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 布局与命中共用的格边投影：网格线先投影到像素，再统一取整。
+ */
+private fun seatMapEdge(index: Int, scale: Float, translation: Float): Int =
+    (index * scale + translation).roundToInt()
+
+/**
+ * 在单轴取整后的格边上二分定位指针所在格。格边单调不减，合并边
+ * （不足 1px）不会成为任何格；落在末边上不算命中。
+ */
+private fun roundedSeatMapIndex(
+    coordinate: Float,
+    count: Int,
+    scale: Float,
+    translation: Float,
+): Int? {
+    if (!coordinate.isFinite()) return null
+    if (seatMapEdge(0, scale, translation) > coordinate) return null
+    var low = 0
+    var high = count
+    while (low < high) {
+        val mid = (low + high + 1) / 2
+        if (seatMapEdge(mid, scale, translation) <= coordinate) low = mid else high = mid - 1
+    }
+    return if (low == count) null else low
+}
+
+/**
+ * 点击与长按共用的命中：返回指针所在的原始行列，边界与绘制取整一致。
+ */
+private fun roundedSeatMapGridPosition(
+    transform: SeatMapViewportTransform,
+    point: SeatMapPoint,
+    rows: Int,
+    cols: Int,
+): SeatMapGridPosition? {
+    val row = roundedSeatMapIndex(point.y, rows, transform.scale, transform.translationY)
+        ?: return null
+    val col = roundedSeatMapIndex(point.x, cols, transform.scale, transform.translationX)
+        ?: return null
+    return SeatMapGridPosition(row = row, col = col)
+}
+
+/**
+ * 按 [SeatMapViewportTransform] 的最终像素位置排布与视口相交的座位格；
+ * 相邻格共享取整后的边，文字完整放得下才居中显示。
+ */
+@Composable
+private fun SeatMapCells(
+    cells: List<LibrarySeat>,
+    selectedId: String?,
+    hiddenIds: Set<String>,
+    showLabels: Boolean,
+    transform: SeatMapViewportTransform,
+) {
+    Layout(
+        content = {
+            cells.forEach { item ->
+                val hidden = item.id in hiddenIds
+                val selected = item.id == selectedId
+                val positionStatus = if (!item.isSeat) "非座位布局元素" else when {
+                    hidden -> "本机已隐藏"
+                    item.localOnly || !item.enabled -> "不可预约"
+                    item.status == "FREE" || item.status == "YESSELECT" -> "可用"
+                    else -> com.upcpocket.app.data.library.LibrarySeatStatus.label(item.status)
                 }
+                val color = when {
+                    !item.isSeat -> MaterialTheme.colorScheme.surfaceVariant
+                    hidden -> MaterialTheme.colorScheme.surfaceContainerHighest
+                    selected -> MaterialTheme.colorScheme.tertiary
+                    !item.enabled || item.localOnly -> MaterialTheme.colorScheme.surfaceContainerHighest
+                    item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.primaryContainer
+                    item.status == "AWAY" -> MaterialTheme.colorScheme.tertiaryContainer
+                    item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
+                        MaterialTheme.colorScheme.errorContainer
+                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                }
+                val textColor = when {
+                    hidden -> MaterialTheme.colorScheme.outline
+                    selected -> MaterialTheme.colorScheme.onTertiary
+                    !item.enabled || item.localOnly -> MaterialTheme.colorScheme.onSurfaceVariant
+                    item.status == "FREE" || item.status == "YESSELECT" -> MaterialTheme.colorScheme.onPrimaryContainer
+                    item.status == "AWAY" -> MaterialTheme.colorScheme.onTertiaryContainer
+                    item.status == "IN_USE" || item.status == "BOOKED" || item.status == "FULL" ->
+                        MaterialTheme.colorScheme.onErrorContainer
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                }
+                SeatMapCell(
+                    label = when {
+                        !showLabels || !item.isSeat -> null
+                        hidden -> "·"
+                        else -> item.name
+                    },
+                    labelTag = "seat_map_label_${item.id}",
+                    description = if (item.isSeat) "座位 ${item.name}，$positionStatus" else positionStatus,
+                    backgroundColor = color,
+                    textColor = textColor,
+                    hidden = hidden,
+                )
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) { measurables, constraints ->
+        val scale = transform.scale
+        val translationX = transform.translationX
+        val translationY = transform.translationY
+        val viewportWidth = constraints.maxWidth
+        val viewportHeight = constraints.maxHeight
+        val count = minOf(measurables.size, cells.size)
+        val placements = ArrayList<SeatMapPlacedCell>(count)
+        for (index in 0 until count) {
+            val cell = cells[index]
+            val left = seatMapEdge(cell.col, scale, translationX)
+            val top = seatMapEdge(cell.row, scale, translationY)
+            val right = seatMapEdge(cell.col + 1, scale, translationX)
+            val bottom = seatMapEdge(cell.row + 1, scale, translationY)
+            val width = right - left
+            val height = bottom - top
+            if (width <= 0 || height <= 0) continue
+            if (right <= 0 || bottom <= 0 || left >= viewportWidth || top >= viewportHeight) continue
+            placements += SeatMapPlacedCell(
+                placeable = measurables[index].measure(Constraints.fixed(width, height)),
+                x = left,
+                y = top,
+            )
+        }
+        layout(viewportWidth, viewportHeight) {
+            for (placement in placements) {
+                placement.placeable.place(placement.x, placement.y)
+            }
+        }
+    }
+}
+
+private class SeatMapPlacedCell(
+    val placeable: Placeable,
+    val x: Int,
+    val y: Int,
+)
+
+/** 单个座位：实像素尺寸的圆角色块，座号完整放得下时才居中显示。 */
+@Composable
+private fun SeatMapCell(
+    label: String?,
+    labelTag: String?,
+    description: String,
+    backgroundColor: Color,
+    textColor: Color,
+    hidden: Boolean,
+) {
+    Layout(
+        content = {
+            if (label != null) {
+                Text(
+                    text = label,
+                    color = textColor,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Visible,
+                    modifier = if (labelTag != null) Modifier.testTag(labelTag) else Modifier,
+                )
+            }
+        },
+        modifier = Modifier
+            .drawBehind {
+                val inset = size.minDimension * 0.04f
+                drawRoundRect(
+                    color = backgroundColor,
+                    topLeft = Offset(inset, inset),
+                    size = Size(
+                        width = (size.width - inset * 2f).coerceAtLeast(1f),
+                        height = (size.height - inset * 2f).coerceAtLeast(1f),
+                    ),
+                    cornerRadius = CornerRadius(size.minDimension * 0.18f),
+                )
+                if (hidden) {
+                    drawLine(
+                        color = Color.Gray,
+                        start = Offset.Zero,
+                        end = Offset(size.width, size.height),
+                        strokeWidth = size.minDimension * 0.09f,
+                    )
+                }
+            }
+            .semantics { contentDescription = description },
+    ) { measurables, constraints ->
+        val textPlaceable = measurables.firstOrNull()?.measure(Constraints())
+        val inset = minOf(constraints.maxWidth, constraints.maxHeight) * 0.04f
+        val fits = textPlaceable != null &&
+            textPlaceable.width <= constraints.maxWidth - inset * 2f &&
+            textPlaceable.height <= constraints.maxHeight - inset * 2f
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            if (textPlaceable != null && fits) {
+                textPlaceable.place(
+                    x = (constraints.maxWidth - textPlaceable.width) / 2,
+                    y = (constraints.maxHeight - textPlaceable.height) / 2,
+                )
             }
         }
     }
@@ -2263,9 +2388,10 @@ internal fun SeatMapZoomControls(
     onZoomOut: () -> Unit,
     onZoomIn: () -> Unit,
     onReset: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        Modifier.fillMaxWidth(),
+        modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {

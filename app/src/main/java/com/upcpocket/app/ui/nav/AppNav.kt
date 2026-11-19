@@ -366,6 +366,7 @@ fun AppNav(
                         // 权限/通知消费，预加载不会触发学校登录或刷新。
                         beyondViewportPageCount = destinations.lastIndex.coerceAtLeast(0),
                         userScrollEnabled = !imeVisible,
+                        overscrollEffect = null,
                         key = { destinations[it].route },
                     ) { page ->
                         val active = pagerState.currentPage == page &&
@@ -542,9 +543,8 @@ internal fun pageIndexForRoute(routes: List<String>, route: String): Int = route
 /**
  * 五项悬浮胶囊 dock（基于 3beuml/ZZUPocket MIT AppNav 的视觉/覆盖结构）。
  *
- * 外层只吞 tap，不吃 move：胶囊四周留白不会穿透到下面的校园卡按钮，页面横向
- * Pager 仍可从胶囊外起手。选中泡随 PagerState 的连续位置滑动，图标颜色/填充
- * 按滑动进度交叉过渡；点击只切 Pager，不新增 NavController 栈。
+ * 触摸区域限于胶囊的矩形边界，页面手势可从周围的透明留白起手。胶囊内的点击
+ * 由 Tab 处理，选中泡和图标过渡随 PagerState 的连续位置更新。
  */
 @Composable
 private fun FloatingDock(
@@ -584,91 +584,82 @@ private fun FloatingDock(
     val tabIndication = if (glass) null else LocalIndication.current
     val lastIndex = destinations.lastIndex
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .pointerInput(Unit) {
-                // 上游 issue #12 的修复：只消费胶囊带子上的 tap，不消费 move，
-                // 因此留白不会点穿校园卡，页面拖动也不会被 dock 拦住。
-                detectTapGestures { }
-            },
-    ) {
-        Surface(
-            shape = dockShape,
-            color = dockColor,
-            tonalElevation = dockElevation,
-            shadowElevation = 0.dp,
-            border = if (glass) glassBorder(1.2.dp) else BorderStroke(
-                0.5.dp,
-                Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.25f),
-                        scheme.outlineVariant.copy(alpha = 0.6f),
-                        scheme.outlineVariant.copy(alpha = 0.6f),
-                    ),
+    Surface(
+        shape = dockShape,
+        color = dockColor,
+        tonalElevation = dockElevation,
+        shadowElevation = 0.dp,
+        border = if (glass) glassBorder(1.2.dp) else BorderStroke(
+            0.5.dp,
+            Brush.verticalGradient(
+                listOf(
+                    Color.White.copy(alpha = 0.25f),
+                    scheme.outlineVariant.copy(alpha = 0.6f),
+                    scheme.outlineVariant.copy(alpha = 0.6f),
                 ),
             ),
-            modifier = Modifier
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
-                .fillMaxWidth()
-                .height(56.dp)
-                .shadow(
-                    elevation = dockElevation,
-                    shape = dockShape,
-                    clip = false,
-                )
-                .testTag("floating_dock"),
-        ) {
-            BoxWithConstraints(Modifier.fillMaxSize().glassHighlight(dockShape)) {
-                val slotWidth = maxWidth / destinations.size
-                if (!glass) {
-                    val bubbleSize = 40.dp
-                    Box(
-                        Modifier
-                            .offset {
-                                val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-                                    .coerceIn(0f, lastIndex.toFloat())
-                                val bubbleX = slotWidth * position + (slotWidth - bubbleSize) / 2
-                                IntOffset(bubbleX.roundToPx(), 8.dp.roundToPx())
-                            }
-                            .size(bubbleSize)
-                            .background(selectedBubble, CircleShape),
-                    )
-                }
-                Row(
-                    Modifier.fillMaxSize().then(liquidIndicator).selectableGroup(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    destinations.forEachIndexed { index, destination ->
-                        val focusIndicator = if (glass) {
-                            val focused = remember { mutableStateOf(false) }
-                            Modifier.onFocusChanged { focused.value = it.isFocused }
-                                .then(
-                                    if (focused.value) Modifier.border(1.dp, scheme.primary, CircleShape)
-                                    else Modifier,
-                                )
-                        } else Modifier
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .then(focusIndicator)
-                                .selectable(
-                                    selected = index == selectedIndex,
-                                    role = Role.Tab,
-                                    interactionSource = null,
-                                    indication = tabIndication,
-                                    onClick = { onSelect(index) },
-                                )
-                                .semantics {
-                                    contentDescription = destination.label
-                                }
-                                .testTag("tab_${destination.route}"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            DockTabIcon(destination, pagerState, index, lastIndex, unselectedTint, selectedTint)
+        ),
+        modifier = modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .fillMaxWidth()
+            .height(56.dp)
+            .pointerInput(Unit) { detectTapGestures { } }
+            .shadow(
+                elevation = dockElevation,
+                shape = dockShape,
+                clip = false,
+            )
+            .testTag("floating_dock"),
+    ) {
+        BoxWithConstraints(Modifier.fillMaxSize().glassHighlight(dockShape)) {
+            val slotWidth = maxWidth / destinations.size
+            if (!glass) {
+                val bubbleSize = 40.dp
+                Box(
+                    Modifier
+                        .offset {
+                            val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                                .coerceIn(0f, lastIndex.toFloat())
+                            val bubbleX = slotWidth * position + (slotWidth - bubbleSize) / 2
+                            IntOffset(bubbleX.roundToPx(), 8.dp.roundToPx())
                         }
+                        .size(bubbleSize)
+                        .background(selectedBubble, CircleShape),
+                )
+            }
+            Row(
+                Modifier.fillMaxSize().then(liquidIndicator).selectableGroup(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                destinations.forEachIndexed { index, destination ->
+                    val focusIndicator = if (glass) {
+                        val focused = remember { mutableStateOf(false) }
+                        Modifier.onFocusChanged { focused.value = it.isFocused }
+                            .then(
+                                if (focused.value) Modifier.border(1.dp, scheme.primary, CircleShape)
+                                else Modifier,
+                            )
+                    } else Modifier
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .then(focusIndicator)
+                            .selectable(
+                                selected = index == selectedIndex,
+                                role = Role.Tab,
+                                interactionSource = null,
+                                indication = tabIndication,
+                                onClick = { onSelect(index) },
+                            )
+                            .semantics {
+                                contentDescription = destination.label
+                            }
+                            .testTag("tab_${destination.route}"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        DockTabIcon(destination, pagerState, index, lastIndex, unselectedTint, selectedTint)
                     }
                 }
             }

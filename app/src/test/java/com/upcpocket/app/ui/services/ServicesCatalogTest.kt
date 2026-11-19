@@ -12,6 +12,8 @@ import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.ui.official.OfficialWebCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -57,6 +59,43 @@ class ServicesCatalogTest {
         assertEquals(Intent.ACTION_VIEW, intent.action)
         assertEquals(Uri.parse(OfficialWebCatalog.CALENDAR_URL), intent.data)
         assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
+    }
+
+    @Test
+    fun `official study directory appends four general school links after calendar`() {
+        val expected = listOf(
+            "教务系统" to "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
+            "数字石大" to "https://i.upc.edu.cn/",
+            "教务处官网" to "https://jwc.upc.edu.cn/",
+            "学院官网" to "https://www.upc.edu.cn/jxkydw.htm",
+        )
+        val studyLinks = OfficialWebCatalog.learning
+        val appended = studyLinks.takeLast(expected.size)
+
+        assertEquals(expected.map { it.first }, appended.map { it.title })
+        assertTrue(
+            studyLinks.dropLast(expected.size)
+                .any { it.serviceId == OfficialWebCatalog.CALENDAR_SERVICE_ID },
+        )
+
+        expected.forEachIndexed { index, (title, url) ->
+            val link = appended[index]
+            assertSame(link, OfficialWebCatalog.all.single { it.title == title })
+            assertEquals("学习", link.group)
+            assertEquals(url, link.url)
+            assertNull(link.serviceId)
+            assertNull(link.serviceCategory)
+            assertNull(link.campus)
+
+            val intent = OfficialWebCatalog.browserIntent(link)
+            assertEquals(Intent.ACTION_VIEW, intent.action)
+            assertEquals(url, intent.dataString)
+            assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
+            assertNull(intent.extras)
+        }
+
+        val studyServices = OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY)
+        assertTrue(expected.none { (title, _) -> studyServices.any { it.title == title } })
     }
 
     @Test

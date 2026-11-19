@@ -7,9 +7,12 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.MeetingRoom
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.School
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.plugin.ui.UiCategory
@@ -72,6 +75,34 @@ object OfficialWebCatalog {
             campus = PreferredCampus.TANGDAOWAN,
         ),
         calendar,
+        OfficialLink(
+            title = "教务系统",
+            subtitle = "学校登录",
+            url = "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
+            icon = Icons.Outlined.School,
+            group = "学习",
+        ),
+        OfficialLink(
+            title = "数字石大",
+            subtitle = "学校门户",
+            url = "https://i.upc.edu.cn/",
+            icon = Icons.Filled.Apps,
+            group = "学习",
+        ),
+        OfficialLink(
+            title = "教务处官网",
+            subtitle = "教务通知与办事指南",
+            url = "https://jwc.upc.edu.cn/",
+            icon = Icons.AutoMirrored.Outlined.MenuBook,
+            group = "学习",
+        ),
+        OfficialLink(
+            title = "学院官网",
+            subtitle = "教学科研单位",
+            url = "https://www.upc.edu.cn/jxkydw.htm",
+            icon = Icons.Outlined.Public,
+            group = "学习",
+        ),
     )
 
     val life: List<OfficialLink> = listOf(
