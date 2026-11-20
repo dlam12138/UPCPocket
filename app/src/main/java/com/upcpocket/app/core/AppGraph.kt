@@ -13,6 +13,8 @@ import com.upcpocket.app.account.api.AccountInvalidationFailure
 import com.upcpocket.app.account.api.AccountInvalidationRequest
 import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
+import com.upcpocket.app.campusmap.CampusMapCapabilities
+import com.upcpocket.app.campusmap.CampusMapPlugin
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.data.cardrecharge.CardRechargeService
 import com.upcpocket.app.card.CardCapabilities
@@ -46,6 +48,7 @@ import com.upcpocket.app.power.PowerCapabilities
 import com.upcpocket.app.power.PowerPlugin
 import com.upcpocket.app.power.PowerService
 import com.upcpocket.app.timetable.TimetableCapabilities
+import com.upcpocket.app.timetable.TimetableCampusMap
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
@@ -467,6 +470,14 @@ object AppGraph {
             context = appContext,
             account = account,
             authenticator = timetableAuthenticator,
+            resolveCampusMap = {
+                activePlugins.capability(CampusMapCapabilities.PLACE_REQUESTS)?.let { requests ->
+                    TimetableCampusMap { location ->
+                        requests.offer(location)
+                        CampusMapPlugin.ROUTE
+                    }
+                }
+            },
         )
     }
 
@@ -477,6 +488,10 @@ object AppGraph {
 
     private val servicePortalPlugin: ServicePortalPlugin by lazy {
         ServicePortalPlugin(account = account, authenticator = UpcServicePortalAuthenticator(account))
+    }
+
+    private val campusMapPlugin: CampusMapPlugin by lazy {
+        CampusMapPlugin(initialCampus = { uiPrefsStore.initialCampusMapCampus() })
     }
 
     private val pluginRuntime: PluginRuntime by lazy {
@@ -490,6 +505,7 @@ object AppGraph {
             runtime.register(timetablePlugin.descriptor) { timetablePlugin }
             runtime.register(shiguangPlugin.descriptor) { shiguangPlugin }
             runtime.register(servicePortalPlugin.descriptor) { servicePortalPlugin }
+            runtime.register(campusMapPlugin.descriptor) { campusMapPlugin }
         }
     }
 

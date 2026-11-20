@@ -174,12 +174,15 @@ class HostPluginUiTest {
                 "todo.list",
                 "shiguang.home",
                 "serviceportal.home",
+                "campusmap.home",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),
         )
         assertTrue(
             AppGraph.ui.pages.all {
-                it.pluginId.value in setOf("card", "power", "classroom", "library", "focus", "timetable", "todo", "shiguang", "serviceportal")
+                it.pluginId.value in setOf(
+                    "card", "power", "classroom", "library", "focus", "timetable", "todo", "shiguang", "serviceportal", "campusmap",
+                )
             },
         )
     }

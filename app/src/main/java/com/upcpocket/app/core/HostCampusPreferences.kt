@@ -1,5 +1,6 @@
 package com.upcpocket.app.core
 
+import com.upcpocket.app.campusmap.CampusId
 import com.upcpocket.app.data.classroom.FreeClassroomCampus
 import com.upcpocket.app.data.classroom.FreeClassroomPreferredCampus
 import com.upcpocket.app.data.library.LibraryCampus
@@ -59,3 +60,9 @@ internal fun UiPrefsStore.powerCampusPreference(): PowerCampusPreferenceProvider
 /** 只读常用校区；只在 DataStore 真实读取后发射。 */
 internal fun UiPrefsStore.preferredCampusFlow() =
     flow.map { it.preferredCampus }
+
+internal suspend fun UiPrefsStore.initialCampusMapCampus(): CampusId =
+    when (preferredCampusFlow().first()) {
+        PreferredCampus.GUZHENKOU -> CampusId.GZK
+        PreferredCampus.ALL, PreferredCampus.TANGDAOWAN -> CampusId.TDW
+    }

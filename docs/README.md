@@ -16,6 +16,8 @@ M0–M5 文档保留各阶段的实施、真实证据与当时限制；其中“
 
 | 文档 | 内容 |
 | --- | --- |
+| [校园导航核心开发计划](design/2026-11-19-campus-navigation-implementation.md) | 地图定位、步骑选路、偏航重算与验收，选型结果见 [ADR 007](adr/007-offline-campus-navigation.md) |
+| [校园地图导航共创提案](design/2026-11-19-campus-map-navigation-plan.md) | 两校区校内步骑行导航和首轮共创验证 |
 | [2.0.9 更新待开发](design/2.0.9-update-plan.md) | 常用校区与服务分组、课表排版与组件剩余时间、图书馆「现在」预约与古镇口座位入口图标、可选轻量玻璃（真机待验）与前端重构评估 |
 | [长期计划](design/long-term-plan.md) | 收集 iOS 支持需求、保留 MyGo 前端备选、改进桌面小组件的玻璃质感 |
 | [2.0.8 更新优先级与 PR 合入计划](design/2.0.8-update-plan.md) | 页面稳定性为发布前提；#8→#9、五 Tab、图钉与旧数据兼容；已本地实施，本轮未执行远端合并 |

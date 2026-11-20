@@ -10,6 +10,7 @@ ADR 记录影响模块边界、数据兼容或信任链的长期决定，不记�
 | [004](004-release-identity-and-update-trust.md) | 独立新版身份、长期签名与更新信任链 | Accepted（追溯） |
 | [005](005-2.0.8-toolchain-and-widget-state.md) | 2.0.8 工具链、待办截止迁移与桌面状态边界 | Accepted（实施决定） |
 | [006](006-2.0.8-material-theme-and-glass-widgets.md) | Material 3 主题与独立玻璃组件 | Accepted（更新 005 的外观决定） |
+| [007](007-offline-campus-navigation.md) | 两校区离线校园地图与前台导航 | Accepted（开发实现，现场待验） |
 
 新增重大决策使用递增编号，写明日期、状态、背景、决策、备选、理由、影响/代价和源码/需求依据。Accepted 表示当前生效；Proposed 尚未采纳；Superseded 需链接替代记录；Deprecated 说明停用原因。变更既有选择时新增关联记录并更新旧记录状态，不重写原决策内容或假造过去讨论。
 
