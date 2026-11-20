@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间实际使用的 Kotlin 契约，核对日期 2026-11-17，对应 2.0.8 开发代码。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名和默认值以链接源码为准；修改公共面同时更新本文、[架构](ARCHITECTURE.md)与所有消费者。
+本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-20 核对的 2.1.0 课表与待办合页。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
 
 ## 插件、能力与 UI
 
@@ -21,6 +21,8 @@
 [PluginUi.kt](core/plugin-ui/src/main/kotlin/com/upcpocket/app/plugin/ui/PluginUi.kt) 的 `PluginUiContributor.contribute(registry)` 添加 `PluginEntry`、`PluginPage`、`PluginSection`、`PluginBottomNav`；registry 校验重复 ID/路由和归属后构建 `PluginUiSnapshot`。宿主负责 fork/原子合并及失败隔离。`PluginPageHost.open(route: PluginRouteId)`、`back()`、账号设置入口是窄导航面；feature 不拿任意宿主 NavController。`LocalPluginPageActive` 表示可执行前台动作，`LocalDockClearance` 表示宿主悬浮导航留白。
 
 2.0.8 增加 `UiSurface.SERVICE_DIRECTORY`，`PluginEntry.category: UiCategory = GENERAL` 和 `keywords: String = ""` 作为分类/搜索元数据；分类为学习与空间、校园生活、校务与成长、常用工具。稳定 ID 和路由保持；服务目录与首页固定共用贡献，不复制业务状态。宿主 `official.calendar` 是固定公开外链服务，不塞入课表领域契约，也不要求账号或课表插件。
+
+2.1.0 中，宿主在课表页、待办页和待办能力可用时，通过 `LocalTimetableTodoSlot` 在 `timetable.week` 的滚动区域顶部装配 `TodoScheduleSection`。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。课表插件缺失时，`todo.list` 保留为一级页。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
 ## 界面材质
 

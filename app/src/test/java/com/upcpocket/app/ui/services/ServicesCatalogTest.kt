@@ -9,6 +9,8 @@ import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiSurface
+import com.upcpocket.app.ui.official.GymReservationHandoff
+import com.upcpocket.app.ui.official.OfficialLink
 import com.upcpocket.app.ui.official.OfficialWebCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -19,6 +21,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -64,10 +67,10 @@ class ServicesCatalogTest {
     @Test
     fun `official study directory appends four general school links after calendar`() {
         val expected = listOf(
-            "教务系统" to "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx",
-            "数字石大" to "https://i.upc.edu.cn/",
-            "教务处官网" to "https://jwc.upc.edu.cn/",
-            "学院官网" to "https://www.upc.edu.cn/jxkydw.htm",
+            Triple("教务系统", "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx", "official.academic_system"),
+            Triple("数字石大", "https://i.upc.edu.cn/", "official.digital_upc"),
+            Triple("教务处官网", "https://jwc.upc.edu.cn/", "official.jwc"),
+            Triple("学院官网", "https://www.upc.edu.cn/jxkydw.htm", "official.schools"),
         )
         val studyLinks = OfficialWebCatalog.learning
         val appended = studyLinks.takeLast(expected.size)
@@ -78,12 +81,13 @@ class ServicesCatalogTest {
                 .any { it.serviceId == OfficialWebCatalog.CALENDAR_SERVICE_ID },
         )
 
-        expected.forEachIndexed { index, (title, url) ->
+        expected.forEachIndexed { index, entry ->
+            val (title, url, serviceId) = entry
             val link = appended[index]
             assertSame(link, OfficialWebCatalog.all.single { it.title == title })
             assertEquals("学习", link.group)
             assertEquals(url, link.url)
-            assertNull(link.serviceId)
+            assertEquals(serviceId, link.serviceId)
             assertNull(link.serviceCategory)
             assertNull(link.campus)
 
@@ -95,7 +99,85 @@ class ServicesCatalogTest {
         }
 
         val studyServices = OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY)
-        assertTrue(expected.none { (title, _) -> studyServices.any { it.title == title } })
+        assertTrue(expected.none { (title, _, _) -> studyServices.any { it.title == title } })
+    }
+
+    @Test
+    fun `all browser entries have stable unique home pin ids`() {
+        val expected = mapOf(
+            "课表" to "official.timetable",
+            "空闲教室" to "official.free_classroom",
+            "图书馆座位系统" to "official.library_seat",
+            "校历" to "official.calendar",
+            "教务系统" to "official.academic_system",
+            "数字石大" to "official.digital_upc",
+            "教务处官网" to "official.jwc",
+            "学院官网" to "official.schools",
+            "唐岛湾剩余电量" to "official.power_tangdaowan",
+            "古镇口电费" to "official.power_guzhenkou",
+        )
+        val browserLinks = OfficialWebCatalog.all.filter { it.weChatHandoff == null }
+
+        assertEquals(expected.keys, browserLinks.map { it.title }.toSet())
+        assertEquals(expected, browserLinks.associate { it.title to it.serviceId })
+        assertEquals(
+            expected.size,
+            browserLinks.mapNotNull { it.serviceId }.toSet().size,
+        )
+    }
+
+    @Test
+    fun `pinned other-campus page stays visible for unpin when preferred campus changes`() {
+        val pinnedTangdaowan = OfficialWebCatalog.TANGDAOWAN_POWER_SERVICE_ID
+
+        val withPin = OfficialWebCatalog.visibleFor(
+            OfficialWebCatalog.all,
+            PreferredCampus.GUZHENKOU,
+            keepServiceIds = setOf(pinnedTangdaowan),
+        )
+        assertEquals(
+            "唐岛湾剩余电量",
+            withPin.single { it.serviceId == pinnedTangdaowan }.title,
+        )
+        assertFalse(withPin.any { it.title == "游泳馆预约" })
+        assertTrue(withPin.any { it.title == "古镇口电费" })
+
+        val afterUnpin = OfficialWebCatalog.visibleFor(
+            OfficialWebCatalog.all,
+            PreferredCampus.GUZHENKOU,
+            keepServiceIds = emptySet(),
+        )
+        assertFalse(afterUnpin.any { it.serviceId == pinnedTangdaowan })
+    }
+
+    @Test
+    fun `venue reservations are searchable life handoffs without home pins`() {
+        val gym = OfficialWebCatalog.all.single { it.title == "体育馆预约" }
+        val pool = OfficialWebCatalog.all.single { it.title == "游泳馆预约" }
+
+        assertEquals(listOf(gym, pool), OfficialWebCatalog.life.filter { it.weChatHandoff != null })
+        for (link in listOf(gym, pool)) {
+            assertEquals("生活", link.group)
+            assertEquals(UiCategory.LIFE, link.serviceCategory)
+            assertNull(link.serviceId)
+            assertTrue(link in OfficialWebCatalog.serviceLinksFor(UiCategory.LIFE))
+            assertFalse(link in OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY))
+        }
+        assertNull(gym.campus)
+        assertEquals(GymReservationHandoff.gym, gym.weChatHandoff)
+        assertEquals(GymReservationHandoff.RULES_URL, gym.url)
+        assertEquals(PreferredCampus.TANGDAOWAN, pool.campus)
+        assertEquals("唐岛湾 · 官方微信", pool.subtitle)
+        assertEquals(GymReservationHandoff.pool, pool.weChatHandoff)
+        assertEquals(GymReservationHandoff.POOL_INTRO_URL, pool.url)
+
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        for (link in listOf(gym, pool)) {
+            var handoff: OfficialLink? = null
+            OfficialWebCatalog.activate(context, link) { handoff = it }
+            assertSame(link, handoff)
+        }
+        assertNull(shadowOf(context).nextStartedActivity)
     }
 
     @Test
@@ -106,9 +188,11 @@ class ServicesCatalogTest {
 
         assertTrue(tangdaowan.any { it.title == "图书馆座位系统" })
         assertTrue(tangdaowan.any { it.title == "唐岛湾剩余电量" })
+        assertTrue(tangdaowan.any { it.title == "游泳馆预约" })
         assertFalse(tangdaowan.any { it.title == "古镇口电费" })
         assertFalse(guzhenkou.any { it.title == "图书馆座位系统" })
         assertFalse(guzhenkou.any { it.title == "唐岛湾剩余电量" })
+        assertFalse(guzhenkou.any { it.title == "游泳馆预约" })
         assertTrue(guzhenkou.any { it.title == "古镇口电费" })
 
         for (links in listOf(tangdaowan, guzhenkou)) {

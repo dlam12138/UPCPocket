@@ -3,8 +3,13 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.plugin.ui.UiSurface
+import com.upcpocket.app.timetable.TIMETABLE_ROUTE
+import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoLaunchContract
+import com.upcpocket.app.ui.nav.shouldMergeTodoIntoTimetable
+import com.upcpocket.app.ui.nav.visiblePluginTabs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
@@ -120,6 +125,32 @@ class HostPluginUiTest {
         assertEquals(
             listOf("library.account.section"),
             AppGraph.ui.sectionsFor(UiSurface.MORE_SCHOOL).map { it.entryId.value },
+        )
+    }
+
+    @Test
+    fun `active timetable and todo capabilities assemble the merged page`() {
+        val merged = shouldMergeTodoIntoTimetable(
+            timetablePageRegistered = AppGraph.ui.page(TIMETABLE_ROUTE) != null,
+            todoPageRegistered = AppGraph.ui.page(TODO_ROUTE) != null,
+            todoStoreAvailable = AppGraph.todoStoreOrNull != null,
+        )
+        assertTrue(merged)
+
+        // 用最终已激活插件的真实 bottomNav 验证宿主过滤，而不是手写路由表。
+        val tabs = AppGraph.ui.bottomNav
+        val routes = tabs.map { it.route.value }
+        assertTrue(routes.contains(TODO_ROUTE.value))
+        assertTrue(routes.contains(TIMETABLE_ROUTE.value))
+
+        val visibleRoutes = visiblePluginTabs(tabs, merged).map { it.route.value }
+        assertFalse(visibleRoutes.contains(TODO_ROUTE.value))
+        assertTrue(visibleRoutes.contains(TIMETABLE_ROUTE.value))
+        assertEquals(routes.size - 1, visibleRoutes.size)
+
+        assertEquals(
+            routes,
+            visiblePluginTabs(tabs, timetableTodoMerged = false).map { it.route.value },
         )
     }
 

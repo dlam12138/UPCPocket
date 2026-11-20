@@ -50,6 +50,7 @@ import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -89,6 +90,14 @@ import java.time.LocalDate
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
+
+/**
+ * 宿主装配的课表页顶部槽位。
+ *
+ * 只承载本机日程待办等宿主注入内容；不参与课表账号、登录或周查询状态。槽位在
+ * 账号阻断/首次使用分支之前渲染，因此本机内容不依赖学校能力是否可用。
+ */
+val LocalTimetableTodoSlot = compositionLocalOf<(@Composable () -> Unit)?> { null }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +203,8 @@ internal fun TimetableScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            LocalTimetableTodoSlot.current?.invoke()
+
             if (state.accountBlocked) {
                 AccountBlockedCard(
                     message = state.message ?: "学校账号暂不可用。",

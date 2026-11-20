@@ -339,6 +339,7 @@ fun TodoEditorSheet(
                         },
                         enabled = !saving,
                         contentColor = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("todo_editor_delete"),
                     ) {
                         Text("删除")
                     }

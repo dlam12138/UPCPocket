@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -35,8 +36,10 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -299,6 +302,195 @@ class TodoScreenTest {
         rule.onNodeWithText("编辑待办").assertDoesNotExist()
     }
 
+    @Test
+    fun `schedule section defaults to today and keeps an explicit date across restore`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        fun at(date: String, hour: Int): Long = LocalDate.parse(date)
+            .atTime(hour, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+
+        val store = FakeTodoStore(
+            listOf(
+                task("逾期", createdAt = 10, dueAt = at("2026-11-19", 9)),
+                task("今天截止", createdAt = 20, dueAt = at("2026-11-20", 18)),
+                task("明天", createdAt = 30, dueAt = at("2026-11-21", 9)),
+                task("未定时", createdAt = 40),
+            ),
+        )
+        var openedAll = 0
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = store,
+                    onOpenAll = { openedAll++ },
+                    zone = zone,
+                    clock = { now },
+                )
+            }
+        }
+
+        rule.onNodeWithText("今天 · 11月20日").assertIsDisplayed()
+        rule.onNodeWithText("3 项").assertIsDisplayed()
+        rule.onNodeWithText("逾期").assertIsDisplayed()
+        rule.onNodeWithText("今天截止").assertIsDisplayed()
+        rule.onNodeWithText("未定时").assertIsDisplayed()
+        rule.onNodeWithText("明天").assertDoesNotExist()
+
+        rule.onNodeWithTag("todo_schedule_day_2026-11-21").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("11月21日 周六").assertIsDisplayed()
+        rule.onNodeWithText("明天").assertIsDisplayed()
+        rule.onNodeWithText("逾期").assertDoesNotExist()
+
+        rule.onNodeWithTag("todo_schedule_day_2026-11-17").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("11月17日 周二").assertIsDisplayed()
+        rule.onNodeWithText("这天没有未完成待办。").assertIsDisplayed()
+        rule.onNodeWithText("另有 1 项未设置时间。").assertIsDisplayed()
+
+        rule.onNodeWithTag("todo_schedule_next_week").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("11月24日 周二").assertIsDisplayed()
+        rule.onNodeWithTag("todo_schedule_today").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("今天 · 11月20日").assertIsDisplayed()
+
+        rule.onNodeWithTag("todo_schedule_day_2026-11-21").performClick()
+        rule.waitForIdle()
+        restoration.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+        rule.onNodeWithText("11月21日 周六").assertIsDisplayed()
+        rule.onNodeWithText("明天").assertIsDisplayed()
+        rule.onNodeWithText("回到今天").assertIsDisplayed()
+
+        rule.onNodeWithTag("todo_schedule_all").performClick()
+        assertEquals(1, openedAll)
+    }
+
+    @Test
+    fun `schedule completion is revision guarded and offers undo`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val store = FakeTodoStore(listOf(task("今天任务", createdAt = 10)))
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = store,
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("标记完成：今天任务").performClick()
+        rule.waitUntil(5_000) { store.current.single().completed }
+        rule.onNodeWithTag("todo_schedule_undo").assertIsDisplayed()
+        assertEquals(1, store.revisionUpdates)
+
+        rule.onNodeWithText("撤销").performClick()
+        rule.waitUntil(5_000) { !store.current.single().completed }
+        assertEquals(3, store.current.single().revision)
+        assertEquals(2, store.revisionUpdates)
+    }
+
+    @Test
+    fun `schedule add and row open the existing editor`() {
+        val store = FakeTodoStore(listOf(task("可编辑", createdAt = 10)))
+        rule.setContent {
+            MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
+        }
+
+        rule.onNodeWithTag("todo_schedule_add").performClick()
+        rule.onNodeWithText("新增待办").assertIsDisplayed()
+        rule.onNodeWithTag("todo_editor_cancel").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_editor_cancel")
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        rule.onNodeWithText("新增待办").assertDoesNotExist()
+
+        val taskId = store.current.single().id
+        rule.onNodeWithTag("todo_schedule_task_$taskId").performClick()
+        rule.onNodeWithText("编辑待办").assertIsDisplayed()
+    }
+
+    @Test
+    fun `schedule editor delete offers inline restore`() {
+        val store = FakeTodoStore(listOf(task("可删除", createdAt = 10)))
+        rule.setContent {
+            MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
+        }
+
+        val taskId = store.current.single().id
+        rule.onNodeWithTag("todo_schedule_task_$taskId").performClick()
+        rule.onNodeWithText("编辑待办").assertIsDisplayed()
+        rule.onNodeWithTag("todo_editor_delete").performScrollTo()
+        performClickSemantics("todo_editor_delete")
+        rule.waitUntil(5_000) { store.current.isEmpty() }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        rule.onNodeWithText("编辑待办").assertDoesNotExist()
+        rule.onNodeWithTag("todo_schedule_undo").assertIsDisplayed()
+        rule.onNodeWithText("已删除").assertIsDisplayed()
+
+        rule.onNodeWithText("撤销").performClick()
+        rule.waitUntil(5_000) { store.current.size == 1 }
+        assertEquals("可删除", store.current.single().title)
+        assertEquals(2, store.current.single().revision)
+    }
+
+    @Test
+    fun `schedule loading is not shown as an empty store`() {
+        val store = FakeTodoStore(emptyList(), taskFlow = MutableSharedFlow())
+        rule.setContent {
+            MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
+        }
+
+        rule.onNodeWithText("正在读取待办").assertIsDisplayed()
+        rule.onNodeWithText("暂无待办").assertDoesNotExist()
+    }
+
+    @Test
+    fun `schedule read failure is not shown as an empty store`() {
+        val store = FakeTodoStore(
+            emptyList(),
+            taskFlow = flow { throw IllegalStateException("synthetic read failure") },
+        )
+        rule.setContent {
+            MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
+        }
+
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("待办读取失败。").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("待办读取失败。").assertIsDisplayed()
+        rule.onNodeWithText("暂无待办").assertDoesNotExist()
+    }
+
+    @Test
+    fun `schedule valid empty store is explicit`() {
+        val store = FakeTodoStore(emptyList())
+        rule.setContent {
+            MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
+        }
+
+        rule.onNodeWithText("暂无待办").assertIsDisplayed()
+        rule.onNodeWithText("添加一条").assertIsDisplayed()
+        rule.onNodeWithText("待办读取失败。").assertDoesNotExist()
+    }
+
     private fun task(
         title: String,
         createdAt: Long,
@@ -352,9 +544,12 @@ class TodoScreenTest {
         }
     }
 
-    private class FakeTodoStore(initial: List<TodoTask>) : TodoStore {
+    private class FakeTodoStore(
+        initial: List<TodoTask>,
+        taskFlow: Flow<List<TodoTask>>? = null,
+    ) : TodoStore {
         private val state = MutableStateFlow(initial)
-        override val tasks: StateFlow<List<TodoTask>> = state
+        override val tasks: Flow<List<TodoTask>> = taskFlow ?: state
         override val pendingOpenTask = MutableStateFlow<String?>(null)
         override val pendingCreateRequest = MutableStateFlow<String?>(null)
         val current: List<TodoTask> get() = state.value

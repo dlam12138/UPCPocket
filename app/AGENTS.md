@@ -11,7 +11,7 @@
 | [UpcPocketApp.kt](src/main/java/com/upcpocket/app/UpcPocketApp.kt) | 诊断安装、插件启动、本机账号恢复后再恢复业务 |
 | [AppGraph.kt](src/main/java/com/upcpocket/app/core/AppGraph.kt) | 显式装配、认证适配注入、账号清理协调、可选能力解析 |
 | [HostUiAssembly.kt](src/main/java/com/upcpocket/app/core/HostUiAssembly.kt) | UI 贡献校验、原子合并和失败插件隔离 |
-| [AppNav.kt](src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) | 2.0.8 五 tab、Pager、胶囊、二级路由与系统入口导航 |
+| [AppNav.kt](src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) | Pager、胶囊、课表与待办合页、二级路由与系统入口导航 |
 | [WidgetRefreshWorker.kt](src/main/java/com/upcpocket/app/widget/WidgetRefreshWorker.kt) | 用户刷新调度与账号有界恢复 |
 | [TimetableWidgetTicker.kt](src/main/java/com/upcpocket/app/widget/TimetableWidgetTicker.kt) | 一次性本地时刻边界重绘，不联网 |
 | [TodoWidgetProvider.kt](src/main/java/com/upcpocket/app/widget/TodoWidgetProvider.kt) / [TodoWidgetCompleteReceiver.kt](src/main/java/com/upcpocket/app/widget/TodoWidgetCompleteReceiver.kt) | 待办组件与私有 revision 条件完成入口 |

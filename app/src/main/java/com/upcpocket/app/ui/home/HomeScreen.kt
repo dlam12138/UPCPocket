@@ -42,7 +42,6 @@ import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
-import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.data.prefs.UiPrefs
@@ -52,6 +51,7 @@ import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.CampusIconButton
 import com.upcpocket.app.ui.components.glassBackground
 import com.upcpocket.app.ui.nav.filledIcon
+import com.upcpocket.app.ui.official.OfficialLink
 import com.upcpocket.app.ui.official.OfficialWebCatalog
 import com.upcpocket.app.ui.theme.LocalUiStyle
 import java.time.Duration
@@ -74,6 +74,24 @@ internal fun pinnedPluginEntries(
     availableEntries: List<PluginEntry>,
     pinnedIds: Set<String>,
 ): List<PluginEntry> = availableEntries.filter { it.entryId.value in pinnedIds }
+
+/**
+ * 首页固定的官方网页：按全部常规浏览器条目的稳定 ID 匹配，不限定分类或校区。
+ *
+ * 只包含带 [OfficialLink.serviceId] 的条目；微信交接入口没有 ID，因此不会出现在
+ * 首页快捷项。点击仍由调用方交给系统浏览器，不附加登录参数或自动请求。
+ */
+internal fun pinnedOfficialWebLinks(pinnedIds: Set<String>): List<OfficialLink> =
+    OfficialWebCatalog.all.filter { link ->
+        link.serviceId?.let(pinnedIds::contains) == true
+    }
+
+/**
+ * 原生服务与官方网页同名且同时固定时，只给网页版快捷项加「（网页）」后缀，
+ * 官方目录本身的名称保持不变。
+ */
+internal fun officialWebQuickActionTitle(title: String, pinnedNativeTitles: Set<String>): String =
+    if (title in pinnedNativeTitles) "$title（网页）" else title
 
 /**
  * 「首页」= 今天的入口和校园服务，不再复制课表或“更多”的整套目录。
@@ -106,8 +124,10 @@ fun HomeScreen(
         pinnedPluginEntries(serviceEntries, pinnedServiceIds)
     }
     val pinnedOfficialLinks = remember(pinnedServiceIds) {
-        OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY)
-            .filter { it.serviceId?.let(pinnedServiceIds::contains) == true }
+        pinnedOfficialWebLinks(pinnedServiceIds)
+    }
+    val pinnedEntryTitles = remember(pinnedEntries) {
+        pinnedEntries.mapTo(mutableSetOf()) { it.title }
     }
     val actions = buildList {
         pinnedEntries.forEach { entry ->
@@ -122,7 +142,7 @@ fun HomeScreen(
         pinnedOfficialLinks.forEach { link ->
             add(
                 QuickAction(
-                    title = link.title,
+                    title = officialWebQuickActionTitle(link.title, pinnedEntryTitles),
                     icon = link.icon,
                     onClick = { OfficialWebCatalog.open(context, link) },
                 ),
@@ -311,8 +331,9 @@ private fun ServiceTile(
                 text = action.title,
                 style = MaterialTheme.typography.titleSmall.copy(fontSize = 13.5.sp),
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                softWrap = false,
+                // 两列卡片宽度有限，较长的官方网页名可换到第二行，避免只剩省略号。
+                maxLines = 2,
+                softWrap = true,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
