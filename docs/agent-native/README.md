@@ -2,6 +2,8 @@
 
 项目指令的唯一主入口是[根 AGENTS.md](../../AGENTS.md)。本页解释发现、加载、协作与维护；不会自动替 Agent 加载其他文档。当前架构/API/贡献流程分别见 [ARCHITECTURE](../../ARCHITECTURE.md)、[API](../../API.md)、[CONTRIBUTING](../../CONTRIBUTING.md)。完整索引在 [docs/README](../README.md)，本次建设的依据与边界见[审计报告](2026-11-16-audit-and-delivery.md)。
 
+本机工具接入见 [TokenEconomizer 安装、验收边界与回滚记录](2026-11-17-tokeneconomizer.md)。
+
 ## 每个任务的读取顺序
 
 1. 确认仓库根目录与工作区已有修改，识别目标文件及其生产者/消费者。
