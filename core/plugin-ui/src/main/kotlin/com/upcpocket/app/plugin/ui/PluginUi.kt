@@ -90,6 +90,7 @@ enum class UiIcon {
     WALLET,
     RECHARGE,
     APPS,
+    MAP,
 }
 
 /** 页面只能通过宿主导航，不能拿 NavController 或对外 Intent。 */

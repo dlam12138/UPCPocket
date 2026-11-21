@@ -104,6 +104,7 @@ val LocalTimetableTodoSlot = compositionLocalOf<(@Composable () -> Unit)?> { nul
 fun TimetableScreen(
     service: TimetableService,
     onOpenAccountSettings: () -> Unit,
+    onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
     val viewModel: TimetableViewModel = viewModel(
         factory = object : ViewModelProvider.Factory {
@@ -115,6 +116,7 @@ fun TimetableScreen(
     TimetableScreen(
         viewModel = viewModel,
         onOpenAccountSettings = onOpenAccountSettings,
+        onOpenCampusLocation = onOpenCampusLocation,
     )
 }
 
@@ -123,6 +125,7 @@ fun TimetableScreen(
 internal fun TimetableScreen(
     viewModel: TimetableViewModel,
     onOpenAccountSettings: () -> Unit,
+    onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val active = LocalPluginPageActive.current
@@ -256,7 +259,11 @@ internal fun TimetableScreen(
     }
 
     visibleDetail?.let { meeting ->
-        CourseDetailBottomSheet(meeting = meeting, onDismiss = { detail = null })
+        CourseDetailBottomSheet(
+            meeting = meeting,
+            onDismiss = { detail = null },
+            onOpenCampusLocation = onOpenCampusLocation,
+        )
     }
     if (infoVisible) {
         TimetableInfoDialog(
@@ -299,6 +306,7 @@ internal fun TimetableHomeSection(
     service: TimetableService,
     onOpenTimetable: () -> Unit,
     onOpenAccountSettings: () -> Unit,
+    onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
     val state by service.todayState.collectAsStateWithLifecycle()
     val active = LocalPluginPageActive.current
@@ -354,7 +362,11 @@ internal fun TimetableHomeSection(
         onOpenAccountSettings = onOpenAccountSettings,
     )
     visibleDetail?.let { meeting ->
-        CourseDetailBottomSheet(meeting = meeting, onDismiss = { detail = null })
+        CourseDetailBottomSheet(
+            meeting = meeting,
+            onDismiss = { detail = null },
+            onOpenCampusLocation = onOpenCampusLocation,
+        )
     }
 }
 
@@ -1385,6 +1397,7 @@ private fun TodayTag(text: String, color: Color) {
 internal fun CourseDetailBottomSheet(
     meeting: TimetableMeeting,
     onDismiss: () -> Unit,
+    onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1417,6 +1430,18 @@ internal fun CourseDetailBottomSheet(
             DetailLine("周次", meeting.weekLabel)
             DetailLine("教师", meeting.teacher ?: "未提供")
             DetailLine("地点", meeting.location ?: "未提供")
+            val location = meeting.location?.trim()?.takeIf(String::isNotEmpty)
+            if (location != null && onOpenCampusLocation != null) {
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = {
+                        onDismiss()
+                        onOpenCampusLocation(location)
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("在校园地图查看")
+                }
+            }
             DetailLine(
                 "上课时间",
                 UpcTimetableSchedule.label(meeting) ?: "时间待确认",

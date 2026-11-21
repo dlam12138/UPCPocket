@@ -24,6 +24,8 @@
 
 2.1.0 中，宿主在课表页、待办页和待办能力可用时，通过 `LocalTimetableTodoSlot` 在 `timetable.week` 的滚动区域顶部装配 `TodoScheduleSection`。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。课表插件缺失时，`todo.list` 保留为一级页。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
+2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
+
 ## 界面材质
 
 界面风格默认 Material 3；轻量玻璃为 opt-in 且真机性能尚未验证，其偏好由宿主 `UiPrefsStore` 的 `app_ui_style` 键保存，旧候选的 `ui_style` 键不读取也不清除。玻璃界面不改变四类桌面组件的外观，组件样式继续由各自 Provider 身份与组件设置决定。
@@ -79,6 +81,7 @@ suspend fun authenticate(
 | [DirectCardSnapshot](feature/card/src/main/kotlin/com/upcpocket/app/data/ecard/DirectCardBalance.kt) | 原始 `balanceCents`/`transitionCents`、格式化 `balanceText`/`transitionText`；新增派生 `totalBalanceText` | 总额以十进制相加，页面与组件用总额为主值、小字展示过渡余额；不改原始字段含义或持久化格式 |
 | [PowerService](feature/power/src/main/kotlin/com/upcpocket/app/power/PowerService.kt) | 电量查询与快照能力 | 唐岛湾输入/协议，组件与页面同源；完整签名以源码为准 |
 | [TimetableService](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt) | `state`/`todayState`，`suspend open()`、`refresh()`、`selectWeek(week: Int)`、`refreshToday()`；`readWidgetSnapshot()` | 查看周与今日分离；refreshToday 为本地恢复，不等同周联网刷新 |
+| `CampusMapCapabilities.PLACE_REQUESTS` | `CampusMapPlaceRequests.offer(location: String)` | 由宿主从活动插件解析，在内存中交给地图页处理。只接受课程详情用户主动选择的地点，不写路由参数或持久化记录 |
 | [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；原 `add(title, reminderAt)` / `edit(id, title, reminderAt)` 保留，新增带 `dueAt: Long?` 的重载；`delete(id): TodoTask?` | 截止与提醒独立；原新增无截止，原编辑保留已有截止，新编辑可显式清除；写入维护 revision；失败不捏造已保存任务 |
 | `TodoStore.setCompletedIfRevision(id: String, revision: Int, completed: Boolean): TodoTask?` | suspend；成功条件更新后返回任务，否则 null | 提醒/撤销旧动作必须守住 revision，不能退化成无条件更新 |
 | [LibraryService](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryService.kt) / [ChaoxingService](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingService.kt) | 各系统会话、本人验证、读取与受控提交 | 两套协议/结果不混用，未知提交保持防重 |
@@ -86,6 +89,8 @@ suspend fun authenticate(
 | [ShiguangService](feature/shiguang/src/main/kotlin/com/upcpocket/app/shiguang/ShiguangService.kt) / [ServicePortalService](feature/service-portal/src/main/kotlin/com/upcpocket/app/serviceportal/ServicePortalService.kt) | 各自只读查询/分页与 UI 状态 | 失败、有效空、部分结果与登录回退分别表达 |
 
 各能力键在所属 `*Plugin.kt` 中声明，修改前检查所有引用。稳定 route/entry/action/provider/Worker 标识也会被通知、桌面和系统持久化任务消费；修改需兼容策略，不能只改 UI 调用处。
+
+课表页和首页今日课程的详情通过宿主注入的 `TimetableCampusMap.select(location: String): PluginRouteId` 提交地点并打开地图。地图插件缺失时，详情省略地图操作。收到同名、不明确或只含房间编号的地点时，由用户在地图中核对候选。
 
 Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`、`openCreate(requestId: String): Boolean` 与 `consumeCreateRequest()`，与原任务打开请求分别消费；只有活动页面打开编辑器。`TodoLaunchContract` 的新建/打开只接受完整 UUID 分组，合法大小写规范为同一 UUID，拒绝 `UUID.fromString` 宽松接受的缩写。`readWidgetSnapshot(maxVisibleRows: Int = 4)` 异步读取本机库，区分 `NotRestored`、`ReadFailed` 与 `Ready(tasks, incompleteCount)`；Ready 空列表才是有效空，总数包含全部未完成任务。`onTasksChanged` 是宿主注入的窄本地刷新回调，覆盖存储/revision 的成功变化、首次恢复成功与首次恢复失败的状态更新，不向 feature 暴露 AppGraph；回调失败不改变已提交结果。
 

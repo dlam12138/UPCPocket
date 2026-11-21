@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MeetingRoom
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Payments
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Checklist
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.Timer
@@ -36,6 +38,7 @@ fun UiIcon.filledIcon(): ImageVector = when (this) {
     UiIcon.WALLET -> Icons.Filled.AccountBalanceWallet
     UiIcon.RECHARGE -> Icons.Filled.Payments
     UiIcon.APPS -> Icons.Filled.Apps
+    UiIcon.MAP -> Icons.Filled.Map
 }
 
 fun UiIcon.outlinedIcon(): ImageVector = when (this) {
@@ -49,4 +52,5 @@ fun UiIcon.outlinedIcon(): ImageVector = when (this) {
     UiIcon.WALLET -> Icons.Outlined.AccountBalanceWallet
     UiIcon.RECHARGE -> Icons.Outlined.Payments
     UiIcon.APPS -> Icons.Outlined.Apps
+    UiIcon.MAP -> Icons.Outlined.Map
 }

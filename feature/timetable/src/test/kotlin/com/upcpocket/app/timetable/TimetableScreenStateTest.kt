@@ -217,7 +217,9 @@ class TimetableScreenStateTest {
             sectionsSource = "lessArr_split_noncontiguous",
         )
         rule.setContent {
-            MaterialTheme { CourseDetailBottomSheet(meeting = split, onDismiss = {}) }
+            MaterialTheme {
+                CourseDetailBottomSheet(meeting = split, onDismiss = {}, onOpenCampusLocation = {})
+            }
         }
         val expandSheet = SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)
         rule.waitForIdle()
@@ -235,6 +237,34 @@ class TimetableScreenStateTest {
         rule.onNodeWithText("教师").assertExists()
         rule.onNodeWithText("地点").assertExists()
         rule.onAllNodesWithText("未提供").assertCountEquals(4)
+        rule.onNodeWithText("在校园地图查看").assertDoesNotExist()
+    }
+
+    @Test
+    fun courseDetailHandsOnlySelectedLocationToCampusMap() {
+        val selections = mutableListOf<String>()
+        var dismissed = 0
+        rule.setContent {
+            MaterialTheme {
+                CourseDetailBottomSheet(
+                    meeting = meeting.copy(location = "  南教楼 201  "),
+                    onDismiss = { dismissed++ },
+                    onOpenCampusLocation = { selections += it },
+                )
+            }
+        }
+        val expandSheet = SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)
+        if (rule.onAllNodes(expandSheet, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()) {
+            rule.onNode(expandSheet, useUnmergedTree = true).performSemanticsAction(SemanticsActions.Expand)
+        }
+        rule.onNodeWithText("在校园地图查看")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.runOnIdle {
+            assertEquals(listOf("南教楼 201"), selections)
+            assertEquals(1, dismissed)
+        }
     }
 
     @Test

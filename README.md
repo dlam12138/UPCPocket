@@ -81,6 +81,8 @@
 
 2.1.0 开发版将待办和课表合到「课表」页。上方默认展示今天的日程待办，可切换日期、新增待办或打开全部待办。向下滚动可查看完整周课表。「专注」仍有独立入口。
 
+2.1.0 开发版（未发布）的「服务 → 校园地图」可固定到首页。在唐岛湾或古镇口可搜索地点、选择校内起终点，有可用道路时可比较步行或骑行路线。课表详情可点「在校园地图查看」。点击地图右下角的定位按钮可查看当前位置和系统估计的误差。右上角指南针可在设备支持时显示北向。实时跟随和转向指引需开启设备前台定位。古镇口西区的离线路网尚缺主要校内道路，楼栋可查，路线覆盖待补。楼门和通行情况以现场为准。 [数据与定位说明](docs/PRIVACY.md#校园地图与前台定位)
+
 ## 更新方便，反馈也方便
 
 - **应用内更新**：检查新版本、选择下载线路、查看进度，校验通过后由系统确认安装；不自动下载、不强制更新。
@@ -124,6 +126,8 @@ Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取�
 ## 致谢
 
 基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留上游版权与 [MIT 许可证](LICENSE)；悬浮导航的来源与改动见 [移植说明](docs/third-party/ZZUPocket-dock.md)。Android 开发技能的固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
+
+校园地图与派生路网使用 © OpenStreetMap contributors 数据，按 ODbL 1.0 分发。 [地图来源与许可](docs/adr/007-offline-campus-navigation.md)
 
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，2.0.4 扩展到古镇口东区和求是。
 

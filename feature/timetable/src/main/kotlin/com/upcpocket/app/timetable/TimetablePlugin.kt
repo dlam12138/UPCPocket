@@ -25,6 +25,11 @@ object TimetableCapabilities {
 val TIMETABLE_PLUGIN_ID: PluginId = PluginId.parse("timetable")
 val TIMETABLE_ROUTE: PluginRouteId = PluginRouteId.parse("timetable.week")
 
+/** 宿主提交本次地点选择并返回已激活的地图页面。 */
+fun interface TimetableCampusMap {
+    fun select(location: String): PluginRouteId
+}
+
 /**
  * 只读课表插件。
  *
@@ -35,6 +40,7 @@ class TimetablePlugin(
     context: Context,
     account: SchoolAccountReferenceReader,
     authenticator: TimetableAuthenticator,
+    private val resolveCampusMap: () -> TimetableCampusMap? = { null },
 ) : Plugin, PluginUiContributor {
 
     override val descriptor: PluginDescriptor = PluginDescriptor(
@@ -54,7 +60,8 @@ class TimetablePlugin(
 
     override val pluginId get() = descriptor.id
 
-    override fun contribute(registry: PluginUiRegistry) = TimetableUi(service).contribute(registry)
+    override fun contribute(registry: PluginUiRegistry) =
+        TimetableUi(service, resolveCampusMap).contribute(registry)
 
     override fun capabilities(): List<PluginCapability> =
         listOf(PluginCapability(TimetableCapabilities.week, service))
@@ -62,6 +69,7 @@ class TimetablePlugin(
 
 internal class TimetableUi(
     private val service: TimetableService,
+    private val resolveCampusMap: () -> TimetableCampusMap? = { null },
 ) : PluginUiContributor {
 
     override val pluginId = TIMETABLE_PLUGIN_ID
@@ -69,9 +77,11 @@ internal class TimetableUi(
     override fun contribute(registry: PluginUiRegistry) {
         registry.addPage(
             PluginPage(TIMETABLE_ROUTE, TIMETABLE_PLUGIN_ID) { host ->
+                val campusMap = resolveCampusMap()
                 TimetableScreen(
                     service = service,
                     onOpenAccountSettings = host::openSchoolAccountSettings,
+                    onOpenCampusLocation = campusMap?.let { map -> { location -> host.open(map.select(location)) } },
                 )
             },
         )
@@ -82,10 +92,12 @@ internal class TimetableUi(
                 surface = UiSurface.HOME_TIMETABLE,
                 order = 0,
             ) { host ->
+                val campusMap = resolveCampusMap()
                 TimetableHomeSection(
                     service = service,
                     onOpenTimetable = { host.open(TIMETABLE_ROUTE) },
                     onOpenAccountSettings = host::openSchoolAccountSettings,
+                    onOpenCampusLocation = campusMap?.let { map -> { location -> host.open(map.select(location)) } },
                 )
             },
         )
