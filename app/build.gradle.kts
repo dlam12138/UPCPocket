@@ -185,6 +185,7 @@ dependencies {
     implementation(project(":feature:shiguang"))
     implementation(project(":feature:service-portal"))
     implementation(project(":feature:campusmap"))
+    implementation(project(":feature:directory"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

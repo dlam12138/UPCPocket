@@ -15,6 +15,7 @@ import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.campusmap.CampusMapCapabilities
 import com.upcpocket.app.campusmap.CampusMapPlugin
+import com.upcpocket.app.campusmap.CampusId
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.data.cardrecharge.CardRechargeService
 import com.upcpocket.app.card.CardCapabilities
@@ -26,6 +27,9 @@ import com.upcpocket.app.data.ecard.DirectCardBalanceStore
 import com.upcpocket.app.data.repo.CardInputRepository
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.diagnostics.DiagnosticStore
+import com.upcpocket.app.directory.DirectoryCampus
+import com.upcpocket.app.directory.DirectoryCampusMap
+import com.upcpocket.app.directory.DirectoryPlugin
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.data.library.LibraryUser
@@ -494,6 +498,25 @@ object AppGraph {
         CampusMapPlugin(initialCampus = { uiPrefsStore.initialCampusMapCampus() })
     }
 
+    private val directoryPlugin: DirectoryPlugin by lazy {
+        DirectoryPlugin(
+            context = appContext,
+            initialCampus = { uiPrefsStore.initialDirectoryCampus() },
+            resolveCampusMap = {
+                activePlugins.capability(CampusMapCapabilities.PLACE_REQUESTS)?.let { requests ->
+                    DirectoryCampusMap { target ->
+                        val campus = when (target.campus) {
+                            DirectoryCampus.TANGDAOWAN -> CampusId.TDW
+                            DirectoryCampus.GUZHENKOU -> CampusId.GZK
+                        }
+                        requests.offer(campus, target.placeId)
+                        CampusMapPlugin.ROUTE
+                    }
+                }
+            },
+        )
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
@@ -506,6 +529,7 @@ object AppGraph {
             runtime.register(shiguangPlugin.descriptor) { shiguangPlugin }
             runtime.register(servicePortalPlugin.descriptor) { servicePortalPlugin }
             runtime.register(campusMapPlugin.descriptor) { campusMapPlugin }
+            runtime.register(directoryPlugin.descriptor) { directoryPlugin }
         }
     }
 

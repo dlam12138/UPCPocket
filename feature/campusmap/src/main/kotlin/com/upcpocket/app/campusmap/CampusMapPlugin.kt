@@ -24,14 +24,25 @@ import com.upcpocket.app.plugin.ui.UiSurface
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 
+internal sealed interface CampusMapPlaceRequest {
+    data class TimetableText(val name: String) : CampusMapPlaceRequest
+    data class Exact(val campus: CampusId, val placeId: String) : CampusMapPlaceRequest
+}
+
 public class CampusMapPlaceRequests {
-    private val pending = AtomicReference<String?>(null)
+    private val pending = AtomicReference<CampusMapPlaceRequest?>(null)
 
     public fun offer(name: String) {
-        pending.set(name.trim().take(160).takeIf { it.isNotEmpty() })
+        val text = name.trim().take(160)
+        pending.set(text.takeIf { it.isNotEmpty() }?.let { CampusMapPlaceRequest.TimetableText(it) })
     }
 
-    internal fun take(): String? = pending.getAndSet(null)
+    /** Open a mapped place in the specified campus using its stable asset ID. */
+    public fun offer(campus: CampusId, placeId: String) {
+        pending.set(CampusMapPlaceRequest.Exact(campus, placeId))
+    }
+
+    internal fun take(): CampusMapPlaceRequest? = pending.getAndSet(null)
 }
 
 public object CampusMapCapabilities {
@@ -92,7 +103,7 @@ public class CampusMapPlugin(
         )
     }
 
-    private data class MapEntry(val campus: CampusId, val requestedPlace: String?)
+    private data class MapEntry(val campus: CampusId, val requestedPlace: CampusMapPlaceRequest?)
 
     public companion object {
         public val ROUTE = PluginRouteId.parse("campusmap.home")

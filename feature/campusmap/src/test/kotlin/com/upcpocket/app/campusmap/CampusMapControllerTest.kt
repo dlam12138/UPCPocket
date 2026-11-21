@@ -7,6 +7,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,6 +18,48 @@ class CampusMapControllerTest {
     private val junction = GeoPoint(120.0013, 35.0000)
     private val destination = GeoPoint(120.0020, 35.0000)
     private val detour = GeoPoint(120.0013, 35.00036)
+
+    @Test
+    fun exactPlaceRequestSelectsTheRequestedCampusAndDoesNotFallBackToNamesOrOtherCampuses() = runTest {
+        val tdw = CampusMapData(
+            id = CampusId.TDW,
+            name = "唐岛湾",
+            bounds = MapBounds(119.999, 34.999, 120.003, 35.001),
+            geometry = emptyList(),
+            places = listOf(place("shared", "唐岛湾楼", manualOrigin), place("tdw-only", "唐岛湾地点", liveOrigin)),
+            areas = emptyList(),
+            networkPoints = emptyList(),
+            networkRoads = emptyList(),
+        )
+        val exactPlace = place("shared", "古镇口楼", destination)
+        val gzk = tdw.copy(
+            id = CampusId.GZK,
+            name = "古镇口",
+            places = listOf(
+                exactPlace,
+                place("unmapped", "待核验", junction).copy(confidence = "unverified"),
+                place("entrance", "入口", detour).copy(kind = "entrance"),
+            ),
+        )
+        val controller = CampusMapController(this, CampusId.TDW, { mapOf(tdw.id to tdw, gzk.id to gzk) })
+        val requests = CampusMapPlaceRequests()
+
+        requests.offer(CampusId.GZK, exactPlace.id)
+        controller.load(requests.take())
+        assertEquals(CampusId.GZK, controller.state.value.campusId)
+        assertEquals(exactPlace, controller.state.value.destination)
+        assertNull(requests.take())
+
+        for (invalidId in listOf(exactPlace.name, "tdw-only", "unmapped", "entrance")) {
+            controller.selectCampus(CampusId.TDW)
+            requests.offer(CampusId.GZK, invalidId)
+            val request = requests.take()
+            controller.load(request)
+            assertEquals(CampusId.GZK, controller.state.value.campusId)
+            assertNull(controller.state.value.destination)
+            assertEquals(request, controller.state.value.unresolvedRequest)
+        }
+    }
 
     @Test
     fun oneStartUsesCurrentPositionAndThenFollowsAndReroutes() = runTest {
