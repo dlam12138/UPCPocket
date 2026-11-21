@@ -16,6 +16,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -34,6 +38,7 @@ import com.upcpocket.app.ui.components.CampusTopAppBar
 @Composable
 fun OfficialWebScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    var weChatHandoffLink by remember { mutableStateOf<OfficialLink?>(null) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -62,7 +67,14 @@ fun OfficialWebScreen(onBack: () -> Unit) {
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     OfficialWebCatalog.learning.forEachIndexed { index, link ->
-                        OfficialRow(link, onOpen = { OfficialWebCatalog.open(context, link) })
+                        OfficialRow(
+                            link,
+                            onOpen = {
+                                OfficialWebCatalog.activate(context, link) {
+                                    weChatHandoffLink = it
+                                }
+                            },
+                        )
                         if (index != OfficialWebCatalog.learning.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 66.dp),
@@ -80,7 +92,14 @@ fun OfficialWebScreen(onBack: () -> Unit) {
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     OfficialWebCatalog.life.forEachIndexed { index, link ->
-                        OfficialRow(link, onOpen = { OfficialWebCatalog.open(context, link) })
+                        OfficialRow(
+                            link,
+                            onOpen = {
+                                OfficialWebCatalog.activate(context, link) {
+                                    weChatHandoffLink = it
+                                }
+                            },
+                        )
                         if (index != OfficialWebCatalog.life.lastIndex) {
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 66.dp),
@@ -91,6 +110,13 @@ fun OfficialWebScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    weChatHandoffLink?.let { link ->
+        WeChatReservationHandoffDialog(
+            link = link,
+            onDismiss = { weChatHandoffLink = null },
+        )
     }
 }
 

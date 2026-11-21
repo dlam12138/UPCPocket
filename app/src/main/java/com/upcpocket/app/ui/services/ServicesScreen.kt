@@ -70,6 +70,8 @@ import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.nav.filledIcon
+import com.upcpocket.app.ui.official.WeChatReservationHandoffDialog
+import com.upcpocket.app.ui.official.OfficialLink
 import com.upcpocket.app.ui.official.OfficialWebCatalog
 
 private enum class ServiceFilterTab(val label: String, val category: UiCategory? = null) {
@@ -98,6 +100,7 @@ fun ServicesScreen(
     val dockClearance = LocalDockClearance.current
     var query by rememberSaveable { mutableStateOf("") }
     var selectedFilterName by rememberSaveable { mutableStateOf(ServiceFilterTab.ALL.name) }
+    var weChatHandoffLink by remember { mutableStateOf<OfficialLink?>(null) }
     val selectedFilter = ServiceFilterTab.entries.firstOrNull { it.name == selectedFilterName }
         ?: ServiceFilterTab.ALL
     val normalizedQuery = query.trim()
@@ -125,12 +128,13 @@ fun ServicesScreen(
             .sortedBy { it.key.sortOrder }
     }
 
-    val officialCandidates = remember(selectedFilter, preferredCampus) {
+    val officialCandidates = remember(selectedFilter, preferredCampus, pinnedServiceIds) {
         val candidates = when (selectedFilter) {
             ServiceFilterTab.ALL, ServiceFilterTab.OFFICIAL -> OfficialWebCatalog.all
             else -> selectedFilter.category?.let { OfficialWebCatalog.serviceLinksFor(it) }.orEmpty()
         }
-        OfficialWebCatalog.visibleFor(candidates, preferredCampus)
+        // 已固定的另一校区入口保留在列表中，用户可在该校区偏好下取消固定。
+        OfficialWebCatalog.visibleFor(candidates, preferredCampus, pinnedServiceIds)
     }
     val filteredOfficial = remember(officialCandidates, normalizedQuery) {
         officialCandidates.filter { link ->
@@ -251,7 +255,11 @@ fun ServicesScreen(
                                     title = link.title,
                                     subtitle = "${link.group} · ${link.subtitle}",
                                     icon = link.icon,
-                                    onClick = { OfficialWebCatalog.open(context, link) },
+                                    onClick = {
+                                        OfficialWebCatalog.activate(context, link) {
+                                            weChatHandoffLink = it
+                                        }
+                                    },
                                     trailing = if (serviceId == null) null else {
                                         {
                                             CampusIconButton(onClick = { onTogglePin(serviceId) }) {
@@ -279,6 +287,13 @@ fun ServicesScreen(
             }
             Spacer(Modifier.height(4.dp))
         }
+    }
+
+    weChatHandoffLink?.let { link ->
+        WeChatReservationHandoffDialog(
+            link = link,
+            onDismiss = { weChatHandoffLink = null },
+        )
     }
 }
 

@@ -2,6 +2,8 @@ package com.upcpocket.app.timetable
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -18,6 +20,7 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.platform.crypto.ByteCrypto
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.upcauth.TimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcAuthCookie
 import com.upcpocket.app.upcauth.UpcAuthFailure
@@ -62,6 +65,30 @@ class TimetableFirstLoginScreenTest {
     @After
     fun cleanup() {
         directory.deleteRecursively()
+    }
+
+    @Test
+    fun hostTodoSlotRendersWithTheTimetablePageContent() {
+        val viewModel = TimetableViewModel(
+            service(ProgrammedTransport { error("slot test must not query the school") }),
+        )
+        rule.setContent {
+            CompositionLocalProvider(
+                // 预加载/非活动页不启动课表查询；槽位仍由宿主装配并渲染。
+                LocalPluginPageActive provides false,
+                LocalTimetableTodoSlot provides { Text("合并日程槽位") },
+            ) {
+                MaterialTheme {
+                    TimetableScreen(
+                        viewModel = viewModel,
+                        onOpenAccountSettings = {},
+                    )
+                }
+            }
+        }
+
+        rule.onNodeWithText("课表").assertIsDisplayed()
+        rule.onNodeWithText("合并日程槽位").assertIsDisplayed()
     }
 
     @Test

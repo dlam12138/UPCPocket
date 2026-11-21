@@ -2,7 +2,8 @@
  * 悬浮胶囊 dock 的视觉/覆盖层结构移植自 ZZUPocket（3beuml/ZZUPocket），
  * AppNav.kt at commit dda318e9b37d8b65991a965e72fd4dd40b630a20。
  * Copyright (c) 2026 3beuml, MIT License；完整许可见仓库根 LICENSE。
- * 本项目只保留首页、课表、服务、待办、专注五个一级入口，并补足 Pager、主题/无障碍与页面安全余量适配。
+ * 本项目只保留首页、课表（含本机日程待办）、服务、专注四个一级入口，
+ * 并补足 Pager、主题/无障碍与页面安全余量适配。
  */
 package com.upcpocket.app.ui.nav
 
@@ -87,14 +88,18 @@ import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
+import com.upcpocket.app.plugin.ui.PluginBottomNav
 import com.upcpocket.app.plugin.ui.PluginPage
 import com.upcpocket.app.plugin.ui.PluginPageHost
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
+import com.upcpocket.app.timetable.LocalTimetableTodoSlot
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.todo.TODO_ROUTE
+import com.upcpocket.app.ui.todo.LocalTodoListBack
+import com.upcpocket.app.ui.todo.TodoScheduleSection
 import com.upcpocket.app.ui.about.AboutScreen
 import com.upcpocket.app.ui.components.glassBorder
 import com.upcpocket.app.ui.components.glassHighlight
@@ -148,11 +153,11 @@ private val hostServices = Destination(
 )
 
 /**
- * 宿主固定首页，课表/待办/专注 tab 来自已激活插件。
+ * 宿主固定首页，课表/专注 tab 来自已激活插件；待办存在时合入课表页顶部。
  *
- * 五个一级页由同一个 [HorizontalPager] 承载，tab 入口不再压入 NavController；设置、
- * 账号、WebView 和插件二级页仍走 NavHost。这样整页拖动、胶囊连续动画和通知/组件
- * 深链只共享一个页面索引事实源。
+ * 四个一级页由同一个 [HorizontalPager] 承载，tab 入口不再压入 NavController；设置、
+ * 账号、WebView、完整待办列表和其他插件二级页仍走 NavHost。这样整页拖动、胶囊连续
+ * 动画和通知/组件深链只共享一个页面索引事实源。
  */
 @Composable
 fun AppNav(
@@ -166,6 +171,7 @@ fun AppNav(
     val currentRoute = backStackEntry?.destination?.route
     val onMain = currentRoute == MAIN_ROUTE
     val pluginUi = AppGraph.ui
+    val todoStore = AppGraph.todoStoreOrNull
     val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
     val legacyCardStudentId by AppGraph.cardInputRepository.studentId
         .collectAsStateWithLifecycle(initialValue = "")
@@ -174,16 +180,24 @@ fun AppNav(
     val prefs = storedPrefs ?: UiPrefs()
     val preferredCampus = storedPrefs?.preferredCampus
 
-    val pluginDestinations = pluginUi.bottomNav.map { tab ->
-        Destination(
-            route = tab.route.value,
-            label = tab.label,
-            icon = tab.icon.filledIcon(),
-            outlinedIcon = tab.icon.outlinedIcon(),
-            order = tab.order,
-            page = pluginUi.page(tab.route),
-        )
-    }.sortedWith(compareBy({ it.order }, { it.route }))
+    // 只有课表、待办页面与最终待办能力同时可用时才合页；任一缺失都保留原独立入口
+    // 或原课表页，避免把待办 tab 藏掉后无路可走。
+    val timetableTodoMerged = shouldMergeTodoIntoTimetable(
+        timetablePageRegistered = pluginUi.page(TIMETABLE_ROUTE) != null,
+        todoPageRegistered = pluginUi.page(TODO_ROUTE) != null,
+        todoStoreAvailable = todoStore != null,
+    )
+    val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, timetableTodoMerged)
+        .map { tab ->
+            Destination(
+                route = tab.route.value,
+                label = tab.label,
+                icon = tab.icon.filledIcon(),
+                outlinedIcon = tab.icon.outlinedIcon(),
+                order = tab.order,
+                page = pluginUi.page(tab.route),
+            )
+        }.sortedWith(compareBy({ it.order }, { it.route }))
     // 首页由宿主固定在最左，服务广场排在课表之后；插件 tab 按各自 order 排序合并。
     val destinations = listOf(hostHome) +
         (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
@@ -192,10 +206,31 @@ fun AppNav(
     }
     val destinationRoutes = remember(destinations) { destinations.map { it.route } }
     val tabRoutes = remember(destinationRoutes) { destinationRoutes.toSet() }
+    val timetableTodoSlot: (@Composable () -> Unit)? = remember(
+        timetableTodoMerged,
+        todoStore,
+        navController,
+    ) {
+        if (timetableTodoMerged && todoStore != null) {
+            val slot: @Composable () -> Unit = {
+                TodoScheduleSection(
+                    store = todoStore,
+                    onOpenAll = {
+                        navController.navigate(TODO_ROUTE.value) { launchSingleTop = true }
+                    },
+                )
+            }
+            slot
+        } else {
+            null
+        }
+    }
 
+    // 合页后待办完整列表是二级页；通知/组件深链不能按 tab 下标定位。仅当待办仍是
+    // 独立 tab（课表插件缺失）时才预选该页，避免跳到不存在的路由。
     val initialRoute = when {
-        openTodo -> TODO_ROUTE.value
-        launchTarget == WidgetLaunchTarget.TODO -> TODO_ROUTE.value
+        openTodo || launchTarget == WidgetLaunchTarget.TODO ->
+            TODO_ROUTE.value.takeIf { it in tabRoutes } ?: AppRoutes.HOME
         launchTarget == WidgetLaunchTarget.TIMETABLE -> TIMETABLE_ROUTE.value
         else -> AppRoutes.HOME
     }
@@ -216,9 +251,9 @@ fun AppNav(
     val dockClearance = if (dockVisible) DOCK_CLEARANCE + navigationBottom else 0.dp
 
     /**
-     * 五个一级页只由一个 PagerState 表示；不把 tab 压进 NavController。
+     * 四个一级页只由一个 PagerState 表示；不把 tab 压进 NavController。
      *
-     * 点击/组件/通知/返回都走这里。二级页存在时先回 main，再平滑切页；重复调用会
+     * 点击/组件/返回都走这里。二级页存在时先回 main，再平滑切页；重复调用会
      * 取消上一次动画，不会叠加返回栈。
      */
     fun switchTab(
@@ -244,6 +279,25 @@ fun AppNav(
             switchTab(route.value)
         } else {
             navController.navigate(route.value) { launchSingleTop = true }
+        }
+    }
+
+    /**
+     * 通知、桌面待办组件和＋入口共用：稳定解析待办完整页。
+     *
+     * 合页时 todo.list 是二级页，直接压入 NavController；课表插件缺失、待办仍是
+     * 独立 tab 时才按路由切 Pager。永远不会为了待办通知触发课表登录。
+     */
+    fun openTodoListPage() {
+        val page = pluginUi.page(TODO_ROUTE)
+        if (page == null) {
+            switchTab(AppRoutes.HOME)
+            return
+        }
+        if (page.routeId.value in tabRoutes) {
+            switchTab(page.routeId.value)
+        } else {
+            navController.navigate(page.routeId.value) { launchSingleTop = true }
         }
     }
 
@@ -275,15 +329,16 @@ fun AppNav(
         navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true }
     }
 
-    // 通知点击进入待办页；具体条目由 TodoService.pendingOpenTask 交给页面。
+    // 通知点击进入待办完整页；具体条目由 TodoService.pendingOpenTask 交给页面。
     LaunchedEffect(openTodo) {
         if (!openTodo) return@LaunchedEffect
-        switchTab(TODO_ROUTE.value)
+        openTodoListPage()
         onTodoConsumed()
     }
 
-    // 桌面组件的固定入口：校园卡回首页，电费直接进唐岛湾原生查询页，课表切到课表页。
-    // 只在消费一次后清空，避免重组时反复导航；不接受任意路由或 Intent 转发。
+    // 桌面组件的固定入口：校园卡回首页，电费直接进唐岛湾原生查询页，课表切到合页，
+    // 待办打开完整列表。只在消费一次后清空，避免重组时反复导航；不接受任意路由或
+    // Intent 转发。
     LaunchedEffect(launchTarget) {
         when (launchTarget) {
             WidgetLaunchTarget.CARD_BALANCE -> {
@@ -300,15 +355,13 @@ fun AppNav(
                 }
             }
             WidgetLaunchTarget.TIMETABLE -> {
-                switchTab(TIMETABLE_ROUTE.value)
-            }
-            WidgetLaunchTarget.TODO -> {
-                if (pluginUi.page(TODO_ROUTE) != null) {
-                    switchTab(TODO_ROUTE.value)
+                if (TIMETABLE_ROUTE.value in tabRoutes) {
+                    switchTab(TIMETABLE_ROUTE.value)
                 } else {
                     switchTab(AppRoutes.HOME)
                 }
             }
+            WidgetLaunchTarget.TODO -> openTodoListPage()
             null -> return@LaunchedEffect
         }
         onLaunchConsumed()
@@ -356,7 +409,7 @@ fun AppNav(
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
-                        // 五页全部保留状态；活动页由 LocalPluginPageActive 控制自动查询/
+                        // 全部一级页保留状态；活动页由 LocalPluginPageActive 控制自动查询/
                         // 权限/通知消费，预加载不会触发学校登录或刷新。
                         beyondViewportPageCount = destinations.lastIndex.coerceAtLeast(0),
                         userScrollEnabled = !imeVisible,
@@ -372,7 +425,8 @@ fun AppNav(
                         }
                         CompositionLocalProvider(LocalPluginPageActive provides active) {
                             Box(pageModifier) {
-                                when (destinations.getOrNull(page)?.route) {
+                                val destination = destinations.getOrNull(page)
+                                when (destination?.route) {
                                     AppRoutes.HOME -> HomeScreen(
                                         serviceEntries = allServiceEntries,
                                         timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
@@ -399,7 +453,23 @@ fun AppNav(
                                             navController.navigate(AppRoutes.OFFICIAL_WEB)
                                         },
                                     )
-                                    else -> destinations.getOrNull(page)?.page?.content(pageHost)
+                                    else -> {
+                                        val pageContent = destination?.page
+                                        if (pageContent != null &&
+                                            destination.route == TIMETABLE_ROUTE.value &&
+                                            timetableTodoSlot != null
+                                        ) {
+                                            // 同一纵向滚动内先渲染本机日程槽位，再继续
+                                            // 课表原有账号/学期/周网格正文。
+                                            CompositionLocalProvider(
+                                                LocalTimetableTodoSlot provides timetableTodoSlot,
+                                            ) {
+                                                pageContent.content(pageHost)
+                                            }
+                                        } else {
+                                            pageContent?.content(pageHost)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -409,7 +479,19 @@ fun AppNav(
                     .filterNot { it.routeId.value in tabRoutes }
                     .forEach { page ->
                         composable(page.routeId.value) {
-                            page.content(pageHost)
+                            if (page.routeId == TODO_ROUTE) {
+                                // 合页后的完整待办列表是二级页，顶栏提供明确返回；
+                                // 独立 tab 场景不会进入此分支。
+                                CompositionLocalProvider(
+                                    LocalTodoListBack provides {
+                                        navController.popBackStack()
+                                    },
+                                ) {
+                                    page.content(pageHost)
+                                }
+                            } else {
+                                page.content(pageHost)
+                            }
                         }
                     }
                 composable(AppRoutes.SETTINGS) {
@@ -533,6 +615,29 @@ private fun KyantDock(
 }
 
 internal fun pageIndexForRoute(routes: List<String>, route: String): Int = routes.indexOf(route)
+
+/**
+ * 待办 tab 只在课表页、待办页与最终待办能力都可用时并入课表页。
+ *
+ * 课表插件缺失时保留待办 tab，待办插件缺失时课表照常展示；宿主不根据模块名或
+ * 硬编码开关决定，而是以最终 UI 快照和能力为准。
+ */
+internal fun shouldMergeTodoIntoTimetable(
+    timetablePageRegistered: Boolean,
+    todoPageRegistered: Boolean,
+    todoStoreAvailable: Boolean,
+): Boolean = timetablePageRegistered && todoPageRegistered && todoStoreAvailable
+
+/**
+ * 合页时从最终插件 tab 快照中移除待办；完整待办列表改由稳定的二级路由承载。
+ * 单独保留该过滤规则，便于用真实装配的 bottomNav 做回归，而不是手写路由表。
+ */
+internal fun visiblePluginTabs(
+    tabs: List<PluginBottomNav>,
+    timetableTodoMerged: Boolean,
+): List<PluginBottomNav> = tabs.filterNot {
+    timetableTodoMerged && it.route.value == TODO_ROUTE.value
+}
 
 /**
  * 五项悬浮胶囊 dock（基于 3beuml/ZZUPocket MIT AppNav 的视觉/覆盖结构）。

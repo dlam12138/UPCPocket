@@ -10,10 +10,10 @@
 
 [![Release](https://img.shields.io/github/v/release/dlam12138/UPCPocket?style=flat-square&label=Release&color=1B6B4A)](https://github.com/dlam12138/UPCPocket/releases/latest)
 ![Android 12+](https://img.shields.io/badge/Android-12%2B-5278C6?style=flat-square)
-![APK 5.78 MiB](https://img.shields.io/badge/APK-5.78_MiB-1B6B4A?style=flat-square)
+![APK 5.94 MiB](https://img.shields.io/badge/APK-5.94_MiB-1B6B4A?style=flat-square)
 [![MIT](https://img.shields.io/badge/License-MIT-70757A?style=flat-square)](LICENSE)
 
-[**下载 2.0.8**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.8/UPC-Pocket-2.0.8.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.8/UPC-Pocket-2.0.8.apk)
+[**下载 2.0.9**](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.9/UPC-Pocket-2.0.9.apk) · [**国内加速**](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.9/UPC-Pocket-2.0.9.apk)
 
 [继续使用 2.0.3 正式旧版](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
@@ -27,25 +27,20 @@
 
 </div>
 
-## 2.0.8 · 新增服务页和待办小组件
+## 2.0.9 · 常用校区与轻量玻璃
 
-**2.0.8 已于 2026-11-18 正式发布。** 服务支持分类、搜索和固定到首页。待办可分别设置截止时间与提醒，桌面组件可查看、勾选和新建。课表恢复紧凑周视图，长课名可点开查看全名。三个图书馆座位入口均支持列表与布局图切换。
+**2.0.9 已于 2026-11-19 正式发布。** 保存常用校区后，空闲教室、图书馆和电费会优先打开所选校区。服务页新增四个校园官网入口。周课表仅将节次重叠的课程并排，桌面「今日课表」可显示上课剩余分钟。
 
-在桌面小组件列表中选择「UPC Pocket 新版」，可单独添加校园卡余额、唐岛湾电量、今日课表或待办的静态磨砂「玻璃版」。Issue #6 的玻璃质感列入长期计划。 [本次公告](docs/releases/2.0.8-notice.md)
+本版新增可选轻量玻璃，并修复首页回弹、唐岛湾选座的「现在」确认和放大座位图后的座号重叠。
 
-已安装新版 2.0.4–2.0.7 可在应用内检查更新或覆盖安装。已安装同包名、同长期签名的 2.0.8（29）候选包，可手动覆盖安装。旧版 2.0.3 可与新版并存，首次使用新版需重新设置账号、提醒和桌面组件。
-
-新版沿用长期 Release 签名，旧版更新线路继续指向 2.0.3。 [2.0.8 发布记录与校验值](docs/releases/2.0.8.md)
+已安装新版 2.0.4–2.0.8 可在应用内检查更新或覆盖安装。同签名的 2.0.9 rc4 也可覆盖升级。旧版 2.0.3 可与新版并存，首次使用新版需重新设置账号、提醒和桌面组件。
 
 <div align="center">
-<img src="docs/images/2.0.6/promo/01-home.png" width="230" alt="2.0.6 首页：今日课程与紧凑待办，合成演示数据" />
-<img src="docs/images/2.0.6/promo/02-timetable.png" width="230" alt="2.0.6 课表周网格，合成演示数据" />
-<img src="docs/images/2.0.6/promo/03-classroom.png" width="230" alt="2.0.6 空闲教室，合成演示数据" />
-<br />
-<img src="docs/images/2.0.6/promo/04-recharge.png" width="230" alt="2.0.6 微信充值页面，合成账号与金额" />
-<img src="docs/images/2.0.6/promo/05-todo.png" width="230" alt="2.0.6 待办页面，合成演示数据" />
-<br /><sub>真实页面，合成演示数据；不含个人校园记录。<a href="docs/images/2.0.6/promo/README.md">图片说明</a></sub>
+<img src="docs/images/2.0.9/promo/UPC-Pocket-2.0.9-promo.png" width="850" alt="UPC Pocket 2.0.9 宣传图，展示常用校区设置和轻量玻璃下的校园服务页" />
+<br /><sub>验收包界面实拍。二维码指向 2.0.9 Release。<a href="docs/images/2.0.9/promo/README.md">图片说明</a></sub>
 </div>
+
+[2.0.9 更新公告](docs/releases/2.0.9-notice.md) · [发布记录与校验值](docs/releases/2.0.9.md) · [2.0.8 发布记录](docs/releases/2.0.8.md)
 
 ## 常用的，都放在一起
 
@@ -63,30 +58,37 @@
 | **待办与提醒** | 可分别设置截止时间与一次性提醒，首页同步展示近期任务 |
 | **专注** | 番茄钟、专注记录与统计，陪你完成一段学习 |
 | **桌面组件** | 今日课表、校园卡、电量、待办，均可选择静态磨砂版。课表支持 4×2 |
+| **体育馆预约**（2.1.0 开发版，未发布） | 服务 → 全部 / 校园生活打开「中国石油大学体育场馆」公众号交接说明；菜单路径「场地预定 → 场地预定」，主动点击后才复制公众号名并打开微信 |
+| **游泳馆预约**（2.1.0 开发版，未发布） | 唐岛湾独立入口；同一公众号「中国石油大学体育场馆」的菜单路径「场地预定 → 游泳馆预定」，可查看学校游泳馆介绍；同样主动点击后才复制公众号名并打开微信 |
 
-支持浅色、深色与主题配色。课表、流水与石光支持转到学校页面继续登录；更新和诊断报告集中在关于页。
+支持浅色、深色与主题配色。课表、流水与石光支持转到学校页面继续登录；更新和诊断报告集中在关于页。体育馆与游泳馆预约的开发版入口不随当前 2.0.9 产物发布；应用不读取实时余位，预约提交在微信内完成，也不代表预约成功。
 
 ## 三步开始
 
-1. **安装**：从上方链接下载 2.0.8 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4–2.0.7，也可与旧版 2.0.3 并存。
+1. **安装**。从上方链接下载 2.0.9 APK，支持 Android 12 及以上。新版可覆盖更新 2.0.4–2.0.8，也可与旧版 2.0.3 并存。
 2. **设置账号**：首页右上角 → 设置 → 学校账号。学校密码加密保存在本机，用于正常学校认证。
 3. **按需使用**：保存账号后回课表点右上角刷新；添加待办、按需设置提醒，再把常用组件放到桌面。
 
-从旧版 2.0.3 转用新版需要手动下载安装。新版 2.0.4–2.0.7 可在关于页检查更新。
+从旧版 2.0.3 转用新版需要手动下载安装。新版 2.0.4–2.0.8 可在关于页检查更新。
 
-2.0.9 开发版可在「首页 → 设置 → 校园」选择唐岛湾、古镇口或全部校区。空闲教室、图书馆、电费和服务页的官方网页会优先展示所选校区。 [2.0.9 开发计划](docs/design/2.0.9-update-plan.md#常用校区与服务分组)
+在「首页 → 设置 → 校园」可选择唐岛湾、古镇口或全部校区。空闲教室、图书馆、电费和服务页的官方网页会优先展示所选校区。 [2.0.9 开发与验收](docs/design/2.0.9-update-plan.md#常用校区与服务分组)
 
-2.0.9 开发版也可在「首页 → 设置 → 外观」选择界面风格：默认 Material 3，可选轻量玻璃。轻量玻璃为 opt-in，真机性能尚未验证；桌面组件外观仍由组件设置单独决定。 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)
+在「首页 → 设置 → 外观」可以选择界面风格。默认 Material 3，可选轻量玻璃。玻璃底栏适用于 Android 13 及以上，真机性能尚待实测。桌面组件各自设置外观。 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)
 
-同一开发版可在「设置 → 校园官方网页 → 学习」打开教务系统、数字石大、教务处官网和学院官网。校园网页由外部浏览器打开。
+在「设置 → 校园官方网页 → 学习」可打开教务系统、数字石大、教务处官网和学院官网。校园网页由外部浏览器打开。
 
-开发版的「服务 → 校园地图」可固定到首页。在唐岛湾或古镇口可搜索地点、选择校内起终点，有可用道路时可比较步行或骑行路线。课表详情可点「在校园地图查看」。点击地图右下角的定位按钮可查看当前位置和系统估计的误差。右上角指南针可在设备支持时显示北向。实时跟随和转向指引需开启设备前台定位。古镇口西区的离线路网尚缺主要校内道路，楼栋可查，路线覆盖待补。楼门和通行情况以现场为准。 [数据与定位说明](docs/PRIVACY.md#校园地图与前台定位)
+2.1.0 开发版可在「服务 → 官方网页」点击教务系统等网页旁的图钉，固定到首页「常用服务」。再次点击图钉可以取消固定。
+
+2.1.0 开发版将待办和课表合到「课表」页。上方默认展示今天的日程待办，可切换日期、新增待办或打开全部待办。向下滚动可查看完整周课表。「专注」仍有独立入口。
+
+2.1.0 开发版（未发布）的「服务 → 校园地图」可固定到首页。在唐岛湾或古镇口可搜索地点、选择校内起终点，有可用道路时可比较步行或骑行路线。课表详情可点「在校园地图查看」。点击地图右下角的定位按钮可查看当前位置和系统估计的误差。右上角指南针可在设备支持时显示北向。实时跟随和转向指引需开启设备前台定位。古镇口西区的离线路网尚缺主要校内道路，楼栋可查，路线覆盖待补。楼门和通行情况以现场为准。 [数据与定位说明](docs/PRIVACY.md#校园地图与前台定位)
 
 ## 更新方便，反馈也方便
 
 - **应用内更新**：检查新版本、选择下载线路、查看进度，校验通过后由系统确认安装；不自动下载、不强制更新。
 - **诊断报告**：关于页可导出或清除本机诊断记录，不记录账密、会话或课程正文；只在你主动分享时发出。
 - **问题反馈**：在 [Issues](https://github.com/dlam12138/UPCPocket/issues) 描述机型、版本、操作过程与实际现象。不要公开账号密码、验证码或带授权参数的链接。
+- 在 2.1.0 开发版的「首页 → 设置 → 关于 UPC Pocket」可复制 QQ 交流群号、查看并保存微信赞赏码。所有功能免费使用。
 
 ## 使用前了解一下
 
@@ -124,6 +126,8 @@ Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取�
 ## 致谢
 
 基于 [ZZUPocket](https://github.com/3beuml/ZZUPocket) 演进，保留上游版权与 [MIT 许可证](LICENSE)；悬浮导航的来源与改动见 [移植说明](docs/third-party/ZZUPocket-dock.md)。Android 开发技能的固定来源与 Apache-2.0 许可证见 [来源说明](docs/android-skills.md)。
+
+校园地图与派生路网使用 © OpenStreetMap contributors 数据，按 ODbL 1.0 分发。 [地图来源与许可](docs/adr/007-offline-campus-navigation.md)
 
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，2.0.4 扩展到古镇口东区和求是。
 

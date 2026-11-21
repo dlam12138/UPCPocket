@@ -22,12 +22,14 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.WarningAmber
 import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +42,7 @@ import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -74,10 +77,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
+/**
+ * 宿主把完整待办列表作为二级页时注入返回动作；一级 tab 场景为 null，不显示返回键。
+ */
+val LocalTodoListBack = compositionLocalOf<(() -> Unit)?> { null }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodoScreen(store: TodoStore) {
     val context = LocalContext.current
+    val listBack = LocalTodoListBack.current
     val scope = rememberCoroutineScope()
     val active = LocalPluginPageActive.current
     val dockClearance = LocalDockClearance.current
@@ -249,7 +258,19 @@ fun TodoScreen(store: TodoStore) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
-            com.upcpocket.app.ui.components.CampusTopAppBar(title = { Text("待办") })
+            com.upcpocket.app.ui.components.CampusTopAppBar(
+                title = { Text("待办") },
+                navigationIcon = {
+                    if (listBack != null) {
+                        IconButton(onClick = listBack) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回",
+                            )
+                        }
+                    }
+                },
+            )
         },
         snackbarHost = {
             SnackbarHost(
@@ -271,8 +292,14 @@ fun TodoScreen(store: TodoStore) {
                 }
             }
         },
+        // 一级 tab 已由 dockClearance 统一留出底部安全区；合页后的二级完整列表
+        // 没有 dock，需由 Scaffold 自己消费底部 inset，避免 FAB/Snackbar 压住系统条。
         contentWindowInsets = WindowInsets.safeDrawing.only(
-            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+            if (listBack != null) {
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+            } else {
+                WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+            },
         ),
     ) { padding ->
         val background = MaterialTheme.colorScheme.surface

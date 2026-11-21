@@ -1,6 +1,6 @@
 # UPC Pocket 当前架构
 
-核对日期 2026-11-19。本文描述开发源码，公开正式版为 2.0.8。产品与下载见 [README](README.md)，版本与工具链见 [BUILD](docs/BUILD.md)。历史完成项及验证边界见 [2.0.8 开发记录](docs/releases/2.0.8-development.md)。M0–M5 和 v0.1 方案保留历史现场。重要选择见 [ADR](docs/adr/README.md)。
+本文于 2026-11-20 核对 2.1.0 开发代码的课表与待办合页。M0–M5 和 v0.1 方案保留当时的决策与验证。 [正式版及下载](README.md) · [版本与工具链](docs/BUILD.md) · [2.0.8 开发记录](docs/releases/2.0.8-development.md) · [ADR](docs/adr/README.md)
 
 ## 系统轮廓
 
@@ -65,19 +65,21 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 扩展一个 feature 需同步 Gradle、PluginDescriptor/能力、宿主工厂与依赖注入、UI 贡献和缺插件行为；稳定 ID/路由/能力键是兼容契约。[API](API.md) 说明内部调用面。插件在同一 APK/进程中，不构成安全沙箱。
 
-[AppNav](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) 使用 HorizontalPager 承载首页/课表/服务/待办/专注，胶囊跟随 Pager；首页与服务为宿主目的地，业务 Tab 来自最终激活插件，导航按稳定 route 解析而非旧下标。二级页仍用现有 Navigation Compose。`LocalPluginPageActive` 防止预加载页查询或申请权限，`LocalDockClearance` 给内容末尾、FAB 和 Snackbar 留余量。首页右上角统一设置；多处快捷路径可指向同一路由。服务页按插件元数据分类与搜索，首页固定偏好缺键采用四默认项，显式空集合保持为空。校历为宿主固定公开外链，不依赖课表插件或账号；服务、首页固定及官方网页目录共用 `OfficialWebCatalog`。入口变化同步 [M5 映射](docs/m5/README.md)。
+2.1.0 的宿主导航使用 HorizontalPager 承载首页、课表、服务和专注，浮动胶囊跟随 Pager。首页与服务由宿主提供，业务入口来自最终激活的插件，导航按稳定 route 解析。二级页使用 Navigation Compose。`LocalPluginPageActive` 防止预加载页查询或申请权限，`LocalDockClearance` 给内容末尾、FAB 和 Snackbar 留余量。首页右上角统一设置。服务页按插件元数据分类与搜索，首页固定偏好缺键采用四默认项，显式空集合保持为空。服务、首页固定及官方网页目录共用 `OfficialWebCatalog`。 [AppNav](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) · [M5 入口映射](docs/m5/README.md)
 
-`core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。五项导航继续使用浮动胶囊与 Pager。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
+2.1.0 的 `timetable.week` 由宿主装配上方日程待办与下方周课表，待办按设备本地日期从现有 `TodoStore.tasks` 派生，课程仍由课表模块按原学期和教学周提供。`todo.list` 承载完整待办及任务、新建面板的系统入口，课表插件不可用时保留待办 Tab。专注使用原 `focus` 入口。
+
+`core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
 2.0.9 开发版由宿主提供常用校区，教室、图书馆与电费在页面进入时以保存的偏好初始化。服务页的官方网页按条目校区展示，完整目录覆盖两校区。电量组件继续直达唐岛湾原生页。 [开发入口映射](docs/m5/README.md#209-开发入口映射2026-11-19)
 
-2.0.9 开发版另提供 opt-in 的轻量玻璃界面风格，默认仍为 Material 3，真机性能尚未验证；该偏好独立于桌面组件，历史取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)。液态玻璃预研由宿主提供 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt)。Android 13 及以上的外层玻璃卡片共享一份可透出页面的半透明主题光源。小控件和独立弹窗使用透明或低不透明度的底色，辅以连续高光与描边。按压、焦点、选中值变化及弹窗展示时才播放短动效，沿用系统动画时长。底栏底板使用半透明主题色、高光和描边，选中水滴在交互时采样同窗口的主题渐变和导航图标。光学底栏用于 API 33 及以上，API 31–32 回退现有 Material 3 底栏。
+2.0.9 开发版另提供 opt-in 的轻量玻璃界面风格，默认仍为 Material 3，真机性能尚未验证；该偏好独立于桌面组件，历史取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)。液态玻璃预研由宿主提供 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt)。Android 13 及以上的外层玻璃卡片共享一份可透出页面的半透明主题光源。小控件使用透明或低不透明度的底色。文字弹窗和短提示使用随主题变化的高不透明度底色，保留连续高光与描边。按压、焦点、选中值变化及弹窗展示时才播放短动效，沿用系统动画时长。底栏底板使用主题色、高光和描边。选中水滴交互时采样同窗口的主题渐变和导航图标，页面滚动无需为底栏录制导航内容。光学底栏用于 API 33 及以上，API 31–32 回退现有 Material 3 底栏。
 
 待办浮层提示使用独立的列表采样层，提示本体、浮动按钮和导航位于采样范围之外。仅在提示存在时录制列表，模糊和边缘折光限制在提示外形内。提示与操作按钮透出同一采样层，边缘高光在透明面上绘制。
 
 透明底部表单打开期间，宿主收起浮动导航，待办页收起浮动添加按钮，避免下方的操作控件与表单内容视觉重叠。
 
-校园地图是二级插件页，通过服务目录及首页固定进入。AppGraph 注入常用校区和课表到地图的地点选择动作。课表详情通过宿主查找已激活的地图能力，仅把选中的地点文字交给地图内存中的一次请求。地图插件独立读取随应用分发的 OSM 数据与地点清单，在本机算路并消费前台定位，具体数据与验收边界见 [ADR 007](docs/adr/007-offline-campus-navigation.md)。
+2.1.0 开发版的校园地图是二级插件页，通过服务目录及首页固定进入。AppGraph 注入常用校区和课表到地图的地点选择动作。课表详情通过宿主查找已激活的地图能力，仅把选中的地点文字交给地图内存中的一次请求。地图插件独立读取随应用分发的 OSM 数据与地点清单，在本机算路并消费前台定位，具体数据与验收边界见 [ADR 007](docs/adr/007-offline-campus-navigation.md)。
 
 ## 本机账号与业务会话
 

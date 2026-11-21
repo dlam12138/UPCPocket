@@ -179,6 +179,8 @@ fun AboutScreen(onBack: () -> Unit) {
             )
             UpdateSection()
 
+            CommunitySupportSection()
+
             AboutCard("使用指南") {
                 Bullet("学校账号：首页右上角设置 → 学校账号，填写账号、密码并保存；返回课表后点击右上角刷新。保存不代表验证通过。")
                 Bullet("课表：点击学期或周次切换，点击课程查看详情；右上角刷新重新读取，需验证码时点击“学校登录”。")
