@@ -108,6 +108,17 @@ private fun mapPath(points: List<Offset>, closed: Boolean = false) = Path().appl
     if (closed && points.isNotEmpty()) close()
 }
 
+private fun ProjectedRoute.remainingPath(alongMeters: Double): Path? {
+    val position = route.positionAt(alongMeters) ?: return null
+    val a = points[position.segmentIndex]
+    val b = points[position.segmentIndex + 1]
+    val first = a + (b - a) * position.fraction.toFloat()
+    return Path().apply {
+        moveTo(first.x, first.y)
+        for (index in position.segmentIndex + 1 until points.size) lineTo(points[index].x, points[index].y)
+    }
+}
+
 private val filledLayers = setOf("area", "building", "water", "field")
 private val layerOrder = listOf("water", "area", "field", "path", "road", "building")
 private val majorMapPlaces = setOf(
@@ -158,6 +169,9 @@ internal fun CampusMapCanvas(
         }
     }
     val selectedRoute = routes.find { it.route.id == state.selectedRouteId }
+    val remainingPath = remember(selectedRoute, state.routeProgressMeters) {
+        state.routeProgressMeters?.let { selectedRoute?.remainingPath(it) }
+    }
     val navigates = isGuidanceVisible(state)
     val destination = state.destination?.takeUnless(CampusPlace::isEntrance)
     val previewEnd = remember(campus, destination, projection) {
@@ -272,8 +286,12 @@ internal fun CampusMapCanvas(
                     }
                 }
                 selectedRoute?.let { line ->
-                    drawPath(line.path, palette.routeOutline, style = Stroke(9.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                    drawPath(line.path, palette.route, style = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    if (remainingPath != null) {
+                        drawPath(line.path, palette.traveled, style = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    }
+                    val highlighted = remainingPath ?: line.path
+                    drawPath(highlighted, palette.routeOutline, style = Stroke(9.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    drawPath(highlighted, palette.route, style = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
                 }
             }
 
@@ -322,7 +340,9 @@ internal fun CampusMapCanvas(
                     drawPlaceLabel(destination.name, end, emphasized = true)
                 }
             }
-            val routeStart = selectedRoute?.points?.firstOrNull() ?: manualStart?.point?.let(projection::project)
+            val routeStart = if (remainingPath == null) {
+                selectedRoute?.points?.firstOrNull() ?: manualStart?.point?.let(projection::project)
+            } else null
             routeStart?.let(view::screen)?.takeIf(bounds::contains)?.let { start ->
                 drawCircle(palette.label, 9.dp.toPx(), start)
                 drawCircle(palette.start, 5.5.dp.toPx(), start)
@@ -357,7 +377,7 @@ internal fun CampusMapCanvas(
                         val uncertainty = (fix.accuracy.toFloat() * view.scale).coerceAtMost(size.maxDimension * 3f)
                         drawCircle(uncertaintyColor, uncertainty, at)
                         drawCircle(palette.label, 10.dp.toPx(), at)
-                        val azimuth = heading.value ?: fix.bearing
+                        val azimuth = if (navigates) fix.bearing ?: heading.value else heading.value ?: fix.bearing
                         if (azimuth == null) {
                             drawCircle(palette.position, 7.dp.toPx(), at)
                         } else {
@@ -469,6 +489,7 @@ private class CampusMapColors(dark: Boolean, val label: Color, val text: Color) 
     val alternative = if (dark) Color(0xFF829BC6) else Color(0xFF86A2CA)
     val routeOutline = if (dark) Color(0xFF243C6A) else Color(0xFFDAE8FF)
     val route = if (dark) Color(0xFF7EABFF) else Color(0xFF2464D4)
+    val traveled = route.copy(alpha = 0.28f)
     val position = if (dark) Color(0xFF74B8FF) else Color(0xFF096DE3)
     val start = if (dark) Color(0xFF85D7A8) else Color(0xFF1B8752)
     val destination = if (dark) Color(0xFFFF9B98) else Color(0xFFB84554)

@@ -1,8 +1,8 @@
 package com.upcpocket.app.campusmap
 
-import android.content.Context
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -11,10 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
-import kotlin.math.roundToInt
 
 internal enum class NavigationStatus {
-    IDLE, PLANNING, READY, NAVIGATING, WAITING_LOCATION, REROUTING, ARRIVED, NO_ROUTE,
+    IDLE, PLANNING, READY, NAVIGATING, WAITING_LOCATION, REROUTING, ARRIVED, NO_ROUTE, NAVIGATION_NO_ROUTE,
 }
 
 internal data class CampusFix(
@@ -41,15 +40,17 @@ internal data class CampusMapState(
     val status: NavigationStatus = NavigationStatus.IDLE,
     val notice: String? = null,
     val guidance: CampusGuidance? = null,
+    val routeProgressMeters: Double? = null,
     val unresolvedPlace: String? = null,
 )
 
 internal class CampusMapController(
-    context: Context,
     private val scope: CoroutineScope,
     initialCampus: CampusId,
+    private val loadMaps: suspend () -> Map<CampusId, CampusMapData>,
+    private val now: () -> Long = SystemClock::elapsedRealtime,
+    private val routingDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
-    private val appContext = context.applicationContext
     private val mutableState = MutableStateFlow(CampusMapState(campusId = initialCampus))
     val state = mutableState.asStateFlow()
 
@@ -60,8 +61,8 @@ internal class CampusMapController(
     private var plannedFrom: GeoPoint? = null
     private var following: CampusRoute? = null
     private var startPending = false
-    private var progressMeters = 0.0
-    private var lastAcceptedFix = 0L
+    private var lastProcessedFix = 0L
+    private var lastMatchedFix = 0L
     private var offRouteCount = 0
     private var firstOffRouteAt = 0L
     private var lastRerouteAt: Long? = null
@@ -71,7 +72,7 @@ internal class CampusMapController(
         val generation = ++loadGeneration
         mutableState.value = mutableState.value.copy(loadFailed = false)
         val data = try {
-            CampusMapDataSource.load(appContext)
+            loadMaps()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Exception) {
@@ -134,7 +135,7 @@ internal class CampusMapController(
         val manual = current.manualStart
         val from = if (manual == null) {
             val fix = current.fix
-            if (fix?.canNavigate(SystemClock.elapsedRealtime()) != true) {
+            if (fix?.canNavigate(now()) != true) {
                 return reject("请开启精确定位并等待定位稳定，或手动选择校内起点")
             }
             fix.point
@@ -142,7 +143,7 @@ internal class CampusMapController(
             campus.routeTarget(manual)?.point ?: return reject("此起点暂无可用道路，请选择其他起点")
         }
         resetNavigation()
-        requestRoutes(from, targets, continueNavigation = false, startFromPlace = manual != null)
+        requestRoutes(from, targets, forNavigation = false, startFromPlace = manual != null)
     }
 
     fun selectRoute(id: String) {
@@ -155,10 +156,10 @@ internal class CampusMapController(
         val current = mutableState.value
         if (current.status != NavigationStatus.READY && !startPending) return
         val route = current.routes.firstOrNull { it.id == current.selectedRouteId } ?: return
-        val fix = current.fix?.takeIf { it.canNavigate(SystemClock.elapsedRealtime()) }
+        val fix = current.fix?.takeIf { it.canNavigate(now()) }
         if (fix == null) {
             startPending = true
-            mutableState.value = current.copy(status = NavigationStatus.WAITING_LOCATION, notice = "等待可信的精确定位")
+            mutableState.value = current.copy(status = NavigationStatus.WAITING_LOCATION, notice = "正在等待精确定位")
             return
         }
         val campus = current.campus ?: return
@@ -167,26 +168,10 @@ internal class CampusMapController(
             mutableState.value = current.copy(status = NavigationStatus.READY, notice = "进入当前校区后可开始导航")
             return
         }
-        val distanceToStart = fix.point.distanceTo(route.points.first())
-        if (distanceToStart > startTolerance(fix)) {
-            val planAlreadyUsesThisPosition = current.manualStart == null &&
-                plannedFrom?.distanceTo(fix.point)?.let { it <= max(12.0, fix.accuracy) } == true
-            if (planAlreadyUsesThisPosition) {
-                mutableState.value = current.copy(
-                    status = NavigationStatus.READY,
-                    notice = approachNotice(distanceToStart),
-                )
-                return
-            }
-            val targets = current.destination?.let(campus::routeTargets).orEmpty()
-            if (targets.isEmpty()) return
-            mutableState.value = current.copy(manualStart = null)
-            requestRoutes(
-                from = fix.point,
-                targets = targets,
-                continueNavigation = false,
-                successNotice = "已从当前位置重新规划，请确认路线",
-            )
+        val usesCurrentPosition = current.manualStart == null &&
+            plannedFrom?.distanceTo(fix.point)?.let { it <= 12.0 } == true
+        if (!usesCurrentPosition) {
+            recalculate(fix, preferredTarget = route.target)
             return
         }
         startFollowing(route)
@@ -199,31 +184,37 @@ internal class CampusMapController(
         mutableState.value = current.copy(
             status = if (current.routes.isEmpty()) NavigationStatus.IDLE else NavigationStatus.READY,
             guidance = null,
+            routeProgressMeters = null,
             notice = null,
         )
     }
 
     fun retry() {
-        if (following != null) {
-            val fix = mutableState.value.fix?.takeIf { it.canNavigate(SystemClock.elapsedRealtime()) }
-            if (fix != null) recalculate(fix)
-        } else {
-            plan()
-        }
+        val fix = mutableState.value.fix?.takeIf { it.canNavigate(now()) } ?: return
+        recalculate(fix)
     }
 
     fun updatePosition(fix: CampusFix?) {
         val current = mutableState.value
-        val now = SystemClock.elapsedRealtime()
-        val fresh = fix?.takeIf { now - it.elapsedRealtimeMillis in 0..POSITION_DISPLAY_AGE_MILLIS }
+        val timestamp = now()
+        val fresh = fix?.takeIf { timestamp - it.elapsedRealtimeMillis in 0..POSITION_DISPLAY_AGE_MILLIS }
         mutableState.value = current.copy(fix = fresh)
-        val usable = fresh?.takeIf { it.canNavigate(now) }
+        val usable = fresh?.takeIf { it.canNavigate(timestamp) }
         if (startPending && usable != null) {
             startNavigation()
             return
         }
-        val route = following ?: return
         if (current.status == NavigationStatus.REROUTING) return
+        val route = following
+        if (route == null) {
+            if (current.status == NavigationStatus.NAVIGATION_NO_ROUTE && usable != null &&
+                lastRerouteAt?.let { usable.elapsedRealtimeMillis - it >= 4_000L } == true &&
+                plannedFrom?.distanceTo(usable.point)?.let { it >= max(15.0, usable.accuracy) } == true
+            ) {
+                recalculate(usable)
+            }
+            return
+        }
         if (usable == null || current.campus?.contains(usable.point) != true) {
             clearOffRoute()
             arrivalFixes = 0
@@ -234,18 +225,29 @@ internal class CampusMapController(
             )
             return
         }
-        if (usable.elapsedRealtimeMillis <= lastAcceptedFix) return
-        val elapsed = if (lastAcceptedFix == 0L) 0.0 else (usable.elapsedRealtimeMillis - lastAcceptedFix) / 1000.0
-        lastAcceptedFix = usable.elapsedRealtimeMillis
+        if (usable.elapsedRealtimeMillis <= lastProcessedFix) return
+        val elapsed = if (lastMatchedFix == 0L) 0.0 else (usable.elapsedRealtimeMillis - lastMatchedFix) / 1000.0
+        lastProcessedFix = usable.elapsedRealtimeMillis
 
-        val match = route.match(usable.point, progressMeters, usable.accuracy, elapsed)
-        val offRouteThreshold = max(22.0, usable.accuracy * 1.5)
-        if (match == null || match.offRoadMeters > offRouteThreshold) {
+        if (route.startFromEntrance && current.routeProgressMeters == null && current.campus.isInsideBuilding(usable.point)) {
+            clearOffRoute()
+            mutableState.value = mutableState.value.copy(
+                status = NavigationStatus.NAVIGATING,
+                notice = INDOOR_DEPARTURE_NOTICE,
+                guidance = null,
+            )
+            return
+        }
+
+        val previousProgress = current.routeProgressMeters ?: 0.0
+        val match = route.match(usable.point, previousProgress, usable.accuracy, elapsed, bearing = usable.bearing)
+        if (match == null) {
             noteOffRoute(usable)
             return
         }
+        lastMatchedFix = usable.elapsedRealtimeMillis
         clearOffRoute()
-        progressMeters = max(progressMeters, match.alongMeters)
+        val progressMeters = max(previousProgress, match.alongMeters)
         val guidance = route.guidance(progressMeters)
         val nearEnd = guidance.remainingMeters < 14 && usable.point.distanceTo(route.points.last()) < 18
         arrivalFixes = if (nearEnd) arrivalFixes + 1 else 0
@@ -254,12 +256,14 @@ internal class CampusMapController(
             mutableState.value = mutableState.value.copy(
                 status = NavigationStatus.ARRIVED,
                 guidance = null,
+                routeProgressMeters = route.meters,
                 notice = route.arrivalNotice,
             )
         } else {
             mutableState.value = mutableState.value.copy(
                 status = NavigationStatus.NAVIGATING,
                 guidance = guidance,
+                routeProgressMeters = progressMeters,
                 notice = null,
             )
         }
@@ -269,18 +273,22 @@ internal class CampusMapController(
         arrivalFixes = 0
         if (offRouteCount == 0) firstOffRouteAt = fix.elapsedRealtimeMillis
         offRouteCount++
-        mutableState.value = mutableState.value.copy(
-            status = NavigationStatus.WAITING_LOCATION,
-            notice = "正在确认你是否偏离路线",
-            guidance = null,
-        )
+        val current = mutableState.value
+        if (current.status != NavigationStatus.NAVIGATION_NO_ROUTE) {
+            val joining = current.routeProgressMeters == null
+            mutableState.value = current.copy(
+                status = if (joining) NavigationStatus.NAVIGATING else NavigationStatus.WAITING_LOCATION,
+                notice = if (joining) "请沿可通行道路出发，路线将随定位更新" else "正在确认你是否偏离路线",
+                guidance = null,
+            )
+        }
         val sinceLastReroute = lastRerouteAt?.let { fix.elapsedRealtimeMillis - it } ?: Long.MAX_VALUE
         if (offRouteCount >= 3 && fix.elapsedRealtimeMillis - firstOffRouteAt >= 4_000 && sinceLastReroute >= 15_000) {
             recalculate(fix)
         }
     }
 
-    private fun recalculate(fix: CampusFix) {
+    private fun recalculate(fix: CampusFix, preferredTarget: CampusRouteTarget? = following?.target) {
         val current = mutableState.value
         if (current.status == NavigationStatus.REROUTING) return
         val campus = current.campus ?: return
@@ -289,14 +297,14 @@ internal class CampusMapController(
         if (targets.isEmpty()) return
         lastRerouteAt = fix.elapsedRealtimeMillis
         clearOffRoute()
-        requestRoutes(fix.point, targets, continueNavigation = true, preferredTarget = following?.target)
+        mutableState.value = current.copy(manualStart = null)
+        requestRoutes(fix.point, targets, forNavigation = true, preferredTarget = preferredTarget)
     }
 
     private fun requestRoutes(
         from: GeoPoint,
         targets: List<CampusRouteTarget>,
-        continueNavigation: Boolean,
-        successNotice: String? = null,
+        forNavigation: Boolean,
         startFromPlace: Boolean = false,
         preferredTarget: CampusRouteTarget? = null,
     ) {
@@ -304,16 +312,23 @@ internal class CampusMapController(
         val campus = current.campus ?: return
         val generation = ++routingGeneration
         routingJob?.cancel()
+        plannedFrom = from
+        val retainRoute = forNavigation && following != null
         mutableState.value = current.copy(
-            routes = if (continueNavigation) current.routes else emptyList(),
-            selectedRouteId = if (continueNavigation) current.selectedRouteId else null,
-            status = if (continueNavigation) NavigationStatus.REROUTING else NavigationStatus.PLANNING,
+            routes = if (retainRoute) current.routes else emptyList(),
+            selectedRouteId = if (retainRoute) current.selectedRouteId else null,
+            routeProgressMeters = current.routeProgressMeters.takeIf { retainRoute },
+            status = if (forNavigation) NavigationStatus.REROUTING else NavigationStatus.PLANNING,
             guidance = null,
-            notice = if (continueNavigation) "正在重新规划路线" else null,
+            notice = when {
+                retainRoute -> "正在从当前位置重新规划路线"
+                forNavigation -> "正在从当前位置规划路线"
+                else -> null
+            },
         )
         routingJob = scope.launch {
             val result = try {
-                withContext(Dispatchers.Default) {
+                withContext(routingDispatcher) {
                     val router = CampusRouter(campus)
                     if (preferredTarget == null || targets.size == 1) {
                         router.plan(from, targets, current.mode, startFromPlace)
@@ -335,17 +350,23 @@ internal class CampusMapController(
             val latest = mutableState.value
             if (result == null || result.routes.isEmpty()) {
                 mutableState.value = latest.copy(
-                    status = NavigationStatus.NO_ROUTE,
-                    notice = result?.failure?.let(::failureNotice) ?: "路线计算失败，请重试",
+                    status = if (forNavigation) NavigationStatus.NAVIGATION_NO_ROUTE else NavigationStatus.NO_ROUTE,
+                    notice = result?.failure?.let { failureNotice(it, current.mode, startFromPlace) }
+                        ?: "路线计算失败，请重试",
                     guidance = null,
                 )
                 return@launch
             }
             val best = result.routes.first()
-            plannedFrom = from
+            if (forNavigation) {
+                if (!retainRoute) lastRerouteAt = null
+                startFollowing(best, result.routes)
+                updatePosition(latest.fix)
+                return@launch
+            }
             val usesEntrance = best.target?.entrance != null
             val destinationName = latest.destination?.name ?: "目的地"
-            val previewNote = when {
+            val destinationNote = when {
                 usesEntrance && current.mode == TravelMode.BIKE ->
                     "骑行至附近道路，再步行前往$destinationName"
                 usesEntrance -> "步行前往$destinationName"
@@ -355,36 +376,32 @@ internal class CampusMapController(
                 startFromPlace -> "按起终点附近已标注道路规划，楼门请以现场为准"
                 else -> "路线到达就近道路，楼门请以现场为准"
             }
+            val previewNote = if (best.startFromEntrance) {
+                "路线从楼外道路出发，开始后将跟随当前位置。$destinationNote"
+            } else {
+                destinationNote
+            }
             mutableState.value = latest.copy(
                 status = NavigationStatus.READY,
                 routes = result.routes,
                 selectedRouteId = best.id,
-                notice = if (successNotice == null) previewNote
-                else if (!usesEntrance) successNotice else "$successNotice。$previewNote",
+                notice = previewNote,
             )
-            if (continueNavigation) {
-                val fix = latest.fix?.takeIf { it.canNavigate(SystemClock.elapsedRealtime()) }
-                val distance = fix?.point?.distanceTo(best.points.first())
-                if (fix != null && distance != null && distance > startTolerance(fix)) {
-                    following = null
-                    mutableState.value = mutableState.value.copy(notice = approachNotice(distance))
-                    return@launch
-                }
-                startFollowing(best)
-                updatePosition(fix)
-            }
         }
     }
 
-    private fun startFollowing(route: CampusRoute) {
+    private fun startFollowing(route: CampusRoute, routes: List<CampusRoute> = mutableState.value.routes) {
         following = route
-        progressMeters = 0.0
-        lastAcceptedFix = 0
+        lastProcessedFix = 0L
+        lastMatchedFix = 0L
         arrivalFixes = 0
         clearOffRoute()
         mutableState.value = mutableState.value.copy(
             status = NavigationStatus.NAVIGATING,
-            guidance = route.guidance(0.0),
+            routes = routes,
+            selectedRouteId = route.id,
+            guidance = null,
+            routeProgressMeters = null,
             notice = null,
         )
     }
@@ -396,8 +413,8 @@ internal class CampusMapController(
         plannedFrom = null
         startPending = false
         following = null
-        progressMeters = 0.0
-        lastAcceptedFix = 0
+        lastProcessedFix = 0L
+        lastMatchedFix = 0L
         arrivalFixes = 0
         lastRerouteAt = null
         clearOffRoute()
@@ -413,14 +430,13 @@ internal class CampusMapController(
         mutableState.value = mutableState.value.withoutRoute().copy(status = NavigationStatus.NO_ROUTE, notice = message)
     }
 
-    private fun startTolerance(fix: CampusFix): Double = max(22.0, fix.accuracy * 1.3)
-
-    private fun approachNotice(distance: Double): String =
-        "距道路起点约 ${distance.roundToInt()} 米，请先前往地图上的绿色起点"
-
-    private fun failureNotice(failure: RouteFailure): String = when (failure) {
+    private fun failureNotice(failure: RouteFailure, mode: TravelMode, startFromPlace: Boolean): String = when (failure) {
         RouteFailure.OUTSIDE_CAMPUS -> "起终点需位于所选校区的校内范围"
-        RouteFailure.NO_START_ROAD -> "起点附近缺少可用道路，请换一个起点"
+        RouteFailure.NO_START_ROAD -> when {
+            startFromPlace -> "所选起点附近暂无可用道路，请换一个起点"
+            mode == TravelMode.BIKE -> "附近未找到可骑行道路，请到室外道路上重试或切换步行"
+            else -> "附近未找到步行道路，请到室外道路上重试，或手动选择起点"
+        }
         RouteFailure.NO_END_ROAD -> "目的地附近缺少当前方式可用的道路"
         RouteFailure.TOO_CLOSE -> "起终点在同一处道路附近"
         RouteFailure.DISCONNECTED -> "当前方式未找到连通的校内路线，可切换步行或骑行"
@@ -428,9 +444,11 @@ internal class CampusMapController(
 
     private fun CampusMapState.withoutRoute() = copy(
         status = NavigationStatus.IDLE, routes = emptyList(), selectedRouteId = null, notice = null, guidance = null,
+        routeProgressMeters = null,
     )
 
     companion object {
         private const val POSITION_DISPLAY_AGE_MILLIS = 30_000L
+        private const val INDOOR_DEPARTURE_NOTICE = "请从楼门走到室外，路线将随定位更新"
     }
 }

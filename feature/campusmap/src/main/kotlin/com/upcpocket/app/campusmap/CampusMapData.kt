@@ -98,6 +98,21 @@ internal data class CampusMapData(
     fun isInsideBuilding(point: GeoPoint): Boolean =
         geometry.any { it.kind == "building" && it.points.containsOnMap(point, edgeTolerance = 0.05) }
 
+    /** Only a unique mapped parent in a unique footprint can supply an indoor origin's exits. */
+    fun originEntrances(point: GeoPoint): List<CampusPlace> {
+        if (id != CampusId.TDW) return emptyList()
+        val footprint = geometry.singleOrNull {
+            it.kind == "building" && it.points.containsOnMap(point, edgeTolerance = 0.05)
+        } ?: return emptyList()
+        val host = places.singleOrNull { place ->
+            !place.isEntrance && place.parentId == null && place.hasMappedPosition &&
+                place.point?.let { footprint.points.containsOnMap(it, edgeTolerance = 0.05) } == true
+        } ?: return emptyList()
+        return connectedEntrances(host).filter { entrance ->
+            entrance.accessPoint?.let { !isInsideBuilding(it) } == true
+        }
+    }
+
     fun mapDestination(place: CampusPlace): CampusPlace =
         destinationEntrance(place) ?: places.firstOrNull { it.isEntrance && it.parentId == place.id } ?: place
 

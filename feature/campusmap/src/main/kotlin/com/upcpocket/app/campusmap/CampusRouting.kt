@@ -20,6 +20,7 @@ internal data class CampusRoute(
     val meters: Double,
     val seconds: Int,
     val target: CampusRouteTarget? = null,
+    val startFromEntrance: Boolean = false,
 ) {
     private val bikeHandoff = "步行前往目的地".takeIf { mode == TravelMode.BIKE && target?.entrance != null }
     private val arrivalCue = when {
@@ -32,6 +33,9 @@ internal data class CampusRoute(
     private val distances = DoubleArray(points.size).apply {
         for (index in 1 until size) this[index] = this[index - 1] + points[index - 1].distanceTo(points[index])
     }
+    private val bearings = DoubleArray((points.size - 1).coerceAtLeast(0)) { index ->
+        points[index].bearingTo(points[index + 1])
+    }
     private val cues = buildList<RouteCue> {
         for (index in 1 until points.lastIndex) {
             // Read each turn over a short distance, since a junction can have several very short edges.
@@ -42,36 +46,69 @@ internal data class CampusRoute(
             val inBearing = points[before].bearingTo(points[index])
             val outBearing = points[index].bearingTo(points[after])
             val angle = (outBearing - inBearing + 540) % 360 - 180
-            if (abs(angle) < 35 || lastOrNull()?.let { distances[index] - it.at < 16 } == true) continue
+            if (abs(angle) < 25) continue
+            val gentle = abs(angle) < 35
+            val previous = lastOrNull()
+            if (previous != null && distances[index] - previous.at < 16) {
+                if (!previous.gentle || gentle) continue
+                // A small bend must not hide a nearby stronger turn. Reuse its maneuver index.
+                removeAt(lastIndex)
+            }
             val instruction = when {
                 abs(angle) >= 155 -> "掉头"
+                abs(angle) < 35 && angle < 0 -> "向左前方行进"
+                abs(angle) < 35 -> "向右前方行进"
                 angle < 0 -> "向左转"
                 else -> "向右转"
             }
-            add(RouteCue(distances[index], instruction))
+            add(RouteCue(distances[index], instruction, gentle = gentle))
         }
         add(RouteCue(meters, bikeHandoff ?: arrivalCue))
     }
 
-    fun match(point: GeoPoint, previousMeters: Double, accuracy: Double, elapsedSeconds: Double = 1.0): RouteMatch? {
+    fun match(
+        point: GeoPoint,
+        previousMeters: Double,
+        accuracy: Double,
+        elapsedSeconds: Double = 1.0,
+        bearing: Float? = null,
+    ): RouteMatch? {
         val behind = max(18.0, accuracy)
         val plausibleTravel = elapsedSeconds.coerceIn(0.0, 12.0) * mode.metersPerSecond * 1.6
         val ahead = plausibleTravel + max(18.0, accuracy * 1.25)
+        val offRouteThreshold = max(22.0, accuracy * 1.5)
+        val movingBearing = bearing?.takeIf { it.isFinite() }?.let { ((it.toDouble() % 360) + 360) % 360 }
         var closest: RouteMatch? = null
         var lowestScore = Double.POSITIVE_INFINITY
         for (index in 0 until points.lastIndex) {
             if (distances[index + 1] < previousMeters - behind || distances[index] > previousMeters + ahead) continue
             val projection = point.projectOnto(points[index], points[index + 1])
+            if (projection.distance > offRouteThreshold) continue
             val along = distances[index] + projection.fraction * (distances[index + 1] - distances[index])
             if (along !in (previousMeters - behind)..(previousMeters + ahead)) continue
             val progressPenalty = (along - previousMeters - plausibleTravel - 8.0).coerceAtLeast(0.0) * 0.25
-            val score = projection.distance + progressPenalty
+            // Heading only breaks close spatial ties: it cannot add more than two metres of cost.
+            val directionPenalty = movingBearing?.let { heading ->
+                val difference = abs((bearings[index] - heading + 540) % 360 - 180)
+                difference.coerceAtMost(90.0) / 90.0 * 2.0
+            } ?: 0.0
+            val score = projection.distance + progressPenalty + directionPenalty
             if (score < lowestScore) {
                 lowestScore = score
                 closest = RouteMatch(along, projection.distance)
             }
         }
         return closest
+    }
+
+    /** Locate accepted progress on the existing polyline without matching the raw fix again. */
+    fun positionAt(alongMeters: Double): RoutePosition? {
+        if (points.size < 2 || !alongMeters.isFinite()) return null
+        val along = alongMeters.coerceIn(0.0, distances.last())
+        val found = distances.binarySearch(along)
+        val index = (if (found >= 0) found else -found - 2).coerceIn(0, points.lastIndex - 1)
+        val length = distances[index + 1] - distances[index]
+        return RoutePosition(index, if (length > 0.0) (along - distances[index]) / length else 1.0)
     }
 
     fun guidance(along: Double): CampusGuidance {
@@ -86,10 +123,15 @@ internal data class CampusRoute(
         )
     }
 
-    private data class RouteCue(val at: Double, val instruction: String)
+    private data class RouteCue(
+        val at: Double,
+        val instruction: String,
+        val gentle: Boolean = false,
+    )
 }
 
 internal data class RouteMatch(val alongMeters: Double, val offRoadMeters: Double)
+internal data class RoutePosition(val segmentIndex: Int, val fraction: Double)
 
 internal data class CampusGuidance(
     val instruction: String,
@@ -130,14 +172,25 @@ internal class CampusRouter(private val campus: CampusMapData) {
         val roads = campus.networkRoads.filter { if (mode == TravelMode.WALK) it.walk else it.bike }
         val segments = roads.groupBy { streetKey(it.from, it.to) }
         val startLimit = if (startFromPlace) END_SEARCH_METERS else START_SEARCH_METERS
-        val start = snap(from, startLimit, network, segments)
+        val normalStart = snap(from, startLimit, network, segments)
+        val entranceStart = if (normalStart == null && !startFromPlace) {
+            campus.originEntrances(from).mapNotNull { entrance ->
+                val access = entrance.accessPoint ?: return@mapNotNull null
+                val entry = snap(access, ENTRANCE_SNAP_METERS, network, segments) {
+                    !campus.isInsideBuilding(it)
+                } ?: return@mapNotNull null
+                entrance to entry
+            }.minByOrNull { (entrance, _) -> from.distanceTo(checkNotNull(entrance.point)) }?.second
+        } else null
+        // The preview begins on an existing outdoor segment, never an inferred indoor connector.
+        val start = normalStart ?: entranceStart
             ?: return RoutePlan(failure = RouteFailure.NO_START_ROAD)
         val destinations = inCampus.mapNotNull { target ->
             currentCoroutineContext().ensureActive()
             val door = target.entrance?.point
             if (door != null && campus.id == CampusId.TDW && campus.isInsideBuilding(door)) return@mapNotNull null
             // The bundled access point lies on a walking segment.
-            val endLimit = if (door != null && mode == TravelMode.WALK) WALK_ENTRANCE_SNAP_METERS else END_SEARCH_METERS
+            val endLimit = if (door != null && mode == TravelMode.WALK) ENTRANCE_SNAP_METERS else END_SEARCH_METERS
             val end = snap(target.point, endLimit, network, segments) { point ->
                 campus.id != CampusId.TDW || !campus.isInsideBuilding(point)
             } ?: return@mapNotNull null
@@ -240,6 +293,7 @@ internal class CampusRouter(private val campus: CampusMapData) {
                     meters = meters,
                     seconds = ceil(meters / mode.metersPerSecond).toInt(),
                     target = destination.target,
+                    startFromEntrance = normalStart == null,
                 )
             },
         )
@@ -329,6 +383,6 @@ internal class CampusRouter(private val campus: CampusMapData) {
         private const val MAX_OVERLAP = 0.9
         private const val START_SEARCH_METERS = 50.0
         private const val END_SEARCH_METERS = 65.0
-        private const val WALK_ENTRANCE_SNAP_METERS = 1.0
+        private const val ENTRANCE_SNAP_METERS = 1.0
     }
 }

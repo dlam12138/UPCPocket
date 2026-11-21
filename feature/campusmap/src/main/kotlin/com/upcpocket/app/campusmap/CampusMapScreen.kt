@@ -74,7 +74,11 @@ private enum class LocationAction { LOCATE, LOCATE_PRECISE, PLAN, NAVIGATE }
 internal fun CampusMapScreen(initialCampus: CampusId, requestedPlace: String?, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val controller = remember(context, scope, initialCampus) { CampusMapController(context, scope, initialCampus) }
+    val controller = remember(context, scope, initialCampus) {
+        CampusMapController(scope, initialCampus, loadMaps = {
+            CampusMapDataSource.load(context.applicationContext)
+        })
+    }
     val state by controller.state.collectAsStateWithLifecycle()
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -554,18 +558,18 @@ private fun NavigationPanel(state: CampusMapState, onStop: () -> Unit, onRetry: 
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    if (state.status == NavigationStatus.NO_ROUTE) {
+    if (state.status == NavigationStatus.NAVIGATION_NO_ROUTE) {
         FilledTonalButton(
             onClick = onRetry,
-            enabled = state.fix?.usableForCampusNavigation() == true,
+            enabled = state.fix?.let { it.usableForCampusNavigation() && state.campus?.contains(it.point) == true } == true,
             modifier = Modifier.fillMaxWidth(),
         ) { Text("重试规划") }
     }
 }
 
 internal fun isGuidanceVisible(state: CampusMapState): Boolean = when (state.status) {
-    NavigationStatus.NAVIGATING, NavigationStatus.WAITING_LOCATION, NavigationStatus.REROUTING -> true
-    NavigationStatus.NO_ROUTE -> state.routes.isNotEmpty()
+    NavigationStatus.NAVIGATING, NavigationStatus.WAITING_LOCATION, NavigationStatus.REROUTING,
+    NavigationStatus.NAVIGATION_NO_ROUTE -> true
     else -> false
 }
 
@@ -597,6 +601,7 @@ private fun CampusPlace.subtitle(): String {
 private fun CampusLocationStatus.message(state: CampusMapState, campus: CampusMapData): String? = when (this) {
     CampusLocationStatus.OFF -> null
     CampusLocationStatus.WAITING -> "正在获取位置…"
+    CampusLocationStatus.NO_FIX -> "暂时无法定位，请到室外开阔处再试"
     CampusLocationStatus.ACCURATE -> {
         state.fix?.let { fix ->
             if (!campus.contains(fix.point)) "定位点在所选校区外"
@@ -604,11 +609,11 @@ private fun CampusLocationStatus.message(state: CampusMapState, campus: CampusMa
         }
     }
     CampusLocationStatus.LOW_ACCURACY -> state.fix?.let {
-        "定位误差约 ${formatCampusDistance(it.accuracy)}，请到开阔处"
-    } ?: "定位精度不足，请到开阔处"
+        "定位误差约 ${formatCampusDistance(it.accuracy)}，请到室外开阔处再试"
+    } ?: "定位精度不足，请到室外开阔处再试"
     CampusLocationStatus.APPROXIMATE -> "系统仅允许大致定位"
     CampusLocationStatus.DISABLED -> "系统定位已关闭"
-    CampusLocationStatus.UNAVAILABLE -> "设备定位暂不可用"
+    CampusLocationStatus.UNAVAILABLE -> "设备定位暂不可用，可手动选择起点"
     CampusLocationStatus.DENIED -> "定位权限未开启"
 }
 

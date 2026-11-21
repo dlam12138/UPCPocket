@@ -183,6 +183,61 @@ class CampusRoutingTest {
     }
 
     @Test
+    fun indoorLiveOriginStartsAtTheNearestEligibleOutdoorEntranceForEachMode() = runTest {
+        val data = indoorOriginCampus()
+        val router = CampusRouter(data)
+        for (mode in TravelMode.entries) {
+            val route = router.plan(indoorOrigin, end, mode).routes.single()
+            assertTrue(route.startFromEntrance)
+            assertEquals(junction, route.points.first())
+            assertEquals(junction.distanceTo(end), route.meters, 0.01)
+            assertFalse(indoorOrigin in route.points)
+            assertFalse(router.plan(junction, end, mode).routes.single().startFromEntrance)
+            assertEquals(
+                RouteFailure.NO_START_ROAD,
+                router.plan(indoorOrigin, end, mode, startFromPlace = true).failure,
+            )
+        }
+    }
+
+    @Test
+    fun indoorOriginDoesNotResnapAnEntranceToANearbyBikeRoad() = runTest {
+        val data = indoorOriginCampus().let { original ->
+            original.copy(
+                networkPoints = original.networkPoints + listOf(
+                    start.copy(lat = 34.9997), end.copy(lat = 34.9997),
+                ),
+                networkRoads = original.networkRoads.map { it.copy(bike = false) } + both(3, 4),
+            )
+        }
+        val router = CampusRouter(data)
+
+        assertTrue(router.plan(indoorOrigin, end, TravelMode.WALK).routes.single().startFromEntrance)
+        assertEquals(RouteFailure.NO_START_ROAD, router.plan(indoorOrigin, end, TravelMode.BIKE).failure)
+    }
+
+    @Test
+    fun indoorOriginRequiresUniqueTangdaowanBuildingAndRegisteredSurveyedExit() = runTest {
+        val data = indoorOriginCampus()
+        val host = data.places.first { !it.isEntrance }
+        val extraHost = host.copy(id = "another-building")
+        val extraDoor = data.places.last().copy(id = "another-door", parentId = extraHost.id)
+        val unavailable = listOf(
+            data.copy(id = CampusId.GZK),
+            data.copy(places = listOf(host)),
+            data.copy(places = data.places.map { if (it.isEntrance) it.copy(confidence = "osm") else it }),
+            data.copy(geometry = data.geometry + data.geometry),
+            data.copy(places = data.places + listOf(extraHost, extraDoor)),
+        )
+        for (sample in unavailable) {
+            assertEquals(
+                RouteFailure.NO_START_ROAD,
+                CampusRouter(sample).plan(indoorOrigin, end, TravelMode.WALK).failure,
+            )
+        }
+    }
+
+    @Test
     fun documentedCourtsAndSharedBuildingServicesUseTheirAvailableMapAnchors() {
         val court = CampusPlace("court", "篮球场", "sport", emptyList(), end, "verified-area", null, null)
         val building = CampusPlace("dorm", "学生公寓", "residence", emptyList(), junction, "osm", null, null)
@@ -226,14 +281,99 @@ class CampusRoutingTest {
         val route = sampleRoute(listOf(start, farCorner, returnCorner, finish))
         val noisyFix = start.copy(lon = 120.000022, lat = 35.000045)
 
-        val match = checkNotNull(route.match(noisyFix, 0.0, 5.0, elapsedSeconds = 0.0))
-        assertTrue(match.alongMeters < 10.0)
-        assertTrue(route.guidance(match.alongMeters).remainingMeters > 50.0)
+        for (bearing in listOf(null, 270f)) {
+            val match = checkNotNull(route.match(noisyFix, 0.0, 5.0, elapsedSeconds = 0.0, bearing = bearing))
+            assertTrue(match.alongMeters < 10.0)
+            assertTrue(route.guidance(match.alongMeters).remainingMeters > 50.0)
+        }
+    }
+
+    @Test
+    fun movingBearingOnlyBreaksACloseJunctionMatchTie() {
+        val route = sampleRoute(listOf(start, junction, alternative))
+        val cornerMeters = start.distanceTo(junction)
+        val fix = junction.copy(lon = junction.lon - 0.00001, lat = junction.lat + 0.000008)
+        val withoutHeading = checkNotNull(route.match(fix, cornerMeters - 1.0, 5.0))
+        val headingNorth = checkNotNull(route.match(fix, cornerMeters - 1.0, 5.0, bearing = 0f))
+        val fartherFix = junction.copy(lon = junction.lon - 0.00005, lat = junction.lat + 0.000008)
+        val nearerRoad = checkNotNull(route.match(fartherFix, cornerMeters - 5.0, 5.0, bearing = 0f))
+
+        assertTrue(withoutHeading.alongMeters < cornerMeters)
+        assertTrue(headingNorth.alongMeters > cornerMeters)
+        assertTrue(headingNorth.offRoadMeters < 1.0)
+        assertTrue(nearerRoad.alongMeters < cornerMeters)
+    }
+
+    @Test
+    fun gentleTurnShowsItsDirectionWhenApproaching() {
+        val corner = start.copy(lon = 120.002)
+        for ((latitude, instruction) in listOf(35.00022 to "向左前方行进", 34.99978 to "向右前方行进")) {
+            val finish = corner.copy(lon = 120.0025, lat = latitude)
+            val route = sampleRoute(listOf(start, corner, finish))
+            val firstLeg = start.distanceTo(corner)
+
+            assertEquals("沿当前道路直行", route.guidance(0.0).instruction)
+            assertEquals(instruction, route.guidance(firstLeg - 60).instruction)
+            assertEquals(instruction, route.guidance(firstLeg - 20).instruction)
+            assertEquals("到达目的地附近", route.guidance(route.meters).instruction)
+        }
+    }
+
+    @Test
+    fun strongTurnReplacesAGentleBendTwelveMetersEarlier() {
+        val gentleCorner = junction
+        val strongCorner = gentleCorner.copy(lon = 120.000614, lat = 35.000054)
+        val finish = strongCorner.copy(lon = 120.000394, lat = 35.000366)
+        val route = sampleRoute(listOf(start, gentleCorner, strongCorner, finish))
+        val guidance = route.guidance(0.0)
+
+        assertTrue(gentleCorner.distanceTo(strongCorner) in 10.0..15.0)
+        assertEquals("向左转", guidance.instruction)
+        assertEquals(
+            start.distanceTo(gentleCorner) + gentleCorner.distanceTo(strongCorner),
+            guidance.metersToInstruction,
+            0.01,
+        )
+    }
+
+    @Test
+    fun acceptedProgressLocatesTheRemainingPolylineAfterATurn() {
+        val route = sampleRoute(listOf(start, junction, alternative))
+        val firstLeg = start.distanceTo(junction)
+        val fix = junction.interpolate(alternative, 0.5)
+        val match = checkNotNull(route.match(fix, firstLeg, 5.0, elapsedSeconds = 5.0))
+        val position = checkNotNull(route.positionAt(match.alongMeters))
+
+        assertEquals(1, position.segmentIndex)
+        assertEquals(0.5, position.fraction, 0.001)
+        assertEquals(RoutePosition(0, 0.0), route.positionAt(0.0))
+        assertEquals(RoutePosition(1, 1.0), route.positionAt(route.meters))
     }
 
     private fun sampleRoute(points: List<GeoPoint>): CampusRoute {
         val length = points.zipWithNext().sumOf { (a, b) -> a.distanceTo(b) }
         return CampusRoute("test", TravelMode.WALK, points, length, 60)
+    }
+
+    private val indoorOrigin = GeoPoint(120.0004, 35.00075)
+
+    private fun indoorOriginCampus(): CampusMapData {
+        val building = CampusPlace("teaching", "教学楼", "teaching", emptyList(), indoorOrigin, "osm", null, null)
+        val farDoor = CampusPlace(
+            "teaching-west", "教学楼西门", "entrance", emptyList(),
+            start.copy(lat = 35.00010), "surveyed", building.id, null, start,
+        )
+        val nearDoor = farDoor.copy(
+            id = "teaching-south", name = "教学楼南门",
+            point = junction.copy(lat = 35.00015), accessPoint = junction,
+        )
+        return campus(points = listOf(start, junction, end), roads = both(0, 1) + both(1, 2)).copy(
+            geometry = listOf(CampusGeometry("building", listOf(
+                GeoPoint(120.0001, 35.0002), GeoPoint(120.0008, 35.0002),
+                GeoPoint(120.0008, 35.0009), GeoPoint(120.0001, 35.0009),
+            ))),
+            places = listOf(building, farDoor, nearDoor),
+        )
     }
 
     private fun campus(points: List<GeoPoint>, roads: List<CampusRoad>) = CampusMapData(

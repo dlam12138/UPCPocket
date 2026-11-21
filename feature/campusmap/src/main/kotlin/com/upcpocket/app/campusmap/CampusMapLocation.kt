@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 internal enum class CampusLocationAccess { NONE, APPROXIMATE, PRECISE }
 
 internal enum class CampusLocationStatus {
-    OFF, WAITING, ACCURATE, LOW_ACCURACY, APPROXIMATE, DISABLED, UNAVAILABLE, DENIED,
+    OFF, WAITING, NO_FIX, ACCURATE, LOW_ACCURACY, APPROXIMATE, DISABLED, UNAVAILABLE, DENIED,
 }
 
 internal val campusLocationPermissions = arrayOf(
@@ -55,6 +55,8 @@ internal tailrec fun Context.campusActivity(): Activity? = when (this) {
 
 private const val DISPLAY_FIX_AGE_MS = 15_000L
 private const val REQUEST_INTERVAL_MS = 1_000L
+private const val FIRST_FIX_WAIT_MS = 10_000L
+private const val PROVIDER_RETRY_MS = 5_000L
 private const val ACCURACY_HOLD_MS = 4_000L
 private const val ACCURACY_DROP_METERS = 8.0
 
@@ -106,8 +108,11 @@ private fun Context.foregroundLocations() = callbackFlow {
     }
     val selection = CampusFixSelection()
     val callbackExecutor = ContextCompat.getMainExecutor(this@foregroundLocations)
+    var requested = emptyList<String>()
     var registered = emptyList<String>()
     var lastAccess = CampusLocationAccess.NONE
+    var acquisitionStartedAt = SystemClock.elapsedRealtime()
+    var retryAt = 0L
     val listener = LocationListener { location ->
         val access = campusLocationAccess()
         val fix = location.toCampusFix(access) ?: return@LocationListener
@@ -118,6 +123,7 @@ private fun Context.foregroundLocations() = callbackFlow {
     }
     val monitor = launch {
         while (isActive) {
+            val now = SystemClock.elapsedRealtime()
             val access = campusLocationAccess()
             val locationEnabled = manager.isLocationEnabled
             val wanted = if (locationEnabled && access != CampusLocationAccess.NONE) {
@@ -131,9 +137,15 @@ private fun Context.foregroundLocations() = callbackFlow {
             } else {
                 emptyList()
             }
-            if (wanted != registered || access != lastAccess) {
+            if (wanted != requested || access != lastAccess) {
                 manager.removeUpdates(listener)
                 selection.clear()
+                requested = wanted
+                registered = emptyList()
+                lastAccess = access
+                retryAt = now
+            }
+            if (registered.size < requested.size && now >= retryAt) {
                 val request = LocationRequest.Builder(REQUEST_INTERVAL_MS)
                     .setMinUpdateIntervalMillis(REQUEST_INTERVAL_MS)
                     .setQuality(
@@ -141,7 +153,8 @@ private fun Context.foregroundLocations() = callbackFlow {
                         else LocationRequest.QUALITY_BALANCED_POWER_ACCURACY,
                     )
                     .build()
-                registered = wanted.filter { provider ->
+                // Retry failed providers without interrupting the ones already delivering fixes.
+                val added = requested.filterNot { it in registered }.filter { provider ->
                     try {
                         manager.requestLocationUpdates(provider, request, callbackExecutor, listener)
                         true
@@ -151,13 +164,16 @@ private fun Context.foregroundLocations() = callbackFlow {
                         false
                     }
                 }
-                lastAccess = access
+                if (registered.isEmpty() && added.isNotEmpty()) acquisitionStartedAt = now
+                registered += added
+                retryAt = now + PROVIDER_RETRY_MS
             }
             val fix = selection.current(SystemClock.elapsedRealtime())
             val status = when {
                 access == CampusLocationAccess.NONE -> CampusLocationStatus.DENIED
                 !locationEnabled -> CampusLocationStatus.DISABLED
                 registered.isEmpty() -> CampusLocationStatus.UNAVAILABLE
+                fix == null && now - acquisitionStartedAt >= FIRST_FIX_WAIT_MS -> CampusLocationStatus.NO_FIX
                 fix == null -> CampusLocationStatus.WAITING
                 else -> fix.locationStatus()
             }
