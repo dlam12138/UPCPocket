@@ -215,26 +215,19 @@ class TimetableService(
                 date = today,
             )
             _todayState.update { current ->
-                val sameDay = current.today == today
-                current.copy(
-                    today = today,
-                    todayMeetings = if (sameDay) current.todayMeetings else emptyList(),
-                    todayCourseColorSlots = if (sameDay) {
-                        current.todayCourseColorSlots
-                    } else {
-                        emptyMap()
-                    },
-                    todayState = TimetableTodayState.READING_CACHE,
-                    todayMessage = null,
+                // Keep an already loaded day visible while checking the same account's cache.
+                if (current.todayLoaded && current.today == today &&
+                    current.accountEpoch == accountEpochValue
+                ) {
+                    return@update current
+                }
+                TimetableTodayUiState(
                     accountEpoch = accountEpochValue,
                     accountSavedUnverified = true,
                     accountBlocked = false,
-                    todayLoaded = sameDay && current.todayLoaded,
-                    todayFetchedAtEpochMillis = if (sameDay) {
-                        current.todayFetchedAtEpochMillis
-                    } else {
-                        null
-                    },
+                    today = today,
+                    todayState = TimetableTodayState.READING_CACHE,
+                    todayMessage = null,
                 )
             }
             version

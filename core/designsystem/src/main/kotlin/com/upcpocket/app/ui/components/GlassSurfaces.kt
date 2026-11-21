@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.kyant.backdrop.Backdrop
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -77,6 +78,14 @@ fun GlassEnvironment(content: @Composable () -> Unit) {
             content = content,
         )
     }
+}
+
+/** The same-window backdrop contains only the static theme gradient, never page content. */
+@Composable
+fun glassThemeBackdrop(): Backdrop? {
+    val source = LocalGlassSource.current
+    val view = LocalView.current
+    return source?.takeIf { it.owner === view }?.backdrop
 }
 
 /** Child controls share the surface's appearance using tint, sheen and edge treatment. */

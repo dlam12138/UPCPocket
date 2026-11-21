@@ -30,8 +30,8 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * 首页触边回弹的离线回归：普通上滑后回到顶部，快速下拉并立即反向上滑，
- * 首页仍应继续滚动。Robolectric 不渲染 Android 12+ 的硬件拉伸，
+ * 从首页顶部或底部继续向外拖动，再反向滑回时，列表应继续滚动。
+ * Robolectric 不渲染 Android 12+ 的硬件拉伸，
  * 这里只跟踪 ScrollState 的语义滚动范围，不冒充真机伸展验收。
  */
 @RunWith(AndroidJUnit4::class)
@@ -42,7 +42,7 @@ class HomeScrollGestureTest {
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     @Test
-    fun `continued scroll works after a fast pull down at the top`() {
+    fun `reverse scroll moves away from either home boundary`() {
         val entries = (1..24).map { index ->
             PluginEntry(
                 entryId = UiEntryId.parse("power.service$index"),
@@ -77,9 +77,8 @@ class HomeScrollGestureTest {
         }
 
         val scrollNode = rule.onNode(hasScrollAction())
-        fun scrollValue(): Float = scrollNode.fetchSemanticsNode()
-            .config[SemanticsProperties.VerticalScrollAxisRange]
-            .value()
+        fun scrollRange() = scrollNode.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange]
+        fun scrollValue() = scrollRange().value()
 
         assertEquals(0f, scrollValue(), 0.5f)
 
@@ -101,5 +100,19 @@ class HomeScrollGestureTest {
         }
         rule.waitForIdle()
         assertTrue("顶部快速下拉后反向上滑应恢复滚动", scrollValue() > 0f)
+
+        val scrollEnd = scrollRange().maxValue()
+        scrollNode.performSemanticsAction(SemanticsActions.ScrollBy) { it(0f, scrollEnd) }
+        rule.waitForIdle()
+        assertEquals(scrollEnd, scrollValue(), 0.5f)
+
+        scrollNode.performTouchInput {
+            swipeUp(startY = bottom - 8f, endY = top + 8f, durationMillis = 40)
+        }
+        scrollNode.performTouchInput {
+            swipeDown(startY = top + 8f, endY = bottom - 8f, durationMillis = 120)
+        }
+        rule.waitForIdle()
+        assertTrue("底部快速上滑后反向下滑应恢复滚动", scrollValue() < scrollEnd)
     }
 }

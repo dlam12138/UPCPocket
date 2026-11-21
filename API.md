@@ -28,7 +28,7 @@
 
 界面风格默认 Material 3；轻量玻璃为 opt-in 且真机性能尚未验证，其偏好由宿主 `UiPrefsStore` 的 `app_ui_style` 键保存，旧候选的 `ui_style` 键不读取也不清除。玻璃界面不改变四类桌面组件的外观，组件样式继续由各自 Provider 身份与组件设置决定。
 
-宿主通过 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt) 提供主题采样源。界面使用 `GlassCard`、`GlassSurface` 和设计系统的玻璃控件，继续向原生 Material 组件传递启用、选中、焦点与点击状态。自绘容器可使用 `Modifier.glassPane`。窗口内容可使用 `GlassNestedSurface`，限制嵌套控件对主题层的光学采样。光学底栏仅用于 API 33 及以上，API 31–32 回退现有 Material 3 底栏。
+宿主通过 [GlassEnvironment](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/GlassSurfaces.kt) 提供主题采样源。界面使用 `GlassCard`、`GlassSurface` 和设计系统的玻璃控件，继续向原生 Material 组件传递启用、选中、焦点与点击状态。自绘容器可使用 `Modifier.glassPane`。窗口内容可使用 `GlassNestedSurface`，限制嵌套控件对主题层的光学采样。宿主可通过 `glassThemeBackdrop()` 取得同窗口的主题采样源，用于选中水滴的交互折射。光学底栏用于 API 33 及以上，API 31–32 回退现有 Material 3 底栏。
 
 浮层提示可将 `rememberGlassSnackbarBackdrop()` 的结果传给 `GlassSnackbarHost`，并在同一视图内仅对其下方内容使用 `recordContent`。原生 SnackbarHost 管理队列、超时及进出场，采样在提示退出后停止。
 

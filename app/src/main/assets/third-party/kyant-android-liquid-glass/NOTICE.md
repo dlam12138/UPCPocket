@@ -18,7 +18,8 @@ commit `896a94a3ade1cc1a940b92365f942a34971fecda`:
 
 - Relocated the Kotlin package to `com.upcpocket.app.ui.nav.kyant` and added explicit source/license headers.
 - Renamed the controlled selection parameter to `selectedIndex` and added an explicit `darkTheme` input so the host can honor its in-app theme setting.
-- Kept the original component-owned drag state, spring constants, velocity deformation, panel displacement, invisible tab recording, combined backdrop, lens effects, shadow and highlight values.
+- Kept the original component-owned drag state, spring constants, velocity deformation, panel displacement, and the selected capsule lens, shadow and interaction highlight.
+- Draw the panel with a translucent theme tint, highlight, and border. The moving capsule combines the shared theme backdrop with the recorded navigation icons during interaction.
 - Kept updated host selection/callback references and recreate geometry-dependent state when tab count, width or layout direction changes. Host selection changes do not echo into `onTabSelected`, which would otherwise restart a Pager navigation.
 - Added selected-tab semantics and a selectable group. The provided `LiquidBottomTab` disables click/focus targets for the hidden refraction copy while preserving its drawing.
 - Resolve a tap intercepted by the moving lens against the touched tab in the fixed navigation bar. Drag gestures still use the original settling logic.
@@ -32,6 +33,6 @@ The helper implementations otherwise retain the original 1.0.6 behavior. This so
 head `e5e534f15fb8d9b1fe41b9b3a89402b0af6c0d3c`, is a separate adaptation.
 Its latest `LiquidBottomTabs` removes the hidden `tabsBackdrop` row and samples the page alone;
 its helper also adds direct dragging and predictive settling. Those changes are not used here,
-because this port preserves the original Kyant 1.0.6 two-layer rendering and motion.
+because this port keeps the original Kyant 1.0.6 motion and combined sources for the moving capsule.
 
 The application bundles this notice and the adjacent license as assets.
