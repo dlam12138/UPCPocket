@@ -46,4 +46,37 @@
     <string name="widget_timetable_upcoming_header">后续课程</string>
     <string name="widget_timetable_earlier_header">今日其余课程</string>
     <string name="widget_timetable_upcoming_more">还有 %d 节 · 点击查看</string>
+
+    <!-- 本周课表：独立 Provider，与今日组件共用本地缓存与调度，不新增持久化。 -->
+    <string name="widget_timetable_week_title">本周课表</string>
+    <string name="widget_timetable_week_description">显示本周周日至周六的已同步课程；缺日、冲突与未同步分别标注</string>
+    <string name="widget_timetable_week_preview_range">11月16日 – 11月22日</string>
+    <string name="widget_timetable_week_preview_day">周日 16</string>
+
+    <string name="widget_timetable_week_day_empty">无课</string>
+    <string name="widget_timetable_week_day_unsynced">未同步</string>
+    <string name="widget_timetable_week_day_outside_term">学期外</string>
+    <string name="widget_timetable_week_day_conflict">存在冲突</string>
+
+    <string name="widget_timetable_week_empty_footer">全周无课 · 已同步</string>
+    <string name="widget_timetable_week_partial_footer">部分日期未同步 · 点开查看</string>
+    <string name="widget_timetable_week_conflict_footer">存在冲突 · 点开查看</string>
+    <string name="widget_timetable_week_open_footer">点开查看完整课表</string>
+
+    <string name="widget_timetable_week_state_no_account">未绑定学校账号</string>
+    <string name="widget_timetable_week_state_no_account_hint">在设置中绑定后显示</string>
+    <string name="widget_timetable_week_state_loading">正在恢复账号</string>
+    <string name="widget_timetable_week_state_loading_hint">稍后自动显示课表</string>
+    <string name="widget_timetable_week_state_cleanup">账号清理中</string>
+    <string name="widget_timetable_week_state_cleanup_hint">完成前不显示旧课表</string>
+    <string name="widget_timetable_week_state_reading">正在读取课表缓存</string>
+    <string name="widget_timetable_week_state_reading_hint">稍后自动显示</string>
+    <string name="widget_timetable_week_state_needs_sync">本周课表尚未同步</string>
+    <string name="widget_timetable_week_state_needs_sync_hint">打开应用同步一次</string>
+    <string name="widget_timetable_week_state_conflict">本周缓存存在冲突</string>
+    <string name="widget_timetable_week_state_conflict_hint">打开课表刷新后查看</string>
+    <string name="widget_timetable_week_state_read_error">本机课表读取失败</string>
+    <string name="widget_timetable_week_state_read_error_hint">打开课表页重试</string>
+    <string name="widget_timetable_week_state_outside_term">本周不在教学周</string>
+    <string name="widget_timetable_week_state_outside_term_hint">查看学期安排请打开课表</string>
 </resources>

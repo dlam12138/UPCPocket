@@ -217,6 +217,25 @@ class TimetableWidgetTickerTest {
     }
 
     @Test
+    fun `week only widget schedules Shanghai midnight without reading today courses`() {
+        val active = TimetableWidgetSnapshot(
+            status = TimetableWidgetStatus.OK,
+            date = now.toLocalDate(),
+            courses = listOf(course(12 * 60, 13 * 60)),
+        )
+        val plan = TimetableWidgetTicker.planRedraw(
+            snapshot = active,
+            now = now.withSecond(45),
+            hasTodayInstances = false,
+        )
+        assertEquals(
+            ZonedDateTime.of(2026, 11, 6, 0, 0, 0, 0, zone),
+            plan.at,
+        )
+        assertEquals(0L, plan.deferTodayRefreshUntilEpochMillis)
+    }
+
+    @Test
     fun `all classes ended still schedules midnight redraw`() {
         val snapshot = TimetableWidgetSnapshot(
             status = TimetableWidgetStatus.OK,

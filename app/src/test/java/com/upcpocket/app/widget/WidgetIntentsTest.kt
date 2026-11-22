@@ -137,6 +137,45 @@ class WidgetIntentsTest {
     }
 
     @Test
+    fun `week timetable is a separate provider variant of the same kind`() {
+        assertEquals(WidgetKind.TIMETABLE, WidgetProviderVariant.TIMETABLE_WEEK.kind)
+        assertEquals(
+            TimetableWidgetProvider::class.java,
+            WidgetProviderVariant.standard(WidgetKind.TIMETABLE).providerClass,
+        )
+        assertEquals(
+            listOf(
+                WidgetProviderVariant.TIMETABLE,
+                WidgetProviderVariant.TIMETABLE_GLASS,
+                WidgetProviderVariant.TIMETABLE_WEEK,
+            ),
+            WidgetProviderVariant.forKind(WidgetKind.TIMETABLE),
+        )
+        assertNull(WidgetProviderVariant.TIMETABLE_WEEK.fixedAppearance)
+        assertEquals(
+            WidgetAppearance.GLASS,
+            WidgetProviderVariant.TIMETABLE_WEEK.resolveAppearance(WidgetAppearance.GLASS),
+        )
+        assertEquals(
+            WidgetProviderVariant.TIMETABLE_WEEK,
+            WidgetProviderVariant.fromProvider(
+                ComponentName(context, TimetableWeekWidgetProvider::class.java),
+            ),
+        )
+        assertFalse(WidgetIntents.isOwnedBy(context, WidgetProviderVariant.TIMETABLE_WEEK, 42))
+    }
+
+    @Test
+    fun `week timetable open intent stays immutable and points at the timetable target`() {
+        val pending = WidgetIntents.openApp(context, WidgetLaunchTarget.TIMETABLE, 43)
+        assertTrue(pending.isImmutable)
+        assertEquals(
+            WidgetLaunchTarget.TIMETABLE,
+            WidgetLaunchTarget.fromIntent(Shadows.shadowOf(pending).savedIntent),
+        )
+    }
+
+    @Test
     fun `glass provider appearance overrides the saved global widget appearance`() {
         assertEquals(
             WidgetAppearance.TRANSLUCENT,

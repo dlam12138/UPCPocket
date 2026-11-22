@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  本周课表：固定周日至周六七行；每行优先展示星期与日期、节次和课程名。
+  空间不足时在当日行末用独立的“+N”视图标出实际省略数，完整内容点击整卡查看。
+  状态（未同步/冲突/读取失败/非教学周/无账号等）使用独立状态块，绝不伪装成空周。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_timetable_week_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_surface">
+
+    <LinearLayout
+        android:id="@+id/widget_timetable_week_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:id="@+id/widget_timetable_week_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:minHeight="22dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/widget_timetable_week_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:text="@string/widget_timetable_week_title"
+                android:textColor="@color/widget_primary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/widget_timetable_week_range"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="@string/widget_timetable_week_preview_range"
+                android:textColor="@color/widget_secondary"
+                android:textSize="10.5sp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/widget_timetable_week_days"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            android:orientation="vertical" />
+
+        <LinearLayout
+            android:id="@+id/widget_timetable_week_state"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_timetable_week_state_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="2"
+                android:textColor="@color/widget_primary"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/widget_timetable_week_state_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="@color/widget_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_timetable_week_spacer"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:importantForAccessibility="no" />
+
+        <TextView
+            android:id="@+id/widget_timetable_week_footer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/widget_tertiary"
+            android:textSize="10sp"
+            android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

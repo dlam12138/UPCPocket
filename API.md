@@ -92,6 +92,8 @@ suspend fun authenticate(
 
 各能力键在所属 `*Plugin.kt` 中声明，修改前检查所有引用。稳定 route/entry/action/provider/Worker 标识也会被通知、桌面和系统持久化任务消费；修改需兼容策略，不能只改 UI 调用处。
 
+宿主学习平台二级页使用 `learning-platforms` 路由和 `official.learning_platforms` 首页固定 ID。页面从固定 HTTPS 目录向系统发送浏览器 Intent。该入口默认未固定，用户的选择与其他常用服务一起保存。 [学习平台目录](app/src/main/java/com/upcpocket/app/ui/learning/LearningPlatforms.kt)
+
 课表页和首页今日课程的详情通过宿主注入的 `TimetableCampusMap.select(location: String): PluginRouteId` 提交地点并打开地图。地图插件缺失时，详情省略地图操作。收到同名、不明确或只含房间编号的地点时，由用户在地图中核对候选。
 
 Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`、`openCreate(requestId: String): Boolean` 与 `consumeCreateRequest()`，与原任务打开请求分别消费；只有活动页面打开编辑器。`TodoLaunchContract` 的新建/打开只接受完整 UUID 分组，合法大小写规范为同一 UUID，拒绝 `UUID.fromString` 宽松接受的缩写。`readWidgetSnapshot(maxVisibleRows: Int = 4)` 异步读取本机库，区分 `NotRestored`、`ReadFailed` 与 `Ready(tasks, incompleteCount)`；Ready 空列表才是有效空，总数包含全部未完成任务。`onTasksChanged` 是宿主注入的窄本地刷新回调，覆盖存储/revision 的成功变化、首次恢复成功与首次恢复失败的状态更新，不向 feature 暴露 AppGraph；回调失败不改变已提交结果。
@@ -103,6 +105,8 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 2.0.7 第二部分组件调度仍由宿主拥有：课表边界和 30 分钟兜底只调用本地快照/恢复路径，不能把 `open()` 或前台联网刷新放入自动周期；校园卡 30 分钟联网读取仅在有组件时保留，目标执行时从当前受控绑定取得。移除课表/校园卡刷新按钮时须联查正式宿主、debug 预览及 renderer 测试消费者；旧系统组件和动作身份保持兼容，电量刷新及全部整卡导航保留。
 
 2.0.9 开发版的课表组件沿用首页的分钟口径，使用一次上海时区时刻判定快照日期、当前课程和剩余分钟。有可靠起止时间且正在上课时，宿主在同一课表本地任务中安排下一个整分钟。实际执行时重新读取本机快照和时钟，因此系统延迟后会直接显示当时的课程状态。 [课表组件开发记录](docs/design/2.0.9-update-plan.md#今日课表组件显示剩余上课时间)
+
+2.1.0 的 `TimetableService.readWeekWidgetSnapshot()` 从当前账号缓存取出上海实际日期所在的周日至周六，按天给出覆盖状态和课程名、节次。相邻成功周可按实际日期补齐。完整覆盖且无课才是空周。宿主使用 `isWeekWidgetSnapshotCurrent()` 在发布前复核账号绑定、读取版本和日期，周组件整卡沿用 `WidgetLaunchTarget.TIMETABLE`。 [课表服务](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt)
 
 ## 错误与验证约定
 

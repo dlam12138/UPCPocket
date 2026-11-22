@@ -56,6 +56,7 @@ import com.upcpocket.app.widget.PowerWidgetProvider
 import com.upcpocket.app.widget.PowerGlassWidgetProvider
 import com.upcpocket.app.widget.TimetableWidgetProvider
 import com.upcpocket.app.widget.TimetableGlassWidgetProvider
+import com.upcpocket.app.widget.TimetableWeekWidgetProvider
 import com.upcpocket.app.widget.TodoWidgetProvider
 import com.upcpocket.app.widget.TodoGlassWidgetProvider
 import kotlinx.coroutines.launch
@@ -63,7 +64,7 @@ import kotlinx.coroutines.launch
 /**
  * 「设置 → 桌面组件」。
  *
- * 2×2 RemoteViews 组件仍由系统桌面承载，数据、缓存和刷新 Worker 不变。本页只
+ * RemoteViews 组件仍由系统桌面承载，数据、缓存和刷新 Worker 不变。本页只
  * 说明边界，并在桌面支持 `requestPinAppWidget` 时提供添加入口；不会伪造组件
  * 预览数值，也不会替用户自动放置组件。
  */
@@ -195,6 +196,18 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                 onPinGlass = { pin(ComponentName(context, TimetableGlassWidgetProvider::class.java)) },
             )
             WidgetCard(
+                title = "本周课表",
+                description = "周日至周六的已同步课程；缺日、冲突与学期外分别标注。",
+                icon = Icons.Outlined.CalendarMonth,
+                supported = supported,
+                sizeLabel = "4×4 · 可缩放",
+                onPin = {
+                    pin(
+                        ComponentName(context, TimetableWeekWidgetProvider::class.java),
+                    )
+                },
+            )
+            WidgetCard(
                 title = "待办清单",
                 description = "显示本机未完成待办；可在桌面完成事项或新建。",
                 icon = Icons.Outlined.CheckBox,
@@ -214,9 +227,9 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
 
             Text(
                 text = if (supported) {
-                    "没有弹出面板时，长按桌面空白处 → 小组件 → UPC Pocket。课表组件可拉到 4×2。"
+                    "没有弹出面板时，长按桌面空白处 → 小组件 → UPC Pocket。"
                 } else {
-                    "长按桌面空白处 → 小组件 → UPC Pocket。课表组件可拉到 4×2。"
+                    "长按桌面空白处 → 小组件 → UPC Pocket。"
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -336,7 +349,7 @@ private fun WidgetCard(
     supported: Boolean,
     sizeLabel: String = "2×2",
     onPin: () -> Unit,
-    onPinGlass: () -> Unit,
+    onPinGlass: (() -> Unit)? = null,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -363,11 +376,13 @@ private fun WidgetCard(
             ) {
                 Text(if (supported) "添加到桌面" else "查看添加方法")
             }
-            com.upcpocket.app.ui.components.CampusTextButton(
-                onClick = onPinGlass,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(if (supported) "添加玻璃版" else "桌面列表中添加玻璃版")
+            onPinGlass?.let { pinGlass ->
+                com.upcpocket.app.ui.components.CampusTextButton(
+                    onClick = pinGlass,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (supported) "添加玻璃版" else "桌面列表中添加玻璃版")
+                }
             }
         }
     }

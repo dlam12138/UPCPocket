@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  本周课表的一日行，由 renderer 动态加入七天。三行课程槽位固定存在，
+  未使用槽位 GONE；今日用左侧强调条与强调色日期标识。
+  日期列随字号取所需宽度，避免大字号下日期被省略；额外课程数用独立的
+  more 视图展示，不会随课程名的二次省略一起消失。行间距由文字行盒提供，
+  不再叠加纵向 padding，保证 180dp 最小高度仍能完整放下七天。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="18dp"
+    android:orientation="horizontal">
+
+    <TextView
+        android:id="@+id/widget_timetable_week_today_bar"
+        android:layout_width="2dp"
+        android:layout_height="12dp"
+        android:layout_marginEnd="5dp"
+        android:background="@color/widget_accent"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_timetable_week_day_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1"
+        android:minWidth="44dp"
+        android:text="@string/widget_timetable_week_preview_day"
+        android:textColor="@color/widget_secondary"
+        android:textSize="10sp" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/widget_timetable_week_day_course_1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/widget_primary"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_timetable_week_day_course_2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/widget_primary"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/widget_timetable_week_day_course_3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/widget_primary"
+            android:textSize="11sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_timetable_week_day_more"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:maxLines="1"
+        android:textColor="@color/widget_secondary"
+        android:textSize="10sp"
+        android:visibility="gone" />
+</LinearLayout>

@@ -57,7 +57,8 @@ class TimetableWidgetTickWorker(
         if (System.currentTimeMillis() >= deferTodayRefreshUntil) {
             AppGraph.timetableServiceOrNull?.refreshToday()
         }
-        WidgetUpdates.updateKindNow(
+        // 挂起刷新：周版缓存读取在后台完成后再由 finish 安排下一次午夜边界。
+        WidgetUpdates.updateKind(
             applicationContext,
             WidgetKind.TIMETABLE,
             scheduleTicker = !inputData.getBoolean(TimetableWidgetTicker.KEY_BOUNDARY, true),

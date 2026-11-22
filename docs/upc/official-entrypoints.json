@@ -5,7 +5,7 @@
     "name": "中国石油大学（华东）"
   },
   "scope": "development_catalog_not_runtime_api_configuration",
-  "release": "UPC Pocket v2.0.9 (published 2026-11-19); v2.1.0 venue-reservation entries remain unreleased local development. Entries marked as development are unreleased local work and are not part of the published 2.0.9 artifact. Dated verification entries retain their historical scope.",
+  "release": "UPC Pocket v2.0.9 (published 2026-11-19). The v2.1.0 venue-reservation and learning platform entries are in development and absent from the published 2.0.9 artifact. Dated verification entries retain their historical scope.",
   "source_references": [
     {
       "id": "upc-mcp",
@@ -73,6 +73,60 @@
       "official_source": "https://www.upc.edu.cn/",
       "integration": "official_external_page",
       "verification": "2026-11-19: the university's public 教学科研单位 directory lists links to individual college websites."
+    },
+    {
+      "id": "zhidao",
+      "name": "知到（智慧树）",
+      "campus": null,
+      "url": "https://passport.zhihuishu.com/login",
+      "official_source": "https://news.upc.edu.cn/info/1446/96422.htm",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: reviewed the public provider sign-in page and UPC teaching notice. Student sign-in and coursework remain unverified."
+    },
+    {
+      "id": "weizhen_classroom",
+      "name": "惟真学堂",
+      "campus": null,
+      "url": "https://upcwzedu.zhihuishu.com/",
+      "official_source": "https://jwc.upc.edu.cn/2020/1019/c18507a354995/page.htm",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: the UPC academic affairs page links directly to this platform. Student sign-in and coursework remain unverified."
+    },
+    {
+      "id": "yuketang",
+      "name": "雨课堂",
+      "campus": null,
+      "url": "https://www.yuketang.cn/web",
+      "official_source": "https://sygx.upc.edu.cn/kczy/list.htm",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: the public web entry responded. Mobile browser sign-in and coursework remain unverified."
+    },
+    {
+      "id": "ketangpai",
+      "name": "课堂派",
+      "campus": null,
+      "url": "https://www.ketangpai.com/",
+      "official_source": "https://w.ketangpai.com/pages/user/weixin.html",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: the public provider homepage responded. The entry is shared across institutions."
+    },
+    {
+      "id": "upc_cloud_classroom",
+      "name": "石大云课堂",
+      "campus": null,
+      "url": "https://learn.upc.edu.cn/meol/index.do",
+      "official_source": "https://nic.upc.edu.cn/2018/0116/c7407a131044/page.htm",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: the HTTPS page showed the UPC sign-in page. Sign-in, courses and off-campus use remain unverified."
+    },
+    {
+      "id": "upc_cloud_classroom_webvpn_help",
+      "name": "石大云课堂校外访问帮助",
+      "campus": null,
+      "url": "https://appnic.upc.edu.cn/_s457/2026/0107/c25391a278495/page.psp",
+      "official_source": "https://appnic.upc.edu.cn/_s457/2026/0107/c25391a278495/page.psp",
+      "integration": "development_external_page",
+      "verification": "2026-11-22: the UPC browser VPN instructions were publicly readable. VPN sign-in remains unverified."
     },
     {
       "id": "shiguang",

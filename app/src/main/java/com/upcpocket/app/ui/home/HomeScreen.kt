@@ -50,6 +50,7 @@ import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.CampusIconButton
 import com.upcpocket.app.ui.components.glassBackground
+import com.upcpocket.app.ui.learning.LearningPlatformCatalog
 import com.upcpocket.app.ui.nav.filledIcon
 import com.upcpocket.app.ui.official.OfficialLink
 import com.upcpocket.app.ui.official.OfficialWebCatalog
@@ -112,6 +113,7 @@ fun HomeScreen(
     onOpenOfficialWeb: () -> Unit,
     pinnedServiceIds: Set<String> = UiPrefs.DEFAULT_PINNED_SERVICES,
     onOpenServices: (() -> Unit)? = null,
+    onOpenLearningPlatforms: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val today = rememberCampusDate()
@@ -145,6 +147,16 @@ fun HomeScreen(
                     title = officialWebQuickActionTitle(link.title, pinnedEntryTitles),
                     icon = link.icon,
                     onClick = { OfficialWebCatalog.open(context, link) },
+                ),
+            )
+        }
+        // 学习平台是宿主二级页，不是外链；固定后仍打开同一聚合页。
+        if (LearningPlatformCatalog.SERVICE_ID in pinnedServiceIds) {
+            add(
+                QuickAction(
+                    title = LearningPlatformCatalog.TITLE,
+                    icon = LearningPlatformCatalog.icon,
+                    onClick = onOpenLearningPlatforms,
                 ),
             )
         }

@@ -109,6 +109,7 @@ import com.upcpocket.app.ui.components.glassThemeBackdrop
 import com.upcpocket.app.ui.components.isGlassSheetVisible
 import com.upcpocket.app.ui.focus.LocalFocusTodoSlot
 import com.upcpocket.app.ui.home.HomeScreen
+import com.upcpocket.app.ui.learning.LearningPlatformsScreen
 import com.upcpocket.app.ui.nav.kyant.LiquidBottomTab
 import com.upcpocket.app.ui.nav.kyant.LiquidBottomTabs
 import com.upcpocket.app.ui.official.OfficialWebScreen
@@ -465,6 +466,11 @@ fun AppNav(
                                         },
                                         pinnedServiceIds = prefs.pinnedServiceIds,
                                         onOpenServices = { switchTab(AppRoutes.SERVICES) },
+                                        onOpenLearningPlatforms = {
+                                            navController.navigate(AppRoutes.LEARNING_PLATFORMS) {
+                                                launchSingleTop = true
+                                            }
+                                        },
                                     )
                                     AppRoutes.SERVICES -> ServicesScreen(
                                         entries = allServiceEntries,
@@ -476,6 +482,11 @@ fun AppNav(
                                         onOpenRoute = pageHost::open,
                                         onOpenOfficialWeb = {
                                             navController.navigate(AppRoutes.OFFICIAL_WEB)
+                                        },
+                                        onOpenLearningPlatforms = {
+                                            navController.navigate(AppRoutes.LEARNING_PLATFORMS) {
+                                                launchSingleTop = true
+                                            }
                                         },
                                     )
                                     else -> {
@@ -572,6 +583,9 @@ fun AppNav(
                 }
                 composable(AppRoutes.OFFICIAL_WEB) {
                     OfficialWebScreen(onBack = { navController.popBackStack() })
+                }
+                composable(AppRoutes.LEARNING_PLATFORMS) {
+                    LearningPlatformsScreen(onBack = { navController.popBackStack() })
                 }
                 composable(AppRoutes.ABOUT) {
                     AboutScreen(onBack = { navController.popBackStack() })

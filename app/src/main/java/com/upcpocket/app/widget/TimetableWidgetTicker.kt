@@ -1,5 +1,7 @@
 package com.upcpocket.app.widget
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -78,14 +80,34 @@ object TimetableWidgetTicker {
     private fun hasWidgets(context: Context): Boolean =
         hasWidgetInstances(context, WidgetKind.TIMETABLE)
 
+    /**
+     * 今日组件需要逐分钟/上下课边界重绘；只有周版时只需上海午夜换周，
+     * 因此不为周版读取今日快照，也不安排逐分钟任务。
+     */
+    private fun hasTodayWidgets(context: Context): Boolean {
+        val manager = AppWidgetManager.getInstance(context.applicationContext)
+        return WidgetProviderVariant.forKind(WidgetKind.TIMETABLE)
+            .filter { it != WidgetProviderVariant.TIMETABLE_WEEK }
+            .any { variant ->
+                manager.getAppWidgetIds(
+                    ComponentName(context.applicationContext, variant.providerClass),
+                ).isNotEmpty()
+            }
+    }
+
     private fun enqueueNext(context: Context, policy: ExistingWorkPolicy) {
         if (!hasWidgets(context) || AppGraph.timetableServiceOrNull == null) {
             cancel(context)
             return
         }
-        val snapshot = WidgetUpdates.timetableSnapshotForSchedule(context)
+        val hasToday = hasTodayWidgets(context)
+        val snapshot = if (hasToday) {
+            WidgetUpdates.timetableSnapshotForSchedule(context)
+        } else {
+            null
+        }
         val now = ZonedDateTime.now(ZONE)
-        val redraw = planRedraw(snapshot, now)
+        val redraw = planRedraw(snapshot, now, hasTodayInstances = hasToday)
         val at = redraw.at.toInstant().toEpochMilli()
         if (!plan.shouldSchedule(at)) return
         val request = OneTimeWorkRequestBuilder<TimetableWidgetTickWorker>()
@@ -118,12 +140,14 @@ object TimetableWidgetTicker {
     internal fun planRedraw(
         snapshot: TimetableWidgetSnapshot?,
         now: ZonedDateTime,
+        hasTodayInstances: Boolean = true,
     ): TimetableRedrawPlan {
         val localNow = now.withZoneSameInstant(ZONE)
         val today = localNow.toLocalDate()
         val dayStart = today.atStartOfDay(ZONE)
         val midnight = dayStart.plusDays(1)
-        if (snapshot == null ||
+        if (!hasTodayInstances ||
+            snapshot == null ||
             snapshot.status != TimetableWidgetStatus.OK ||
             snapshot.date != today
         ) {

@@ -17,6 +17,7 @@ enum class WidgetProviderVariant(
     POWER_GLASS(WidgetKind.POWER, PowerGlassWidgetProvider::class.java, WidgetAppearance.FROSTED_GLASS),
     TIMETABLE(WidgetKind.TIMETABLE, TimetableWidgetProvider::class.java),
     TIMETABLE_GLASS(WidgetKind.TIMETABLE, TimetableGlassWidgetProvider::class.java, WidgetAppearance.FROSTED_GLASS),
+    TIMETABLE_WEEK(WidgetKind.TIMETABLE, TimetableWeekWidgetProvider::class.java),
     TODO(WidgetKind.TODO, TodoWidgetProvider::class.java),
     TODO_GLASS(WidgetKind.TODO, TodoGlassWidgetProvider::class.java, WidgetAppearance.FROSTED_GLASS),
     ;

@@ -70,6 +70,8 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 2.1.0 的日程待办默认装配在 `timetable.week` 上方，也可由「设置 → 应用 → 日程待办位置」改到 `focus` 页，位于计时控制与标签之间。宿主按最终 bottomNav、已注册页面和待办能力解析唯一可见槽位，两处复用同一 `TodoScheduleSection`；待办按设备本地日期从现有 `TodoStore.tasks` 派生，课程仍由课表模块按原学期和教学周提供。位置偏好只存在于宿主 `UiPrefsStore`。两个宿主都可用时一级入口始终四项；所选宿主缺失时保留已注册的 `todo.list` Tab，不改写偏好；只剩一个宿主且偏好尚未读到时，宿主推迟挂载 NavHost/Pager 与导航 effects，避免按临时层级消费通知或组件入口后重建丢失。`todo.list` 承载完整待办及任务、新建面板的系统入口。专注计时与标签不读取待办状态。
 
+学习平台是宿主提供的二级页。服务页搜索、服务页入口与首页固定共用同一页面。浏览器交接复用 `OfficialWebCatalog.open`，由系统处理固定 HTTPS 链接。 [来源目录](docs/upc/官方入口.md#210-学习平台)
+
 `core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
 2.0.9 开发版由宿主提供常用校区，教室、图书馆与电费在页面进入时以保存的偏好初始化。服务页的官方网页按条目校区展示，完整目录覆盖两校区。电量组件继续直达唐岛湾原生页。 [开发入口映射](docs/m5/README.md#209-开发入口映射2026-11-19)
@@ -126,6 +128,8 @@ sequenceDiagram
 周缓存只保存完整成功且归属当前账号的结果。失败保留历史缓存并标示，完整空周、未查询、无缓存与协议失败不混同。会话单独加密；本机周缓存本身未单独加密，依赖应用沙箱与 noBackup 范围。新课表不读 focus 的停用兼容表。
 
 四类 RemoteViews 的渲染器分别归 card/power/timetable/todo，Provider、点击 Intent 和 Worker 归 app。课表和校园卡使用整卡导航，电量另有手动刷新。2.0.8 为每类组件增加一个固定使用静态磨砂背景的 Launcher Provider，复用业务布局和动作。原组件继续使用原 Provider 身份与宿主 `UiPrefsStore` 中的全局外观偏好，保存只本地重绘。玻璃版与原组件共享数据、校园卡发布屏障和同类调度，最后一个同类实例移除时取消调度。
+
+2.1.0 增加独立的「本周课表」Provider。周快照由课表模块从当前账号的成功缓存派生，按上海日期组成周日至周六。渲染器接收日期、节次、课程名称与覆盖状态，宿主负责整卡导航和重绘。周组件采用全局桌面外观，与今日组件共用本地刷新任务。只有周组件时，时刻边界为上海午夜。 [桌面入口](docs/m5/README.md#210-开发入口2026-11-20未发布)
 
 待办组件经最终 `TodoStore` 能力异步读取 Room 的有限摘要与全部未完成数，区分尚未恢复、读取失败、缺插件和有效空。存储/revision 变化经宿主注入的窄回调刷新所有实例，不依赖 Activity 收集 Flow。完成 Receiver 非导出，仅框架勾选值需要可变 PendingIntent；实例、完整 UUID、revision 与目标 true 绑定 Intent 身份，旧动作不能重绑新版本。新建与导航保持 immutable，冷/暖 Activity 经同一契约解析并仅在活动待办页消费；桌面不承载编辑输入。[TodoWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TodoWidgetTicker.kt) 在截止和设备本地午夜安排本地重绘，最后实例移除取消，不使用校园网络或常驻服务。
 

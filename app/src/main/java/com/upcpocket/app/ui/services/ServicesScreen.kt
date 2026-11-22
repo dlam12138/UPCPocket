@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -69,6 +70,7 @@ import com.upcpocket.app.ui.components.GlassNestedSurface
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.NavigationRow
 import com.upcpocket.app.ui.components.SectionHeader
+import com.upcpocket.app.ui.learning.LearningPlatformCatalog
 import com.upcpocket.app.ui.nav.filledIcon
 import com.upcpocket.app.ui.official.WeChatReservationHandoffDialog
 import com.upcpocket.app.ui.official.OfficialLink
@@ -95,6 +97,7 @@ fun ServicesScreen(
     onTogglePin: (String) -> Unit,
     onOpenRoute: (PluginRouteId) -> Unit,
     onOpenOfficialWeb: () -> Unit,
+    onOpenLearningPlatforms: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val dockClearance = LocalDockClearance.current
@@ -144,6 +147,10 @@ fun ServicesScreen(
                 link.group.contains(normalizedQuery, ignoreCase = true)
         }
     }
+    // 学习平台归入「学习与空间」，并参与关键词检索；官方网页分类不重复展示。
+    val showLearningPlatform =
+        (selectedFilter == ServiceFilterTab.ALL || selectedFilter == ServiceFilterTab.STUDY) &&
+            LearningPlatformCatalog.matches(normalizedQuery)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -202,7 +209,7 @@ fun ServicesScreen(
                 }
             }
 
-            if (groupedEntries.isEmpty() && filteredOfficial.isEmpty()) {
+            if (groupedEntries.isEmpty() && filteredOfficial.isEmpty() && !showLearningPlatform) {
                 EmptyStateCard(
                     title = "没有匹配的服务",
                     subtitle = if (normalizedQuery.isNotBlank()) "换个关键词，或切回“全部”" else "当前分类暂无可用工具",
@@ -218,16 +225,49 @@ fun ServicesScreen(
                     }
                 }
             } else {
-                groupedEntries.forEach { (category, items) ->
+                // 学习平台是宿主聚合入口，归入「学习与空间」；不依赖业务插件，
+                // 因此即使没有学习类插件贡献也保留该分组。
+                val studyEntries = groupedEntries
+                    .firstOrNull { it.key == UiCategory.STUDY }
+                    ?.value
+                    .orEmpty()
+                if (showLearningPlatform || studyEntries.isNotEmpty()) {
+                    SectionHeader(
+                        title = UiCategory.STUDY.label,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (showLearningPlatform) {
+                            LearningPlatformDirectoryCard(
+                                pinned = LearningPlatformCatalog.SERVICE_ID in pinnedServiceIds,
+                                onTogglePin = {
+                                    onTogglePin(LearningPlatformCatalog.SERVICE_ID)
+                                },
+                                onClick = onOpenLearningPlatforms,
+                            )
+                        }
+                        studyEntries.forEach { entry ->
+                            ServiceDirectoryEntryCard(
+                                entry = entry,
+                                preferredCampus = preferredCampus,
+                                pinned = entry.entryId.value in pinnedServiceIds,
+                                onTogglePin = { onTogglePin(entry.entryId.value) },
+                                onClick = { entry.route?.let(onOpenRoute) },
+                            )
+                        }
+                    }
+                }
+
+                groupedEntries.filterNot { it.key == UiCategory.STUDY }.forEach { (category, items) ->
                     SectionHeader(
                         title = category.label,
                         modifier = Modifier.padding(top = 4.dp),
                     )
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items.forEach { entry ->
-                            ServiceDirectoryCard(
+                            ServiceDirectoryEntryCard(
                                 entry = entry,
-                                subtitle = entry.subtitleWithDefaultCampus(preferredCampus),
+                                preferredCampus = preferredCampus,
                                 pinned = entry.entryId.value in pinnedServiceIds,
                                 onTogglePin = { onTogglePin(entry.entryId.value) },
                                 onClick = { entry.route?.let(onOpenRoute) },
@@ -320,9 +360,45 @@ private fun ServiceDirectorySurface(
 }
 
 @Composable
-private fun ServiceDirectoryCard(
+private fun ServiceDirectoryEntryCard(
     entry: PluginEntry,
+    preferredCampus: PreferredCampus?,
+    pinned: Boolean,
+    onTogglePin: () -> Unit,
+    onClick: () -> Unit,
+) {
+    ServiceDirectoryCard(
+        title = entry.title,
+        subtitle = entry.subtitleWithDefaultCampus(preferredCampus),
+        icon = entry.icon.filledIcon(),
+        pinned = pinned,
+        onTogglePin = onTogglePin,
+        onClick = onClick,
+    )
+}
+
+/** 宿主聚合入口与插件服务共用同一卡片排版和稳定图钉交互。 */
+@Composable
+private fun LearningPlatformDirectoryCard(
+    pinned: Boolean,
+    onTogglePin: () -> Unit,
+    onClick: () -> Unit,
+) {
+    ServiceDirectoryCard(
+        title = LearningPlatformCatalog.TITLE,
+        subtitle = LearningPlatformCatalog.SUBTITLE,
+        icon = LearningPlatformCatalog.icon,
+        pinned = pinned,
+        onTogglePin = onTogglePin,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun ServiceDirectoryCard(
+    title: String,
     subtitle: String,
+    icon: ImageVector,
     pinned: Boolean,
     onTogglePin: () -> Unit,
     onClick: () -> Unit,
@@ -336,7 +412,7 @@ private fun ServiceDirectoryCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconBadge(
-                icon = entry.icon.filledIcon(),
+                icon = icon,
                 contentDescription = null,
                 size = 40.dp,
             )
@@ -346,7 +422,7 @@ private fun ServiceDirectoryCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
-                    text = entry.title,
+                    text = title,
                     style = MaterialTheme.typography.titleMedium.copy(fontSize = 15.sp),
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,

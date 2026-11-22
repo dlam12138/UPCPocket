@@ -37,6 +37,19 @@ class AppNavRouteTest {
     }
 
     @Test
+    fun `learning platform stays a host second level route`() {
+        val pagerRoutes = listOf(
+            AppRoutes.HOME,
+            "timetable.week",
+            AppRoutes.SERVICES,
+            "focus",
+        )
+
+        assertEquals(-1, pageIndexForRoute(pagerRoutes, AppRoutes.LEARNING_PLATFORMS))
+        assertEquals("learning-platforms", AppRoutes.LEARNING_PLATFORMS)
+    }
+
+    @Test
     fun `both hosts keep four first level entries for either placement`() {
         TodoHostPlacement.entries.forEach { placement ->
             val resolution = resolve(placement)
