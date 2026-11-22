@@ -526,13 +526,18 @@
         "含中外合作工程管理硕士"
       ],
       "campus": "tdw",
-      "address": "长江西路66号",
+      "address": "长江西路66号培训楼",
       "phones": [
         {
           "number": "0532-86981276",
           "label": "工程管理硕士项目"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
       "sources": [
         "https://zwhz.upc.edu.cn/",
         "https://jyfz.upc.edu.cn/2026/1020/c8270a503341/page.htm"
@@ -685,6 +690,11 @@
           "label": "平台咨询"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "employment-center",
+        "name": "学生就业指导中心"
+      },
       "sources": [
         "https://career.upc.edu.cn/career/news/gwy",
         "https://csun.upc.edu.cn/19487/list.htm",
@@ -2626,6 +2636,11 @@
           "number": "0532-86983969"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
       "sources": [
         "https://energy.upc.edu.cn/main.htm",
         "https://news.upc.edu.cn/info/1436/119603.htm",
@@ -2648,6 +2663,11 @@
           "number": "0532-86983970"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
       "sources": [
         "https://energy.upc.edu.cn/22973/list.htm",
         "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
@@ -2666,6 +2686,11 @@
           "number": "0532-86983970"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
       "sources": [
         "https://energy.upc.edu.cn/22973/list.htm"
       ],
@@ -2683,6 +2708,11 @@
           "number": "0532-86981900"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
       "sources": [
         "https://energy.upc.edu.cn/22973/list.htm"
       ],
@@ -2923,13 +2953,18 @@
         "教学与学籍服务"
       ],
       "campus": "tdw",
-      "address": "长江西路66号",
+      "address": "长江西路66号培训楼",
       "phones": [
         {
           "number": "400-640-1953",
           "label": "服务"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
       "sources": [
         "https://upol.upc.edu.cn/9936/list.htm",
         "https://jyfz.upc.edu.cn/2026/1020/c8270a503341/page.htm",
@@ -2960,6 +2995,11 @@
           "label": "青岛教学点"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
       "sources": [
         "https://upol.upc.edu.cn/9936/list.htm",
         "https://jwc.upc.edu.cn/2024/0624/c19431a441787/page.htm"
@@ -3028,12 +3068,17 @@
         "校企培训和在线培训"
       ],
       "campus": "tdw",
-      "address": "长江西路66号",
+      "address": "长江西路66号培训楼",
       "phones": [
         {
           "number": "0532-86983514"
         }
       ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
       "sources": [
         "https://upce.upc.edu.cn/",
         "https://upce.upc.edu.cn/2025/0701/c22259a264598/page.htm",
