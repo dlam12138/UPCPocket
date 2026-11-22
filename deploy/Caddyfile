@@ -1,0 +1,76 @@
+# UPC Pocket 公网部署 · Caddy 反向代理与 PWA 静态站点
+#
+# 站点域名不写死在仓库：compose 从 deploy/.env 的 PUBLIC_HOST 传入；
+# 本地静态校验时回退到示例域名。真实部署必须设置 PUBLIC_HOST。
+#
+# 安全边界：
+# - 只有 Caddy 映射宿主机 80/443；app 只用 expose 8080，redis/db 只在 internal 网络。
+# - PWA 静态文件由 Caddy 从只读挂载的 /srv/web 提供；/api/* 与 /healthz 反代 app:8080。
+# - 访问日志为 JSON，并用过滤器删除 URI 的查询部分（见 log 块），不落 query。
+# - 不引入第三方 Caddy 插件；限流、同源校验与 HSTS 之外的应用安全头由应用负责。
+{
+	# HTTP/3 需要 compose 同时映射 443/udp（已配置）。不需要可删除本项与 443/udp 端口。
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+{$PUBLIC_HOST:upc-pocket.example.com} {
+	# 自动申请/续期 TLS 证书（Let's Encrypt / ZeroSSL），并自动把 http:// 跳转到 https://。
+	encode zstd gzip
+	root * /srv/web
+
+	# 请求体上限：本站没有文件上传，登录表单与预约提交都很小。
+	request_body {
+		max_size 16KB
+	}
+
+	# 安全头。本站只服务 HTTPS，因此 HSTS 只会出现在 HTTPS 响应上；
+	# HTTP 自动跳转响应不受本块 header 影响。
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	# /api 响应是 JSON，使用比静态资源更窄的 API CSP；全局 header 会被这里覆盖。
+	header /api/* Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+
+	# PWA 外壳与 Service Worker 不缓存，保证更新后能取到新版本；
+	# 其余静态资源由浏览器按 ETag/Last-Modified 缓存。
+	@no_cache path /index.html /sw.js /manifest.webmanifest
+	header @no_cache Cache-Control "no-cache"
+
+	# 显式声明 Web App Manifest 类型，避免不同镜像的 MIME 表差异导致 iOS PWA 安装异常。
+	header /manifest.webmanifest Content-Type "application/manifest+json"
+
+	# 访问日志：JSON 输出到容器 stdout，由 compose 的 json-file 驱动限额轮转。
+	# 过滤器 [?].* 删除 URI 的查询串（保留路径），避免账号/座位/日期等查询参数落盘；
+	# Caddy 默认已把 Cookie / Set-Cookie / Authorization 记为 REDACTED。
+	log {
+		output stdout
+		format filter {
+			wrap json
+			request>uri regexp "[?].*" ""
+		}
+	}
+
+	# 应用接口与健康检查走反向代理；Host / X-Forwarded-For / X-Forwarded-Proto 由 Caddy 传递。
+	handle /api/* {
+		reverse_proxy app:8080
+	}
+
+	handle /healthz {
+		reverse_proxy app:8080
+	}
+
+	# 其余请求是 PWA 静态文件；不存在的前端路由回退到 index.html。
+	# 不使用 browse，禁止目录列表。
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+}

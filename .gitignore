@@ -32,6 +32,18 @@ feature/focus/schemas/
 *.db-shm
 *.db-wal
 
-# Python cache for local web tooling
+# Python cache for local web tooling and the web service
 __pycache__/
 *.pyc
+.pytest_cache/
+*.egg-info/
+/server/build/
+
+# Web 服务部署运行期文件：密钥、备份与本地环境变量（只提交 deploy/.env.example）
+/deploy/secrets/
+/deploy/backup/
+/deploy/*.env
+!/deploy/.env.example
+
+# 服务端本地 Python 虚拟环境（部署/开发辅助，不入库）
+/server/.venv/

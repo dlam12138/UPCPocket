@@ -4,7 +4,7 @@ import { initializeClassrooms } from "./classroom.js";
 import { initializeCalendar } from "./calendar.js";
 import { initializeServiceCatalog } from "./service-catalog.js";
 import { initializeTimetable, refreshTimetableDate } from "./timetable.js";
-import { initializeLibrary } from "./library.js?v=19";
+import { initializeLibrary } from "./library.js?v=20";
 
 const services = [
   { name: "空闲教室", source: "两校区 · 按楼栋和节次查询", icon: "room", color: "sage", route: "classroom", common: true },

@@ -13,8 +13,9 @@ ADR 记录影响模块边界、数据兼容或信任链的长期决定，不记�
 | [007](007-ios-pwa-local-data-and-school-links.md) | iOS PWA 本机数据与首版学校入口 | Accepted（学校入口决策由 008 更新） |
 | [008](008-web-public-campus-data.md) | Web 站内公开数据读取与本地课表 | Accepted（课表决策由 009 更新） |
 | [009](009-web-semester-timetable-import.md) | Web 学期课表本地文件导入 | Accepted |
-| [010](010-web-library-reservation.md) | Web 图书馆预约与校方会话边界 | 前端契约保留，本机接入由 011 更新 |
-| [011](011-local-library-companion.md) | Mac 本机图书馆预约服务 | Accepted（Mac 与同机 iPhone 模拟器） |
+| [010](010-web-library-reservation.md) | Web 图书馆预约与校方会话边界 | 前端契约保留，本机接入由 011、公网接入由 012 更新 |
+| [011](011-local-library-companion.md) | Mac 本机图书馆预约服务 | Accepted（本机接入由 012 更新） |
+| [012](012-multi-user-web-library-service.md) | 公网多用户 Web 图书馆服务 | Accepted |
 
 新增重大决策使用递增编号，写明日期、状态、背景、决策、备选、理由、影响/代价和源码/需求依据。Accepted 表示当前生效；Proposed 尚未采纳；Superseded 需链接替代记录；Deprecated 说明停用原因。变更既有选择时新增关联记录并更新旧记录状态，不重写原决策内容或假造过去讨论。
 

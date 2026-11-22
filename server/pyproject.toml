@@ -1,0 +1,27 @@
+[project]
+name = "upc-pocket-server"
+version = "0.1.0"
+description = "UPC Pocket multi-user web service"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+  "redis>=5.0",
+  "psycopg[binary,pool]>=3.2",
+  "cryptography>=43",
+  "anyio>=4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

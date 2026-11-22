@@ -154,3 +154,25 @@
 .library-confirmation .library-danger,
 .library-confirmation .library-danger:enabled:hover { background: var(--error); color: var(--paper); }
 .library-confirmation p { margin-block: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.library-login { overflow-y: auto; }
+.library-login h2 { margin-bottom: 4px; }
+.library-login #library-login-branch { color: var(--muted); font-size: .9375rem; }
+.library-login #library-login-branch:empty { display: none; }
+.library-login p { margin-block: 8px; color: var(--muted); font-size: .9375rem; line-height: 1.6; }
+.library-login #library-login-status { margin: 0; font-size: .875rem; }
+.library-login #library-login-status:empty { display: none; }
+.library-login #library-login-status[data-state="error"] { color: var(--error); }
+.library-login #library-login-official { margin-top: 2px; font-size: 14px; }
+.library-login form { display: grid; gap: 12px; margin-top: 14px; }
+.library-login .field label { font-size: .9375rem; }
+.library-login .check-row {
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: .875rem;
+  line-height: 1.55;
+}
+.library-login .check-row input { margin-top: 3px; }
+.library-login .library-actions { justify-content: flex-end; }
+.library-login .library-actions .button { margin-top: 0; }

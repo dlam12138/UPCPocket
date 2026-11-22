@@ -1,16 +1,30 @@
 # UPC Pocket iOS 网页版
 
-源代码在 [`web/`](../web/)，面向 Safari 和 iPhone 主屏幕。空闲教室、学校校历、e站通公开目录和课表周视图在 Pocket 内显示。导入的学期课表、待办与专注保存在本机。
+源代码在 [`web/`](../web/)，面向 Safari 和 iPhone 主屏幕。空闲教室、学校校历、e站通公开目录和课表周视图在 Pocket 内显示。导入的学期课表、待办与专注保存在本机。图书馆由 [`server/`](../server/) 的可部署多用户 Web 服务提供：任意 iOS 设备通过 HTTPS 打开站点，即可在 Pocket 内登录学校账号、查询座位、预约并核对结果；唐岛湾还可在站内取消。本机回环服务只保留为历史与本地开发用途。公开数据与图书馆接口由 `server/` 提供，生产部署见 [部署手册](../deploy/README.md)。
 
-## 在 Mac 和模拟器运行
+## 本地开发与预览
 
-在仓库根目录启动网页和同源查询服务。
+旧的单用户预览仍在仓库根启动，只监听 `127.0.0.1`，用于本机静态页面与公开数据调试；默认启用回环图书馆，`--no-library` 只保留公开查询：
 
 ```sh
 python3 -B tools/web/serve.py
 ```
 
-在 Mac 或同一台 Mac 的 iPhone 模拟器中，用 Safari 打开 [本机预览](http://127.0.0.1:8000/)。使用同一个地址和端口以保留原浏览器存储。结束预览时在终端按 Control+C。
+在 Mac 或同一台 Mac 的 iPhone 模拟器中，用 Safari 打开 [本机预览](http://127.0.0.1:8000/)。使用同一个地址和端口以保留原浏览器存储。结束预览时在终端按 Control+C。该模式是历史本机用途，不能作为公网多用户服务。
+
+`server/` 自带**仅本地**的合成学校验证入口，用合成的认证和座位响应启动真实应用，方便在浏览器或 Playwright 中检查登录对话框和预约流程：
+
+```sh
+server/.venv/bin/python server/tests/serve_fake.py
+```
+
+默认监听 `127.0.0.1:8080`，使用临时密钥与内存后端，拒绝 `ENV=production`，且被 `.dockerignore` 排除、不进入镜像。它不能用于真实账号或真实预约；生产入口是 `app.main:create_app`（`uvicorn --factory`）。
+
+## 部署到公网
+
+生产拓扑为 Caddy（自动 HTTPS、静态 `web/`、`/api/*` 反代）+ FastAPI 应用 + Redis（会话/限流/公开数据缓存）+ PostgreSQL（预约记录与审计）。`SERVE_STATIC=false` 时 Caddy 提供 PWA 静态文件，`SERVE_STATIC=true` 时可由应用直接提供，便于本地排查。密钥通过 Docker secrets/只读挂载注入，备份为 `pg_dump | age` 密文，详见 [部署手册](../deploy/README.md)。
+
+上线前需要已解析的域名、可用 80/443 端口、ICP 备案（境内服务器）和按属地要求的公安联网备案；站内登录依赖浏览器安全上下文，必须使用 HTTPS。会话、Cookie、同源校验、登录 nonce 防重放、限流和加密边界的决策见 [ADR 012](adr/012-multi-user-web-library-service.md)。
 
 真机从稳定的 HTTPS 地址打开。点 Safari「分享 → 添加到主屏幕」，保持「作为网页 App 打开」开启。首次从主屏幕启动时保持联网，让静态资源完成初始化，之后可从图标离线重开。在 Safari 创建的记录保留在 Safari，主屏幕应用使用自己的本机存储。 [Apple 安装指南](https://support.apple.com/guide/iphone/iphea86e5236/ios) · [WebKit 存储说明](https://webkit.org/blog/14787/webkit-features-in-safari-17-2/)
 
@@ -23,7 +37,7 @@ python3 -B tools/web/serve.py
 - 「e站通」可在站内搜索公开目录、查看公开指南。登录后可见事项、本人待处理与在办待接入。 [学校服务大厅](https://service.upc.edu.cn/)
 - 「前往学校课表」在新窗口打开学校网页。图书馆预约入口见下文。 [仓库官方目录](upc/官方入口.md)
 - 周课表沿用 Android 原版的紧凑布局。学期和周次在同一张控制卡上，节次轴与七日列对齐。点击日期查看当天课程，点击色块从底部查看课程详情。 [Android 参考画面](images/2.0.6/promo/02-timetable.png) · [Android 2.0.8 布局记录](releases/2.0.8-development.md#手机反馈后的磨砂组件与紧凑课表)
-- 发布需在同一 HTTPS 来源提供 [`web/`](../web/) 和 [公开查询接口](../API.md#web-公开查询)，保持站点地址和安装标识稳定。更新时同步 [Service Worker](../web/sw.js) 的离线资源列表与版本。在线启动优先读取新版页面，断网时使用离线缓存。首页照常加载全部页面样式和功能脚本；`.ics` 解析器与书签脚本按需加载，Service Worker 在首次使用时缓存并随版本加查询参数，不随安装预下载。
+- 发布需在同一 HTTPS 来源提供 [`web/`](../web/)、[Web 服务](../server/)与 [公开查询/登录接口](../API.md#web-登录与会话)，保持站点地址和安装标识稳定。前端静态更新需同步 [Service Worker](../web/sw.js) 的离线资源列表与版本；后端更新按 [部署手册](../deploy/README.md) 构建并重启应用。在线启动优先读取新版页面，断网时使用离线缓存。首页照常加载全部页面样式和功能脚本；`.ics` 解析器与书签脚本按需加载，Service Worker 在首次使用时缓存并随版本加查询参数，不随安装预下载。
 
 ## iPhone 导入学期课表
 
@@ -37,13 +51,17 @@ python3 -B tools/web/serve.py
 
 ## 图书馆座位预约
 
-本机服务默认启用三个馆区站内选座。在 Mac 或同一台 Mac 的 iPhone 模拟器打开 [本机首页](http://127.0.0.1:8000/)，从首页常用服务或「校园服务」打开「图书馆选座」。选择馆区和「站内登录」，亲自输入本人学校账号。登录后可按日期选择房间，在座位列表或布局图选座，再选起止时间。Safari 与主屏幕版各自登录。退出本机图书馆或停止 Mac 服务会清理登录会话。需要只预览公开查询时使用 `python3 -B tools/web/serve.py --no-library`。 [本机预约决策](adr/011-local-library-companion.md)
+公网多用户服务默认启用三个馆区站内选座。任意 iOS 设备通过 HTTPS 打开 Pocket，从首页常用服务或「校园服务」打开「图书馆选座」，选择馆区后点「站内登录」。对话框会说明这是非官方工具、密码仅用于本次登录且不保存，需勾选同意后输入本人学校账号；浏览器取服务端公钥并自行生成一次性 nonce 加密账密，服务端解密一次、核对并一次性登记 nonce，再完成学校 CAS/libspace 或超星认证并丢弃明文。Safari 与主屏幕版各自登录；退出站内登录、退出全局会话或会话过期后需要重新登录。会话默认空闲 30 分钟、绝对 8 小时。遇验证码或额外验证时到馆区官方页面处理。 [多用户服务决策](adr/012-multi-user-web-library-service.md)
 
 「核对预约」用于确认新的选座。若有一次结果待核对，选择旁边的「核对结果」重新读取学校记录，也可以开始下一笔预约。提交前以学校当前有效记录为准。同一天可以提交多笔，取消后可以重新选择同一时段。同一个确认请求只向学校发送一次。
 
 唐岛湾「我的预约」里，对当前可取消的记录点击「取消预约」，核对座位和时间后确认。结果未知时刷新学校记录。
 
-在「图书馆选座」顶部切换古镇口东区或求是。两馆使用独立的超星会话，登录后可在站内选择房间、座位和时段并预约。「查看或取消预约」打开对应官方页，遇额外验证也由官方页处理。当前本机模式面向 Mac 和同机模拟器。 [学校图书馆服务入口](https://library.upc.edu.cn/zddt.htm) · [仓库官方目录](upc/官方入口.md)
+在「图书馆选座」顶部切换古镇口东区或求是。两馆使用独立的超星会话，登录后可在站内选择房间、座位和时段并预约。「查看或取消预约」打开对应官方页，遇额外验证也由官方页处理。 [学校图书馆服务入口](https://library.upc.edu.cn/zddt.htm) · [仓库官方目录](upc/官方入口.md)
+
+### 历史记录：Mac 本机回环模式（ADR 011）
+
+以下验收记录属于已由 [ADR 012](adr/012-multi-user-web-library-service.md) 更新的本机模式，保留作历史与本地开发参考，不代表当前公网服务的验收结论。
 
 2026-11-21，用户在 iPhone 模拟器亲自登录，Mac 服务完成了真实 CAS 和图书馆本人核验。WebKit 合成会话覆盖选房间、按坐标渲染座位布局、起止时间、单次提交、核对及退出，SQLite 复核覆盖未知结果跨重启防重。v14 的登录返回地址与离线资源单独通过合成会话验证。实际预约写入和 iPhone 真机仍待验收。
 
@@ -57,7 +75,7 @@ python3 -B tools/web/serve.py
 | --- | --- |
 | 空闲教室、校历 | 通过学校公开数据在站内展示 |
 | 个人课表 | 可生成 Safari 书签，支持粘贴或文件导入 V3 学期课表、周表和离线恢复。后台读取和账号绑定待接校方 Web 授权 |
-| 图书馆 | Mac 本机模式支持三个馆区站内选座与预约，唐岛湾支持站内查看及取消。超星两馆的预约记录和取消在官方页 |
+| 图书馆 | 公网多用户服务支持三个馆区站内登录、选座与预约；唐岛湾支持站内查看及取消，超星两馆的预约记录和取消在官方页。Mac 回环模式保留为历史与本地开发用途 |
 | e站通 | 公开目录与指南可用。本人的待处理、在办仍待接 |
 | 校园卡、石光 | 本人余额、流水、充值与石光只读业务待接 |
 | 宿舍电量 | 唐岛湾现有数据来源使用 HTTP，本机验证其 HTTPS 证书已过期。古镇口的 Kotlin 路径为学校页面，Web 站内读取待接 |
@@ -115,3 +133,13 @@ python3 -B tools/web/serve.py
 首版截止控件的宽度修复通过 WebKit 验证。模拟器专注切后台后的时差、真机和正式 HTTPS 站点仍待验证。
 
 开发依据包括桌面《UPC Pocket · iOS 网页版开发计划与设计指南》、[M5 导航与视觉](m5/README.md)、[课表设计](m5/2026-11-05-课表与组件设计.md)、[数据归属](adr/003-data-ownership-and-schema-compatibility.md)及[账号会话边界](adr/002-account-generation-and-business-sessions.md)。
+
+## 2026-11-22 · 多用户 Web 服务验证
+
+本轮把图书馆从 Mac 回环单用户服务升级为公网多用户服务（[ADR 012](adr/012-multi-user-web-library-service.md)）。以下为开发侧实际执行与本机证据；合成学校、本机服务和 WebKit 测试都不能替代真实校园验收。
+
+- `server/.venv/bin/python -m pytest`：47 passed、2 skipped（Redis/PostgreSQL 集成用例默认跳过）；覆盖信封解密、nonce 绑定与字段校验、登录/会话、同源与 CSRF、预约/取消及幂等、公开数据缓存与 503、跨用户隔离、遗留登录 303、限流、客户端地址取 `X-Forwarded-For` 最后一项及日志字段。`server/tests/test_webcrypto_interop.py` 在该轮通过（Node WebCrypto 生成的信封由 Python 解密）。
+- 本机真实 Redis 8.10 + PostgreSQL 18 上运行 `server/tests/test_redis_postgres.py`：2 passed，覆盖 Redis 密文值、锁超时、PostgreSQL 列级密文不含明文座位、用户隔离与级联删除。
+- Node v24.22.3：`node --test tools/web/test_login_crypto.mjs` 6 passed。
+- 本机 uvicorn + `server/tests/serve_fake.py` 合成学校：通过真实 HTTP 完成 `key → login → session → catalog → book → reservations(confirmed) → cancel`；Playwright 1.65.1 WebKit、390×844、iPhone UA 验证站内登录对话框、错误密码提示、正确登录、选择馆区/日期/房间/座位/时段、核对确认、预约成功核对、取消、切换到古镇口东区登录和退出登录。加入登录 nonce 后已按新流程复测通过，同一信封重放返回 400 `invalid_request`。
+- 未验证：真实 CAS/学校账号与真实预约写入、iPhone 真机 Safari/主屏幕 PWA、Docker 镜像构建与 `docker compose up`、真实 ACME 证书、ICP/公安备案、真实 `pg_dump`+`age` 恢复演练。这些项目不能写成已验收。

@@ -1,0 +1,194 @@
+# UPC Pocket 多用户 Web 服务 · 单机部署编排
+#
+# 四服务：caddy（TLS/静态/反代）、app（FastAPI）、redis（会话与限流）、db（PostgreSQL）。
+#
+# 用法（在仓库根执行）：
+#   cp deploy/.env.example deploy/.env && chmod 600 deploy/.env   # 填写必填项
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env build
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+#
+# 网络与端口策略：
+# - 只有 caddy 发布宿主 80/443(udp)；app 只用 expose，redis/db 不发布任何端口。
+# - edge 网络承载公网入口与 app 出站（app 需访问学校上游）；internal 网络为 internal，
+#   redis/db 只加入 internal，既收不到宿主机直连也主动访问不了外网。
+# - 不给 db/redis 映射端口，不 privileged，不挂 Docker socket。
+name: upcpocket
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    internal: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pgdata:
+  redisdata:
+
+# 密钥只经 Docker secrets/只读挂载注入，不写入镜像、Compose 环境变量或 Git。
+# data_key/session_secret 是单文件 secret；login_keys 是目录（内含 <kid>.pem，便于轮换），
+# 用只读 bind mount 挂到 /run/secrets/login_keys，挂载目录内容对 app 只读可见。
+secrets:
+  data_key:
+    file: ./secrets/data_key
+  session_secret:
+    file: ./secrets/session_secret
+
+services:
+  caddy:
+    image: caddy:2.11-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      # 仅 Caddy 使用；站点域名不写死在 Caddyfile。
+      PUBLIC_HOST: ${PUBLIC_HOST}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # PWA 静态文件由宿主仓库 web/ 只读提供，不进入 app 镜像。
+      - ../web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      # Caddy 默认 admin API 监听容器内 127.0.0.1:2019。
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: upcpocket-web:local
+    restart: unless-stopped
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ulimits:
+      # 不在宿主留下可能含敏感内存的 core dump。
+      core: 0
+    tmpfs:
+      # rootfs 只读；唯一可写目录。size 限制防止临时文件占满内存。
+      - /tmp:size=64m,mode=1777
+    expose:
+      - "8080"
+    environment:
+      ENV: ${ENV:-production}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN}
+      SERVE_STATIC: ${SERVE_STATIC:-false}
+      WEB_ROOT: ${WEB_ROOT:-/srv/web}
+      UPSTREAM_PATH: ${UPSTREAM_PATH:-/app/tools/web}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
+      LOGIN_KEY_ID: ${LOGIN_KEY_ID}
+      LOGIN_KEY_DIR: ${LOGIN_KEY_DIR:-/run/secrets/login_keys}
+      DATA_KEY_FILE: ${DATA_KEY_FILE:-/run/secrets/data_key}
+      DATA_KEY_VERSION: ${DATA_KEY_VERSION:-1}
+      SESSION_SECRET_FILE: ${SESSION_SECRET_FILE:-/run/secrets/session_secret}
+      BOOKING_ENABLED: ${BOOKING_ENABLED:-true}
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # uvicorn 只在 Caddy 容器可达的 edge 网络上监听；信任其 X-Forwarded-*。
+      # app 未发布端口，这一项不应放宽到公网可达的部署方式。
+      FORWARDED_ALLOW_IPS: "*"
+    secrets:
+      - data_key
+      - session_secret
+    volumes:
+      # 目录型密钥（<kid>.pem）需要目录挂载；轮换时新增/删除 pem 无需重建容器。
+      - ./secrets/login_keys:/run/secrets/login_keys:ro
+    networks:
+      - edge
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # 官方镜像入口脚本在首参为 redis-server 时会降权到 redis 用户并修正数据目录属主。
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - noeviction
+    environment:
+      # 仅用于容器内 healthcheck 读取，不传给 app。
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: upcpocket
+      POSTGRES_USER: upcpocket
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U upcpocket -d upcpocket"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

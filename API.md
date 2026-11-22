@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间实际使用的 Kotlin 契约，核对日期 2026-11-17，对应 2.0.8 开发代码。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名和默认值以链接源码为准；修改公共面同时更新本文、[架构](ARCHITECTURE.md)与所有消费者。
+本文索引宿主、基础模块和 feature 之间实际使用的 Kotlin 契约，以及 iOS 网页版使用的 Web 服务公共接口。核对日期：Android 契约 2026-11-17（对应 2.0.8 开发代码），Web 服务 2026-11-22。Android 客户端没有自建 REST 服务或对第三方承诺稳定的远程 API；iOS 网页版由独立的 [`server/`](server/) 多用户 Web 服务提供同源接口，部署与运维见 [部署手册](deploy/README.md)。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名和默认值以链接源码为准；修改公共面同时更新本文、[架构](ARCHITECTURE.md)与所有消费者。
 
 ## 插件、能力与 UI
 
@@ -85,34 +85,52 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 2.0.7 第二部分组件调度仍由宿主拥有：课表边界和 30 分钟兜底只调用本地快照/恢复路径，不能把 `open()` 或前台联网刷新放入自动周期；校园卡 30 分钟联网读取仅在有组件时保留，目标执行时从当前受控绑定取得。移除课表/校园卡刷新按钮时须联查正式宿主、debug 预览及 renderer 测试消费者；旧系统组件和动作身份保持兼容，电量刷新及全部整卡导航保留。
 
-## Web 公开查询
+## Web 登录与会话
 
-[`tools/web/serve.py`](tools/web/serve.py) 在 PWA 同源提供公开数据的只读 GET 路径。成功返回规范化 JSON，错误返回固定 `{"error":"…"}` 和 HTTP 状态。接口响应标记 `no-store`。
-
-| 路径 | 请求与结果 |
-| --- | --- |
-| `/api/classrooms` | `campus` 为 `tangdaowan` 或 `guzhenkou`，`date` 为 ISO 日期，`building` 为楼栋名，`period` 重复传 1–13 节。返回查询、楼栋选项、公开教室清单和查询时间。仅学校明确返回的交集条目标为空闲。 |
-| `/api/calendar` | 无参数。返回教务处最近发布的可识别学年、发布日期、官方原文和两学期原图地址。 |
-| `/api/service-catalog` | 无参数。返回 e站通公开目录中的事项编号、名称、部门与同号歧义。 |
-| `/api/service-catalog/guide` | `id` 须属于已读取的公开目录。返回指南的文本字段和截断提示，移除流程提交与附件链接。 |
-
-本机服务的图书馆接入状态见下文。公开查询接口仅处理公开数据。
-
-## Web 图书馆预约
-
-本机服务默认开启图书馆站内预约。Mac 和同一台 Mac 的 iPhone 模拟器通过 `127.0.0.1` 使用唐岛湾 `/api/library/`、古镇口东区 `/api/library/east/` 和求是 `/api/library/qiushi/`。显式传入 `--no-library` 时只提供会话状态 `{"state":"unavailable"}`。所有响应使用 `Cache-Control: no-store`，业务请求携带 `X-Library-Session` 与馆区同源会话 Cookie，服务端返回 `401` 或 `409` 表示会话失效或修订已变。会话修订与防跨站请求伪造值均为不透明字符串。
+来源：[登录路由](server/app/routes/auth.py)、[加密](server/app/crypto.py)、[会话](server/app/sessions.py)、[请求安全](server/app/security.py)、[站内登录前端](web/login.js)。所有响应 `Cache-Control: no-store`，并带 `X-Request-Id`。所有非 GET 请求（含登录）要求 `Origin` 精确等于 `PUBLIC_ORIGIN`（存在时）且 `Sec-Fetch-Site` 为 `same-origin`/`none`，否则返回 403 `invalid_request`。
 
 | 方法与路径 | 请求与结果 |
 | --- | --- |
-| `GET session` | 返回 `{state}`。`unavailable` 使用官方入口，`sign_in` 可发起官方认证，`ready` 返回 `revision`、`csrf` 和 `recordsAvailable`。两所超星馆区返回 `recordsAvailable:false`，在官方页查看或取消预约。 |
-| `GET login`、`POST login` | 提供只在本机使用的登录表单。用户提交一次性表单及本人账号密码，服务走学校现有 CAS 和图书馆业务回调。核验身份后建立会话并返回 `/?library=1#library`，可从旧版离线页面切回站内选座。 |
-| `POST logout` | 使用当前会话修订和 `X-CSRF-Token` 退出本机图书馆会话。返回 `{state:"sign_in"}`。 |
-| `GET catalog` | 无参数返回 `{buildings, dates}`。按顺序增加 `building,date`、`room`、`seat`、`start`，依次返回 `{rooms}`、`{seats,layout}`、`{starts}`、`{ends}`。`dates` 为 ISO 日期列表，其他列表由字符串 `{id, label}` 组成，可附房间数量、座位状态、坐标和布局尺寸。沿用学校座位、日期和起止时间标识，选项以学校此次返回为准。 |
-| `POST book` | 使用 `X-CSRF-Token` 和 JSON `{id,building,date,room,seat,start,end}`。`id` 为客户端本次确认生成的 UUID。结果 `status` 为 `challenge`、`rejected`、`submitted`、`unknown` 或超星 `accepted`。超星明确接受的响应显示已受理，正式记录请在官方页查看。响应失败或无法辨认的结果按未知处理。 |
-| `GET reservations` | 唐岛湾返回 `{pending,records,cancellationPending}`。记录带 `cancellable` 与 `cancelPending`，仅本人当前待履约记录可取消。可传 `attempt=<id>` 或 `cancelAttempt=<id>` 查询操作状态。预约 `confirmed` 含与之匹配的 `recordId`。超星返回 `{available:false}`。 |
-| `POST cancel` | 唐岛湾使用 `X-CSRF-Token` 和 JSON `{id,reservationId}`，`id` 为取消请求 UUID。服务复核本人当前预约后向学校发送一次取消。学校明确显示已取消，或接受取消且重查记录确认目标已消失，返回 `cancelled`。明确拒绝返回 `rejected`，结果未知返回 `unknown`。取消结果未知且当前记录已无该预约时返回 `absent`。 |
+| `GET /api/auth/key` | 无参数。返回 `{kid, spki, alg, enc}`：`kid` 为当前登录密钥编号，`spki` 为 SPKI DER 的标准 base64（带填充，不是 base64url），`alg` 固定 `RSA-OAEP-256`，`enc` 固定 `AES-256-GCM`。端点只返回公开参数，不写服务端状态。 |
+| `POST /api/auth/login` | JSON `{kid, nonce, wrapped, iv, ciphertext, branch, consent}`。`nonce` 由浏览器用 `crypto.getRandomValues` 生成（32 字节 base64url，1–64 字符），必须与密文内 nonce 一致；`wrapped`/`iv`/`ciphertext` 为无填充 base64url；`ciphertext` 用一次性 AES-256-GCM 密钥加密 JSON `{"username","password","nonce"}`（密文内也要带同一个 nonce），密钥再以 RSA-OAEP-SHA256 包裹。`branch` 为 `tangdaowan`、`east` 或 `qiushi`；`consent` 必须为 `true`。成功返回 `{state:"ready", branch, revision, csrf, bookingAvailable, recordsAvailable}` 并下发会话 Cookie；`recordsAvailable` 仅唐岛湾为 `true`。 |
+| `GET /api/session` | 无有效 Cookie 时返回 `{state:"anonymous"}`；有效时返回 `{state:"ready", revision, csrf, branches, bookingAvailable}`，`branches` 为三个馆区是否已有学校会话。 |
+| `POST /api/logout` | 需 `X-CSRF-Token`。清理该用户三个馆区的学校会话与浏览器会话，返回 `{state:"anonymous"}` 并删除 Cookie。 |
 
-本机服务串行处理当前本人会话的读写和会话切换。写入时核验来源和 CSRF，按当前账户、原始座位与时段校验参数和验证码要求，查询学校当前有效预约，持久登记本次 UUID 及提交前记录 ID，再对学校发起单次提交。重复请求同一个 UUID 会返回已知状态。学校仍有相同有效预约时拒绝再次发送，学校已取消或仍待核对的历史尝试可以与新预约并存。只有出现此前未见且可唯一归入本次尝试、匹配本人、日期、房间、座位及完整时段的学校记录，才能返回 `confirmed`。对于「现在」开始的预约，以官方协议的实际开始时间规则核对。请见 [ADR 011](docs/adr/011-local-library-companion.md)。
+登录 nonce 是一次性防重放标识：服务端解密后核对密文内 nonce 与请求顶层 nonce 一致，再在 Redis 以 `SET NX` 把该 nonce 登记 600 秒（`upcp:nonce:*`，本地开发的内存后端用等价过期表）；首次提交成功，重复提交或已登记都返回 400 `invalid_request`。因此即使 TLS 终止点或反向代理拿到完整信封密文，也不能把它重放成受害者的会话；每个登录请求都应生成新的 nonce，失败后不能复用旧信封。公钥端点不写服务端状态。
+
+生产 Cookie 名为 `__Host-upcp_session`，`Secure`、`HttpOnly`、`SameSite=Lax`、`Path=/`；本地开发可为 `upcp_session`。浏览器会话默认空闲 30 分钟、绝对 8 小时（`SESSION_IDLE_SECONDS=1800`、`SESSION_ABSOLUTE_SECONDS=28800`，可由环境变量调整）；登录成功后轮换会话 ID 与 revision，更换用户时清理旧用户的馆区会话。登录默认限流 5 次/10 分钟/IP 与 5 次/10 分钟/登录名（登录名经 HMAC 计数），超限返回 429 `rate_limited`。登录请求体上限 8 KB，Caddy 统一限制 16 KB。
+
+部署在 Caddy 后时（`TRUST_PROXY=true`），应用只信任 `X-Forwarded-For` 的**最后一项**（Caddy 写入的真实连接地址），不信任客户端自带的前缀；该地址只参与登录限流键与审计的 HMAC（IPv6 聚合到 /64），不保存明文 IP。该假设适用于「单层 Caddy、前面没有 CDN/透传代理」；若增加前置代理，需显式配置 Caddy `trusted_proxies` 并复核取址逻辑。
+
+## Web 公开查询
+
+来源：[公开数据路由](server/app/routes/public.py)、[缓存](server/app/cache.py)。`server/` 在 PWA 同源提供公开数据的只读 GET 路径。成功返回规范化 JSON，错误返回固定 `{"error":"…"}` 和 HTTP 状态。接口响应标记 `no-store`，缓存状态另由 `X-Cache` 表示。
+
+| 路径 | 请求与结果 |
+| --- | --- |
+| `/api/classrooms` | `campus` 为 `tangdaowan` 或 `guzhenkou`，`date` 为 ISO 日期，`building` 为楼栋名，`period` 重复传 1–13 节；四个字段均为必填。返回查询、楼栋选项、公开教室清单和查询时间。仅学校明确返回的交集条目标为空闲。 |
+| `/api/calendar` | 无参数。返回教务处最近发布的可识别学年、发布日期、官方原文和两学期原图地址。 |
+| `/api/service-catalog` | 无参数。返回 e站通公开目录中的事项编号、名称、部门与同号歧义。 |
+| `/api/service-catalog/guide` | `id` 为公开目录中的事项编号，须为 1–19 位非零开头数字。返回指南的文本字段和截断提示，移除流程提交与附件链接。 |
+
+教室缓存 60 秒，校历、目录和指南缓存 1 小时。命中成功缓存时 `X-Cache: hit`；重新读取成功时为 `miss`；上游失败且存在上次成功缓存时返回该缓存并在 JSON 加 `stale:true`、`X-Cache: stale`；没有可用缓存时返回 503 `upstream_unavailable`，不返回成功空结果。[`tools/web/serve.py`](tools/web/serve.py) 保留为旧的本地单用户预览，不是生产入口。
+
+## Web 图书馆预约
+
+来源：[图书馆路由](server/app/routes/library.py)、[图书馆编排](server/app/library/service.py)、[预约日志](server/app/library/journal.py)、[图书馆前端](web/library.js)。`server/` 默认启用三个馆区站内预约，`BOOKING_ENABLED=false` 时 `GET /api/library/session` 返回 `{"state":"unavailable"}` 且写接口返回 403 `booking_disabled`。唐岛湾使用 `/api/library/…`，古镇口东区和求是使用 `/api/library/{east|qiushi}/…`。所有响应使用 `Cache-Control: no-store`；浏览器会话过期返回 401 `session_expired`，学校会话失效返回 401 `library_session_expired` 并需重新登录，revision 不匹配返回 409 `library_session_changed`。`GET /api/library/login`（含馆区路径）只为 PWA 兼容返回 303 跳转到 `/?library=1#library`（东区 `#library-east`、求是 `#library-qiushi`），不提供登录表单。
+
+`/api/library/session` 在 `sign_in` 时提示登录，`ready` 时返回 `revision`、`csrf`、`bookingAvailable` 和 `recordsAvailable`（仅唐岛湾为 `true`）。读取 `catalog`、`reservations` 需带 `X-Library-Session`（当前 revision）；写请求另需 `X-CSRF-Token`。
+
+| 方法与路径 | 请求与结果 |
+| --- | --- |
+| `GET session` | 返回 `{state}`；`unavailable` 使用官方入口，`sign_in` 可发起站内登录，`ready` 返回 `revision`、`csrf`、`bookingAvailable`、`recordsAvailable`。 |
+| `GET catalog` | 无参数返回 `{buildings, dates}`。按顺序增加 `building,date`、`room`、`seat`、`start`，依次返回 `{rooms}`、`{seats,layout}`、`{starts}`、`{ends}`；最多 6 个参数。`dates` 为 ISO 日期列表，其他列表由字符串 `{id, label}` 组成，可附房间数量、座位状态、坐标和布局尺寸。沿用学校座位、日期和起止时间标识，选项以学校此次返回为准。 |
+| `POST book` | 使用 `X-Library-Session`、`X-CSRF-Token` 和 JSON `{id,building,date,room,seat,start,end}`，`id` 为客户端本次确认生成的 UUID。结果 `status` 为 `challenge`、`rejected`、`submitted`、`unknown` 或超星 `accepted`。超星明确接受的响应显示已受理，正式记录请在官方页查看；超时或无法辨认的结果按未知处理。 |
+| `GET reservations` | 唐岛湾返回 `{pending,records,cancellationPending}`。记录带 `cancellable` 与 `cancelPending`，仅本人当前待履约记录可取消。可传 `attempt=<id>` 或 `cancelAttempt=<id>` 查询操作状态。预约 `confirmed` 含与之匹配的 `recordId`。超星返回 `{available:false}`。 |
+| `POST cancel` | 唐岛湾使用 `X-CSRF-Token` 和 JSON `{id,reservationId}`，`id` 为取消请求 UUID。服务复核本人当前预约后向学校发送一次取消。学校明确显示已取消，或接受取消且重查记录确认目标已消失，返回 `cancelled`；明确拒绝返回 `rejected`，结果未知返回 `unknown`；取消结果未知且当前记录已无该预约时返回 `absent`。 |
+| `POST logout` | 需 `X-Library-Session` 与 `X-CSRF-Token`。清理该馆区学校会话，返回 `{state:"sign_in"}`。全局退出使用 `POST /api/logout`。 |
+
+服务按用户串行处理其预约/取消，锁超时返回 503 `upstream_unavailable`。写入时核验同源、CSRF、当前账户、原始座位与时段、验证码要求，查询学校当前有效预约，持久登记本次 UUID 及提交前记录 ID，再向学校发起单次提交；重复请求同一 UUID 返回已知状态。学校仍有相同有效预约时拒绝再次发送，已取消或仍待核对的历史尝试可与新预约并存。只有出现此前未见且可唯一归入本次尝试、匹配本人、日期、房间、座位及完整时段的学校记录，才能返回 `confirmed`；结果未知时提示核对官方记录，不自动重发。见 [ADR 012](docs/adr/012-multi-user-web-library-service.md)。
 
 ## Web 本机课表
 
@@ -122,4 +140,25 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 边界返回固定错误或清晰异常语义，禁止用任意上游自由文本作为公共错误或诊断。空值表示的不可用、未查过或条件更新失败，以对应接口定义为准；不能跨接口假设 null 等于成功空集合。异步结果在最终提交前重新核对上下文。
 
-修改契约后，按 [CONTRIBUTING](CONTRIBUTING.md) 运行受影响生产者/消费者验证及模块边界；本机/Mock、设备和真实校园证据分别记录。公开面变化同步本文；重大边界变化记录 ADR，避免以一次接口整理扩大产品或学校写操作权限。
+Web 服务实际使用的固定错误码如下（响应体为 `{"error":"…"}`，上游自由文本不进入响应）：
+
+| HTTP | 错误码 | 触发场景 |
+| --- | --- | --- |
+| 400 | `invalid_request` | 参数、JSON、信封字段、UUID 或登录 nonce 校验失败（含 nonce 不一致、已登记/重放） |
+| 400 | `consent_required` | 登录未勾选同意 |
+| 401 | `invalid_credentials` | 学校账号或密码不正确 |
+| 401 | `session_expired` | 浏览器会话缺失、过期或已退出 |
+| 401 | `library_session_expired` | 馆区学校会话失效，需重新登录 |
+| 403 | `invalid_request` | 非同源写入、缺少或错误的 `X-CSRF-Token` |
+| 403 | `booking_disabled` | 部署关闭了预约写操作 |
+| 404 | `unknown_route` | 未定义路径或不存在的馆区 |
+| 409 | `interaction_required` | 学校要求验证码或额外验证，需转官方页面 |
+| 409 | `library_session_changed` | `X-Library-Session` 与当前 revision 不一致 |
+| 409 | `challenge_required` | 上游要求验证码，当前请求未完成 |
+| 413 | `invalid_request` | 登录或业务请求体超限 |
+| 415 | `invalid_request` | 写请求 `Content-Type` 不是 `application/json` |
+| 429 | `rate_limited` | 登录超出频率限制 |
+| 500 | `internal` | 未处理的服务端异常 |
+| 502/503 | `upstream_unavailable` | 学校上游不可用、超时或预约锁超时 |
+
+修改契约后，按 [CONTRIBUTING](CONTRIBUTING.md) 运行受影响生产者/消费者验证及模块边界；本机/Mock、设备和真实校园证据分别记录。Web 服务涉及 Redis、PostgreSQL 与会话时，至少运行 `server/.venv/bin/python -m pytest`、`node --test tools/web/test_login_crypto.mjs`，并按需启用 `UPCP_TEST_REDIS_URL`/`UPCP_TEST_DATABASE_URL` 集成用例；`server/tests/serve_fake.py` 只是本地合成验证入口，不代表真实学校验收。公开面变化同步本文；重大边界变化记录 ADR，避免以一次接口整理扩大产品或学校写操作权限。

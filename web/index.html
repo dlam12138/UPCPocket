@@ -17,8 +17,8 @@
   <link rel="stylesheet" href="./timetable.css">
   <link rel="stylesheet" href="./calendar.css">
   <link rel="stylesheet" href="./service-catalog.css">
-  <link rel="stylesheet" href="./library.css?v=19">
-  <script src="./app.js?v=20" type="module"></script>
+  <link rel="stylesheet" href="./library.css?v=20">
+  <script src="./app.js?v=21" type="module"></script>
 </head>
 <body>
   <!-- 页面共用的线条图标。每个 symbol 都可以通过 use 重复使用。 -->
@@ -132,7 +132,7 @@
         </div>
         <p id="library-session-status" role="status">正在检查站内预约…</p>
         <div class="library-actions">
-          <a class="button" id="library-sign-in" href="./api/library/login" hidden>站内登录</a>
+          <button type="button" class="button" id="library-sign-in" hidden>站内登录</button>
           <button class="text-button" id="library-session-retry" type="button" hidden>重新检查</button>
           <button class="text-button" id="library-logout" type="button" hidden>退出图书馆</button>
         </div>
@@ -221,6 +221,32 @@
         <form method="dialog" class="library-actions">
           <button class="button button-secondary" type="submit" autofocus>保留预约</button>
           <button class="button library-danger" id="library-confirm-cancel" type="button">确认取消</button>
+        </form>
+      </dialog>
+      <dialog class="settings-dialog library-login" id="library-login" aria-labelledby="library-login-title">
+        <h2 id="library-login-title">站内登录</h2>
+        <p id="library-login-branch"></p>
+        <p>这是非官方工具，与学校官方无关。请输入本人学校账号，密码仅用于本次登录、不保存。</p>
+        <p>登录信息会加密后发送到本站服务。如遇验证码或额外验证，请前往学校官方页面处理。</p>
+        <a class="text-link" id="library-login-official" href="https://libspace.upc.edu.cn/libseat/" target="_blank" rel="noopener noreferrer">前往学校官方预约页面 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+        <form id="library-login-form">
+          <div class="field">
+            <label for="library-login-username">学校账号</label>
+            <input id="library-login-username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="256">
+          </div>
+          <div class="field">
+            <label for="library-login-password">密码</label>
+            <input id="library-login-password" name="password" type="password" autocomplete="current-password" maxlength="1024">
+          </div>
+          <label class="check-row">
+            <input id="library-login-consent" type="checkbox">
+            <span>我已阅读并同意上述说明，并授权本次登录使用我的学校账号。</span>
+          </label>
+          <p id="library-login-status" role="status"></p>
+          <div class="library-actions">
+            <button class="button button-secondary" id="library-login-cancel" type="button">取消</button>
+            <button class="button" id="library-login-submit" type="submit">登录</button>
+          </div>
         </form>
       </dialog>
     </section>

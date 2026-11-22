@@ -1,6 +1,6 @@
 # ADR 011 · Mac 本机图书馆预约服务
 
-- 状态为 Accepted，记录于 2026-11-21。
+- 状态为 Accepted，记录于 2026-11-21；本机回环接入方式由 [ADR 012](012-multi-user-web-library-service.md) 更新。
 - 更新 [ADR 010](010-web-library-reservation.md) 的本机接入方式。
 
 ## 背景与决策

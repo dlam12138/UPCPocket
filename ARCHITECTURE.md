@@ -4,7 +4,7 @@
 
 ## 系统轮廓
 
-这是直接访问学校服务的 Android 客户端，没有本项目自建的账号或业务中转服务器。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
+这是直接访问学校服务的 Android 客户端，没有本项目自建的账号或业务中转服务器；唯一例外是可选的 iOS 网页版多用户服务（`server/`，见下文「iOS 网页版」），Android 应用不依赖它。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
 
 ```mermaid
 flowchart TD
@@ -138,9 +138,9 @@ sequenceDiagram
 
 [`web/`](web/) 是独立的 PWA，无需 Android 工具链。浏览器使用哈希路由切换首页、课表、服务、待办和专注。待办、专注和导入的学期课表使用 IndexedDB，专注的活动状态及结束记录在同一事务内结算。Service Worker 按部署范围缓存版本化静态资源，网站数据和静态缓存分别维护。
 
-本机 [Web 服务](tools/web/serve.py)提供同源公开数据查询，封装学校空闲教室、教务处校历和 e站通公开事项及指南。前端启动时加载默认教室结果。用户可在已登录的学校页主动运行 Safari 书签并导出本人课表。Pocket 在浏览器内校验用户粘贴或选取的 V3 JSON。完整学期以学年与学期为键一次提交，周视图、详情与首页今日摘要读取本机结果。iCalendar 保留为临时预览。见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)与 [iOS 网页版](docs/web.md)。
+公开数据查询与图书馆由 [`server/`](server/) 的多用户 Web 服务提供，核对于 2026-11-22：FastAPI + Redis + PostgreSQL，生产由 Caddy 终止 TLS 并从 [`web/`](web/) 提供静态文件、把 `/api/*` 反代到 `app:8080`，也可用 `SERVE_STATIC=true` 由应用直接提供 PWA 供本地预览。公开查询经 Redis 缓存（教室 60 秒，校历/目录/指南 1 小时），上游失败可返回上次成功缓存并在 JSON 标记 `stale`、响应头标记 `X-Cache: hit|miss|stale`；无缓存时返回 503 `upstream_unavailable`。学校协议仍由 [`tools/web/`](tools/web/) 的同步模块提供，`server/` 经桥接加载而不重写协议；[`tools/web/serve.py`](tools/web/serve.py) 仅保留为旧的本地单用户预览，不是生产入口。该服务是独立 Python 进程，不依赖也不改变 Android Gradle 模块边界。前端启动时加载默认教室结果；用户可在已登录的学校页主动运行 Safari 书签并导出本人课表，Pocket 在浏览器内校验粘贴或选取的 V3 JSON。完整学期以学年与学期为键一次提交，周视图、详情与首页今日摘要读取本机结果，iCalendar 保留为临时预览。见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)与 [iOS 网页版](docs/web.md)。
 
-图书馆页提供唐岛湾、古镇口东区和求是三个站内入口。回环服务沿用学校和超星的正常 CAS 链路，使用各馆区独立会话和协议查询座位、时段并提交预约。唐岛湾同源接口还可核对本人记录、确认并取消当前预约。超星两馆的本人记录和取消从对应官方页处理。见 [ADR 011](docs/adr/011-local-library-companion.md)与 [Web 图书馆契约](API.md#web-图书馆预约)。
+图书馆页提供唐岛湾、古镇口东区和求是三个站内入口。任意 iOS 设备在 HTTPS 下用站内登录对话框输入本人学校账号：浏览器取 RSA-OAEP-SHA256 公钥和一次性 nonce，用封装的一次性 AES-256-GCM 密钥加密账密，服务端解密一次、核对并消费 nonce 后走既有 CAS/libspace 或超星认证并立即丢弃明文；密码不落盘，nonce 阻止信封重放。图书馆业务令牌/Cookie 以 AES-256-GCM 密文存 Redis 并按 `user_id + branch` 绑定，预约记录在 PostgreSQL 按列加密。生产浏览器 Cookie 为 `__Host-upcp_session`（Secure/HttpOnly/SameSite=Lax），空闲 30 分钟、绝对 8 小时；馆区写请求需 `X-Library-Session` 与 `X-CSRF-Token`，非 GET 请求校验同源，登录限流 5 次/10 分钟/IP 与登录名（IP 只取 Caddy 追加的 `X-Forwarded-For` 最后一项并做 HMAC），预约按用户串行加锁。多用户按 `user_id` 与馆区隔离，预约沿用客户端 UUID 幂等，只有与本人、日期、房间、座位、完整时段唯一匹配的学校新记录才确认成功，结果未知时提示核对。唐岛湾站内可核对本人记录、确认并取消当前预约，超星两馆的本人记录和取消从对应官方页处理。本机回环方式见 [ADR 011](docs/adr/011-local-library-companion.md)，现已由 [ADR 012](docs/adr/012-multi-user-web-library-service.md) 更新；接口见 [Web 图书馆契约](API.md#web-图书馆预约)，部署见 [部署手册](deploy/README.md)。
 
 ## 更新、诊断与验证边界
 

@@ -302,7 +302,7 @@ export function initializeTimetable() {
         </div>
       </div>
       <div class="timetable-week-scroll" role="region" aria-label="课表日期与课程" tabindex="0">
-        <div class="timetable-board" style="--period-count: ${PERIOD_COUNT}">
+        <div class="timetable-board">
           <div class="timetable-days" aria-label="选择日期"></div>
           <div class="timetable-columns"></div>
           <p class="timetable-week-empty" hidden>本周无课程</p>

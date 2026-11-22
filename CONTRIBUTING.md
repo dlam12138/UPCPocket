@@ -21,7 +21,7 @@ JDK/Android SDK 按 BUILD 配置，本机路径和 keystore 不入库。不要�
 
 **不做极端状态测试，排除非必要测试。** 不机械跑全工程、压力/破坏性故障注入或穷举设备矩阵，也不删除旧测试。先选与改动直接相关的既有检查；检查通过后，只有新增改动、失败或未解决风险才继续扩大。纯规范/文档只查路径、来源、规则与差异，不构建 APK。
 
-以下命令在仓库根执行，Windows 使用 `.\gradlew.bat`，Linux/macOS 替换为 `sh ./gradlew`，因为仓库 wrapper 未设可执行位。`<模块>`/`<测试类全名>` 是需要替换的示例参数。本轮命令验证在 Windows 完成，Linux/macOS 运行未验证。
+以下命令在仓库根执行，Windows 使用 `.\gradlew.bat`，Linux/macOS 替换为 `sh ./gradlew`，因为仓库 wrapper 未设可执行位。`<模块>`/`<测试类全名>` 是需要替换的示例参数。本轮 Android 命令验证在 Windows 完成；Web 服务与 Node 命令在 macOS 验证，Windows 下使用对应可执行路径。
 
 | 影响 | 最小适用入口 | 说明 |
 | --- | --- | --- |
@@ -32,6 +32,10 @@ JDK/Android SDK 按 BUILD 配置，本机路径和 keystore 不入库。不要�
 | 宿主/导航/系统消费者 | `.\gradlew.bat :app:assembleDebug :app:testDebugUnitTest` | 仅宿主单测不代表 feature 单测已跑 |
 | 受影响 Android 静态检查 | `.\gradlew.bat :app:lintDebug` 或对应模块 `lintDebug` | 模块/UI/权限变化按范围选；不把 Lint 当设备验证 |
 | APK 交付 | `.\gradlew.bat :app:assembleRelease` | R8、资源收缩、长期签名；再核实际包与必要安装冒烟 |
+| Web 服务（`server/`） | `server/.venv/bin/python -m pytest`；`node --test tools/web/test_login_crypto.mjs` | 默认跳过 2 项 Redis/PostgreSQL 集成用例；设置 `UPCP_TEST_ALLOW_DANGEROUS=1` + `UPCP_TEST_REDIS_URL`/`UPCP_TEST_DATABASE_URL`（只指向一次性测试实例） 才运行它们 |
+| Web 合成/本机验收 | `server/.venv/bin/python server/tests/serve_fake.py` | 仅本地合成学校，拒绝 `ENV=production` 且不进镜像；不能替代真实校园验收 |
+
+Web 服务改动至少运行 `server/.venv/bin/python -m pytest` 与 `node --test tools/web/test_login_crypto.mjs`；涉及多用户会话、Redis 或 PostgreSQL 时再按需设置 `UPCP_TEST_ALLOW_DANGEROUS=1` + `UPCP_TEST_REDIS_URL`/`UPCP_TEST_DATABASE_URL`（只指向一次性测试实例） 运行集成用例，默认跳过不代表已覆盖。合成学校、Playwright WebKit 与本机 Redis/PostgreSQL 只证明其覆盖的本机路径，不等于真实 CAS、真实预约写入、Docker 部署或真机验收。
 
 可用 `--tests` 选择现有类；不为低影响可逆调整编写与实现一一对应的冗余测试。`:app:testReleaseUnitTest` 已知可能受 debug-only `ui-test-manifest` 配置影响，不为绕过它改架构；采用 debug 定向测试与必要的 release 成品验证，并如实报告限制。
 

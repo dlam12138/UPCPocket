@@ -177,6 +177,9 @@
   background: var(--timetable-surface);
 }
 .timetable-board {
+  /* Keep in sync with PERIOD_COUNT in timetable.js; a CSS custom property
+     avoids an inline style attribute so the strict CSP stays in force. */
+  --period-count: 14;
   --axis-width: 3rem;
   --period-height: 2.75rem;
   --day-height: 2.5rem;

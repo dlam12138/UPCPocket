@@ -1,5 +1,12 @@
 # 更新与验证
 
+## 2026-11-22 · iOS 网页版多用户 Web 服务文档（不属于应用发版）
+
+- 图书馆从 Mac 回环单用户服务升级为可公网部署的多用户服务：`server/`（FastAPI + Redis + PostgreSQL）负责登录编排、会话、限流、缓存与审计，`deploy/` 提供 Caddy/compose/备份等部署工件，`web/` 增加站内登录对话框；学校协议仍由 `tools/web/` 提供。新增 [ADR 012](adr/012-multi-user-web-library-service.md)，ADR 011 标记本机接入由 012 更新。
+- 同步 [架构](../ARCHITECTURE.md)、[内部契约](../API.md)、[隐私说明](PRIVACY.md)、[贡献流程](../CONTRIBUTING.md)、[README](../README.md)与 [iOS 网页版](web.md)：登录信封一次性解密与 nonce 防重放、`X-Forwarded-For` 末项信任、加密边界、多用户隔离、预约幂等与核对、公开数据缓存、固定错误码、90/180 天保留与删除、密钥轮换及部署运维。
+- 本轮实际执行：`server/.venv/bin/python -m pytest` 47 passed、2 skipped；Node v24.22.3 `node --test tools/web/test_login_crypto.mjs` 6 passed；本机 Redis 8.10 + PostgreSQL 18 集成用例 2 passed；uvicorn + 合成学校完成真实 HTTP 登录/查询/预约/取消，Playwright 1.65.1 WebKit 390×844 按加入 nonce 的新登录流程复测通过（含重放被拒）。真实 CAS/学校账号、真实预约写入、iPhone 真机 PWA、Docker/compose、ACME 证书与备份恢复未验证。
+- 不新增应用版本，不改变 Android 行为；Android 仍直接访问学校服务，不经过该 Web 服务。
+
 ## 2.0.8 · 正式发布 · 2026-11-18
 
 版本为 **2.0.8 / 29**，基于 `39ca82f` 定向整合 PR [#8](https://github.com/dlam12138/UPCPocket/pull/8) → [#9](https://github.com/dlam12138/UPCPocket/pull/9) 的相关改动。以下是本版更新，测试与未验证部分见 [开发记录](releases/2.0.8-development.md)，前期目标与来源见 [总计划](design/2.0.8-update-plan.md)。

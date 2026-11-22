@@ -1,0 +1,43 @@
+# Docker build context for server/deploy/Dockerfile (context is the repo root).
+# The image needs only server/ and tools/web/; the PWA is served by Caddy from
+# the host checkout, and the Android toolchain is irrelevant to this image.
+.git
+.gitignore
+.gradle
+.kotlin
+.idea
+.local
+.lody
+.superdesign
+.agents
+app
+core
+feature
+docs
+gradle
+build
+**/build
+artifacts
+release
+captures
+server/.venv
+server/build
+deploy/secrets
+deploy/.env
+deploy/backup
+deploy/*.env
+server/*.egg-info
+server/.pytest_cache
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.apk
+*.aab
+*.jks
+*.keystore
+*.hprof
+*.db
+*.sqlite3
+.DS_Store
+tools/release_update.ps1
+server/tests

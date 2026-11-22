@@ -1,4 +1,4 @@
-const VERSION = "v20";
+const VERSION = "v21";
 const scope = new URL(self.registration.scope);
 const CACHE_PREFIX = `upc-pocket-static:${encodeURIComponent(scope.href)}:`;
 const CACHE_NAME = CACHE_PREFIX + VERSION;
@@ -7,7 +7,7 @@ const APP_ENTRIES = new Set([scope.href, INDEX, new URL("./?library=1", scope).h
 const STATIC_URLS = new Set([
   "./index.html",
   "./styles.css?v=19",
-  "./app.js?v=20",
+  "./app.js?v=21",
   "./db.js",
   "./todo.js",
   "./focus.js",
@@ -21,8 +21,10 @@ const STATIC_URLS = new Set([
   "./calendar.css",
   "./service-catalog.js",
   "./service-catalog.css",
-  "./library.js?v=19",
-  "./library.css?v=19",
+  "./library.js?v=20",
+  "./library.css?v=20",
+  "./login.js?v=1",
+  "./login-crypto.js",
   "./manifest.webmanifest",
   "./app-icon.svg",
   "./campus.webp",

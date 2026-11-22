@@ -1,3 +1,5 @@
+import { initializeLogin } from "./login.js?v=1";
+
 const choiceFields = ["building", "date", "room", "seat", "start", "end"];
 const choiceLabels = ["馆区", "日期", "房间", "座位", "开始时间", "结束时间"];
 const branchTitles = { tangdaowan: "唐岛湾图书馆", east: "古镇口东区图书馆", qiushi: "求是图书馆" };
@@ -220,6 +222,16 @@ export function initializeLibrary() {
   let showRooms = true;
   let loggingOut = false;
 
+  const login = initializeLogin({
+    onSignedIn: signedInBranch => {
+      if (signedInBranch === currentBranch()) checkSession();
+    },
+  });
+
+  function currentBranch() {
+    return branch;
+  }
+
   function isCurrent(bound) {
     return branch === bound.branch && session === bound;
   }
@@ -427,7 +439,7 @@ export function initializeLibrary() {
       const data = await query("session", { branch: requestedBranch, signal: request.signal });
       if (branch !== requestedBranch || sessionRequest !== request) return;
       if (data?.state === "unavailable") {
-        showGate("本机站内预约未启用。", { retry: true });
+        showGate("站内预约暂未开放。", { retry: true });
         return;
       }
       if (data?.state === "sign_in") {
@@ -735,6 +747,9 @@ export function initializeLibrary() {
     }
   });
   retrySession.addEventListener("click", checkSession);
+  signIn.addEventListener("click", () => {
+    if (branch) login.open(branch);
+  });
   for (const button of viewButtons) button.addEventListener("click", () => {
     seatView = button.dataset.seatView;
     renderSeats();
@@ -777,10 +792,10 @@ export function initializeLibrary() {
   return function setLibraryActive(nextBranch) {
     if (branch === nextBranch) return;
     branch = nextBranch;
+    login.close();
     if (branch) {
       if (attempt?.branch !== branch) attempt = null;
       bookingTitle.textContent = branchTitles[branch];
-      signIn.href = libraryPath(branch, "login");
       for (const link of branchLinks) {
         if (link.dataset.libraryBranch === branch) link.setAttribute("aria-current", "page");
         else link.removeAttribute("aria-current");
