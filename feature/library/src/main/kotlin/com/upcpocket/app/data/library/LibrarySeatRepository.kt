@@ -150,8 +150,19 @@ class LibrarySeatRepository private constructor(
 
     fun clearSession() {
         synchronized(sessionLock) {
-            sessionGeneration += 1
-            _session.value = null
+            clearSessionLocked()
+        }
+    }
+
+    private fun clearSessionLocked() {
+        sessionGeneration += 1
+        _session.value = null
+    }
+
+    /** 迟到的旧请求只能清理它捕获的那一个会话，不能清掉并发建立的新会话。 */
+    private fun expireSessionIfCurrent(snapshot: SessionSnapshot) {
+        synchronized(sessionLock) {
+            if (matchesSnapshotLocked(snapshot)) clearSessionLocked()
         }
     }
 
@@ -176,7 +187,8 @@ class LibrarySeatRepository private constructor(
 
     suspend fun filters(): LibraryFilters = withToken { token ->
         LibrarySeatProtocol.parseFilters(
-            request("GET", "/rest/v2/free/filters", mapOf("token" to token)),
+            // query 与签名头都用请求捕获的 token，换号后不让旧请求带上新会话凭据。
+            request("GET", "/rest/v2/free/filters", mapOf("token" to token), tokenOverride = token),
         )
     }
 
@@ -186,6 +198,7 @@ class LibrarySeatRepository private constructor(
                 "POST",
                 "/rest/v2/room/floors/${path(buildingId)}",
                 mapOf("token" to token),
+                tokenOverride = token,
             ),
         )
     }
@@ -196,6 +209,7 @@ class LibrarySeatRepository private constructor(
                 "GET",
                 "/rest/v2/room/stats2/${path(buildingId)}/${path(date)}",
                 mapOf("token" to token),
+                tokenOverride = token,
             ),
             LibraryBuilding(id = buildingId, name = ""),
         )
@@ -386,13 +400,14 @@ class LibrarySeatRepository private constructor(
             clearSession()
             throw LibrarySessionExpiredException()
         }
-        val token = _session.value?.token ?: throw LibrarySessionExpiredException()
+        val snapshot = captureSession() ?: throw LibrarySessionExpiredException()
         try {
-            val result = block(token)
+            val result = block(snapshot.token)
             if (!sessionAllowed()) throw LibrarySessionExpiredException()
             result
         } catch (e: LibrarySessionExpiredException) {
-            clearSession()
+            // 会话已换时旧请求的过期不得清掉新会话，由 VM 按请求代次丢弃即可。
+            expireSessionIfCurrent(snapshot)
             throw e
         }
     }

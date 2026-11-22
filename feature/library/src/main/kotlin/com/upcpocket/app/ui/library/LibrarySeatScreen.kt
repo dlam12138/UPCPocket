@@ -262,7 +262,13 @@ fun LibrarySeatScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                SeatModeChip("选座", mode == SeatMode.AREA) { mode = SeatMode.AREA }
+                SeatModeChip("选座", mode == SeatMode.AREA) {
+                    if (mode != SeatMode.AREA) {
+                        mode = SeatMode.AREA
+                        // 从「预约记录」返回时重读日期，重复点已选中项不额外请求。
+                        vm.ensureLoaded()
+                    }
+                }
                 SeatModeChip("预约记录", mode == SeatMode.RESERVATIONS) {
                     mode = SeatMode.RESERVATIONS
                     vm.refreshReservations()
@@ -275,9 +281,9 @@ fun LibrarySeatScreen(
                     onBuilding = vm::selectBuilding,
                     onDate = vm::selectDate,
                     onFloor = vm::selectFloor,
-                    onRetry = vm::queryRooms,
+                    onRetry = vm::loadFilters,
                     onRoom = vm::openRoom,
-                    onRefresh = vm::queryRooms,
+                    onRefresh = vm::loadFilters,
                 )
                 SeatMode.RESERVATIONS -> LibrarySeatReservationContent(
                     state = state,
@@ -348,17 +354,20 @@ private fun LibrarySeatAreaContent(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.weight(1f))
-                    Text(
-                        if (state.selectedFloor == null) {
-                            "${visible.size} 个"
-                        } else {
-                            "${visible.size} 个 · ${state.floors.firstOrNull { it.floorNum == state.selectedFloor }?.floorName ?: "${state.selectedFloor} 楼"}"
-                        },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    // 加载中或失败时不显示数量，避免把 0 个当成有效空结果。
+                    if (!state.loading && state.error == null) {
+                        Text(
+                            if (state.selectedFloor == null) {
+                                "${visible.size} 个"
+                            } else {
+                                "${visible.size} 个 · ${state.floors.firstOrNull { it.floorNum == state.selectedFloor }?.floorName ?: "${state.selectedFloor} 楼"}"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = onRefresh, enabled = !state.loading) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "刷新区域")
+                        Icon(Icons.Filled.Refresh, contentDescription = "刷新日期与区域")
                     }
                 }
             }
@@ -2408,6 +2417,10 @@ internal class LibrarySeatViewModel(
     private val startTimesLoader: suspend (String, String) -> List<LibraryTimeOption> = repo::startTimes,
     /** 默认读取原房间布局；测试可注入本地布局，避免触发学校请求。 */
     private val layoutLoader: suspend (String, String) -> LibrarySeatLayout = repo::layout,
+    /** 默认读取学校筛选/楼层/房间；测试可注入本地数据，避免触发学校请求。 */
+    private val filtersLoader: suspend () -> LibraryFilters = repo::filters,
+    private val floorsLoader: suspend (String) -> List<LibraryFloor> = repo::floors,
+    private val roomsLoader: suspend (String, String) -> List<LibraryRoom> = repo::rooms,
     private val logoutCleanup: () -> Unit = {},
     private val shanghaiNow: () -> LocalDateTime = { LocalDateTime.now(ZoneId.of("Asia/Shanghai")) },
     /** 仅供状态恢复/测试注入初始状态；生产 factory 不传。 */
@@ -2468,6 +2481,9 @@ internal class LibrarySeatViewModel(
 
     var state by mutableStateOf(initialState)
         private set
+    private var filtersGeneration = 0L
+    /** 正在读取筛选的会话 token；只用于避免同一会话重复发起。 */
+    private var filtersInFlightToken: String? = null
     private var roomRequestGeneration = 0L
     private var timeRequestGeneration = 0L
     private var roomDetailRequestGeneration = 0L
@@ -2475,33 +2491,93 @@ internal class LibrarySeatViewModel(
     private var hiddenGeneration = 0L
     private val hiddenStoreMutex = Mutex()
 
+    /**
+     * 进入选座页时调用：重新读取学校日期/馆区，避免跨日或学校刚开放次日预约后
+     * 仍沿用旧列表。房间详情打开期间（如旋转重建）不打断当前房间。
+     */
     fun ensureLoaded() {
-        if (state.filters != null || state.loading) return
+        if (state.room != null) return
+        val token = repo.session.value?.token
+        // 只有同一会话的筛选请求仍在途时才跳过；房间查询或刷新按钮不在此列。
+        if (token != null && filtersInFlightToken == token) return
         loadFilters()
     }
 
+    /**
+     * 进入页面、点「刷新」或筛选失败后重试时读取学校日期/馆区，再查询房间。
+     *
+     * 当前馆区/日期仍出现在新列表里就保留用户选择；否则回到学校返回的第一项，
+     * 不自行推算日期或营业时间。一次调用只发一次 filters 请求。迟到的日期/房间
+     * 响应按请求代次与会话 token 丢弃，不发布到已登出或已换号的界面。
+     */
     fun loadFilters() {
         val requestToken = repo.session.value?.token
-        run {
-            state = state.copy(loading = true, error = null)
-            viewModelScope.launch {
-                try {
-                    val filters = repo.filters()
-                    val building = state.building ?: filters.buildings.first()
-                    val date = state.date ?: filters.dates.first()
-                    state = state.copy(
-                        filters = filters,
-                        building = building,
-                        date = date,
-                        loading = false,
-                    )
-                    refreshReservations()
-                    queryRooms()
-                } catch (e: Exception) {
-                    fail(e, requestToken)
+        val generation = ++filtersGeneration
+        filtersInFlightToken = requestToken
+        roomRequestGeneration++ // 旧筛选条件下的房间查询立即作废
+        val initialLoad = state.filters == null
+        state = state.copy(
+            loading = true,
+            error = null,
+            rooms = emptyList(),
+            room = null,
+            layout = null,
+            seat = null,
+        ).clearTimeSelection()
+        viewModelScope.launch {
+            try {
+                val filters = filtersLoader()
+                if (generation != filtersGeneration) return@launch
+                if (repo.session.value?.token != requestToken) {
+                    // 会话已变化：旧会话的日期/馆区不得发布到新会话。
+                    discardStaleCatalog()
+                    return@launch
                 }
+                val currentBuilding = state.building
+                val building = currentBuilding
+                    ?.let { selected -> filters.buildings.firstOrNull { it.id == selected.id } }
+                    ?: filters.buildings.first()
+                val date = state.date?.takeIf { it in filters.dates } ?: filters.dates.first()
+                val buildingChanged = currentBuilding?.id != building.id
+                state = state.copy(
+                    filters = filters,
+                    building = building,
+                    date = date,
+                    floors = if (buildingChanged) emptyList() else state.floors,
+                    selectedFloor = if (buildingChanged) null else state.selectedFloor,
+                    loading = false,
+                )
+                if (initialLoad) refreshReservations()
+                queryRooms()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                if (generation != filtersGeneration) return@launch
+                // 当前会话过期（repo 已清会话）必须上报；换号后的旧请求过期只丢弃。
+                val currentToken = repo.session.value?.token
+                if (currentToken == requestToken ||
+                    (e is LibrarySessionExpiredException && currentToken == null)
+                ) {
+                    fail(e, requestToken)
+                } else {
+                    discardStaleCatalog()
+                }
+            } finally {
+                if (generation == filtersGeneration) filtersInFlightToken = null
             }
         }
+    }
+
+    /** 会话已换且没有更新的筛选请求时，不保留上一会话的日期/馆区展示。 */
+    private fun discardStaleCatalog() {
+        state = state.copy(
+            filters = null,
+            building = null,
+            date = null,
+            rooms = emptyList(),
+            floors = emptyList(),
+            selectedFloor = null,
+            loading = false,
+        )
     }
 
     fun selectBuilding(value: LibraryBuilding) {
@@ -2550,12 +2626,16 @@ internal class LibrarySeatViewModel(
         state = state.copy(loading = true, error = null, rooms = emptyList(), room = null, layout = null, seat = null)
         viewModelScope.launch {
             try {
-                val floors = runCatching { repo.floors(building.id) }.getOrDefault(emptyList())
+                val floors = runCatching { floorsLoader(building.id) }.getOrDefault(emptyList())
                 val names = floors.associate { it.floorNum to it.floorName }
-                val rooms = repo.rooms(building.id, date)
+                val rooms = roomsLoader(building.id, date)
                     .map { if (it.floorName == null) it.copy(floorName = names[it.floor]) else it }
                     .sortedWith(compareBy({ it.floor }, { it.name }))
-                if (generation != roomRequestGeneration) return@launch
+                if (!isRoomRequestCurrent(generation, building.id, date)) return@launch
+                if (repo.session.value?.token != requestToken) {
+                    discardStaleCatalog()
+                    return@launch
+                }
                 state = state.copy(
                     rooms = rooms,
                     floors = floors,
@@ -2565,11 +2645,30 @@ internal class LibrarySeatViewModel(
                     loading = false,
                 )
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 if (generation != roomRequestGeneration) return@launch
-                fail(e, requestToken)
+                // 当前会话过期（repo 已清会话）必须上报；换号后的旧请求过期只丢弃。
+                val currentToken = repo.session.value?.token
+                if (currentToken == requestToken ||
+                    (e is LibrarySessionExpiredException && currentToken == null)
+                ) {
+                    fail(e, requestToken)
+                } else {
+                    discardStaleCatalog()
+                }
             }
         }
     }
+
+    /** 房间响应必须仍属于当前请求代次、馆区和日期；会话另在发布前核对。 */
+    private fun isRoomRequestCurrent(
+        generation: Long,
+        buildingId: String,
+        date: String,
+    ): Boolean =
+        generation == roomRequestGeneration &&
+            state.building?.id == buildingId &&
+            state.date == date
 
     fun openRoom(room: LibraryRoom) {
         val date = state.date ?: return
@@ -3439,7 +3538,7 @@ internal class LibrarySeatViewModel(
     /** 读取“我的预约”。失败时保留上一次已确认的记录，只标记“刷新失败 + 旧数据时间”。 */
     private suspend fun loadReservations(requestToken: String?) {
         try {
-            val list = repo.myReservations()
+            val list = ops.myReservations()
             state = state.copy(
                 reservations = activeReservations(list),
                 reservationsUpdatedAt = System.currentTimeMillis(),
@@ -3545,6 +3644,14 @@ internal class LibrarySeatViewModel(
 
     /** Service 已按 token/锁确认并清理后，只重置本 ViewModel 的展示状态。 */
     fun resetAfterLogout() {
+        // 登出/换号后所有在途读取都不得再写回。
+        filtersGeneration++
+        filtersInFlightToken = null
+        roomRequestGeneration++
+        roomDetailRequestGeneration++
+        timeRequestGeneration++
+        timeSearchGeneration++
+        hiddenGeneration++
         state = UiState()
     }
 
