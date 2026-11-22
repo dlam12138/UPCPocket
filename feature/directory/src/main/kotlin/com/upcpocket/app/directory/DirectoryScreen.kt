@@ -8,6 +8,12 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,8 +52,11 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -80,8 +89,10 @@ internal fun DirectoryScreen(
     val page = pages.last()
     val stateHolder = rememberSaveableStateHolder()
     val focus = LocalFocusManager.current
+    val transition = updateTransition(page, label = "Directory page")
 
-    fun openPage(route: String) {
+    fun openPage(fromPage: String, route: String) {
+        if (pages.last() != fromPage || route in pages) return
         focus.clearFocus()
         pages = ArrayList(pages + route)
     }
@@ -90,68 +101,105 @@ internal fun DirectoryScreen(
         if (pages.size == 1) {
             onBack()
         } else {
-            stateHolder.removeState(page)
+            stateHolder.removeState(pages.last())
             pages = ArrayList(pages.dropLast(1))
         }
     }
 
     BackHandler(enabled = pages.size > 1, onBack = ::goBack)
 
-    val office = if (page.startsWith(OFFICE_PREFIX)) {
-        data.offices.firstOrNull { it.id == page.removePrefix(OFFICE_PREFIX) }
+    DirectoryScaffold(
+        onBack = ::goBack,
+        title = {
+            transition.AnimatedContent(transitionSpec = { directoryFade() using null }) { route ->
+                val destination = remember(data, route) { data.destination(route) }
+                DirectoryTitle(
+                    destination.title,
+                    if (route == page) Modifier else Modifier.clearAndSetSemantics {},
+                )
+            }
+        },
+    ) { modifier ->
+        transition.AnimatedContent(
+            modifier = modifier,
+            transitionSpec = { directoryFade() using null },
+        ) { route ->
+            val destination = remember(data, route) { data.destination(route) }
+            val office = destination.office
+            val unit = destination.unit
+            val contentModifier = if (route == page) Modifier.fillMaxSize() else DirectoryExitingPage
+            stateHolder.SaveableStateProvider(route) {
+                when {
+                    route == HOME -> DirectoryHome(
+                        data = data,
+                        query = query,
+                        onQueryChange = { query = it },
+                        campus = campus,
+                        onCampusChange = { campusName = it?.name },
+                        onColleges = { openPage(route, COLLEGES) },
+                        onUnit = { openPage(route, UNIT_PREFIX + it) },
+                        onOffice = { openPage(route, OFFICE_PREFIX + it) },
+                        modifier = contentModifier.imePadding(),
+                    )
+
+                    route == COLLEGES -> DirectoryUnits(
+                        units = remember(data, campus) { data.units(campus, colleges = true) },
+                        onUnit = { openPage(route, UNIT_PREFIX + it) },
+                        modifier = contentModifier,
+                    )
+
+                    office != null -> DirectoryOfficeDetails(office, unit?.name, onOpenMap, contentModifier)
+
+                    unit != null -> DirectoryUnitDetails(
+                        unit = unit,
+                        offices = remember(data, unit.id, campus) { data.offices(unit.id, campus) },
+                        onOffice = { openPage(route, OFFICE_PREFIX + it) },
+                        modifier = contentModifier,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun directoryFade() =
+    fadeIn(tween(durationMillis = 150, delayMillis = 35)) togetherWith fadeOut(tween(durationMillis = 100))
+
+private val DirectoryExitingPage = Modifier.fillMaxSize().clearAndSetSemantics {}.pointerInput(Unit) {
+    // AnimatedContent still draws the outgoing page briefly. Its controls should no longer receive taps.
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
+        }
+    }
+}
+
+private data class DirectoryDestination(val title: String, val unit: DirectoryUnit?, val office: DirectoryOffice?)
+
+private fun DirectoryData.destination(route: String): DirectoryDestination {
+    val office = if (route.startsWith(OFFICE_PREFIX)) {
+        offices.firstOrNull { it.id == route.removePrefix(OFFICE_PREFIX) }
     } else {
         null
     }
-    val unitId = office?.unitId ?: page.removePrefix(UNIT_PREFIX)
-    val unit = if (office != null || page.startsWith(UNIT_PREFIX)) {
-        data.units.firstOrNull { it.id == unitId }
+    val unitId = office?.unitId ?: route.removePrefix(UNIT_PREFIX)
+    val unit = if (office != null || route.startsWith(UNIT_PREFIX)) {
+        units.firstOrNull { it.id == unitId }
     } else {
         null
     }
     val title = when {
         office != null && office.name != unit?.name -> office.name
         unit != null -> unit.name
-        page == COLLEGES -> "学院"
+        route == COLLEGES -> "学院"
         else -> "校园通讯录"
     }
-
-    DirectoryScaffold(title, ::goBack) { modifier ->
-        stateHolder.SaveableStateProvider(page) {
-            when {
-                page == HOME -> DirectoryHome(
-                    data = data,
-                    query = query,
-                    onQueryChange = { query = it },
-                    campus = campus,
-                    onCampusChange = { campusName = it?.name },
-                    onColleges = { openPage(COLLEGES) },
-                    onUnit = { openPage(UNIT_PREFIX + it) },
-                    onOffice = { openPage(OFFICE_PREFIX + it) },
-                    modifier = modifier.imePadding(),
-                )
-
-                page == COLLEGES -> DirectoryUnits(
-                    units = remember(data, campus) { data.units(campus, colleges = true) },
-                    onUnit = { openPage(UNIT_PREFIX + it) },
-                    modifier = modifier,
-                )
-
-                office != null -> DirectoryOfficeDetails(office, unit?.name, onOpenMap, modifier)
-
-                unit != null -> DirectoryUnitDetails(
-                    unit = unit,
-                    offices = remember(data, unit.id, campus) { data.offices(unit.id, campus) },
-                    onOffice = { openPage(OFFICE_PREFIX + it) },
-                    modifier = modifier,
-                )
-            }
-        }
-    }
+    return DirectoryDestination(title, unit, office)
 }
 
 @Composable
 internal fun DirectoryLoadingScreen(onBack: () -> Unit, onRetry: (() -> Unit)? = null) {
-    DirectoryScaffold("校园通讯录", onBack) { modifier ->
+    DirectoryScaffold(onBack, title = { DirectoryTitle("校园通讯录") }) { modifier ->
         Box(modifier, contentAlignment = Alignment.Center) {
             if (onRetry == null) {
                 CircularProgressIndicator()
@@ -167,15 +215,15 @@ internal fun DirectoryLoadingScreen(onBack: () -> Unit, onRetry: (() -> Unit)? =
 
 @Composable
 private fun DirectoryScaffold(
-    title: String,
     onBack: () -> Unit,
+    title: @Composable () -> Unit,
     content: @Composable (Modifier) -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             CampusTopAppBar(
-                title = { Text(title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                title = title,
                 navigationIcon = {
                     GlassIconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -186,6 +234,11 @@ private fun DirectoryScaffold(
     ) { padding ->
         content(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding))
     }
+}
+
+@Composable
+private fun DirectoryTitle(title: String, modifier: Modifier = Modifier) {
+    Text(title, modifier, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
 @OptIn(ExperimentalLayoutApi::class)
