@@ -1,0 +1,87 @@
+.service-catalog-search {
+  display: grid;
+  gap: 8px;
+  padding: 17px 20px;
+  border: 1px solid var(--hero-edge);
+  border-radius: 18px;
+  background: var(--hero);
+  font-weight: 600;
+}
+
+.service-catalog-search input {
+  min-height: 46px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--control-line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.service-catalog-feedback, .service-catalog-pages {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  color: var(--muted);
+  font-size: .9rem;
+}
+
+.service-catalog-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.service-catalog-results button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 58px;
+  height: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.service-catalog-results button span { color: var(--muted); font-size: .875rem; }
+.service-catalog-results button:hover { border-color: var(--control-line); background: var(--surface-hover); }
+.service-catalog-pages { justify-content: center; margin-top: 12px; }
+
+.service-guide {
+  width: min(42rem, calc(100% - 24px));
+  max-height: calc(100% - 24px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.service-guide::backdrop { background: rgb(10 24 17 / 58%); }
+.service-guide form {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 15px 10px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.service-guide h2 { margin: 9px 0; font-size: 1.08rem; overflow-wrap: anywhere; }
+.service-guide-content { max-height: 66dvh; overflow: auto; padding: 16px 18px 22px; }
+.service-guide-content section + section { margin-top: 16px; }
+.service-guide-content h3 { margin: 0 0 3px; color: var(--green); font-size: .9rem; }
+.service-guide-content p { color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+
+@media (max-width: 680px) {
+  .service-catalog-results { grid-template-columns: minmax(0, 1fr); }
+}

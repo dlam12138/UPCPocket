@@ -85,6 +85,39 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 2.0.7 第二部分组件调度仍由宿主拥有：课表边界和 30 分钟兜底只调用本地快照/恢复路径，不能把 `open()` 或前台联网刷新放入自动周期；校园卡 30 分钟联网读取仅在有组件时保留，目标执行时从当前受控绑定取得。移除课表/校园卡刷新按钮时须联查正式宿主、debug 预览及 renderer 测试消费者；旧系统组件和动作身份保持兼容，电量刷新及全部整卡导航保留。
 
+## Web 公开查询
+
+[`tools/web/serve.py`](tools/web/serve.py) 在 PWA 同源提供公开数据的只读 GET 路径。成功返回规范化 JSON，错误返回固定 `{"error":"…"}` 和 HTTP 状态。接口响应标记 `no-store`。
+
+| 路径 | 请求与结果 |
+| --- | --- |
+| `/api/classrooms` | `campus` 为 `tangdaowan` 或 `guzhenkou`，`date` 为 ISO 日期，`building` 为楼栋名，`period` 重复传 1–13 节。返回查询、楼栋选项、公开教室清单和查询时间。仅学校明确返回的交集条目标为空闲。 |
+| `/api/calendar` | 无参数。返回教务处最近发布的可识别学年、发布日期、官方原文和两学期原图地址。 |
+| `/api/service-catalog` | 无参数。返回 e站通公开目录中的事项编号、名称、部门与同号歧义。 |
+| `/api/service-catalog/guide` | `id` 须属于已读取的公开目录。返回指南的文本字段和截断提示，移除流程提交与附件链接。 |
+
+本机服务的图书馆接入状态见下文。公开查询接口仅处理公开数据。
+
+## Web 图书馆预约
+
+本机服务默认开启图书馆站内预约。Mac 和同一台 Mac 的 iPhone 模拟器通过 `127.0.0.1` 使用唐岛湾 `/api/library/`、古镇口东区 `/api/library/east/` 和求是 `/api/library/qiushi/`。显式传入 `--no-library` 时只提供会话状态 `{"state":"unavailable"}`。所有响应使用 `Cache-Control: no-store`，业务请求携带 `X-Library-Session` 与馆区同源会话 Cookie，服务端返回 `401` 或 `409` 表示会话失效或修订已变。会话修订与防跨站请求伪造值均为不透明字符串。
+
+| 方法与路径 | 请求与结果 |
+| --- | --- |
+| `GET session` | 返回 `{state}`。`unavailable` 使用官方入口，`sign_in` 可发起官方认证，`ready` 返回 `revision`、`csrf` 和 `recordsAvailable`。两所超星馆区返回 `recordsAvailable:false`，在官方页查看或取消预约。 |
+| `GET login`、`POST login` | 提供只在本机使用的登录表单。用户提交一次性表单及本人账号密码，服务走学校现有 CAS 和图书馆业务回调。核验身份后建立会话并返回 `/?library=1#library`，可从旧版离线页面切回站内选座。 |
+| `POST logout` | 使用当前会话修订和 `X-CSRF-Token` 退出本机图书馆会话。返回 `{state:"sign_in"}`。 |
+| `GET catalog` | 无参数返回 `{buildings, dates}`。按顺序增加 `building,date`、`room`、`seat`、`start`，依次返回 `{rooms}`、`{seats,layout}`、`{starts}`、`{ends}`。`dates` 为 ISO 日期列表，其他列表由字符串 `{id, label}` 组成，可附房间数量、座位状态、坐标和布局尺寸。沿用学校座位、日期和起止时间标识，选项以学校此次返回为准。 |
+| `POST book` | 使用 `X-CSRF-Token` 和 JSON `{id,building,date,room,seat,start,end}`。`id` 为客户端本次确认生成的 UUID。结果 `status` 为 `challenge`、`rejected`、`submitted`、`unknown` 或超星 `accepted`。超星明确接受的响应显示已受理，正式记录请在官方页查看。响应失败或无法辨认的结果按未知处理。 |
+| `GET reservations` | 唐岛湾返回 `{pending,records,cancellationPending}`。记录带 `cancellable` 与 `cancelPending`，仅本人当前待履约记录可取消。可传 `attempt=<id>` 或 `cancelAttempt=<id>` 查询操作状态。预约 `confirmed` 含与之匹配的 `recordId`。超星返回 `{available:false}`。 |
+| `POST cancel` | 唐岛湾使用 `X-CSRF-Token` 和 JSON `{id,reservationId}`，`id` 为取消请求 UUID。服务复核本人当前预约后向学校发送一次取消。学校明确显示已取消，或接受取消且重查记录确认目标已消失，返回 `cancelled`。明确拒绝返回 `rejected`，结果未知返回 `unknown`。取消结果未知且当前记录已无该预约时返回 `absent`。 |
+
+本机服务串行处理当前本人会话的读写和会话切换。写入时核验来源和 CSRF，按当前账户、原始座位与时段校验参数和验证码要求，查询学校当前有效预约，持久登记本次 UUID 及提交前记录 ID，再对学校发起单次提交。重复请求同一个 UUID 会返回已知状态。学校仍有相同有效预约时拒绝再次发送，学校已取消或仍待核对的历史尝试可以与新预约并存。只有出现此前未见且可唯一归入本次尝试、匹配本人、日期、房间、座位及完整时段的学校记录，才能返回 `confirmed`。对于「现在」开始的预约，以官方协议的实际开始时间规则核对。请见 [ADR 011](docs/adr/011-local-library-companion.md)。
+
+## Web 本机课表
+
+[V3 解析器](web/timetable-import.js)对粘贴文本和严格 UTF-8 文件使用同一套完整学期校验，涵盖学期信息、唯一且连续的周编号、每周七天日期与课程字段。星期取实际日期，节次取 `lessArr`，课程保留原始字段。错误或缺失周不能作为成功空周导入。[本机存储](web/timetable-store.js)以学年和学期为键，在 IndexedDB 事务提交后返回结果。
+
 ## 错误与验证约定
 
 边界返回固定错误或清晰异常语义，禁止用任意上游自由文本作为公共错误或诊断。空值表示的不可用、未查过或条件更新失败，以对应接口定义为准；不能跨接口假设 null 等于成功空集合。异步结果在最终提交前重新核对上下文。

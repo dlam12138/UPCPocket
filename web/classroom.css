@@ -1,0 +1,222 @@
+.classroom-filters {
+  display: grid;
+  gap: 18px;
+}
+
+.classroom-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.classroom-fields label, .classroom-details > label, .classroom-wing {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.classroom-fields :is(select, input), .classroom-details select, .classroom-wing select {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.classroom-fields input[type=date] {
+  display: block;
+  appearance: none;
+}
+
+.classroom-fields input[type=date]::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: start;
+}
+
+.classroom-periods {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.classroom-periods legend {
+  margin-bottom: 6px;
+  padding: 0;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.classroom-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.classroom-presets button, .classroom-custom label {
+  min-height: 44px;
+  padding: 6px 4px;
+  border: 1px solid var(--control-line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.classroom-presets button {
+  font-size: .9375rem;
+  font-weight: 650;
+}
+
+.classroom-presets span {
+  display: block;
+  font-size: .8125rem;
+  font-weight: 400;
+}
+
+.classroom-presets button:is([aria-pressed=true], [aria-pressed=mixed]), .classroom-custom label:has(:checked) {
+  border-color: var(--green);
+  background: var(--hero);
+  color: var(--green);
+}
+
+.classroom-details {
+  border-block: 1px solid var(--line);
+}
+
+.classroom-details summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.classroom-details > label {
+  max-width: 22rem;
+  margin-bottom: 12px;
+}
+
+.classroom-custom {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(40px, 1fr));
+  gap: 7px;
+  padding-bottom: 14px;
+}
+
+.classroom-custom label, .classroom-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.classroom-custom input {
+  margin: 0;
+}
+
+.classroom-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.classroom-controls .button {
+  margin: 0;
+}
+
+.classroom-only {
+  min-height: 44px;
+  font-size: .875rem;
+}
+
+.classroom-results-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin: 22px 0 14px;
+}
+
+.classroom-status, .classroom-empty {
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: .875rem;
+}
+
+.classroom-building + .classroom-building {
+  margin-top: 24px;
+}
+
+.classroom-building-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 10px;
+}
+
+.classroom-building-heading h2 {
+  font-size: 1.2rem;
+}
+
+.classroom-building-heading span {
+  color: var(--muted);
+  font-size: .875rem;
+}
+
+.classroom-rooms {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 145px), 1fr));
+  gap: 9px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.classroom-room {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 5px 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.classroom-room strong {
+  grid-column: 1 / -1;
+  font-size: .9375rem;
+  overflow-wrap: anywhere;
+}
+
+.classroom-room-state, .classroom-capacity {
+  color: var(--muted);
+  font-size: .8125rem;
+}
+
+.classroom-room-free {
+  background: var(--hero);
+  border-color: var(--control-line);
+}
+
+.classroom-room-free .classroom-room-state {
+  color: var(--green);
+  font-weight: 650;
+}
+
+@media (max-width: 360px) {
+  .classroom-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -93,6 +93,8 @@
 
 <br />
 
+**iOS 网页版（PWA）**在站内显示两校区空闲教室、学校校历和 e站通公开目录。课表提供 Safari 导出书签，可粘贴学期课表或从 iPhone「文件」选取 V3 JSON，按周查看课程和详情。Mac 本机服务为 Mac 和同机 iPhone 模拟器提供唐岛湾、古镇口东区和求是的站内选座。唐岛湾可在「我的预约」取消，古镇口东区和求是在对应官方页查看及取消。首次联网启动后，可从 iPhone 主屏幕离线查看已导入的课表，并使用待办和专注。见 [iOS 网页版](docs/web.md)。
+
 Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · RemoteViews
 
 ```powershell

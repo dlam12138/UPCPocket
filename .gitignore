@@ -31,3 +31,7 @@ feature/focus/schemas/
 *.db
 *.db-shm
 *.db-wal
+
+# Python cache for local web tooling
+__pycache__/
+*.pyc

@@ -134,6 +134,14 @@ sequenceDiagram
 
 数据模型归业务模块，不能把所有表或凭据移到公共模块。Room schema/file name、Keystore alias、DataStore 文件/键、私有文件格式和稳定 PendingIntent 都属于兼容面；变更需给出迁移与恢复依据。见 [ADR 003](docs/adr/003-data-ownership-and-schema-compatibility.md)。
 
+## iOS 网页版
+
+[`web/`](web/) 是独立的 PWA，无需 Android 工具链。浏览器使用哈希路由切换首页、课表、服务、待办和专注。待办、专注和导入的学期课表使用 IndexedDB，专注的活动状态及结束记录在同一事务内结算。Service Worker 按部署范围缓存版本化静态资源，网站数据和静态缓存分别维护。
+
+本机 [Web 服务](tools/web/serve.py)提供同源公开数据查询，封装学校空闲教室、教务处校历和 e站通公开事项及指南。前端启动时加载默认教室结果。用户可在已登录的学校页主动运行 Safari 书签并导出本人课表。Pocket 在浏览器内校验用户粘贴或选取的 V3 JSON。完整学期以学年与学期为键一次提交，周视图、详情与首页今日摘要读取本机结果。iCalendar 保留为临时预览。见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)与 [iOS 网页版](docs/web.md)。
+
+图书馆页提供唐岛湾、古镇口东区和求是三个站内入口。回环服务沿用学校和超星的正常 CAS 链路，使用各馆区独立会话和协议查询座位、时段并提交预约。唐岛湾同源接口还可核对本人记录、确认并取消当前预约。超星两馆的本人记录和取消从对应官方页处理。见 [ADR 011](docs/adr/011-local-library-companion.md)与 [Web 图书馆契约](API.md#web-图书馆预约)。
+
 ## 更新、诊断与验证边界
 
 更新信任链为固定仓库/线路 → 内置 P-256 公钥验原始清单 → 解析固定字段 → 大小/SHA/包名/内部版本/minSdk/当前证书校验 → PackageInstaller 系统确认。源码 namespace 不决定安装包身份；新旧包独立，latest 同批保留两套清单，旧线路仍指 2.0.3。发布脚本只准备附件，不上传。详见 [更新机制](docs/updates/README.md)与 [ADR 004](docs/adr/004-release-identity-and-update-trust.md)。
