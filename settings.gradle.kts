@@ -51,4 +51,5 @@ include(
     ":feature:shiguang",
     ":feature:service-portal",
     ":feature:campusmap",
+    ":feature:directory",
 )

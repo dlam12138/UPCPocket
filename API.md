@@ -26,6 +26,8 @@
 
 2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
 
+校园通讯录的服务入口和首页固定共用 `directory.home`。宿主注入常用校区，「全部」对应空校区筛选。通讯录通过 `DirectoryCampusMap` 向宿主提供选定的校区和地点 ID。宿主将其交给已激活的 `CampusMapPlaceRequests`，由地图在指定校区精确选点。课表继续使用原有的地点文字请求。
+
 ## 界面材质
 
 界面风格默认 Material 3；轻量玻璃为 opt-in 且真机性能尚未验证，其偏好由宿主 `UiPrefsStore` 的 `app_ui_style` 键保存，旧候选的 `ui_style` 键不读取也不清除。玻璃界面不改变四类桌面组件的外观，组件样式继续由各自 Provider 身份与组件设置决定。
@@ -81,7 +83,7 @@ suspend fun authenticate(
 | [DirectCardSnapshot](feature/card/src/main/kotlin/com/upcpocket/app/data/ecard/DirectCardBalance.kt) | 原始 `balanceCents`/`transitionCents`、格式化 `balanceText`/`transitionText`；新增派生 `totalBalanceText` | 总额以十进制相加，页面与组件用总额为主值、小字展示过渡余额；不改原始字段含义或持久化格式 |
 | [PowerService](feature/power/src/main/kotlin/com/upcpocket/app/power/PowerService.kt) | 电量查询与快照能力 | 唐岛湾输入/协议，组件与页面同源；完整签名以源码为准 |
 | [TimetableService](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt) | `state`/`todayState`，`suspend open()`、`refresh()`、`selectWeek(week: Int)`、`refreshToday()`；`readWidgetSnapshot()` | 查看周与今日分离；refreshToday 为本地恢复，不等同周联网刷新 |
-| `CampusMapCapabilities.PLACE_REQUESTS` | `CampusMapPlaceRequests.offer(location: String)` | 由宿主从活动插件解析，在内存中交给地图页处理。只接受课程详情用户主动选择的地点，不写路由参数或持久化记录 |
+| `CampusMapCapabilities.PLACE_REQUESTS` | `CampusMapPlaceRequests.offer(location: String)`、`offer(campus: CampusId, placeId: String)` | 宿主从活动插件解析并在内存中交给地图页。第一种用于课表的地点文字，第二种用于通讯录的已关联地址。两种请求都由用户主动触发 |
 | [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；原 `add(title, reminderAt)` / `edit(id, title, reminderAt)` 保留，新增带 `dueAt: Long?` 的重载；`delete(id): TodoTask?` | 截止与提醒独立；原新增无截止，原编辑保留已有截止，新编辑可显式清除；写入维护 revision；失败不捏造已保存任务 |
 | `TodoStore.setCompletedIfRevision(id: String, revision: Int, completed: Boolean): TodoTask?` | suspend；成功条件更新后返回任务，否则 null | 提醒/撤销旧动作必须守住 revision，不能退化成无条件更新 |
 | [LibraryService](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryService.kt) / [ChaoxingService](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingService.kt) | 各系统会话、本人验证、读取与受控提交 | 两套协议/结果不混用，未知提交保持防重 |

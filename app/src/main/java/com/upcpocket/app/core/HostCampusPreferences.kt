@@ -11,6 +11,7 @@ import com.upcpocket.app.data.power.PowerCampusPreference
 import com.upcpocket.app.data.power.PowerCampusPreferenceProvider
 import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.data.prefs.UiPrefsStore
+import com.upcpocket.app.directory.DirectoryCampus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
@@ -65,4 +66,11 @@ internal suspend fun UiPrefsStore.initialCampusMapCampus(): CampusId =
     when (preferredCampusFlow().first()) {
         PreferredCampus.GUZHENKOU -> CampusId.GZK
         PreferredCampus.ALL, PreferredCampus.TANGDAOWAN -> CampusId.TDW
+    }
+
+internal suspend fun UiPrefsStore.initialDirectoryCampus(): DirectoryCampus? =
+    when (preferredCampusFlow().first()) {
+        PreferredCampus.ALL -> null
+        PreferredCampus.TANGDAOWAN -> DirectoryCampus.TANGDAOWAN
+        PreferredCampus.GUZHENKOU -> DirectoryCampus.GUZHENKOU
     }

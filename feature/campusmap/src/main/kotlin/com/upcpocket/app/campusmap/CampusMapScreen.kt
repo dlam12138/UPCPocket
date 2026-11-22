@@ -71,7 +71,7 @@ import kotlin.math.roundToInt
 private enum class LocationAction { LOCATE, LOCATE_PRECISE, PLAN, NAVIGATE }
 
 @Composable
-internal fun CampusMapScreen(initialCampus: CampusId, requestedPlace: String?, onBack: () -> Unit) {
+internal fun CampusMapScreen(initialCampus: CampusId, requestedPlace: CampusMapPlaceRequest?, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val controller = remember(context, scope, initialCampus) {
@@ -455,8 +455,11 @@ private fun RoutePlanningPanel(
     if (destination == null) {
         Text("选择目的地", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(
-            if (state.unresolvedPlace == null) "点选地图上的地点，或搜索楼名"
-            else "未能定位课表地点，请选择校区并搜索楼名",
+            when (state.unresolvedRequest) {
+                is CampusMapPlaceRequest.TimetableText -> "未能定位课表地点，请选择校区并搜索楼名"
+                is CampusMapPlaceRequest.Exact -> "未能定位该地点，请搜索楼名"
+                null -> "点选地图上的地点，或搜索楼名"
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

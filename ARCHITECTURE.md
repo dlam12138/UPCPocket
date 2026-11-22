@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    A[app：Application / AppGraph / 导航] --> F[10 个 feature：业务与 UI]
+    A[app：Application / AppGraph / 导航] --> F[11 个 feature：业务与 UI]
     A --> R[plugin-runtime]
     A --> C[account：本机账号]
     A --> U[upc-auth：认证适配]
@@ -28,7 +28,7 @@ flowchart TD
 
 ## 模块与依赖
 
-[settings.gradle.kts](settings.gradle.kts) 当前包含 19 个模块，包括 app、8 个 core 和 10 个 feature。表中依赖只列仓库内部直接 project 依赖。
+[settings.gradle.kts](settings.gradle.kts) 当前包含 20 个模块，包括 app、8 个 core 和 11 个 feature。表中依赖只列仓库内部直接 project 依赖。
 
 | 模块 | 职责 | 内部直接依赖 |
 | --- | --- | --- |
@@ -51,6 +51,7 @@ flowchart TD
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 | `feature:campusmap` | 两校区地图、地点搜索、步骑算路与前台引导 | plugin-api、plugin-ui |
+| `feature:directory` | 校园通讯录、校区筛选、办事搜索、公开电话及地址 | designsystem、plugin-api、plugin-ui |
 
 feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不依赖账号实现。card 的认证适配由宿主注入，其他四个需要 upc-auth 的模块按现有类型契约依赖它。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 方向和指定核心白名单；不检查所有源码调用或运行时网络白名单。
 
@@ -58,7 +59,7 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 真实入口是 [UpcPocketApp](app/src/main/java/com/upcpocket/app/UpcPocketApp.kt) 与 [AppGraph](app/src/main/java/com/upcpocket/app/core/AppGraph.kt)。
 
-1. 安装固定诊断 sink，显式注册十个内置插件并校验宿主 API、能力与插件依赖。
+1. 安装固定诊断 sink，显式注册十一个内置插件并校验宿主 API、能力与插件依赖。
 2. [PluginRuntime](core/plugin-runtime/src/main/kotlin/com/upcpocket/app/plugin/runtime/PluginRuntime.kt) 激活健康插件；[HostUiAssembly](app/src/main/java/com/upcpocket/app/core/HostUiAssembly.kt) 对各贡献 fork 校验后合并，失败插件及必需依赖者从最终集合移除。
 3. debug 对装配失败快速报错；release 记录脱敏诊断后保留健康插件。生命周期和系统能力都从最终活动集合解析，不能绕过缺插件状态。
 4. 轻量 Application 初始化后，先恢复本机账号及未完成清理，再恢复插件本机状态。插件构造不联网或写业务数据；恢复不等于自动登录全部业务。
@@ -80,6 +81,8 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 透明底部表单打开期间，宿主收起浮动导航，待办页收起浮动添加按钮，避免下方的操作控件与表单内容视觉重叠。
 
 2.1.0 开发版的校园地图是二级插件页，通过服务目录及首页固定进入。AppGraph 注入常用校区和课表到地图的地点选择动作。课表详情通过宿主查找已激活的地图能力，仅把选中的地点文字交给地图内存中的一次请求。地图插件独立读取随应用分发的 OSM 数据与地点清单，在本机算路并消费前台定位，具体数据与验收边界见 [ADR 007](docs/adr/007-offline-campus-navigation.md)。
+
+校园通讯录从随应用分发的资料加载单位和办事信息。宿主注入常用校区及可用的地图能力。对于关联了可信地图地点的办公地址，宿主将校区和地点 ID 交给地图选中对应楼栋。
 
 ## 本机账号与业务会话
 

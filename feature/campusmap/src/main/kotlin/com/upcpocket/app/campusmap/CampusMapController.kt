@@ -41,7 +41,7 @@ internal data class CampusMapState(
     val notice: String? = null,
     val guidance: CampusGuidance? = null,
     val routeProgressMeters: Double? = null,
-    val unresolvedPlace: String? = null,
+    val unresolvedRequest: CampusMapPlaceRequest? = null,
 )
 
 internal class CampusMapController(
@@ -68,7 +68,7 @@ internal class CampusMapController(
     private var lastRerouteAt: Long? = null
     private var arrivalFixes = 0
 
-    suspend fun load(requestedPlace: String?) {
+    suspend fun load(requestedPlace: CampusMapPlaceRequest?) {
         val generation = ++loadGeneration
         mutableState.value = mutableState.value.copy(loadFailed = false)
         val data = try {
@@ -82,14 +82,20 @@ internal class CampusMapController(
         if (generation != loadGeneration) return
         maps = data
         val current = mutableState.value
-        val requested = requestedPlace?.trim()?.takeIf { it.isNotEmpty() }
-        val match = requested?.let { resolveTimetablePlace(it, data.values) }
-        val campus = match?.first ?: data.getValue(current.campusId)
+        val timetableMatch = (requestedPlace as? CampusMapPlaceRequest.TimetableText)
+            ?.let { resolveTimetablePlace(it.name, data.values) }
+        val exact = requestedPlace as? CampusMapPlaceRequest.Exact
+        val campus = timetableMatch?.first ?: data.getValue(exact?.campus ?: current.campusId)
+        val destination = timetableMatch?.second ?: exact?.let { request ->
+            campus.places.firstOrNull { place ->
+                place.id == request.placeId && place.point != null && place.hasMappedPosition && !place.isEntrance
+            }
+        }
         mutableState.value = current.copy(
             campusId = campus.id,
             campus = campus,
-            destination = match?.second,
-            unresolvedPlace = requested.takeIf { match == null },
+            destination = destination,
+            unresolvedRequest = requestedPlace.takeIf { destination == null },
         )
     }
 
@@ -107,7 +113,7 @@ internal class CampusMapController(
         mutableState.value = current.withoutRoute().copy(
             destination = if (asStart) current.destination else site,
             manualStart = if (asStart) site else current.manualStart,
-            unresolvedPlace = null,
+            unresolvedRequest = null,
         )
     }
 
