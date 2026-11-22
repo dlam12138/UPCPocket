@@ -62,6 +62,13 @@ data class UiPrefs(
     val cardStudentId: String = "",
     /** 应用内界面风格；独立于桌面组件，旧安装和未知取值保持 Material 3。旧候选的 `ui_style` 键不读取也不清除。 */
     val uiStyle: UiStyle = UiStyle.MATERIAL3,
+    /**
+     * 日程待办显示在课表页还是专注页。
+     *
+     * 只影响一级页内的槽位位置，不改变待办数据、提醒或路由；缺键与未知值
+     * 回退 [TodoHostPlacement.TIMETABLE]。
+     */
+    val todoHostPlacement: TodoHostPlacement = TodoHostPlacement.TIMETABLE,
 ) {
     companion object {
         val DEFAULT_PINNED_SERVICES = setOf(
@@ -111,6 +118,7 @@ class UiPrefsStore internal constructor(
             preferredCampus = PreferredCampus.fromStoredValue(p[KEY_PREFERRED_CAMPUS]),
             uiStyle = p[KEY_UI_STYLE]?.let { runCatching { UiStyle.valueOf(it) }.getOrNull() }
                 ?: UiStyle.MATERIAL3,
+            todoHostPlacement = TodoHostPlacement.fromStoredValue(p[KEY_TODO_HOST_PLACEMENT]),
         )
     }
 
@@ -161,6 +169,10 @@ class UiPrefsStore internal constructor(
 
     suspend fun setUiStyle(v: UiStyle) = store.edit { p -> p[KEY_UI_STYLE] = v.name }
 
+    /** 只保存本机展示位置；不移动、改写或重新调度任何待办。 */
+    suspend fun setTodoHostPlacement(v: TodoHostPlacement) =
+        store.edit { p -> p[KEY_TODO_HOST_PLACEMENT] = v.name }
+
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
         widgetAppearanceSnapshot = v
@@ -194,5 +206,8 @@ class UiPrefsStore internal constructor(
 
         /** 常用校区（仅本机默认展示范围） */
         val KEY_PREFERRED_CAMPUS = stringPreferencesKey("preferred_campus")
+
+        /** 日程待办一级页位置（课表页/专注页）；缺键回退课表页。 */
+        val KEY_TODO_HOST_PLACEMENT = stringPreferencesKey("todo_host_placement")
     }
 }

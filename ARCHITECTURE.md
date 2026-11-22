@@ -1,6 +1,6 @@
 # UPC Pocket 当前架构
 
-本文于 2026-11-20 核对 2.1.0 开发代码的课表与待办合页。M0–M5 和 v0.1 方案保留当时的决策与验证。 [正式版及下载](README.md) · [版本与工具链](docs/BUILD.md) · [2.0.8 开发记录](docs/releases/2.0.8-development.md) · [ADR](docs/adr/README.md)
+本文于 2026-11-22 核对 2.1.0 开发代码的日程待办位置（课表/专注）。M0–M5 和 v0.1 方案保留当时的决策与验证。 [正式版及下载](README.md) · [版本与工具链](docs/BUILD.md) · [2.0.8 开发记录](docs/releases/2.0.8-development.md) · [ADR](docs/adr/README.md)
 
 ## 系统轮廓
 
@@ -68,7 +68,7 @@ feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不�
 
 2.1.0 的宿主导航使用 HorizontalPager 承载首页、课表、服务和专注，浮动胶囊跟随 Pager。首页与服务由宿主提供，业务入口来自最终激活的插件，导航按稳定 route 解析。二级页使用 Navigation Compose。`LocalPluginPageActive` 防止预加载页查询或申请权限，`LocalDockClearance` 给内容末尾、FAB 和 Snackbar 留余量。首页右上角统一设置。服务页按插件元数据分类与搜索，首页固定偏好缺键采用四默认项，显式空集合保持为空。服务、首页固定及官方网页目录共用 `OfficialWebCatalog`。 [AppNav](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) · [M5 入口映射](docs/m5/README.md)
 
-2.1.0 的 `timetable.week` 由宿主装配上方日程待办与下方周课表，待办按设备本地日期从现有 `TodoStore.tasks` 派生，课程仍由课表模块按原学期和教学周提供。`todo.list` 承载完整待办及任务、新建面板的系统入口，课表插件不可用时保留待办 Tab。专注使用原 `focus` 入口。
+2.1.0 的日程待办默认装配在 `timetable.week` 上方，也可由「设置 → 应用 → 日程待办位置」改到 `focus` 页，位于计时控制与标签之间。宿主按最终 bottomNav、已注册页面和待办能力解析唯一可见槽位，两处复用同一 `TodoScheduleSection`；待办按设备本地日期从现有 `TodoStore.tasks` 派生，课程仍由课表模块按原学期和教学周提供。位置偏好只存在于宿主 `UiPrefsStore`。两个宿主都可用时一级入口始终四项；所选宿主缺失时保留已注册的 `todo.list` Tab，不改写偏好；只剩一个宿主且偏好尚未读到时，宿主推迟挂载 NavHost/Pager 与导航 effects，避免按临时层级消费通知或组件入口后重建丢失。`todo.list` 承载完整待办及任务、新建面板的系统入口。专注计时与标签不读取待办状态。
 
 `core:designsystem` 提供 Material 3 主题及通用控件，配色、动态取色与深色模式偏好归宿主。2.0.8 候选中的应用内液态玻璃实验已撤下，取舍见 [ADR 006](docs/adr/006-2.0.8-material-theme-and-glass-widgets.md)与[性能记录](docs/releases/2.0.8-development.md)。
 
@@ -147,6 +147,7 @@ sequenceDiagram
 | 待办/截止/提醒 revision | todo；Room `upcpocket-todo.db` v2 | v1 显式新增可空 dueAt，旧任务截止为空且原字段保留；任务为事实，Alarm/通知可重建；旧动作按 taskId+revision 拒绝 |
 | 配色与深色模式、桌面外观、首页固定、寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 学校账号清理保留这些本机选项；普通组件外观归 UiPrefsStore，固定玻璃版由 Provider 身份决定，首页固定项缺键与显式空集分别处理 |
 | 常用校区 | app 的 `UiPrefsStore` | 缺有效偏好默认全部校区。教室在全部校区模式下沿用原有上次校区记录 |
+| 日程待办位置 | app 的 `UiPrefsStore`（`todo_host_placement`） | 缺键或未知值回退课表页；只决定槽位页面，不改待办数据、提醒或系统入口；不随学校账号清理 |
 | 应用内界面风格 | app 的 `UiPrefsStore`（`app_ui_style`） | 缺键或未知值保持 Material 3；不读取或清除旧候选的 `ui_style` 键；不随学校账号清理，也不改变桌面组件 |
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 

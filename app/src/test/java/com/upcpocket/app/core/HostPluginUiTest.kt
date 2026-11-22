@@ -2,17 +2,20 @@ package com.upcpocket.app.core
 
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
+import com.upcpocket.app.data.prefs.TodoHostPlacement
+import com.upcpocket.app.focus.FOCUS_MAIN_ROUTE
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoLaunchContract
-import com.upcpocket.app.ui.nav.shouldMergeTodoIntoTimetable
+import com.upcpocket.app.ui.nav.resolveTodoHost
 import com.upcpocket.app.ui.nav.visiblePluginTabs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -129,29 +132,64 @@ class HostPluginUiTest {
     }
 
     @Test
-    fun `active timetable and todo capabilities assemble the merged page`() {
-        val merged = shouldMergeTodoIntoTimetable(
-            timetablePageRegistered = AppGraph.ui.page(TIMETABLE_ROUTE) != null,
-            todoPageRegistered = AppGraph.ui.page(TODO_ROUTE) != null,
-            todoStoreAvailable = AppGraph.todoStoreOrNull != null,
-        )
-        assertTrue(merged)
-
+    fun `either placement keeps four host level entries from the real plugin snapshot`() {
         // 用最终已激活插件的真实 bottomNav 验证宿主过滤，而不是手写路由表。
         val tabs = AppGraph.ui.bottomNav
         val routes = tabs.map { it.route.value }
         assertTrue(routes.contains(TODO_ROUTE.value))
         assertTrue(routes.contains(TIMETABLE_ROUTE.value))
+        assertTrue(routes.contains(FOCUS_MAIN_ROUTE.value))
 
-        val visibleRoutes = visiblePluginTabs(tabs, merged).map { it.route.value }
-        assertFalse(visibleRoutes.contains(TODO_ROUTE.value))
-        assertTrue(visibleRoutes.contains(TIMETABLE_ROUTE.value))
-        assertEquals(routes.size - 1, visibleRoutes.size)
+        TodoHostPlacement.entries.forEach { placement ->
+            val resolution = resolveTodoHost(
+                pagerRoutes = routes.toSet(),
+                timetablePageRegistered = AppGraph.ui.page(TIMETABLE_ROUTE) != null,
+                focusPageRegistered = AppGraph.ui.page(FOCUS_MAIN_ROUTE) != null,
+                todoPageRegistered = AppGraph.ui.page(TODO_ROUTE) != null,
+                todoStoreAvailable = AppGraph.todoStoreOrNull != null,
+                preferredHost = placement,
+            )
 
-        assertEquals(
-            routes,
-            visiblePluginTabs(tabs, timetableTodoMerged = false).map { it.route.value },
+            assertTrue(resolution.embedTodo)
+            assertEquals(placement, resolution.host)
+            assertTrue(resolution.canChooseHost)
+            assertFalse(resolution.awaitingPreference)
+
+            // 固定首页、服务 + 插件提供的课表/专注 = 四项一级入口。
+            val visible = visiblePluginTabs(tabs, resolution.embedTodo)
+            assertEquals(4, visible.size + 2)
+            assertEquals(
+                setOf(TIMETABLE_ROUTE.value, FOCUS_MAIN_ROUTE.value),
+                visible.map { it.route.value }.toSet(),
+            )
+            visible.forEach { tab ->
+                assertNotNull("一级入口 ${tab.route} 缺少已注册页面", AppGraph.ui.page(tab.route))
+            }
+        }
+    }
+
+    @Test
+    fun `missing todo capability keeps the standalone todo tab`() {
+        val tabs = AppGraph.ui.bottomNav
+        val resolution = resolveTodoHost(
+            pagerRoutes = tabs.map { it.route.value }.toSet(),
+            timetablePageRegistered = AppGraph.ui.page(TIMETABLE_ROUTE) != null,
+            focusPageRegistered = AppGraph.ui.page(FOCUS_MAIN_ROUTE) != null,
+            // 待办插件未激活时页面与共享存储都不存在。
+            todoPageRegistered = false,
+            todoStoreAvailable = false,
+            preferredHost = TodoHostPlacement.FOCUS,
         )
+
+        assertFalse(resolution.embedTodo)
+        assertNull(resolution.host)
+        assertFalse(resolution.canChooseHost)
+        assertFalse(resolution.awaitingPreference)
+
+        // 已注册的待办 tab 原样保留；宿主再加首页/服务，共五项一级入口。
+        val visibleRoutes = visiblePluginTabs(tabs, resolution.embedTodo).map { it.route.value }
+        assertEquals(tabs.map { it.route.value }, visibleRoutes)
+        assertEquals(5, visibleRoutes.size + 2)
     }
 
     @Test

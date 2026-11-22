@@ -2,7 +2,7 @@
  * 悬浮胶囊 dock 的视觉/覆盖层结构移植自 ZZUPocket（3beuml/ZZUPocket），
  * AppNav.kt at commit dda318e9b37d8b65991a965e72fd4dd40b630a20。
  * Copyright (c) 2026 3beuml, MIT License；完整许可见仓库根 LICENSE。
- * 本项目只保留首页、课表（含本机日程待办）、服务、专注四个一级入口，
+ * 本项目只保留首页、课表（或专注，含本机日程待办）、服务、专注四个一级入口，
  * 并补足 Pager、主题/无障碍与页面安全余量适配。
  */
 package com.upcpocket.app.ui.nav
@@ -83,9 +83,11 @@ import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.Backdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.focus.FOCUS_MAIN_ROUTE
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginBottomNav
@@ -105,6 +107,7 @@ import com.upcpocket.app.ui.components.glassBorder
 import com.upcpocket.app.ui.components.glassHighlight
 import com.upcpocket.app.ui.components.glassThemeBackdrop
 import com.upcpocket.app.ui.components.isGlassSheetVisible
+import com.upcpocket.app.ui.focus.LocalFocusTodoSlot
 import com.upcpocket.app.ui.home.HomeScreen
 import com.upcpocket.app.ui.nav.kyant.LiquidBottomTab
 import com.upcpocket.app.ui.nav.kyant.LiquidBottomTabs
@@ -153,7 +156,8 @@ private val hostServices = Destination(
 )
 
 /**
- * 宿主固定首页，课表/专注 tab 来自已激活插件；待办存在时合入课表页顶部。
+ * 宿主固定首页，课表/专注 tab 来自已激活插件；待办存在时按本机偏好合入
+ * 课表页顶部或专注页计时控制与标签之间，默认课表。
  *
  * 四个一级页由同一个 [HorizontalPager] 承载，tab 入口不再压入 NavController；设置、
  * 账号、WebView、完整待办列表和其他插件二级页仍走 NavHost。这样整页拖动、胶囊连续
@@ -180,14 +184,29 @@ fun AppNav(
     val prefs = storedPrefs ?: UiPrefs()
     val preferredCampus = storedPrefs?.preferredCampus
 
-    // 只有课表、待办页面与最终待办能力同时可用时才合页；任一缺失都保留原独立入口
-    // 或原课表页，避免把待办 tab 藏掉后无路可走。
-    val timetableTodoMerged = shouldMergeTodoIntoTimetable(
+    // 日程待办按本机偏好合入课表页或专注页。只有待办页面、待办能力和所选宿主
+    // 同时可用时才合页；所选宿主缺失时保留原独立 tab，不改写用户保存的偏好。
+    val pagerRoutes = remember(pluginUi) {
+        pluginUi.bottomNav.map { it.route.value }.toSet()
+    }
+    val todoHost = resolveTodoHost(
+        pagerRoutes = pagerRoutes,
         timetablePageRegistered = pluginUi.page(TIMETABLE_ROUTE) != null,
+        focusPageRegistered = pluginUi.page(FOCUS_MAIN_ROUTE) != null,
         todoPageRegistered = pluginUi.page(TODO_ROUTE) != null,
         todoStoreAvailable = todoStore != null,
+        preferredHost = storedPrefs?.todoHostPlacement,
     )
-    val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, timetableTodoMerged)
+    // 只剩一个宿主且偏好尚未读到时，待办是独立 tab 还是该宿主内的二级页还未
+    // 确定。这里先不挂载 NavHost、Pager 和导航 effects，等偏好到达后一次性按
+    // 最终层级装配；否则会先注册临时导航图、消费通知/组件入口，再在位置确定
+    // 后重建并丢失深链或 Pager 选择。两个宿主都可用时无需等待，偏好未读到时
+    // 设置卡片仍显示但选项禁用，槽位暂不渲染。
+    if (todoHost.awaitingPreference) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+        return
+    }
+    val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, todoHost.embedTodo)
         .map { tab ->
             Destination(
                 route = tab.route.value,
@@ -206,15 +225,17 @@ fun AppNav(
     }
     val destinationRoutes = remember(destinations) { destinations.map { it.route } }
     val tabRoutes = remember(destinationRoutes) { destinationRoutes.toSet() }
-    val timetableTodoSlot: (@Composable () -> Unit)? = remember(
-        timetableTodoMerged,
+    // 偏好尚未读到时 host 为 null：先不渲染槽位，避免默认位置闪一下后再跳页。
+    val todoScheduleSlot: (@Composable () -> Unit)? = remember(
+        todoHost.host,
         todoStore,
         navController,
     ) {
-        if (timetableTodoMerged && todoStore != null) {
+        val store = todoStore
+        if (todoHost.host != null && store != null) {
             val slot: @Composable () -> Unit = {
                 TodoScheduleSection(
-                    store = todoStore,
+                    store = store,
                     onOpenAll = {
                         navController.navigate(TODO_ROUTE.value) { launchSingleTop = true }
                     },
@@ -227,7 +248,7 @@ fun AppNav(
     }
 
     // 合页后待办完整列表是二级页；通知/组件深链不能按 tab 下标定位。仅当待办仍是
-    // 独立 tab（课表插件缺失）时才预选该页，避免跳到不存在的路由。
+    // 独立 tab（所选宿主缺失）时才预选该页，避免跳到不存在的路由。
     val initialRoute = when {
         openTodo || launchTarget == WidgetLaunchTarget.TODO ->
             TODO_ROUTE.value.takeIf { it in tabRoutes } ?: AppRoutes.HOME
@@ -330,6 +351,8 @@ fun AppNav(
     }
 
     // 通知点击进入待办完整页；具体条目由 TodoService.pendingOpenTask 交给页面。
+    // 位置未定的首读时序不会走到这里（上层已延迟挂载），因此可直接按最终稳定
+    // 路由消费，不会提前导航到将被移除的页面。
     LaunchedEffect(openTodo) {
         if (!openTodo) return@LaunchedEffect
         openTodoListPage()
@@ -361,7 +384,9 @@ fun AppNav(
                     switchTab(AppRoutes.HOME)
                 }
             }
-            WidgetLaunchTarget.TODO -> openTodoListPage()
+            WidgetLaunchTarget.TODO -> {
+                openTodoListPage()
+            }
             null -> return@LaunchedEffect
         }
         onLaunchConsumed()
@@ -455,19 +480,31 @@ fun AppNav(
                                     )
                                     else -> {
                                         val pageContent = destination?.page
-                                        if (pageContent != null &&
-                                            destination.route == TIMETABLE_ROUTE.value &&
-                                            timetableTodoSlot != null
-                                        ) {
+                                        val slot = todoScheduleSlot
+                                        when {
+                                            destination == null || pageContent == null -> Unit
                                             // 同一纵向滚动内先渲染本机日程槽位，再继续
                                             // 课表原有账号/学期/周网格正文。
-                                            CompositionLocalProvider(
-                                                LocalTimetableTodoSlot provides timetableTodoSlot,
-                                            ) {
-                                                pageContent.content(pageHost)
+                                            slot != null &&
+                                                destination.route == TIMETABLE_ROUTE.value &&
+                                                todoHost.host == TodoHostPlacement.TIMETABLE -> {
+                                                CompositionLocalProvider(
+                                                    LocalTimetableTodoSlot provides slot,
+                                                ) {
+                                                    pageContent.content(pageHost)
+                                                }
                                             }
-                                        } else {
-                                            pageContent?.content(pageHost)
+                                            // 专注页在计时控制与标签之间插入同一份日程。
+                                            slot != null &&
+                                                destination.route == FOCUS_MAIN_ROUTE.value &&
+                                                todoHost.host == TodoHostPlacement.FOCUS -> {
+                                                CompositionLocalProvider(
+                                                    LocalFocusTodoSlot provides slot,
+                                                ) {
+                                                    pageContent.content(pageHost)
+                                                }
+                                            }
+                                            else -> pageContent.content(pageHost)
                                         }
                                     }
                                 }
@@ -504,6 +541,13 @@ fun AppNav(
                         preferredCampus = preferredCampus,
                         onPreferredCampusChange = { campus ->
                             scope.launch { AppGraph.uiPrefsStore.setPreferredCampus(campus) }
+                        },
+                        todoHostPlacement = storedPrefs?.todoHostPlacement,
+                        showTodoHostPlacement = todoHost.canChooseHost,
+                        onTodoHostPlacementChange = { placement ->
+                            scope.launch {
+                                AppGraph.uiPrefsStore.setTodoHostPlacement(placement)
+                            }
                         },
                         onBack = { navController.popBackStack() },
                         onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
@@ -617,16 +661,64 @@ private fun KyantDock(
 internal fun pageIndexForRoute(routes: List<String>, route: String): Int = routes.indexOf(route)
 
 /**
- * 待办 tab 只在课表页、待办页与最终待办能力都可用时并入课表页。
+ * 日程待办在一级页中的最终归属。
  *
- * 课表插件缺失时保留待办 tab，待办插件缺失时课表照常展示；宿主不根据模块名或
- * 硬编码开关决定，而是以最终 UI 快照和能力为准。
+ * [embedTodo] 为 true 时待办独立 tab 从 Pager 移除，[host] 是应渲染
+ * `TodoScheduleSection` 的一级页。两个宿主都可用时一级入口始终为四项；所选
+ * 宿主缺失时保留已注册的待办 tab，不自动改挂另一页，也不覆盖保存的偏好。
+ * [awaitingPreference] 只在一级/二级归属会随尚未读到的偏好改变时置位；
+ * 调用方应推迟挂载导航图与消费待办深链，等偏好到达后再按最终层级装配。
  */
-internal fun shouldMergeTodoIntoTimetable(
+internal data class TodoHostResolution(
+    val embedTodo: Boolean,
+    val host: TodoHostPlacement?,
+    val canChooseHost: Boolean,
+    val awaitingPreference: Boolean,
+)
+
+/**
+ * 以最终 UI 快照、实际注册的 Pager 入口和待办能力解析待办宿主。
+ *
+ * 不按模块名或硬编码插件开关决定；`pagerRoutes` 必须来自最终可见的 bottomNav，
+ * 这样未注册为一级入口的页面不会被误当成合页宿主。
+ */
+internal fun resolveTodoHost(
+    pagerRoutes: Set<String>,
     timetablePageRegistered: Boolean,
+    focusPageRegistered: Boolean,
     todoPageRegistered: Boolean,
     todoStoreAvailable: Boolean,
-): Boolean = timetablePageRegistered && todoPageRegistered && todoStoreAvailable
+    preferredHost: TodoHostPlacement?,
+): TodoHostResolution {
+    val todoReady = todoPageRegistered && todoStoreAvailable
+    val timetableHostAvailable =
+        timetablePageRegistered && TIMETABLE_ROUTE.value in pagerRoutes
+    val focusHostAvailable = focusPageRegistered && FOCUS_MAIN_ROUTE.value in pagerRoutes
+    val bothHostsAvailable = timetableHostAvailable && focusHostAvailable
+    val availableHost = when {
+        timetableHostAvailable -> TodoHostPlacement.TIMETABLE
+        focusHostAvailable -> TodoHostPlacement.FOCUS
+        else -> null
+    }
+    // 待办页面或本机存储缺失时没有槽位，也没有位置可选项。
+    // 两个宿主都在时一级入口始终四项，位置只决定槽位所在页；只剩一个宿主时
+    // 只有偏好正好指向它才合页，所选宿主缺失则保留独立 tab 且不改写偏好。
+    val embedTodo = todoReady && availableHost != null &&
+        (bothHostsAvailable || preferredHost == availableHost)
+    // 两个宿主且偏好未读到时先不渲染槽位（避免闪错页），但无需等待。
+    val selectedHost = if (embedTodo) preferredHost else null
+    val canChoose = todoReady && bothHostsAvailable
+    // 只剩一个宿主且偏好未读到时，待办是独立 tab 还是二级页还未定，
+    // 调用方需等偏好到达后再装配导航图。
+    val awaiting = todoReady && availableHost != null &&
+        !bothHostsAvailable && preferredHost == null
+    return TodoHostResolution(
+        embedTodo = embedTodo,
+        host = selectedHost,
+        canChooseHost = canChoose,
+        awaitingPreference = awaiting,
+    )
+}
 
 /**
  * 合页时从最终插件 tab 快照中移除待办；完整待办列表改由稳定的二级路由承载。
@@ -634,9 +726,9 @@ internal fun shouldMergeTodoIntoTimetable(
  */
 internal fun visiblePluginTabs(
     tabs: List<PluginBottomNav>,
-    timetableTodoMerged: Boolean,
+    todoEmbedded: Boolean,
 ): List<PluginBottomNav> = tabs.filterNot {
-    timetableTodoMerged && it.route.value == TODO_ROUTE.value
+    todoEmbedded && it.route.value == TODO_ROUTE.value
 }
 
 /**

@@ -61,6 +61,7 @@ import com.upcpocket.app.ui.components.GlassTextButton as TextButton
 import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +92,15 @@ import com.upcpocket.app.focus.FocusService
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+/**
+ * 宿主装配的专注页顶部槽位。
+ *
+ * 与课表页的槽位相同，只承载本机日程待办等宿主注入内容；不参与计时、标签、
+ * 统计或专注权限状态。槽位位于计时控制与标签之间，不会因为待办深链提前
+ * 触发通知权限。
+ */
+val LocalFocusTodoSlot = compositionLocalOf<(@Composable () -> Unit)?> { null }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -169,6 +179,9 @@ fun FocusScreen(
             TimerDial(ui)
 
             Controls(ui, vm)
+
+            // 宿主可在设置中把日程待办放到这里；槽位为空时保持原专注页布局。
+            LocalFocusTodoSlot.current?.invoke()
 
             TagSection(
                 ui = ui,

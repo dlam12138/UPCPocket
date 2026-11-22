@@ -67,6 +67,30 @@ class UiPrefsStoreTest {
     }
 
     @Test
+    fun `todo host placement defaults to timetable when unset or unknown`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        assertEquals(TodoHostPlacement.TIMETABLE, store.flow.first().todoHostPlacement)
+
+        dataStore.edit { it[stringPreferencesKey("todo_host_placement")] = "SYNTHETIC_HOST" }
+        assertEquals(
+            TodoHostPlacement.TIMETABLE,
+            UiPrefsStore(dataStore).flow.first().todoHostPlacement,
+        )
+
+        store.setTodoHostPlacement(TodoHostPlacement.FOCUS)
+        assertEquals(
+            TodoHostPlacement.FOCUS,
+            UiPrefsStore(dataStore).flow.first().todoHostPlacement,
+        )
+
+        store.setTodoHostPlacement(TodoHostPlacement.TIMETABLE)
+        assertEquals(
+            TodoHostPlacement.TIMETABLE,
+            UiPrefsStore(dataStore).flow.first().todoHostPlacement,
+        )
+    }
+
+    @Test
     fun `widget appearance defaults to solid and persists independently`() = runBlocking {
         val store = UiPrefsStore(dataStore)
         assertEquals(WidgetAppearance.SOLID, store.flow.first().widgetAppearance)

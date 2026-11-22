@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.summaryText
 import com.upcpocket.app.data.prefs.PreferredCampus
+import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.CampusFilterChip
@@ -59,6 +60,9 @@ fun SettingsScreen(
     sectionHost: PluginSectionHost,
     preferredCampus: PreferredCampus? = null,
     onPreferredCampusChange: (PreferredCampus) -> Unit = {},
+    todoHostPlacement: TodoHostPlacement? = null,
+    showTodoHostPlacement: Boolean = false,
+    onTodoHostPlacementChange: (TodoHostPlacement) -> Unit = {},
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -127,6 +131,12 @@ fun SettingsScreen(
                 title = "应用",
                 modifier = Modifier.padding(top = 14.dp, bottom = 0.dp),
             )
+            if (showTodoHostPlacement) {
+                TodoHostPlacementCard(
+                    todoHostPlacement = todoHostPlacement,
+                    onChange = onTodoHostPlacementChange,
+                )
+            }
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     SettingsNavigationRow(
@@ -182,6 +192,41 @@ private fun PreferredCampusCard(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/**
+ * 日程待办位置只保存在本机，决定宿主把同一份待办渲染在课表页还是专注页。
+ *
+ * [todoHostPlacement] 为 null 表示 DataStore 尚未读完：此时禁用选项，不用默认的
+ * “课表页”冒充真实偏好。两个宿主或待办能力不可用时宿主不展示本卡。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TodoHostPlacementCard(
+    todoHostPlacement: TodoHostPlacement?,
+    onChange: (TodoHostPlacement) -> Unit,
+) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("日程待办位置", style = MaterialTheme.typography.titleSmall)
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TodoHostPlacement.entries.forEach { placement ->
+                    CampusFilterChip(
+                        selected = todoHostPlacement == placement,
+                        onClick = { if (todoHostPlacement != placement) onChange(placement) },
+                        enabled = todoHostPlacement != null,
+                        label = { Text(placement.label) },
+                    )
+                }
+            }
         }
     }
 }

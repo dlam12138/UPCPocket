@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-20 核对的 2.1.0 课表与待办合页。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
+本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-22 核对的 2.1.0 日程待办位置（课表/专注）。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
 
 ## 插件、能力与 UI
 
@@ -22,7 +22,7 @@
 
 2.0.8 增加 `UiSurface.SERVICE_DIRECTORY`，`PluginEntry.category: UiCategory = GENERAL` 和 `keywords: String = ""` 作为分类/搜索元数据；分类为学习与空间、校园生活、校务与成长、常用工具。稳定 ID 和路由保持；服务目录与首页固定共用贡献，不复制业务状态。宿主 `official.calendar` 是固定公开外链服务，不塞入课表领域契约，也不要求账号或课表插件。
 
-2.1.0 中，宿主在课表页、待办页和待办能力可用时，通过 `LocalTimetableTodoSlot` 在 `timetable.week` 的滚动区域顶部装配 `TodoScheduleSection`。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。课表插件缺失时，`todo.list` 保留为一级页。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
+2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
 2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
 

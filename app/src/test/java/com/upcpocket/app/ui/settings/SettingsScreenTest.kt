@@ -3,6 +3,8 @@ package com.upcpocket.app.ui.settings
 import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -12,8 +14,10 @@ import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
+import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.theme.UpcPocketTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -56,6 +60,8 @@ class SettingsScreenTest {
         rule.onNodeWithText("校园").assertIsDisplayed()
         rule.onNodeWithText("应用").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("图书馆登录").assertDoesNotExist()
+        // 宿主未提供两个可用宿主时不展示位置卡，避免出现无效选项。
+        rule.onNodeWithText("日程待办位置").assertDoesNotExist()
         rule.onNodeWithText("桌面组件").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("校园卡 / 电量 / 课表").assertDoesNotExist()
         rule.onNodeWithText("校园官方网页").performScrollTo().performClick()
@@ -140,6 +146,68 @@ class SettingsScreenTest {
 
         rule.onNodeWithText("保存失败，请重试。").assertIsDisplayed()
         rule.onNodeWithText("已保存 · 2026***01").assertDoesNotExist()
+    }
+
+    @Test
+    fun `todo placement card shows saved host and reports changes`() {
+        var changed: TodoHostPlacement? = null
+        rule.setContent {
+            UpcPocketTheme {
+                SettingsScreen(
+                    accountState = SchoolAccountState(
+                        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                        generation = AccountGeneration(7),
+                    ),
+                    schoolSections = emptyList(),
+                    sectionHost = FakeSectionHost(),
+                    todoHostPlacement = TodoHostPlacement.FOCUS,
+                    showTodoHostPlacement = true,
+                    onTodoHostPlacementChange = { changed = it },
+                    onBack = {},
+                    onOpenAccount = {},
+                    onOpenAppearance = {},
+                    onOpenWidgets = {},
+                    onOpenOfficialWeb = {},
+                    onOpenAbout = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("日程待办位置").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("专注页").performScrollTo().assertIsDisplayed().assertIsSelected()
+        rule.onNodeWithText("课表页").performScrollTo().assertIsDisplayed().performClick()
+        rule.waitForIdle()
+
+        assertEquals(TodoHostPlacement.TIMETABLE, changed)
+    }
+
+    @Test
+    fun `todo placement choices stay disabled before the preference is read`() {
+        rule.setContent {
+            UpcPocketTheme {
+                SettingsScreen(
+                    accountState = SchoolAccountState(
+                        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                        generation = AccountGeneration(8),
+                    ),
+                    schoolSections = emptyList(),
+                    sectionHost = FakeSectionHost(),
+                    todoHostPlacement = null,
+                    showTodoHostPlacement = true,
+                    onBack = {},
+                    onOpenAccount = {},
+                    onOpenAppearance = {},
+                    onOpenWidgets = {},
+                    onOpenOfficialWeb = {},
+                    onOpenAbout = {},
+                )
+            }
+        }
+
+        // DataStore 尚未读完时不用默认的“课表页”冒充真实偏好。
+        rule.onNodeWithText("日程待办位置").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("课表页").assertIsNotEnabled()
+        rule.onNodeWithText("专注页").assertIsNotEnabled()
     }
 
     private class FakeSectionHost : PluginSectionHost {
