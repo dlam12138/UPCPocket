@@ -1,0 +1,30 @@
+{
+  "name": "upc-pocket-promo-2.1.0",
+  "version": "1.0.0",
+  "private": true,
+  "description": "UPC Pocket 2.1.0 full-feature Chinese promo film - Remotion project",
+  "scripts": {
+    "scan": "python scripts/scan_screens.py",
+    "vo": "python scripts/make_vo.py",
+    "timeline": "python scripts/build_timeline.py",
+    "srt": "python scripts/make_srt.py",
+    "audio": "python scripts/build_audio.py",
+    "dev": "python scripts/scan_screens.py && remotion studio src/index.ts",
+    "render": "python scripts/scan_screens.py && remotion render src/index.ts Promo output/UPC-Pocket-2.1.0-Promo.mp4",
+    "render:preview": "python scripts/scan_screens.py && remotion render src/index.ts Promo output/preview-540p.mp4 --scale=0.5 --crf=28",
+    "still": "remotion still src/index.ts Promo output/still.png",
+    "cover": "remotion still src/index.ts Cover output/UPC-Pocket-2.1.0-Cover.png",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.541",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.541"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "typescript": "5.8.3"
+  }
+}

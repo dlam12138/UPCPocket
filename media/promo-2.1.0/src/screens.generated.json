@@ -1,0 +1,367 @@
+{
+  "generatedAt": "2026-11-23T01:38:29+00:00",
+  "sourceDir": "public/screens",
+  "screens": {
+    "home": {
+      "file": "screens/home.png",
+      "width": 720,
+      "height": 1518
+    },
+    "home-demo": {
+      "file": "screens/home-demo.png",
+      "width": 720,
+      "height": 1518
+    },
+    "home-todo": {
+      "file": "screens/home-todo.png",
+      "width": 720,
+      "height": 1518
+    },
+    "home-pinned": {
+      "file": "screens/home-pinned.png",
+      "width": 720,
+      "height": 1518
+    },
+    "services": {
+      "file": "screens/services.png",
+      "width": 720,
+      "height": 1518
+    },
+    "services-life": {
+      "file": "screens/services-life.png",
+      "width": 720,
+      "height": 1518
+    },
+    "services-admin": {
+      "file": "screens/services-admin.png",
+      "width": 720,
+      "height": 1518
+    },
+    "campus-settings": {
+      "file": "screens/campus-preference.png",
+      "width": 720,
+      "height": 1518
+    },
+    "card-history": {
+      "file": "screens/card-history.png",
+      "width": 720,
+      "height": 1518
+    },
+    "card-recharge": {
+      "file": "screens/card-recharge.png",
+      "width": 720,
+      "height": 1518
+    },
+    "recharge-demo": {
+      "file": "screens/recharge-demo.png",
+      "width": 720,
+      "height": 1518
+    },
+    "power": {
+      "file": "screens/power.png",
+      "width": 720,
+      "height": 1518
+    },
+    "power-guzhenkou": {
+      "file": "screens/power-guzhenkou.png",
+      "width": 720,
+      "height": 1518
+    },
+    "classroom": {
+      "file": "screens/classroom.png",
+      "width": 720,
+      "height": 1518
+    },
+    "classroom-filter": {
+      "file": "screens/classroom-filter.png",
+      "width": 720,
+      "height": 1518
+    },
+    "classroom-afternoon": {
+      "file": "screens/classroom-afternoon.png",
+      "width": 720,
+      "height": 1518
+    },
+    "classroom-guzhenkou": {
+      "file": "screens/classroom-guzhenkou.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library": {
+      "file": "screens/library-hub.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-area": {
+      "file": "screens/library-area.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-seat": {
+      "file": "screens/library-seat.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-time": {
+      "file": "screens/library-time.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-map": {
+      "file": "screens/library-map.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-hidden": {
+      "file": "screens/library-hidden.png",
+      "width": 720,
+      "height": 1518
+    },
+    "library-hub-guzhenkou": {
+      "file": "screens/library-hub-guzhenkou.png",
+      "width": 720,
+      "height": 1518
+    },
+    "schedule": {
+      "file": "screens/timetable.png",
+      "width": 720,
+      "height": 1518
+    },
+    "course-detail": {
+      "file": "screens/timetable-detail.png",
+      "width": 720,
+      "height": 1518
+    },
+    "today": {
+      "file": "screens/today.png",
+      "width": 720,
+      "height": 1518
+    },
+    "todo": {
+      "file": "screens/todo.png",
+      "width": 720,
+      "height": 1518
+    },
+    "todo-edit": {
+      "file": "screens/todo-edit.png",
+      "width": 720,
+      "height": 1518
+    },
+    "todo-position": {
+      "file": "screens/todo-position.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus": {
+      "file": "screens/focus.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus-todo": {
+      "file": "screens/focus-todo.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus-active": {
+      "file": "screens/focus-active.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus-stats": {
+      "file": "screens/focus-stats.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus-records": {
+      "file": "screens/focus-records.png",
+      "width": 720,
+      "height": 1518
+    },
+    "focus-add-record": {
+      "file": "screens/focus-add-record.png",
+      "width": 720,
+      "height": 1518
+    },
+    "shiguang": {
+      "file": "screens/shiguang.png",
+      "width": 720,
+      "height": 1518
+    },
+    "shiguang-detail": {
+      "file": "screens/shiguang-detail.png",
+      "width": 720,
+      "height": 1518
+    },
+    "shiguang-mine": {
+      "file": "screens/shiguang-mine.png",
+      "width": 720,
+      "height": 1518
+    },
+    "estation": {
+      "file": "screens/ezton.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map": {
+      "file": "screens/campus-map.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-walk": {
+      "file": "screens/map-walk.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-bike": {
+      "file": "screens/map-bike.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-guzhenkou": {
+      "file": "screens/map-guzhenkou.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-origin": {
+      "file": "screens/campus-map-origin.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-origin-wide": {
+      "file": "screens/campus-map-origin-wide.png",
+      "width": 720,
+      "height": 1518
+    },
+    "map-point": {
+      "file": "screens/campus-map-point.png",
+      "width": 720,
+      "height": 1518
+    },
+    "directory": {
+      "file": "screens/directory.png",
+      "width": 720,
+      "height": 1518
+    },
+    "directory-detail": {
+      "file": "screens/directory-detail.png",
+      "width": 720,
+      "height": 1518
+    },
+    "directory-window": {
+      "file": "screens/directory-window.png",
+      "width": 720,
+      "height": 1518
+    },
+    "learn": {
+      "file": "screens/learning.png",
+      "width": 720,
+      "height": 1518
+    },
+    "learn-webvpn": {
+      "file": "screens/learning-webvpn.png",
+      "width": 720,
+      "height": 1518
+    },
+    "official-web": {
+      "file": "screens/official.png",
+      "width": 720,
+      "height": 1518
+    },
+    "official-pinned": {
+      "file": "screens/official-pinned.png",
+      "width": 720,
+      "height": 1518
+    },
+    "gym": {
+      "file": "screens/gym.png",
+      "width": 720,
+      "height": 1518
+    },
+    "gym-swim": {
+      "file": "screens/pool.png",
+      "width": 720,
+      "height": 1518
+    },
+    "widgets": {
+      "file": "screens/widgets.png",
+      "width": 720,
+      "height": 1518
+    },
+    "widget-week": {
+      "file": "screens/widgets-week.png",
+      "width": 720,
+      "height": 1518
+    },
+    "widget-week-crop": {
+      "file": "screens/widget-week-crop.png",
+      "width": 720,
+      "height": 926
+    },
+    "widget-week-live": {
+      "file": "screens/widget-week-live.png",
+      "width": 720,
+      "height": 1518
+    },
+    "widget-today": {
+      "file": "screens/widget-today.png",
+      "width": 720,
+      "height": 365
+    },
+    "widget-card": {
+      "file": "screens/widget-card.png",
+      "width": 454,
+      "height": 454
+    },
+    "widget-power": {
+      "file": "screens/widget-power.png",
+      "width": 454,
+      "height": 454
+    },
+    "widget-todo": {
+      "file": "screens/widget-todo.png",
+      "width": 456,
+      "height": 592
+    },
+    "widget-todo-live": {
+      "file": "screens/widget-todo-live.png",
+      "width": 720,
+      "height": 1518
+    },
+    "widget-todo-done": {
+      "file": "screens/widget-todo-done.png",
+      "width": 456,
+      "height": 592
+    },
+    "settings": {
+      "file": "screens/settings.png",
+      "width": 720,
+      "height": 1518
+    },
+    "about": {
+      "file": "screens/about.png",
+      "width": 720,
+      "height": 1077
+    },
+    "theme": {
+      "file": "screens/appearance.png",
+      "width": 720,
+      "height": 1518
+    },
+    "theme-glass": {
+      "file": "screens/appearance-glass.png",
+      "width": 720,
+      "height": 1518
+    },
+    "diagnostics": {
+      "file": "screens/diagnostics.png",
+      "width": 720,
+      "height": 310
+    }
+  },
+  "missing": [
+    "card",
+    "library-records",
+    "map-route"
+  ],
+  "unmapped": []
+}

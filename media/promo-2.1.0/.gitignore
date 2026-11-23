@@ -1,0 +1,10 @@
+node_modules/
+.tmp-audio/
+.tmp/
+output/*.mp4
+output/*.webm
+output/still-*.png
+output/stills/
+*.log
+
+__pycache__/
