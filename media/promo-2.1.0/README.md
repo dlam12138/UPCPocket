@@ -2,7 +2,7 @@
 
 UPC Pocket 2.1.0 的 Remotion 宣传片工程：一条待办串起石大的一天，覆盖除赞赏二维码外的产品功能。成片为 16:9、1920×1080、30 fps、5580 帧（186.00 秒），中文旁白、烧录字幕，并单独导出 SRT 与封面。
 
-可编辑工程按 [导演分镜](../../docs/releases/2.1.0-promo-storyboard.md) 制作。成片、可独立加载的字幕和封面随 GitHub Releases 中的 `v2.1.0` 草稿交付。[打开 Releases](https://github.com/dlam12138/UPCPocket/releases)
+可编辑工程按 [导演分镜](../../docs/releases/2.1.0-promo-storyboard.md) 制作。此处保留视频制作记录。2.1.0 Release 草稿使用 [合并宣传图与界面截图](../../docs/releases/2.1.0-draft.md)。
 
 ## 交付物
 
@@ -144,6 +144,6 @@ scripts/                   素材扫描、旁白、时间线、SRT、音频生�
 
 工程、渲染所需素材、封面与字幕纳入版本管理。
 
-MP4 作为 Release 附件交付。成片、临时渲染帧和本机依赖已在 `.gitignore` 中排除。
+成片、临时渲染帧和本机依赖已在 `.gitignore` 中排除。
 
 详细清单与哈希见 `docs/assets.md`，验证状态与遗留问题见 `docs/quality-check.md`。
