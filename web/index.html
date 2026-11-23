@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f8f9f3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#101b17" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="在 iPhone 主屏幕访问校园服务、记录本机待办和专注。">
+  <meta name="referrer" content="no-referrer">
+  <title>首页 · UPC Pocket</title>
+  <link rel="icon" href="./app-icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="preload" href="./campus.webp" as="image" fetchpriority="high">
+  <link rel="stylesheet" href="./styles.css?v=19">
+  <link rel="stylesheet" href="./timetable.css">
+  <script src="./app.js?v=23" type="module"></script>
+</head>
+<body>
+  <!-- 页面共用的线条图标。每个 symbol 都可以通过 use 重复使用。 -->
+  <svg class="icon-set" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18m-13 4h2m4 0h2m-8 3h2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.8"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="m7.5 12 3 3 6-6"/></symbol>
+    <symbol id="i-focus" viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9v4.5l2.5 1.5M9 2.5h6m-3 0V6m6.3 2 1.4-1.4"/></symbol>
+    <symbol id="i-room" viewBox="0 0 24 24"><path d="M3 21h18M5 21V5l10-2v18m0-14h4v14M8.5 8h2M8.5 12h2m-2 9v-4h3v4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6v15m0-15C9 3.8 6 3.8 2.5 4.8v14.5c3.5-1 6.5-1 9.5 1.2 3-2.2 6-2.2 9.5-1.2V4.8C18 3.8 15 3.8 12 6z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5zm-9 9 9 5 9-5m-18 4 9 5 9-5"/></symbol>
+    <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18m-14 5h3"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="m13 2-8 12h6l-1 8 9-12h-6z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M6 18 18 6M7 6h11v11"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h5m4 0h7M4 17h9m4 0h3"/><circle cx="11" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></symbol>
+  </svg>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#home" aria-label="UPC Pocket 首页">
+        <img src="./app-icon.svg" width="35" height="35" alt="">
+        <span>UPC Pocket</span>
+      </a>
+      <button class="settings-button" type="button" id="open-settings" hidden>
+        <svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg><span>设置</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="page" data-route="home" aria-labelledby="home-title">
+      <div class="page-heading">
+        <time class="today"></time>
+        <h1 id="home-title" tabindex="-1">我的校园首页</h1>
+      </div>
+
+      <article class="timetable-card">
+        <div class="hero-art" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <svg class="icon hero-icon" aria-hidden="true"><use href="#i-calendar"/></svg>
+          <h2>今日课表</h2>
+          <p id="today-course-summary" class="hero-summary" aria-live="polite"></p>
+          <a class="button" href="#timetable">查看我的课表 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+      </article>
+
+      <section class="frequent" aria-labelledby="frequent-title">
+        <div class="section-heading">
+          <h2 id="frequent-title">常用服务</h2>
+          <a class="text-link" href="#services">全部服务 <svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+        </div>
+        <div class="service-grid" data-service-list="common"></div>
+      </section>
+    </section>
+
+    <section class="page" data-route="timetable" aria-labelledby="timetable-title" hidden>
+      <div class="page-heading timetable-page-heading">
+        <h1 id="timetable-title" tabindex="-1">课表</h1>
+        <div id="timetable-page-actions" class="timetable-page-actions"></div>
+      </div>
+      <div id="timetable-app"></div>
+    </section>
+
+    <section class="page" data-route="services" aria-labelledby="services-title" hidden>
+      <div class="page-heading">
+        <h1 id="services-title" tabindex="-1">校园服务</h1>
+      </div>
+      <div class="service-grid" data-service-list="all"></div>
+    </section>
+
+    <section class="page" data-route="classroom" data-parent="services" aria-labelledby="classroom-title" hidden>
+      <div class="page-heading">
+        <a class="text-link" href="#services">校园服务</a>
+        <h1 id="classroom-title" tabindex="-1">空闲教室</h1>
+      </div>
+      <div class="detail-card">
+        <p>空闲教室查询需要校内网络，本站不代理学校接口。请使用学校官方页面查询，实际占用以学校页面为准。</p>
+        <a class="text-link" href="https://app.upc.edu.cn/freeclass/wap/default/all" target="_blank" rel="noopener noreferrer">学校空闲教室查询 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
+    </section>
+
+    <section class="page" data-route="calendar" data-parent="services" aria-labelledby="calendar-title" hidden>
+      <div class="page-heading">
+        <a class="text-link" href="#services">校园服务</a>
+        <h1 id="calendar-title" tabindex="-1">学校校历</h1>
+      </div>
+      <div class="detail-card">
+        <h2>教务处校历栏目</h2>
+        <p>校历由教务处发布，本站不保存或转载校历图片。请以学校页面公布的内容为准。</p>
+        <a class="text-link" href="https://jwc.upc.edu.cn/603/list.htm" target="_blank" rel="noopener noreferrer">前往教务处校历栏目 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
+    </section>
+
+    <section class="page" data-route="service-catalog" data-parent="services" aria-labelledby="service-catalog-title" hidden>
+      <div class="page-heading">
+        <a class="text-link" href="#services">校园服务</a>
+        <h1 id="service-catalog-title" tabindex="-1">e站通</h1>
+      </div>
+      <div class="detail-card">
+        <p>e站通事项查询与本人待办需要校内网络或学校授权，本站不代理学校接口。请使用学校官方服务大厅办理。</p>
+        <a class="text-link" href="https://service.upc.edu.cn/" target="_blank" rel="noopener noreferrer">学校服务大厅（e站通） <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
+    </section>
+
+    <section class="page" data-route="library" data-parent="services" aria-labelledby="library-title" hidden>
+      <div class="page-heading">
+        <a class="text-link" href="#services">校园服务</a>
+        <h1 id="library-title" tabindex="-1">图书馆</h1>
+      </div>
+      <div class="detail-card">
+        <p>选座、预约、取消与记录都在学校官方页面完成，需要校园网或学校允许的网络。本站不接触学校账号、Cookie 或预约数据，实际可约与记录以学校页面为准。</p>
+      </div>
+      <section class="detail-card workspace-card" aria-labelledby="library-tangdaowan-title">
+        <h2 id="library-tangdaowan-title">唐岛湾</h2>
+        <p>使用图书馆座位预约系统查看座位与本人预约。</p>
+        <a class="text-link" href="https://libspace.upc.edu.cn/libseat/" target="_blank" rel="noopener noreferrer">唐岛湾官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </section>
+      <section class="detail-card workspace-card" aria-labelledby="library-east-title">
+        <h2 id="library-east-title">古镇口东区</h2>
+        <p>使用超星座位入口查看房间、座位与本人预约。</p>
+        <a class="text-link" href="https://office.chaoxing.com/front/third/apps/seat/index?fidEnc=e32f8fbde51f9dba&amp;mappId=4197453" target="_blank" rel="noopener noreferrer">古镇口东区官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </section>
+      <section class="detail-card workspace-card" aria-labelledby="library-qiushi-title">
+        <h2 id="library-qiushi-title">求是</h2>
+        <p>使用超星 seatengine 入口查看座位与本人预约。</p>
+        <a class="text-link" href="https://office.chaoxing.com/front/third/apps/seatengine/index?fidEnc=e32f8fbde51f9dba&amp;mappId=20853788&amp;seatId=4258" target="_blank" rel="noopener noreferrer">求是官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </section>
+    </section>
+
+    <section class="page" data-route="todo" aria-labelledby="todo-title" hidden>
+      <div class="page-heading"><h1 id="todo-title" tabindex="-1">待办</h1></div>
+      <section class="detail-card workspace-card" aria-labelledby="todo-new-title">
+        <h2 id="todo-new-title">新增待办</h2>
+        <form class="todo-form" id="todo-form">
+          <div class="field">
+            <label for="todo-name">标题</label>
+            <input type="text" id="todo-name" placeholder="例如：还图书" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="todo-due">截止时间 <span>（可选）</span></label>
+            <input type="datetime-local" id="todo-due">
+          </div>
+          <button class="button" type="submit" id="add-todo" disabled>添加</button>
+        </form>
+        <p id="todo-write-status" class="operation-error" role="status"></p>
+      </section>
+      <section class="workspace-section" aria-labelledby="todo-list-title">
+        <div class="section-heading"><h2 id="todo-list-title">我的待办</h2></div>
+        <div class="workspace-status">
+          <p id="todo-read-status" role="status">正在读取待办…</p>
+          <button class="text-button" type="button" id="retry-todos" hidden>重试</button>
+        </div>
+        <ul class="record-list" id="todo-list" hidden></ul>
+      </section>
+    </section>
+
+    <section class="page" data-route="focus" aria-labelledby="focus-title" hidden>
+      <div class="page-heading"><h1 id="focus-title" tabindex="-1">专注</h1></div>
+      <section class="detail-card workspace-card focus-card" aria-labelledby="focus-clock-title">
+        <h2 id="focus-clock-title" class="focus-clock-title">专注计时</h2>
+        <p id="focus-state" role="status">正在恢复计时…</p>
+        <div class="focus-time" id="focus-time" role="timer" aria-label="剩余时间">--:--</div>
+        <div class="focus-actions">
+          <button class="button" type="button" data-focus-action="start" hidden>开始</button>
+          <button class="button" type="button" data-focus-action="pause" hidden>暂停</button>
+          <button class="button" type="button" data-focus-action="resume" hidden>继续</button>
+          <button class="button button-secondary" type="button" data-focus-action="finish" hidden>结束</button>
+        </div>
+        <div class="workspace-status focus-status">
+          <p id="focus-error" class="operation-error" role="status"></p>
+          <button class="text-button" type="button" id="retry-focus" hidden>重试</button>
+        </div>
+      </section>
+      <section class="workspace-section" aria-labelledby="focus-history-title">
+        <div class="section-heading"><h2 id="focus-history-title">专注记录</h2></div>
+        <p id="focus-history-status" role="status"></p>
+        <ul class="record-list" id="focus-history" hidden></ul>
+      </section>
+    </section>
+  </main>
+
+  <nav class="dock" aria-label="主导航">
+    <a href="#home" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>首页</span></a>
+    <a href="#timetable"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg><span>课表</span></a>
+    <a href="#services"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg><span>服务</span></a>
+    <a href="#todo"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg><span>待办</span></a>
+    <a href="#focus"><svg class="icon" aria-hidden="true"><use href="#i-focus"/></svg><span>专注</span></a>
+  </nav>
+
+  <dialog class="settings-dialog" id="settings" aria-labelledby="settings-title">
+    <form method="dialog">
+      <div class="section-heading">
+        <h2 id="settings-title">设置</h2>
+        <button class="text-button" type="submit">完成</button>
+      </div>
+      <label class="check-row"><input id="reduce-transparency" type="checkbox">降低透明度</label>
+      <p id="settings-status" class="operation-error" role="status"></p>
+    </form>
+  </dialog>
+</body>
+</html>

@@ -98,7 +98,7 @@
 
 ## 使用前了解一下
 
-这是**非学校官方应用**，校园查询直接访问对应学校服务，不经本项目自建账号服务器转发。
+这是**非学校官方应用**。Android 版的校园查询直接访问对应学校服务，不经本项目自建账号服务器转发；iOS 静态网页版只提供本机待办、专注、课表导入和学校官方入口，不收集学校账号密码。
 
 空闲教室反映学校排课，临时占用以现场为准；图书馆候选与最终可约以学校返回和预约记录为准。2.0.4 已将按时段找座位与个人隐藏扩展到古镇口东区、求是，真实预约、取消和签到尚未验证。待办提醒需通知权限；精确闹钟未授权或系统限制后台时可能延后，系统强行停止后需重新打开应用。课表第 13–14 节缺少已确认的官方时刻时，会显示“时间待确认”。
 
@@ -109,6 +109,8 @@
 
 <br />
 
+**iOS 网页版（PWA）**是 [`web/`](web/) 下的独立静态站点，不依赖 Android 工具链，也不需要本项目自建账号服务或 `/api/*` 接口。可从 iPhone 主屏幕打开，离线使用待办和专注；课表提供 Safari 书签导出，可粘贴学期课表或从「文件」选取 V3 JSON，按周查看课程与详情，`.ics` 作为临时预览。图书馆（唐岛湾、古镇口东区、求是）、空闲教室、学校校历和 e站通均提供固定学校官方入口，登录、选座与预约在学校页面完成。本版不含站内登录或站内预约。本地预览、安装与官网地址见 [iOS 网页版说明](docs/web.md)。
+
 Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · RemoteViews
 
 ```powershell
@@ -117,7 +119,7 @@ Kotlin · Jetpack Compose / Material 3 · Room / DataStore · WorkManager · Rem
 
 使用 JDK 17+、Android SDK 36，默认构建 R8 + 资源压缩的通用 Release。机器路径、私钥和个人业务数据不入库。
 
-[构建指南](docs/BUILD.md) · [贡献流程](CONTRIBUTING.md) · [架构](ARCHITECTURE.md) · [内部契约](API.md) · [项目文档](docs/README.md) · [Agent 入口](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
+[构建指南](docs/BUILD.md) · [贡献流程](CONTRIBUTING.md) · [架构](ARCHITECTURE.md) · [内部契约](API.md) · [项目文档](docs/README.md) · [iOS 网页版](docs/web.md) · [Agent 入口](AGENTS.md) · [更新记录](docs/CHANGELOG.md) · [应用内更新机制](docs/updates/README.md)
 
 Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取矩阵执行，兼容状态与本轮范围见[文档建设报告](docs/agent-native/2026-11-16-audit-and-delivery.md)。
 
@@ -138,6 +140,8 @@ Agent 开发按[根与局部指令](docs/agent-native/README.md)及任务读取�
 感谢 [@kujochisaki3378](https://github.com/kujochisaki3378) 在 [Issue #1](https://github.com/dlam12138/UPCPocket/issues/1) 提出时间优先筛选和个人隐藏座位的建议。2.0.3 先在唐岛湾实现，2.0.4 扩展到古镇口东区和求是。
 
 感谢 [PR #5 作者](https://github.com/dlam12138/UPCPocket/pull/5) 贡献校园卡原生微信充值实现，集成时保留原作者归属，并简化操作与补齐验证。
+
+感谢 **Lycoris** 通过 [PR #16](https://github.com/dlam12138/UPCPocket/pull/16) 贡献 iOS 网页版的设计、Safari 课表书签与本地导入实现。整合为静态版时保留原设计、地址、浏览器数据约定和第三方 iCalendar 许可证；站内登录与预约未纳入本版。
 
 感谢 **或许是小鸡**、**讨厌星期四** 和 **油利奈绪** 三位同学的意见反馈与调试支持。 [2.0.8 贡献与反馈致谢](docs/releases/2.0.8-notice.md#致谢)
 
