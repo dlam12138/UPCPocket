@@ -1,5 +1,6 @@
 package com.upcpocket.app.campusmap
 
+import kotlin.math.ceil
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -42,9 +43,70 @@ class CampusRoutingTest {
         val middle = start.interpolate(end, 0.2)
         val late = start.interpolate(end, 0.8)
 
-        assertTrue(router.plan(middle, late, TravelMode.BIKE).routes.isNotEmpty())
-        assertEquals(RouteFailure.DISCONNECTED, router.plan(late, middle, TravelMode.BIKE).failure)
+        val forward = router.plan(middle, late, TravelMode.BIKE).routes.single()
+        assertNull(forward.walkFromIndex)
+        val reverse = router.plan(late, middle, TravelMode.BIKE).routes.single()
+        assertEquals(listOf(late, end, middle), reverse.points)
+        assertEquals(1, reverse.walkFromIndex)
         assertTrue(router.plan(late, middle, TravelMode.WALK).routes.isNotEmpty())
+    }
+
+    @Test
+    fun cyclingHandsOffToWalkBeyondTheCyclingSnapLimit() = runTest {
+        val transfer = start.copy(lon = 120.0008)
+        val destination = start.copy(lon = 120.0018)
+        val data = campus(
+            points = listOf(start, transfer, destination),
+            roads = both(0, 1) + both(1, 2).map { it.copy(bike = false) },
+        )
+        val router = CampusRouter(data)
+        val route = router.plan(start, destination, TravelMode.BIKE).routes.single()
+        val cycling = start.distanceTo(transfer)
+        val walking = transfer.distanceTo(destination)
+        val expectedSeconds = ceil(cycling / 3.6 + walking / 1.35).toInt()
+
+        assertTrue(walking > 65)
+        assertEquals(listOf(start, transfer, destination), route.points)
+        assertEquals(1, route.walkFromIndex)
+        assertEquals(cycling, route.cyclingMeters, 0.01)
+        assertEquals(walking, route.walkingMeters, 0.01)
+        assertEquals(expectedSeconds, route.seconds)
+        assertEquals(expectedSeconds, route.guidance(0.0).remainingSeconds)
+        assertEquals("请下车步行", route.guidance(cycling - 1.0).instruction)
+        assertEquals("到达目的地附近", route.guidance(cycling + 1.0).instruction)
+        assertEquals(TravelMode.BIKE, route.modeAt(cycling - 1.0))
+        assertEquals(TravelMode.WALK, route.modeAt(cycling))
+        assertEquals(ceil((walking - 10) / 1.35).toInt(), route.guidance(cycling + 10).remainingSeconds)
+        assertEquals("已到达目的地附近", route.arrivalNotice)
+        assertEquals(RouteFailure.NO_END_ROAD, CampusRouter(data.copy(networkRoads = both(0, 1) +
+            CampusRoad(2, 1, walk = true, bike = false))).plan(start, destination, TravelMode.BIKE).failure)
+    }
+
+    @Test
+    fun startingAtTheBikeStopKeepsTheRemainingWalkingRoute() = runTest {
+        val data = campus(
+            points = listOf(start, junction, end),
+            roads = both(0, 1) + both(1, 2).map { it.copy(bike = false) },
+        )
+
+        val route = CampusRouter(data).plan(junction, end, TravelMode.BIKE).routes.single()
+
+        assertEquals(TravelMode.WALK, route.mode)
+        assertEquals(listOf(junction, end), route.points)
+        assertEquals(0.0, route.cyclingMeters, 0.0)
+    }
+
+    @Test
+    fun doesNotInventAWalkableConnectionWhereRoadsCrossWithoutAVertex() = runTest {
+        val bikeEnd = start.copy(lon = 120.002)
+        val pathStart = end.copy(lat = 34.9996)
+        val pathEnd = end.copy(lat = 35.0008)
+        val data = campus(
+            points = listOf(start, bikeEnd, pathStart, pathEnd),
+            roads = both(0, 1) + both(2, 3).map { it.copy(bike = false) },
+        )
+
+        assertEquals(RouteFailure.NO_END_ROAD, CampusRouter(data).plan(start, pathEnd, TravelMode.BIKE).failure)
     }
 
     @Test
@@ -60,7 +122,7 @@ class CampusRoutingTest {
     }
 
     @Test
-    fun buildingDefaultsToOutdoorEntranceAndCyclingStopsOnTheRoad() = runTest {
+    fun buildingDefaultsToOutdoorEntranceAndCyclingContinuesOnFoot() = runTest {
         val building = CampusPlace(
             "teaching", "南教楼", "teaching", listOf("南教"), end.copy(lat = 35.00030), "osm", null, null,
         )
@@ -96,12 +158,14 @@ class CampusRoutingTest {
         val cycling = router.plan(start, target, TravelMode.BIKE).routes.first()
 
         assertEquals(entrance.point, walking.points.last())
-        assertEquals(end, cycling.points.last())
+        assertEquals(entrance.point, cycling.points.last())
+        assertEquals(end, cycling.points[checkNotNull(cycling.walkFromIndex)])
         assertEquals(start.distanceTo(end) + end.distanceTo(checkNotNull(entrance.point)), walking.meters, 0.01)
         assertEquals(target, walking.target)
         assertEquals("已到达目的地", walking.arrivalNotice)
-        assertEquals("步行前往目的地", cycling.guidance(cycling.meters).instruction)
-        assertTrue(cycling.arrivalNotice.contains("步行前往目的地"))
+        assertEquals("请下车步行", cycling.guidance(cycling.cyclingMeters).instruction)
+        assertEquals("到达目的地", cycling.guidance(cycling.meters).instruction)
+        assertEquals("已到达目的地", cycling.arrivalNotice)
     }
 
     @Test
