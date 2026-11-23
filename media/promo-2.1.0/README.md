@@ -8,7 +8,7 @@ UPC Pocket 2.1.0 的 Remotion 宣传片工程：一条待办串起石大的一�
 
 | 文件 | 说明 |
 | --- | --- |
-| `output/UPC-Pocket-2.1.0-Promo.mp4` | 功能预览成片，H.264 CRF 17、AAC 192 kbps、yuv420p |
+| `output/UPC-Pocket-2.1.0-Promo.mp4` | 功能预览成片，H.264 High、AAC-LC，实测像素格式为全范围 4:2:0 |
 | `output/UPC-Pocket-2.1.0-Subtitles.srt` | 38 条中文字幕，与旁白共用同一分段时间线 |
 | `output/UPC-Pocket-2.1.0-Cover.png` | 1920×1080 封面，来自独立 `Cover` composition |
 | `output/stills/` | 关键帧检查图，已加入 `.gitignore` |
