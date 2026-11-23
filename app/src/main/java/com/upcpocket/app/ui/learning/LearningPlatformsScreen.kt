@@ -37,7 +37,7 @@ fun LearningPlatformsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             CampusTopAppBar(
                 title = { Text(LearningPlatformCatalog.TITLE) },

@@ -9,11 +9,18 @@ package com.upcpocket.app.ui.nav
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -21,7 +28,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -32,7 +38,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.pager.HorizontalPager
@@ -53,29 +58,40 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraphBuilder
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -83,6 +99,7 @@ import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.Backdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.prefs.HomeModuleId
 import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
@@ -97,8 +114,11 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
+import com.upcpocket.app.timetable.LocalTimetableModuleLayout
 import com.upcpocket.app.timetable.LocalTimetableTodoSlot
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
+import com.upcpocket.app.timetable.TimetableModuleId
+import com.upcpocket.app.timetable.TimetableModuleLayout
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.todo.LocalTodoListBack
 import com.upcpocket.app.ui.todo.TodoScheduleSection
@@ -118,9 +138,11 @@ import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
 import com.upcpocket.app.ui.theme.LocalUiStyle
+import com.upcpocket.app.ui.theme.appScaffoldContainerColor
 import com.upcpocket.app.widget.WidgetLaunchTarget
 import kotlin.math.abs
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private data class Destination(
@@ -132,13 +154,20 @@ private data class Destination(
     val page: PluginPage? = null,
 )
 
-private const val MAIN_ROUTE = "main"
+internal const val MAIN_ROUTE = "main"
+
+private const val MAIN_LAYER_ENTER_MS = 200
+private const val MAIN_LAYER_EXIT_MS = 140
+private const val SECONDARY_ENTER_MS = 220
+private const val SECONDARY_EXIT_MS = 140
+private const val SECONDARY_POP_ENTER_MS = 200
+private const val SECONDARY_POP_EXIT_MS = 180
 
 /**
  * 上游 ZZUPocket AppNav 的悬浮 dock 为滚动内容预留的底座余量（56 + 上下 8 + 16）。
  * 这里再叠加系统 navigationBars inset，由宿主统一注入一级页。
  */
-private val DOCK_CLEARANCE = 88.dp
+internal val DOCK_CLEARANCE = 88.dp
 
 private val hostHome = Destination(
     route = AppRoutes.HOME,
@@ -172,14 +201,15 @@ fun AppNav(
     onTodoConsumed: () -> Unit = {},
 ) {
     val navController = rememberNavController()
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntry?.destination?.route
-    val onMain = currentRoute == MAIN_ROUTE
+    val backStackEntryState = navController.currentBackStackEntryAsState()
+    val onMainState = remember(backStackEntryState) {
+        derivedStateOf {
+            val route = backStackEntryState.value?.destination?.route
+            route == null || route == MAIN_ROUTE
+        }
+    }
     val pluginUi = AppGraph.ui
     val todoStore = AppGraph.todoStoreOrNull
-    val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
-    val legacyCardStudentId by AppGraph.cardInputRepository.studentId
-        .collectAsStateWithLifecycle(initialValue = "")
     val storedPrefs: UiPrefs? by AppGraph.uiPrefsStore.flow
         .collectAsStateWithLifecycle(initialValue = null)
     val prefs = storedPrefs ?: UiPrefs()
@@ -204,25 +234,39 @@ fun AppNav(
     // 后重建并丢失深链或 Pager 选择。两个宿主都可用时无需等待，偏好未读到时
     // 设置卡片仍显示但选项禁用，槽位暂不渲染。
     if (todoHost.awaitingPreference) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+        Box(Modifier.fillMaxSize().background(appScaffoldContainerColor()))
         return
     }
-    val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, todoHost.embedTodo)
-        .map { tab ->
-            Destination(
-                route = tab.route.value,
-                label = tab.label,
-                icon = tab.icon.filledIcon(),
-                outlinedIcon = tab.icon.outlinedIcon(),
-                order = tab.order,
-                page = pluginUi.page(tab.route),
-            )
-        }.sortedWith(compareBy({ it.order }, { it.route }))
     // 首页由宿主固定在最左，服务广场排在课表之后；插件 tab 按各自 order 排序合并。
-    val destinations = listOf(hostHome) +
-        (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
+    val destinations = remember(pluginUi, todoHost.embedTodo) {
+        val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, todoHost.embedTodo)
+            .map { tab ->
+                Destination(
+                    route = tab.route.value,
+                    label = tab.label,
+                    icon = tab.icon.filledIcon(),
+                    outlinedIcon = tab.icon.outlinedIcon(),
+                    order = tab.order,
+                    page = pluginUi.page(tab.route),
+                )
+            }.sortedWith(compareBy({ it.order }, { it.route }))
+        listOf(hostHome) +
+            (pluginDestinations + hostServices).sortedWith(compareBy({ it.order }, { it.route }))
+    }
     val allServiceEntries = remember(pluginUi) {
         pluginUi.entriesIn(UiSurface.HOME_SERVICES, UiSurface.SERVICE_DIRECTORY)
+    }
+    val homeTimetableSections = remember(pluginUi) {
+        pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE)
+    }
+    val homeCardSections = remember(pluginUi) {
+        pluginUi.sectionsFor(UiSurface.HOME_CARD)
+    }
+    val homeTodoSections = remember(pluginUi) {
+        pluginUi.sectionsFor(UiSurface.HOME_TODO)
+    }
+    val schoolSections = remember(pluginUi) {
+        pluginUi.sectionsFor(UiSurface.MORE_SCHOOL)
     }
     val destinationRoutes = remember(destinations) { destinations.map { it.route } }
     val tabRoutes = remember(destinationRoutes) { destinationRoutes.toSet() }
@@ -267,10 +311,10 @@ fun AppNav(
     val tabSwitch = remember { arrayOfNulls<Job>(1) }
 
     val density = LocalDensity.current
-    val imeVisible = WindowInsets.ime.getBottom(density) > 0
-    val dockVisible = onMain && !imeVisible
-    val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val dockClearance = if (dockVisible) DOCK_CLEARANCE + navigationBottom else 0.dp
+    val imeInsets = WindowInsets.ime
+    val imeVisibleState = remember(imeInsets, density) {
+        derivedStateOf { imeInsets.getBottom(density) > 0 }
+    }
 
     /**
      * 四个一级页只由一个 PagerState 表示；不把 tab 压进 NavController。
@@ -347,8 +391,35 @@ fun AppNav(
         }
     }
 
-    fun openSettings() {
-        navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true }
+    val onOpenRoute: (PluginRouteId) -> Unit = remember(pageHost) {
+        { route -> pageHost.open(route) }
+    }
+    val onOpenSettings = remember(navController) {
+        { navController.navigate(AppRoutes.SETTINGS) { launchSingleTop = true } }
+    }
+    val onOpenOfficialWeb = remember(navController) {
+        { navController.navigate(AppRoutes.OFFICIAL_WEB) { launchSingleTop = true } }
+    }
+    val onOpenLearningPlatforms = remember(navController) {
+        { navController.navigate(AppRoutes.LEARNING_PLATFORMS) { launchSingleTop = true } }
+    }
+    val onOpenServices = remember(destinationRoutes, navController, pagerState) {
+        { switchTab(AppRoutes.SERVICES) }
+    }
+    val onHomeModuleOrderChange: (List<HomeModuleId>) -> Unit = remember(scope) {
+        { newOrder ->
+            scope.launch { AppGraph.uiPrefsStore.setHomeModuleOrder(newOrder) }
+        }
+    }
+    val onTimetableModuleOrderChange: (List<TimetableModuleId>) -> Unit = remember(scope) {
+        { newOrder ->
+            scope.launch { AppGraph.uiPrefsStore.setTimetableModuleOrder(newOrder) }
+        }
+    }
+    val onTogglePin: (String) -> Unit = remember(scope) {
+        { entryId ->
+            scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
+        }
     }
 
     // 通知点击进入待办完整页；具体条目由 TodoService.pendingOpenTask 交给页面。
@@ -394,11 +465,16 @@ fun AppNav(
     }
 
     val homePageIndex = pageIndexForRoute(destinationRoutes, AppRoutes.HOME).coerceAtLeast(0)
-    BackHandler(
-        enabled = onMain && (
-            pagerState.currentPage != homePageIndex || pagerState.currentPageOffsetFraction != 0f
-            ),
-    ) {
+    // 使用 derivedStateOf 隔离高频滚动偏移与路由状态，避免 Pager 切页或二级页间跳转触发整棵 AppNav 重组。
+    val backToHomeEnabled by remember(onMainState, pagerState, homePageIndex) {
+        derivedStateOf {
+            onMainState.value && (
+                pagerState.currentPage != homePageIndex ||
+                    pagerState.currentPageOffsetFraction != 0f
+                )
+        }
+    }
+    BackHandler(enabled = backToHomeEnabled) {
         tabSwitch[0]?.cancel()
         tabSwitch[0] = scope.launch {
             pagerState.animateScrollToPage(
@@ -416,213 +492,420 @@ fun AppNav(
     val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
     // 光学底栏只在 API 33+ 启用；31–32 保留现有 Material 3 底栏。
     val opticalDock = glass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-    val drawDock = dockVisible && !isGlassSheetVisible()
-    val dockBackdrop = if (drawDock && opticalDock) glassThemeBackdrop() else null
-    val surface = MaterialTheme.colorScheme.surface
+    val dockBackdrop = if (opticalDock) glassThemeBackdrop() else null
+    val rootContainerColor = appScaffoldContainerColor()
+    val dockAnimation: AnimationSpec<Float> = remember(opticalDock) {
+        if (opticalDock) {
+            spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium)
+        } else {
+            tween(durationMillis = 320, easing = FastOutSlowInEasing)
+        }
+    }
+    val selectTab: (Int) -> Unit = remember(destinations, dockAnimation, navController, pagerState) {
+        { index ->
+            destinations.getOrNull(index)?.let { switchTab(it.route, dockAnimation) }
+        }
+    }
 
-    CompositionLocalProvider(LocalDockClearance provides dockClearance) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(surface),
-        ) {
-            NavHost(
-                navController = navController,
-                startDestination = MAIN_ROUTE,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                composable(MAIN_ROUTE) {
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxSize(),
-                        // 全部一级页保留状态；活动页由 LocalPluginPageActive 控制自动查询/
-                        // 权限/通知消费，预加载不会触发学校登录或刷新。
-                        beyondViewportPageCount = destinations.lastIndex.coerceAtLeast(0),
-                        userScrollEnabled = !imeVisible,
-                        overscrollEffect = null,
-                        key = { destinations[it].route },
-                    ) { page ->
-                        val active = pagerState.currentPage == page &&
-                            !pagerState.isScrollInProgress
-                        val pageModifier = if (active) {
-                            Modifier.fillMaxSize()
-                        } else {
-                            Modifier.fillMaxSize().clearAndSetSemantics { }
+    // 首帧只组合当前可见的一级页，首帧绘制后再逐帧预热其余一级页；
+    // 预热完成后一级页与底栏常驻于 MainNavHostContainer，二级页返回不再重建。
+    var warmedBeyondPages by remember(destinations.size) { mutableIntStateOf(0) }
+    LaunchedEffect(destinations.size) {
+        val target = destinations.lastIndex.coerceAtLeast(0)
+        if (target <= 0) return@LaunchedEffect
+        withFrameNanos { }
+        for (count in 1..target) {
+            snapshotFlow { onMainState.value }.first { it }
+            withFrameNanos { }
+            warmedBeyondPages = count
+        }
+    }
+
+    MainNavHostContainer(
+        navController = navController,
+        onMainState = onMainState,
+        imeVisibleState = imeVisibleState,
+        rootContainerColor = rootContainerColor,
+        mainContent = { mainActiveState, mainImeVisibleState ->
+            val pagerScrollEnabled by remember(mainActiveState, mainImeVisibleState) {
+                derivedStateOf { mainActiveState.value && !mainImeVisibleState.value }
+            }
+            Box(Modifier.fillMaxSize()) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    // 全部一级页保留状态；活动页由 LocalPluginPageActive 控制自动查询/
+                    // 权限/通知消费，预加载不会触发学校登录或刷新。
+                    beyondViewportPageCount = warmedBeyondPages,
+                    userScrollEnabled = pagerScrollEnabled,
+                    overscrollEffect = null,
+                    key = { destinations[it].route },
+                ) { page ->
+                    val active by remember(mainActiveState, pagerState, page) {
+                        derivedStateOf {
+                            mainActiveState.value &&
+                                pagerState.currentPage == page &&
+                                !pagerState.isScrollInProgress
                         }
-                        CompositionLocalProvider(LocalPluginPageActive provides active) {
-                            Box(pageModifier) {
-                                val destination = destinations.getOrNull(page)
-                                when (destination?.route) {
-                                    AppRoutes.HOME -> HomeScreen(
-                                        serviceEntries = allServiceEntries,
-                                        timetableSections = pluginUi.sectionsFor(UiSurface.HOME_TIMETABLE),
-                                        cardSections = pluginUi.sectionsFor(UiSurface.HOME_CARD),
-                                        todoSections = pluginUi.sectionsFor(UiSurface.HOME_TODO),
-                                        sectionHost = sectionHost,
-                                        onOpenRoute = pageHost::open,
-                                        onOpenSettings = ::openSettings,
-                                        onOpenOfficialWeb = {
-                                            navController.navigate(AppRoutes.OFFICIAL_WEB)
-                                        },
-                                        pinnedServiceIds = prefs.pinnedServiceIds,
-                                        onOpenServices = { switchTab(AppRoutes.SERVICES) },
-                                        onOpenLearningPlatforms = {
-                                            navController.navigate(AppRoutes.LEARNING_PLATFORMS) {
-                                                launchSingleTop = true
+                    }
+                    val pageModifier = if (active) {
+                        Modifier.fillMaxSize()
+                    } else {
+                        Modifier.fillMaxSize().clearAndSetSemantics { }
+                    }
+                    CompositionLocalProvider(LocalPluginPageActive provides active) {
+                        Box(pageModifier) {
+                            val destination = destinations.getOrNull(page)
+                            when (destination?.route) {
+                                AppRoutes.HOME -> HomeScreen(
+                                    serviceEntries = allServiceEntries,
+                                    timetableSections = homeTimetableSections,
+                                    cardSections = homeCardSections,
+                                    todoSections = homeTodoSections,
+                                    sectionHost = sectionHost,
+                                    onOpenRoute = onOpenRoute,
+                                    onOpenSettings = onOpenSettings,
+                                    onOpenOfficialWeb = onOpenOfficialWeb,
+                                    pinnedServiceIds = prefs.pinnedServiceIds,
+                                    onOpenServices = onOpenServices,
+                                    onOpenLearningPlatforms = onOpenLearningPlatforms,
+                                    moduleOrder = prefs.homeModuleOrder,
+                                    onModuleOrderChange = onHomeModuleOrderChange,
+                                )
+                                AppRoutes.SERVICES -> ServicesScreen(
+                                    entries = allServiceEntries,
+                                    pinnedServiceIds = prefs.pinnedServiceIds,
+                                    preferredCampus = preferredCampus,
+                                    onTogglePin = onTogglePin,
+                                    onOpenRoute = onOpenRoute,
+                                    onOpenOfficialWeb = onOpenOfficialWeb,
+                                    onOpenLearningPlatforms = onOpenLearningPlatforms,
+                                )
+                                else -> {
+                                    val pageContent = destination?.page
+                                    val slot = todoScheduleSlot
+                                    when {
+                                        destination == null || pageContent == null -> Unit
+                                        // 课表页按本机排序偏好组合日程待办槽位与周课表主体。
+                                        destination.route == TIMETABLE_ROUTE.value -> {
+                                            val timetableLayout = remember(
+                                                prefs.timetableModuleOrder,
+                                                onTimetableModuleOrderChange,
+                                            ) {
+                                                TimetableModuleLayout(
+                                                    order = prefs.timetableModuleOrder,
+                                                    onOrderChange = onTimetableModuleOrderChange,
+                                                )
                                             }
-                                        },
-                                    )
-                                    AppRoutes.SERVICES -> ServicesScreen(
-                                        entries = allServiceEntries,
-                                        pinnedServiceIds = prefs.pinnedServiceIds,
-                                        preferredCampus = preferredCampus,
-                                        onTogglePin = { entryId ->
-                                            scope.launch { AppGraph.uiPrefsStore.togglePinnedService(entryId) }
-                                        },
-                                        onOpenRoute = pageHost::open,
-                                        onOpenOfficialWeb = {
-                                            navController.navigate(AppRoutes.OFFICIAL_WEB)
-                                        },
-                                        onOpenLearningPlatforms = {
-                                            navController.navigate(AppRoutes.LEARNING_PLATFORMS) {
-                                                launchSingleTop = true
+                                            val activeSlot = if (
+                                                slot != null &&
+                                                todoHost.host == TodoHostPlacement.TIMETABLE
+                                            ) {
+                                                slot
+                                            } else {
+                                                null
                                             }
-                                        },
-                                    )
-                                    else -> {
-                                        val pageContent = destination?.page
-                                        val slot = todoScheduleSlot
-                                        when {
-                                            destination == null || pageContent == null -> Unit
-                                            // 同一纵向滚动内先渲染本机日程槽位，再继续
-                                            // 课表原有账号/学期/周网格正文。
-                                            slot != null &&
-                                                destination.route == TIMETABLE_ROUTE.value &&
-                                                todoHost.host == TodoHostPlacement.TIMETABLE -> {
-                                                CompositionLocalProvider(
-                                                    LocalTimetableTodoSlot provides slot,
-                                                ) {
-                                                    pageContent.content(pageHost)
-                                                }
+                                            CompositionLocalProvider(
+                                                LocalTimetableTodoSlot provides activeSlot,
+                                                LocalTimetableModuleLayout provides timetableLayout,
+                                            ) {
+                                                pageContent.content(pageHost)
                                             }
-                                            // 专注页在计时控制与标签之间插入同一份日程。
-                                            slot != null &&
-                                                destination.route == FOCUS_MAIN_ROUTE.value &&
-                                                todoHost.host == TodoHostPlacement.FOCUS -> {
-                                                CompositionLocalProvider(
-                                                    LocalFocusTodoSlot provides slot,
-                                                ) {
-                                                    pageContent.content(pageHost)
-                                                }
-                                            }
-                                            else -> pageContent.content(pageHost)
                                         }
+                                        // 专注页在计时控制与标签之间插入同一份日程。
+                                        slot != null &&
+                                            destination.route == FOCUS_MAIN_ROUTE.value &&
+                                            todoHost.host == TodoHostPlacement.FOCUS -> {
+                                            CompositionLocalProvider(
+                                                LocalFocusTodoSlot provides slot,
+                                            ) {
+                                                pageContent.content(pageHost)
+                                            }
+                                        }
+                                        else -> pageContent.content(pageHost)
                                     }
                                 }
                             }
                         }
                     }
                 }
-                pluginUi.pages
-                    .filterNot { it.routeId.value in tabRoutes }
-                    .forEach { page ->
-                        composable(page.routeId.value) {
-                            if (page.routeId == TODO_ROUTE) {
-                                // 合页后的完整待办列表是二级页，顶栏提供明确返回；
-                                // 独立 tab 场景不会进入此分支。
-                                CompositionLocalProvider(
-                                    LocalTodoListBack provides {
-                                        navController.popBackStack()
-                                    },
-                                ) {
-                                    page.content(pageHost)
-                                }
+
+                // 底栏随一级页常驻在 NavHost 下方：切去二级页时不销毁 LiquidBottomTabs /
+                // LayerBackdrop / RuntimeShader，一级页内弹输入法或玻璃弹层时仅取消放置以释放命中区。
+                val showDock = !mainImeVisibleState.value &&
+                    !(mainActiveState.value && isGlassSheetVisible())
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .then(if (showDock) Modifier else Modifier.clearAndSetSemantics { })
+                        .layout { measurable, constraints ->
+                            if (!showDock) {
+                                layout(0, 0) {}
                             } else {
+                                val placeable = measurable.measure(constraints)
+                                layout(placeable.width, placeable.height) {
+                                    placeable.placeRelative(0, 0)
+                                }
+                            }
+                        },
+                ) {
+                    if (dockBackdrop != null) {
+                        KyantDock(
+                            destinations = destinations,
+                            pagerState = pagerState,
+                            backdrop = dockBackdrop,
+                            dockDark = dockDark,
+                            onSelect = selectTab,
+                        )
+                    } else {
+                        FloatingDock(
+                            destinations = destinations,
+                            pagerState = pagerState,
+                            dockDark = dockDark,
+                            onSelect = selectTab,
+                        )
+                    }
+                }
+            }
+        },
+        secondaryRoutes = {
+            pluginUi.pages
+                .filterNot { it.routeId.value in tabRoutes }
+                .forEach { page ->
+                    composable(page.routeId.value) {
+                        if (page.routeId == TODO_ROUTE) {
+                            // 合页后的完整待办列表是二级页，顶栏提供明确返回；
+                            // 独立 tab 场景不会进入此分支。
+                            val onBack = remember(navController) {
+                                {
+                                    navController.popBackStack()
+                                    Unit
+                                }
+                            }
+                            CompositionLocalProvider(
+                                LocalTodoListBack provides onBack,
+                            ) {
                                 page.content(pageHost)
                             }
+                        } else {
+                            page.content(pageHost)
                         }
                     }
-                composable(AppRoutes.SETTINGS) {
-                    SettingsScreen(
-                        accountState = accountState,
-                        schoolSections = pluginUi.sectionsFor(
-                            UiSurface.MORE_SCHOOL,
-                        ),
-                        sectionHost = sectionHost,
-                        preferredCampus = preferredCampus,
-                        onPreferredCampusChange = { campus ->
+                }
+            composable(AppRoutes.SETTINGS) {
+                val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
+                SettingsScreen(
+                    accountState = accountState,
+                    schoolSections = schoolSections,
+                    sectionHost = sectionHost,
+                    preferredCampus = preferredCampus,
+                    onPreferredCampusChange = remember(scope) {
+                        { campus ->
                             scope.launch { AppGraph.uiPrefsStore.setPreferredCampus(campus) }
-                        },
-                        todoHostPlacement = storedPrefs?.todoHostPlacement,
-                        showTodoHostPlacement = todoHost.canChooseHost,
-                        onTodoHostPlacementChange = { placement ->
+                        }
+                    },
+                    todoHostPlacement = storedPrefs?.todoHostPlacement,
+                    showTodoHostPlacement = todoHost.canChooseHost,
+                    onTodoHostPlacementChange = remember(scope) {
+                        { placement ->
                             scope.launch {
                                 AppGraph.uiPrefsStore.setTodoHostPlacement(placement)
                             }
-                        },
-                        onBack = { navController.popBackStack() },
-                        onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
-                        onOpenAppearance = { navController.navigate(AppRoutes.APPEARANCE) },
-                        onOpenWidgets = { navController.navigate(AppRoutes.WIDGETS) },
-                        onOpenOfficialWeb = { navController.navigate(AppRoutes.OFFICIAL_WEB) },
-                        onOpenAbout = { navController.navigate(AppRoutes.ABOUT) },
-                    )
-                }
-                composable(AppRoutes.ACCOUNT) {
-                    SchoolAccountScreen(
-                        accounts = AppGraph.account,
-                        onBack = { navController.popBackStack() },
-                        legacyStudentIdHint = legacyCardStudentId.takeIf { it.isNotBlank() },
-                    )
-                }
-                composable(AppRoutes.APPEARANCE) {
-                    AppearanceScreen(onBack = { navController.popBackStack() })
-                }
-                composable(AppRoutes.WIDGETS) {
-                    WidgetSettingsScreen(onBack = { navController.popBackStack() })
-                }
-                composable(AppRoutes.OFFICIAL_WEB) {
-                    OfficialWebScreen(onBack = { navController.popBackStack() })
-                }
-                composable(AppRoutes.LEARNING_PLATFORMS) {
-                    LearningPlatformsScreen(onBack = { navController.popBackStack() })
-                }
-                composable(AppRoutes.ABOUT) {
-                    AboutScreen(onBack = { navController.popBackStack() })
-                }
+                        }
+                    },
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                    onOpenAccount = remember(navController) {
+                        { navController.navigate(AppRoutes.ACCOUNT) { launchSingleTop = true } }
+                    },
+                    onOpenAppearance = remember(navController) {
+                        { navController.navigate(AppRoutes.APPEARANCE) { launchSingleTop = true } }
+                    },
+                    onOpenWidgets = remember(navController) {
+                        { navController.navigate(AppRoutes.WIDGETS) { launchSingleTop = true } }
+                    },
+                    onOpenOfficialWeb = onOpenOfficialWeb,
+                    onOpenAbout = remember(navController) {
+                        { navController.navigate(AppRoutes.ABOUT) { launchSingleTop = true } }
+                    },
+                )
             }
+            composable(AppRoutes.ACCOUNT) {
+                val legacyCardStudentId by AppGraph.cardInputRepository.studentId
+                    .collectAsStateWithLifecycle(initialValue = "")
+                SchoolAccountScreen(
+                    accounts = AppGraph.account,
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                    legacyStudentIdHint = legacyCardStudentId.takeIf { it.isNotBlank() },
+                )
+            }
+            composable(AppRoutes.APPEARANCE) {
+                AppearanceScreen(
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                )
+            }
+            composable(AppRoutes.WIDGETS) {
+                WidgetSettingsScreen(
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                )
+            }
+            composable(AppRoutes.OFFICIAL_WEB) {
+                OfficialWebScreen(
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                )
+            }
+            composable(AppRoutes.LEARNING_PLATFORMS) {
+                LearningPlatformsScreen(
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                )
+            }
+            composable(AppRoutes.ABOUT) {
+                AboutScreen(
+                    onBack = remember(navController) { { navController.popBackStack() } },
+                )
+            }
+        },
+    )
+}
 
-            if (drawDock) {
-                val dockAnimation: AnimationSpec<Float> = remember(opticalDock) {
-                    if (opticalDock) {
-                        spring(dampingRatio = 0.88f, stiffness = Spring.StiffnessMedium)
-                    } else {
-                        tween(durationMillis = 320, easing = FastOutSlowInEasing)
+/**
+ * 一级页常驻层与二级页 [NavHost] 的分层容器。
+ *
+ * 一级页及悬浮底栏始终挂载在 [NavHost] 下方，`MAIN_ROUTE` 仅作为空占位路由：
+ * 1. 进入二级页时一级页通过 GPU 透明过渡隐去并在完全透明后跳过绘制，不再销毁四页状态，
+ *    返回一级页时零重建、零滚动位置丢失；
+ * 2. [LocalDockClearance] 仅向一级页注入且不随进入二级页归零，避免切换瞬间触发四页整页重排；
+ * 3. 二级页期间阻断底层指针事件并清除底层无障碍语义，透明自定义背景/玻璃页也不会透出底层内容。
+ */
+@Composable
+internal fun MainNavHostContainer(
+    navController: NavHostController,
+    onMainState: State<Boolean>,
+    imeVisibleState: State<Boolean>,
+    rootContainerColor: Color,
+    mainContent: @Composable (onMainState: State<Boolean>, mainImeVisibleState: State<Boolean>) -> Unit,
+    secondaryRoutes: NavGraphBuilder.() -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(rootContainerColor),
+    ) {
+        PersistentMainLayer(
+            onMainState = onMainState,
+            imeVisibleState = imeVisibleState,
+            content = mainContent,
+        )
+
+        NavHost(
+            navController = navController,
+            startDestination = MAIN_ROUTE,
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_ENTER_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) + slideInHorizontally(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_ENTER_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { fullWidth -> (fullWidth * 0.08f).toInt() }
+            },
+            exitTransition = {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_EXIT_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            },
+            popEnterTransition = {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_POP_ENTER_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            },
+            popExitTransition = {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_POP_EXIT_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) + slideOutHorizontally(
+                    animationSpec = tween(
+                        durationMillis = SECONDARY_POP_EXIT_MS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { fullWidth -> (fullWidth * 0.08f).toInt() }
+            },
+        ) {
+            composable(
+                route = MAIN_ROUTE,
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None },
+            ) {
+                // 空占位：真实一级页常驻于 PersistentMainLayer。
+            }
+            secondaryRoutes()
+        }
+    }
+}
+
+@Composable
+private fun PersistentMainLayer(
+    onMainState: State<Boolean>,
+    imeVisibleState: State<Boolean>,
+    content: @Composable (onMainState: State<Boolean>, mainImeVisibleState: State<Boolean>) -> Unit,
+) {
+    val onMain by onMainState
+    val mainImeVisibleState = remember(onMainState, imeVisibleState) {
+        derivedStateOf { onMainState.value && imeVisibleState.value }
+    }
+    val mainImeVisible by mainImeVisibleState
+    val navigationBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val mainDockClearance = if (!mainImeVisible) DOCK_CLEARANCE + navigationBottom else 0.dp
+    val mainAlphaState = animateFloatAsState(
+        targetValue = if (onMain) 1f else 0f,
+        animationSpec = tween(
+            durationMillis = if (onMain) MAIN_LAYER_ENTER_MS else MAIN_LAYER_EXIT_MS,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "main_layer_alpha",
+    )
+    val hiddenLayerGuard = if (onMain) {
+        Modifier
+    } else {
+        Modifier
+            .clearAndSetSemantics { }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        event.changes.forEach { it.consume() }
                     }
                 }
-                val selectTab: (Int) -> Unit = { index ->
-                    destinations.getOrNull(index)?.let { switchTab(it.route, dockAnimation) }
-                }
-                if (dockBackdrop != null) {
-                    KyantDock(
-                        destinations = destinations,
-                        pagerState = pagerState,
-                        backdrop = dockBackdrop,
-                        dockDark = dockDark,
-                        onSelect = selectTab,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                } else {
-                    FloatingDock(
-                        destinations = destinations,
-                        pagerState = pagerState,
-                        dockDark = dockDark,
-                        selectedIndex = pagerState.targetPage,
-                        onSelect = selectTab,
-                        modifier = Modifier.align(Alignment.BottomCenter),
-                    )
-                }
             }
+    }
+
+    CompositionLocalProvider(LocalDockClearance provides mainDockClearance) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(hiddenLayerGuard)
+                .graphicsLayer { alpha = mainAlphaState.value }
+                .drawWithContent {
+                    if (mainAlphaState.value > 0.001f) {
+                        drawContent()
+                    }
+                },
+        ) {
+            content(onMainState, mainImeVisibleState)
         }
     }
 }
@@ -756,11 +1039,11 @@ private fun FloatingDock(
     destinations: List<Destination>,
     pagerState: PagerState,
     dockDark: Boolean,
-    selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (destinations.isEmpty()) return
+    val selectedIndex by remember(pagerState) { derivedStateOf { pagerState.targetPage } }
     // API 31–32 不使用玻璃底栏，保持现有 Material 3 底栏。
     val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
@@ -817,22 +1100,22 @@ private fun FloatingDock(
             )
             .testTag("floating_dock"),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize().glassHighlight(dockShape)) {
-            val slotWidth = maxWidth / destinations.size
-            if (!glass) {
-                val bubbleSize = 40.dp
-                Box(
-                    Modifier
-                        .offset {
-                            val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-                                .coerceIn(0f, lastIndex.toFloat())
-                            val bubbleX = slotWidth * position + (slotWidth - bubbleSize) / 2
-                            IntOffset(bubbleX.roundToPx(), 8.dp.roundToPx())
-                        }
-                        .size(bubbleSize)
-                        .background(selectedBubble, CircleShape),
+        val materialBubble = if (!glass) {
+            Modifier.drawBehind {
+                val count = destinations.size
+                if (count <= 0) return@drawBehind
+                val slotWidth = size.width / count
+                val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                    .coerceIn(0f, lastIndex.toFloat())
+                drawCircle(
+                    color = selectedBubble,
+                    radius = 20.dp.toPx(),
+                    center = Offset(slotWidth * (position + 0.5f), size.height / 2f),
                 )
             }
+        } else Modifier
+
+        Box(Modifier.fillMaxSize().glassHighlight(dockShape).then(materialBubble)) {
             Row(
                 Modifier.fillMaxSize().then(liquidIndicator).selectableGroup(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -881,23 +1164,33 @@ private fun DockTabIcon(
     unselectedTint: Color,
     selectedTint: Color,
 ) {
-    val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
-        .coerceIn(0f, lastIndex.toFloat())
-    val selectedAmount = (1f - abs(position - index)).coerceIn(0f, 1f)
-    val tint = lerp(unselectedTint, selectedTint, selectedAmount)
-
+    // 将 Pager 偏移读取推迟到绘制阶段（graphicsLayer），滑动或切 tab 期间不触发图标重组。
     Box(Modifier.size(23.dp), contentAlignment = Alignment.Center) {
         Icon(
             imageVector = destination.outlinedIcon,
             contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(23.dp).graphicsLayer { alpha = 1f - selectedAmount },
+            tint = unselectedTint,
+            modifier = Modifier
+                .size(23.dp)
+                .graphicsLayer {
+                    val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                        .coerceIn(0f, lastIndex.toFloat())
+                    val selectedAmount = (1f - abs(position - index)).coerceIn(0f, 1f)
+                    alpha = 1f - selectedAmount
+                },
         )
         Icon(
             imageVector = destination.icon,
             contentDescription = null,
-            tint = tint,
-            modifier = Modifier.size(23.dp).graphicsLayer { alpha = selectedAmount },
+            tint = selectedTint,
+            modifier = Modifier
+                .size(23.dp)
+                .graphicsLayer {
+                    val position = (pagerState.currentPage + pagerState.currentPageOffsetFraction)
+                        .coerceIn(0f, lastIndex.toFloat())
+                    val selectedAmount = (1f - abs(position - index)).coerceIn(0f, 1f)
+                    alpha = selectedAmount
+                },
         )
     }
 }

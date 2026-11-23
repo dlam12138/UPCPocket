@@ -44,12 +44,16 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.PluginSectionHost
+import com.upcpocket.app.data.prefs.HomeModuleId
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
+import com.upcpocket.app.ui.components.ReorderableModuleColumn
 import com.upcpocket.app.ui.components.SectionHeader
 import com.upcpocket.app.ui.components.CampusIconButton
 import com.upcpocket.app.ui.components.glassBackground
+import com.upcpocket.app.ui.components.mergeReorderedSubset
+import com.upcpocket.app.ui.components.normalizeModuleOrder
 import com.upcpocket.app.ui.learning.LearningPlatformCatalog
 import com.upcpocket.app.ui.nav.filledIcon
 import com.upcpocket.app.ui.official.OfficialLink
@@ -64,6 +68,12 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 private val CAMPUS_ZONE = ZoneId.of("Asia/Shanghai")
+private val HOME_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA)
+
+private fun homeModuleKey(module: HomeModuleId): Any = module.name
+private fun homeModuleLabel(module: HomeModuleId): String = module.label
+private fun homeModuleTestTag(module: HomeModuleId): String = "home_module_${module.name.lowercase()}"
 
 private data class QuickAction(
     val title: String,
@@ -114,14 +124,14 @@ fun HomeScreen(
     pinnedServiceIds: Set<String> = UiPrefs.DEFAULT_PINNED_SERVICES,
     onOpenServices: (() -> Unit)? = null,
     onOpenLearningPlatforms: () -> Unit = {},
+    moduleOrder: List<HomeModuleId> = HomeModuleId.DEFAULT_ORDER,
+    onModuleOrderChange: (List<HomeModuleId>) -> Unit = {},
 ) {
     val context = LocalContext.current
     val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
     val scrollState = rememberScrollState()
-    val dateLabel = today.format(
-        DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA),
-    )
+    val dateLabel = remember(today) { today.format(HOME_DATE_FORMATTER) }
     val pinnedEntries = remember(serviceEntries, pinnedServiceIds) {
         pinnedPluginEntries(serviceEntries, pinnedServiceIds)
     }
@@ -131,43 +141,79 @@ fun HomeScreen(
     val pinnedEntryTitles = remember(pinnedEntries) {
         pinnedEntries.mapTo(mutableSetOf()) { it.title }
     }
-    val actions = buildList {
-        pinnedEntries.forEach { entry ->
-            add(
-                QuickAction(
-                    title = entry.title,
-                    icon = entry.icon.filledIcon(),
-                    onClick = { entry.route?.let(onOpenRoute) },
-                ),
-            )
+    val actions = remember(
+        pinnedEntries,
+        pinnedOfficialLinks,
+        pinnedEntryTitles,
+        pinnedServiceIds,
+        onOpenRoute,
+        onOpenServices,
+        onOpenOfficialWeb,
+        onOpenLearningPlatforms,
+        context,
+    ) {
+        buildList {
+            pinnedEntries.forEach { entry ->
+                add(
+                    QuickAction(
+                        title = entry.title,
+                        icon = entry.icon.filledIcon(),
+                        onClick = { entry.route?.let(onOpenRoute) },
+                    ),
+                )
+            }
+            pinnedOfficialLinks.forEach { link ->
+                add(
+                    QuickAction(
+                        title = officialWebQuickActionTitle(link.title, pinnedEntryTitles),
+                        icon = link.icon,
+                        onClick = { OfficialWebCatalog.open(context, link) },
+                    ),
+                )
+            }
+            // 学习平台是宿主二级页，不是外链；固定后仍打开同一聚合页。
+            if (LearningPlatformCatalog.SERVICE_ID in pinnedServiceIds) {
+                add(
+                    QuickAction(
+                        title = LearningPlatformCatalog.TITLE,
+                        icon = LearningPlatformCatalog.icon,
+                        onClick = onOpenLearningPlatforms,
+                    ),
+                )
+            }
+            if (isEmpty()) {
+                add(
+                    QuickAction(
+                        title = "选择常用服务",
+                        icon = Icons.Outlined.Apps,
+                        onClick = onOpenServices ?: onOpenOfficialWeb,
+                    ),
+                )
+            }
         }
-        pinnedOfficialLinks.forEach { link ->
-            add(
-                QuickAction(
-                    title = officialWebQuickActionTitle(link.title, pinnedEntryTitles),
-                    icon = link.icon,
-                    onClick = { OfficialWebCatalog.open(context, link) },
-                ),
-            )
+    }
+    val normalizedOrder = remember(moduleOrder) {
+        normalizeModuleOrder(moduleOrder, HomeModuleId.DEFAULT_ORDER)
+    }
+    val visibleModules = remember(
+        normalizedOrder,
+        timetableSections.isNotEmpty(),
+        todoSections.isNotEmpty(),
+        actions.isNotEmpty(),
+        cardSections.isNotEmpty(),
+    ) {
+        normalizedOrder.filter { module ->
+            when (module) {
+                HomeModuleId.TIMETABLE -> timetableSections.isNotEmpty()
+                HomeModuleId.TODO -> todoSections.isNotEmpty()
+                HomeModuleId.SERVICES -> actions.isNotEmpty()
+                HomeModuleId.CARD -> cardSections.isNotEmpty()
+            }
         }
-        // 学习平台是宿主二级页，不是外链；固定后仍打开同一聚合页。
-        if (LearningPlatformCatalog.SERVICE_ID in pinnedServiceIds) {
-            add(
-                QuickAction(
-                    title = LearningPlatformCatalog.TITLE,
-                    icon = LearningPlatformCatalog.icon,
-                    onClick = onOpenLearningPlatforms,
-                ),
-            )
-        }
-        if (isEmpty()) {
-            add(
-                QuickAction(
-                    title = "选择常用服务",
-                    icon = Icons.Outlined.Apps,
-                    onClick = onOpenServices ?: onOpenOfficialWeb,
-                ),
-            )
+    }
+    val onReorderFinished = remember(normalizedOrder, onModuleOrderChange) {
+        { reordered: List<HomeModuleId> ->
+            onModuleOrderChange(mergeReorderedSubset(normalizedOrder, reordered))
         }
     }
 
@@ -176,7 +222,7 @@ fun HomeScreen(
         containerColor = if (LocalUiStyle.current == UiStyle.LIQUID_GLASS) {
             Color.Transparent
         } else {
-            MaterialTheme.colorScheme.surface
+            com.upcpocket.app.ui.theme.appScaffoldContainerColor()
         },
         contentColor = MaterialTheme.colorScheme.onSurface,
         contentWindowInsets = WindowInsets.safeDrawing.only(
@@ -199,59 +245,76 @@ fun HomeScreen(
                 onOpenSettings = onOpenSettings,
             )
 
-            if (timetableSections.isNotEmpty()) {
+            if (visibleModules.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
-                timetableSections.forEach { section ->
-                    androidx.compose.runtime.key(section.entryId) {
-                        section.content(sectionHost)
-                    }
-                }
-            }
-
-            if (todoSections.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                todoSections.forEach { section ->
-                    androidx.compose.runtime.key(section.entryId) {
-                        section.content(sectionHost)
-                    }
-                }
-            }
-
-            if (actions.isNotEmpty()) {
-                SectionHeader(
-                    title = "常用服务",
-                    actionLabel = if (onOpenServices != null) "全部服务" else null,
-                    onAction = onOpenServices,
-                    modifier = Modifier.padding(top = 16.dp, bottom = 2.dp),
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    actions.chunked(2).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            row.forEach { action ->
-                                ServiceTile(
-                                    action = action,
-                                    modifier = Modifier.weight(1f),
-                                )
+                ReorderableModuleColumn(
+                    items = visibleModules,
+                    key = ::homeModuleKey,
+                    scrollState = scrollState,
+                    spacing = 14.dp,
+                    itemLabel = ::homeModuleLabel,
+                    itemTestTag = ::homeModuleTestTag,
+                    onReorderFinished = onReorderFinished,
+                ) { module, _ ->
+                    when (module) {
+                        HomeModuleId.TIMETABLE -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                timetableSections.forEach { section ->
+                                    androidx.compose.runtime.key(section.entryId) {
+                                        section.content(sectionHost)
+                                    }
+                                }
                             }
-                            if (row.size == 1) {
-                                Spacer(Modifier.weight(1f))
+                        }
+                        HomeModuleId.TODO -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                todoSections.forEach { section ->
+                                    androidx.compose.runtime.key(section.entryId) {
+                                        section.content(sectionHost)
+                                    }
+                                }
+                            }
+                        }
+                        HomeModuleId.SERVICES -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(
+                                    title = "常用服务",
+                                    actionLabel = if (onOpenServices != null) "全部服务" else null,
+                                    onAction = onOpenServices,
+                                    modifier = Modifier.padding(bottom = 2.dp),
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    actions.chunked(2).forEach { row ->
+                                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            row.forEach { action ->
+                                                ServiceTile(
+                                                    action = action,
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                            }
+                                            if (row.size == 1) {
+                                                Spacer(Modifier.weight(1f))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        HomeModuleId.CARD -> {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                SectionHeader(
+                                    title = "校园卡",
+                                    modifier = Modifier.padding(bottom = 8.dp),
+                                )
+                                cardSections.forEach { section ->
+                                    androidx.compose.runtime.key(section.entryId) {
+                                        section.content(sectionHost)
+                                    }
+                                    Spacer(Modifier.height(4.dp))
+                                }
                             }
                         }
                     }
-                }
-            }
-
-            // 校园卡余额保留全部查询/绑定/历史/清缓存能力，只把区块移到首页内容底部。
-            if (cardSections.isNotEmpty()) {
-                SectionHeader(
-                    title = "校园卡",
-                    modifier = Modifier.padding(top = 22.dp, bottom = 8.dp),
-                )
-                cardSections.forEach { section ->
-                    androidx.compose.runtime.key(section.entryId) {
-                        section.content(sectionHost)
-                    }
-                    Spacer(Modifier.height(4.dp))
                 }
             }
         }

@@ -233,7 +233,7 @@ fun SchoolAccountScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             CampusTopAppBar(
                 title = { Text("学校账号") },

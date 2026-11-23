@@ -133,6 +133,10 @@ object AppGraph {
 
     val uiPrefsStore: UiPrefsStore by lazy { UiPrefsStore(appContext) }
 
+    val customBackgroundStore: com.upcpocket.app.data.prefs.CustomBackgroundStore by lazy {
+        com.upcpocket.app.data.prefs.CustomBackgroundStore(appContext)
+    }
+
     /**
      * 本机诊断存储：只在私有 noBackup 目录滚动保存固定码事件，由用户在“关于”
      * 主动导出。它不参与业务事务，任何失败都必须被吞掉。

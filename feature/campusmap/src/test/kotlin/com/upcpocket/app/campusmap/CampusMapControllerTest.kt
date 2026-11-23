@@ -131,35 +131,7 @@ class CampusMapControllerTest {
         assertStartsAt(liveOrigin, controller.state.value)
     }
 
-    @Test
-    fun deviationAfterDismountReroutesOnTheWalkingNetwork() = runTest {
-        val controller = manualPreview(mixed = true)
-        controller.updatePosition(fix(manualOrigin))
-        controller.startNavigation()
-        runCurrent()
-
-        advanceTimeBy(12_000)
-        controller.updatePosition(fix(manualOrigin.interpolate(junction, 0.5)))
-        advanceTimeBy(12_000)
-        controller.updatePosition(fix(junction))
-        advanceTimeBy(8_000)
-        controller.updatePosition(fix(junction.interpolate(destination, 0.25)))
-        assertEquals(NavigationStatus.NAVIGATING, controller.state.value.status)
-
-        repeat(3) {
-            advanceTimeBy(2_000)
-            controller.updatePosition(fix(detour))
-        }
-        runCurrent()
-
-        val state = controller.state.value
-        assertEquals(NavigationStatus.NAVIGATING, state.status)
-        assertStartsAt(detour, state)
-        assertEquals(TravelMode.WALK, state.routes.first().mode)
-        assertEquals(destination, state.routes.first().points.last())
-    }
-
-    private suspend fun TestScope.manualPreview(mixed: Boolean = false): CampusMapController {
+    private suspend fun TestScope.manualPreview(): CampusMapController {
         val startPlace = place("start", "起点", manualOrigin)
         val endPlace = place("end", "终点", destination)
         val campus = CampusMapData(
@@ -175,11 +147,10 @@ class CampusMapControllerTest {
                 GeoPoint(119.999, 35.001),
             )),
             networkPoints = listOf(manualOrigin, junction, destination, detour),
-            networkRoads = (if (mixed) listOf(0 to 1, 1 to 2, 2 to 3) else listOf(0 to 1, 1 to 2, 1 to 3)).flatMap { (a, b) ->
-                val bike = !mixed || a == 0
+            networkRoads = listOf(0 to 1, 1 to 2, 1 to 3).flatMap { (a, b) ->
                 listOf(
-                    CampusRoad(a, b, walk = true, bike = bike),
-                    CampusRoad(b, a, walk = true, bike = bike),
+                    CampusRoad(a, b, walk = true, bike = true),
+                    CampusRoad(b, a, walk = true, bike = true),
                 )
             },
         )
@@ -193,7 +164,6 @@ class CampusMapControllerTest {
             controller.load(requestedPlace = null)
             controller.choosePlace(endPlace)
             controller.choosePlace(startPlace, asStart = true)
-            if (mixed) controller.setMode(TravelMode.BIKE)
             controller.plan()
             runCurrent()
 

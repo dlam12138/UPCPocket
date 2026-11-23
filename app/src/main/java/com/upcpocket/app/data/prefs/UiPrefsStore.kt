@@ -5,25 +5,42 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_BACKGROUND_OPACITY
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_THEME_SEED_ARGB
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.designsystem.WidgetAppearance
+import com.upcpocket.app.designsystem.normalizeOpaqueSeedArgb
+import com.upcpocket.app.designsystem.sanitizeCustomBackgroundOpacity
+import com.upcpocket.app.timetable.TimetableModuleId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 /**
  * 全应用偏好。
  *
- * 轻量版删掉了课表相关的格子样式、壁纸、演示模式与教学周参数；
+ * 轻量版删掉了课表相关的格子样式、演示模式与教学周参数；
  * 这些旧键即使还留在用户的 DataStore 文件里也不会被读取或写回。
  */
 data class UiPrefs(
     /** 全应用配色预设（默认跟随系统壁纸动态取色） */
     val themePreset: ThemePreset = ThemePreset.DYNAMIC,
+    /** 取色卡模式保存的自定义主题种子色（ARGB，始终不透明）。 */
+    val customThemeSeedArgb: Int = DEFAULT_CUSTOM_THEME_SEED_ARGB,
+    /**
+     * 自定义应用背景版本号；0 表示未启用背景图，正值表示已启用并在更换图片时递增，
+     * 用于通知界面重新加载应用私有目录中的背景文件。
+     */
+    val customBackgroundVersion: Long = 0L,
+    /** 自定义背景图可见度（0.15..0.90），越高图片越清晰、遮罩越轻。 */
+    val customBackgroundOpacity: Float = DEFAULT_CUSTOM_BACKGROUND_OPACITY,
     /** 深浅色（默认跟随系统） */
     val darkMode: DarkMode = DarkMode.SYSTEM,
     /** Launcher widget background; independent from the app's Compose style. */
@@ -69,7 +86,14 @@ data class UiPrefs(
      * 回退 [TodoHostPlacement.TIMETABLE]。
      */
     val todoHostPlacement: TodoHostPlacement = TodoHostPlacement.TIMETABLE,
+    /** 首页模块上下排序偏好；缺键或未知值回退 [HomeModuleId.DEFAULT_ORDER]。 */
+    val homeModuleOrder: List<HomeModuleId> = HomeModuleId.DEFAULT_ORDER,
+    /** 课表页模块上下排序偏好；缺键或未知值回退 [TimetableModuleId.DEFAULT_ORDER]。 */
+    val timetableModuleOrder: List<TimetableModuleId> = TimetableModuleId.DEFAULT_ORDER,
 ) {
+    val hasCustomBackground: Boolean
+        get() = customBackgroundVersion > 0L
+
     companion object {
         val DEFAULT_PINNED_SERVICES = setOf(
             "classroom.free",
@@ -97,9 +121,14 @@ class UiPrefsStore internal constructor(
     val flow: Flow<UiPrefs> = store.data.map { p ->
         val appearance = WidgetAppearance.fromStoredValue(p[KEY_WIDGET_APPEARANCE])
         widgetAppearanceSnapshot = appearance
+        val storedBackgroundVersion = (p[KEY_CUSTOM_BACKGROUND_VERSION] ?: 0L).coerceAtLeast(0L)
         UiPrefs(
             themePreset = p[KEY_THEME_PRESET]?.let { runCatching { ThemePreset.valueOf(it) }.getOrNull() }
                 ?: ThemePreset.DYNAMIC,
+            customThemeSeedArgb = p[KEY_CUSTOM_THEME_SEED]?.let(::normalizeOpaqueSeedArgb)
+                ?: DEFAULT_CUSTOM_THEME_SEED_ARGB,
+            customBackgroundVersion = storedBackgroundVersion,
+            customBackgroundOpacity = sanitizeCustomBackgroundOpacity(p[KEY_CUSTOM_BACKGROUND_OPACITY]),
             darkMode = p[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.SYSTEM,
             widgetAppearance = appearance,
@@ -119,6 +148,8 @@ class UiPrefsStore internal constructor(
             uiStyle = p[KEY_UI_STYLE]?.let { runCatching { UiStyle.valueOf(it) }.getOrNull() }
                 ?: UiStyle.MATERIAL3,
             todoHostPlacement = TodoHostPlacement.fromStoredValue(p[KEY_TODO_HOST_PLACEMENT]),
+            homeModuleOrder = HomeModuleId.fromStoredValue(p[KEY_HOME_MODULE_ORDER]),
+            timetableModuleOrder = TimetableModuleId.fromStoredValue(p[KEY_TIMETABLE_MODULE_ORDER]),
         )
     }
 
@@ -161,6 +192,26 @@ class UiPrefsStore internal constructor(
 
     suspend fun setThemePreset(v: ThemePreset) = store.edit { p -> p[KEY_THEME_PRESET] = v.name }
 
+    /** 保存取色卡种子色并切换到自定义配色模式，仅修改本机外观偏好。 */
+    suspend fun setCustomThemeSeed(argb: Int) = store.edit { p ->
+        p[KEY_CUSTOM_THEME_SEED] = normalizeOpaqueSeedArgb(argb)
+        p[KEY_THEME_PRESET] = ThemePreset.CUSTOM.name
+    }
+
+    /** 更新或清除自定义背景版本号；非正值清除键。 */
+    suspend fun setCustomBackgroundVersion(version: Long) = store.edit { p ->
+        if (version <= 0L) {
+            p.remove(KEY_CUSTOM_BACKGROUND_VERSION)
+        } else {
+            p[KEY_CUSTOM_BACKGROUND_VERSION] = version
+        }
+    }
+
+    /** 保存自定义背景可见度；自动限制在保证可读性的区间。 */
+    suspend fun setCustomBackgroundOpacity(opacity: Float) = store.edit { p ->
+        p[KEY_CUSTOM_BACKGROUND_OPACITY] = sanitizeCustomBackgroundOpacity(opacity)
+    }
+
     suspend fun setDarkMode(v: DarkMode) = store.edit { p -> p[KEY_DARK_MODE] = v.name }
 
     /** 只保存本机默认展示校区；不触发任何校园请求。 */
@@ -173,6 +224,14 @@ class UiPrefsStore internal constructor(
     suspend fun setTodoHostPlacement(v: TodoHostPlacement) =
         store.edit { p -> p[KEY_TODO_HOST_PLACEMENT] = v.name }
 
+    /** 只保存首页模块排序偏好；不触发校园请求或影响其他业务数据。 */
+    suspend fun setHomeModuleOrder(order: List<HomeModuleId>) =
+        store.edit { p -> p[KEY_HOME_MODULE_ORDER] = HomeModuleId.toStoredValue(order) }
+
+    /** 只保存课表页模块排序偏好；不触发校园请求或影响待办/课表数据。 */
+    suspend fun setTimetableModuleOrder(order: List<TimetableModuleId>) =
+        store.edit { p -> p[KEY_TIMETABLE_MODULE_ORDER] = TimetableModuleId.toStoredValue(order) }
+
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
         widgetAppearanceSnapshot = v
@@ -180,6 +239,9 @@ class UiPrefsStore internal constructor(
 
     private companion object {
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
+        val KEY_CUSTOM_THEME_SEED = intPreferencesKey("custom_theme_seed_argb")
+        val KEY_CUSTOM_BACKGROUND_VERSION = longPreferencesKey("custom_background_version")
+        val KEY_CUSTOM_BACKGROUND_OPACITY = floatPreferencesKey("custom_background_opacity")
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_WIDGET_APPEARANCE = stringPreferencesKey("widget_appearance")
         /**
@@ -209,5 +271,11 @@ class UiPrefsStore internal constructor(
 
         /** 日程待办一级页位置（课表页/专注页）；缺键回退课表页。 */
         val KEY_TODO_HOST_PLACEMENT = stringPreferencesKey("todo_host_placement")
+
+        /** 首页模块排序（逗号分隔枚举名）；缺键回退默认顺序。 */
+        val KEY_HOME_MODULE_ORDER = stringPreferencesKey("home_module_order")
+
+        /** 课表页模块排序（逗号分隔枚举名）；缺键回退默认顺序。 */
+        val KEY_TIMETABLE_MODULE_ORDER = stringPreferencesKey("timetable_module_order")
     }
 }

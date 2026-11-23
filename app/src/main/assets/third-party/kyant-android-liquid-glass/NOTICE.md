@@ -23,6 +23,7 @@ commit `896a94a3ade1cc1a940b92365f942a34971fecda`:
 - Kept updated host selection/callback references and recreate geometry-dependent state when tab count, width or layout direction changes. Host selection changes do not echo into `onTabSelected`, which would otherwise restart a Pager navigation.
 - Added selected-tab semantics and a selectable group. The provided `LiquidBottomTab` disables click/focus targets for the hidden refraction copy while preserving its drawing.
 - Resolve a tap intercepted by the moving lens against the touched tab in the fixed navigation bar. Drag gestures still use the original settling logic.
+- Lazily initialize the AGSL `RuntimeShader` and reuse its `ShaderBrush` inside `InteractiveHighlight` to avoid main-thread shader compilation before interaction and per-frame brush allocation.
 - Return without drawing for an empty tab collection. The host supplies bounded width, valid tabs, accessible labels, insets, the matching library dependencies and its API 31/32 fallback.
 
 The helper implementations otherwise retain the original 1.0.6 behavior. This source port does not claim to implement an additional pointed droplet trail or to improve upstream performance.

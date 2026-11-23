@@ -1,17 +1,28 @@
 package com.upcpocket.app.timetable
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
@@ -89,6 +100,59 @@ class TimetableFirstLoginScreenTest {
 
         rule.onNodeWithText("课表").assertIsDisplayed()
         rule.onNodeWithText("合并日程槽位").assertIsDisplayed()
+    }
+
+    @Test
+    fun timetableModulesCanBeReorderedByLongPressDrag() {
+        val viewModel = TimetableViewModel(
+            service(ProgrammedTransport { error("reorder test must not query the school") }),
+        )
+        var order by mutableStateOf(TimetableModuleId.DEFAULT_ORDER)
+        rule.setContent {
+            CompositionLocalProvider(
+                LocalPluginPageActive provides false,
+                LocalTimetableTodoSlot provides {
+                    Box(Modifier.fillMaxWidth().height(90.dp)) {
+                        Text("合并日程槽位")
+                    }
+                },
+                LocalTimetableModuleLayout provides TimetableModuleLayout(
+                    order = order,
+                    onOrderChange = { order = it },
+                ),
+            ) {
+                MaterialTheme {
+                    TimetableScreen(
+                        viewModel = viewModel,
+                        onOpenAccountSettings = {},
+                    )
+                }
+            }
+        }
+
+        val initialTodoTop = rule.onNodeWithTag("timetable_module_todo_schedule")
+            .fetchSemanticsNode().boundsInRoot.top
+        val initialTimetableTop = rule.onNodeWithTag("timetable_module_timetable")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue(initialTodoTop < initialTimetableTop)
+
+        rule.onNodeWithTag("timetable_module_todo_schedule").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100L)
+            moveBy(Offset(0f, height * 2.2f), delayMillis = 120L)
+            up()
+        }
+        rule.waitForIdle()
+
+        assertEquals(
+            listOf(TimetableModuleId.TIMETABLE, TimetableModuleId.TODO_SCHEDULE),
+            order,
+        )
+        val reorderedTodoTop = rule.onNodeWithTag("timetable_module_todo_schedule")
+            .fetchSemanticsNode().boundsInRoot.top
+        val reorderedTimetableTop = rule.onNodeWithTag("timetable_module_timetable")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue("拖放后周课表模块应位于日程待办上方", reorderedTimetableTop < reorderedTodoTop)
     }
 
     @Test

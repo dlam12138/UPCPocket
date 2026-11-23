@@ -86,7 +86,7 @@ fun ServicePortalScreen(
     BackHandler(state.selected != null) { service.closeGuide() }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             CampusTopAppBar(

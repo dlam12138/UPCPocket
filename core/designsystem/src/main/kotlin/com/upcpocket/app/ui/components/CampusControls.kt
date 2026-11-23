@@ -180,10 +180,20 @@ fun CampusPanel(
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerLow,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val isGlass = com.upcpocket.app.ui.theme.LocalUiStyle.current == com.upcpocket.app.designsystem.UiStyle.LIQUID_GLASS
+    val resolvedColor = if (
+        !isGlass &&
+        com.upcpocket.app.ui.theme.LocalHasCustomBackground.current &&
+        containerColor == MaterialTheme.colorScheme.surfaceContainerLow
+    ) {
+        containerColor.copy(alpha = 0.86f)
+    } else {
+        containerColor
+    }
     GlassSurface(
         modifier = modifier,
         shape = shape,
-        color = containerColor,
+        color = resolvedColor,
         contentColor = MaterialTheme.colorScheme.onSurface,
         tonalElevation = 0.dp,
         shadowElevation = 0.dp,

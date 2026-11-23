@@ -187,17 +187,17 @@ fun GlassTopAppBar(
     colors: TopAppBarColors = TopAppBarDefaults.topAppBarColors(),
     scrollBehavior: TopAppBarScrollBehavior? = null,
 ) {
-    val glass = glassWindowActive()
+    val transparentBar = glassWindowActive() || com.upcpocket.app.ui.theme.LocalHasCustomBackground.current
     GlassNestedSurface {
         TopAppBar(
             title = title,
-            // A full-width painted pane reads as a band, so glass top bars stay transparent.
+            // A full-width painted pane reads as a band, so glass / custom-background top bars stay transparent.
             modifier = modifier,
             navigationIcon = navigationIcon,
             actions = actions,
             expandedHeight = expandedHeight,
             windowInsets = windowInsets,
-            colors = if (glass) colors.copy(
+            colors = if (transparentBar) colors.copy(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
             ) else colors,

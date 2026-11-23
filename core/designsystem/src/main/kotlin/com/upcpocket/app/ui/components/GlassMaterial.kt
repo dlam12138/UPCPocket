@@ -29,14 +29,15 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.ui.theme.LocalHasCustomBackground
 import com.upcpocket.app.ui.theme.LocalUiStyle
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterIsInstance
 
-/** 按当前视口和主题缓存渐变，供透明页面共用。 */
+/** 按当前视口和主题缓存渐变，供透明页面共用；启用自定义背景图时跳过不透明底色渐变。 */
 @Composable
 fun Modifier.glassBackground(): Modifier {
-    if (LocalUiStyle.current != UiStyle.LIQUID_GLASS) return this
+    if (LocalUiStyle.current != UiStyle.LIQUID_GLASS || LocalHasCustomBackground.current) return this
 
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < 0.5f
@@ -184,15 +185,20 @@ fun Modifier.glassPressHighlight(
 fun glassBorder(width: Dp = 1.dp): BorderStroke {
     val scheme = MaterialTheme.colorScheme
     if (LocalUiStyle.current != UiStyle.LIQUID_GLASS) {
-        return BorderStroke(width, scheme.outlineVariant.copy(alpha = 0.55f))
+        val outline = scheme.outlineVariant
+        return remember(width, outline) {
+            BorderStroke(width, outline.copy(alpha = 0.55f))
+        }
     }
 
     val dark = scheme.surface.luminance() < 0.5f
     val upperEdge = Color.White.copy(alpha = if (dark) 0.57f else 0.96f)
     val sideEdge = Color.White.copy(alpha = if (dark) 0.15f else 0.40f)
     val lowerEdge = scheme.primary.copy(alpha = if (dark) 0.44f else 0.34f)
-    val edgeBrush = remember(upperEdge, sideEdge, lowerEdge) {
-        Brush.verticalGradient(0f to upperEdge, 0.50f to sideEdge, 1f to lowerEdge)
+    return remember(width, upperEdge, sideEdge, lowerEdge) {
+        BorderStroke(
+            width,
+            Brush.verticalGradient(0f to upperEdge, 0.50f to sideEdge, 1f to lowerEdge),
+        )
     }
-    return BorderStroke(width, edgeBrush)
 }

@@ -512,26 +512,10 @@ private fun RoutePlanningPanel(
                     Column(Modifier.padding(horizontal = 13.dp, vertical = 8.dp)) {
                         Text(if (index == 0) "最快" else "路线 ${index + 1}", style = MaterialTheme.typography.labelSmall)
                         Text(formatCampusDuration(route.seconds), style = MaterialTheme.typography.titleMedium)
-                        val distance = formatCampusDistance(route.meters)
-                        Text(
-                            if (state.mode == TravelMode.BIKE && route.mode == TravelMode.WALK) "步行 $distance" else distance,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        if (route.walkFromIndex != null) {
-                            Text(
-                                "骑行 ${formatCampusDistance(route.cyclingMeters)} · 步行 ${formatCampusDistance(route.walkingMeters)}",
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
+                        Text(formatCampusDistance(route.meters), style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
-        }
-        val selectedRoute = state.routes.firstOrNull { it.id == state.selectedRouteId }
-        when {
-            selectedRoute?.walkFromIndex != null -> RouteModeLegend("蓝色实线骑行 · 橙色虚线步行")
-            state.mode == TravelMode.BIKE && selectedRoute?.mode == TravelMode.WALK ->
-                RouteModeLegend("橙色虚线步行")
         }
         state.notice?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         Button(onClick = onNavigate, modifier = Modifier.fillMaxWidth()) { Text("开始导航") }
@@ -577,15 +561,6 @@ private fun NavigationPanel(state: CampusMapState, onStop: () -> Unit, onRetry: 
             style = MaterialTheme.typography.bodyMedium,
         )
     }
-    val selectedRoute = state.routes.firstOrNull { it.id == state.selectedRouteId }
-    if (!arrival && selectedRoute != null) {
-        when {
-            selectedRoute.walkFromIndex != null ->
-                RouteModeLegend("蓝色实线骑行 · 橙色虚线步行")
-            state.mode == TravelMode.BIKE && selectedRoute.mode == TravelMode.WALK ->
-                RouteModeLegend("橙色虚线步行")
-        }
-    }
     if (state.status == NavigationStatus.NAVIGATION_NO_ROUTE) {
         FilledTonalButton(
             onClick = onRetry,
@@ -593,11 +568,6 @@ private fun NavigationPanel(state: CampusMapState, onStop: () -> Unit, onRetry: 
             modifier = Modifier.fillMaxWidth(),
         ) { Text("重试规划") }
     }
-}
-
-@Composable
-private fun RouteModeLegend(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 internal fun isGuidanceVisible(state: CampusMapState): Boolean = when (state.status) {

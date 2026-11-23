@@ -21,13 +21,8 @@ internal data class CampusRoute(
     val seconds: Int,
     val target: CampusRouteTarget? = null,
     val startFromEntrance: Boolean = false,
-    val walkFromIndex: Int? = null,
 ) {
-    private val bikeHandoff = "步行前往目的地".takeIf {
-        mode == TravelMode.BIKE && walkFromIndex == null && target?.entrance?.point?.let { door ->
-            points.last().distanceTo(door) >= 0.05
-        } == true
-    }
+    private val bikeHandoff = "步行前往目的地".takeIf { mode == TravelMode.BIKE && target?.entrance != null }
     private val arrivalCue = when {
         bikeHandoff != null -> "到达骑行终点，请$bikeHandoff"
         target?.entrance == null -> "到达目的地附近"
@@ -38,36 +33,23 @@ internal data class CampusRoute(
     private val distances = DoubleArray(points.size).apply {
         for (index in 1 until size) this[index] = this[index - 1] + points[index - 1].distanceTo(points[index])
     }
-    val walkFromMeters: Double? get() = walkFromIndex?.let { distances[it] }
-    val cyclingMeters: Double get() = if (mode == TravelMode.BIKE) walkFromMeters ?: meters else 0.0
-    val walkingMeters: Double get() = (meters - cyclingMeters).coerceAtLeast(0.0)
-
-    fun modeAt(alongMeters: Double): TravelMode =
-        if (walkFromMeters?.let { alongMeters >= it } == true) TravelMode.WALK else mode
-
     private val bearings = DoubleArray((points.size - 1).coerceAtLeast(0)) { index ->
         points[index].bearingTo(points[index + 1])
     }
     private val cues = buildList<RouteCue> {
         for (index in 1 until points.lastIndex) {
-            if (index == walkFromIndex) {
-                add(RouteCue(distances[index], "请下车步行", handoff = true))
-                continue
-            }
             // Read each turn over a short distance, since a junction can have several very short edges.
-            val first = walkFromIndex?.takeIf { index > it } ?: 0
-            val last = walkFromIndex?.takeIf { index < it } ?: points.lastIndex
             var before = index - 1
-            while (before > first && distances[index] - distances[before] < 8) before--
+            while (before > 0 && distances[index] - distances[before] < 8) before--
             var after = index + 1
-            while (after < last && distances[after] - distances[index] < 8) after++
+            while (after < points.lastIndex && distances[after] - distances[index] < 8) after++
             val inBearing = points[before].bearingTo(points[index])
             val outBearing = points[index].bearingTo(points[after])
             val angle = (outBearing - inBearing + 540) % 360 - 180
             if (abs(angle) < 25) continue
             val gentle = abs(angle) < 35
             val previous = lastOrNull()
-            if (previous != null && !previous.handoff && distances[index] - previous.at < 16) {
+            if (previous != null && distances[index] - previous.at < 16) {
                 if (!previous.gentle || gentle) continue
                 // A small bend must not hide a nearby stronger turn. Reuse its maneuver index.
                 removeAt(lastIndex)
@@ -92,7 +74,7 @@ internal data class CampusRoute(
         bearing: Float? = null,
     ): RouteMatch? {
         val behind = max(18.0, accuracy)
-        val plausibleTravel = elapsedSeconds.coerceIn(0.0, 12.0) * modeAt(previousMeters).metersPerSecond * 1.6
+        val plausibleTravel = elapsedSeconds.coerceIn(0.0, 12.0) * mode.metersPerSecond * 1.6
         val ahead = plausibleTravel + max(18.0, accuracy * 1.25)
         val offRouteThreshold = max(22.0, accuracy * 1.5)
         val movingBearing = bearing?.takeIf { it.isFinite() }?.let { ((it.toDouble() % 360) + 360) % 360 }
@@ -130,19 +112,14 @@ internal data class CampusRoute(
     }
 
     fun guidance(along: Double): CampusGuidance {
-        val progress = along.coerceIn(0.0, meters)
-        val remaining = meters - progress
-        val cyclingRemaining = (cyclingMeters - progress).coerceAtLeast(0.0)
-        val cue = cues.firstOrNull { it.at >= if (it.handoff) progress else progress - 3.0 } ?: cues.last()
+        val remaining = (meters - along).coerceAtLeast(0.0)
+        val cue = cues.firstOrNull { it.at >= along - 3.0 } ?: cues.last()
         val gap = (cue.at - along).coerceAtLeast(0.0)
         return CampusGuidance(
             instruction = if (gap > 120) "沿当前道路直行" else cue.instruction,
             metersToInstruction = if (gap > 120) 0.0 else gap,
             remainingMeters = remaining,
-            remainingSeconds = ceil(
-                cyclingRemaining / TravelMode.BIKE.metersPerSecond +
-                    (remaining - cyclingRemaining) / TravelMode.WALK.metersPerSecond,
-            ).toInt(),
+            remainingSeconds = ceil(remaining / mode.metersPerSecond).toInt(),
         )
     }
 
@@ -150,7 +127,6 @@ internal data class CampusRoute(
         val at: Double,
         val instruction: String,
         val gentle: Boolean = false,
-        val handoff: Boolean = false,
     )
 }
 
@@ -209,62 +185,24 @@ internal class CampusRouter(private val campus: CampusMapData) {
         // The preview begins on an existing outdoor segment, never an inferred indoor connector.
         val start = normalStart ?: entranceStart
             ?: return RoutePlan(failure = RouteFailure.NO_START_ROAD)
-        val destinations = destinations(inCampus, mode, network, segments)
-        val direct = planDirect(mode, network, roads, start, destinations, normalStart == null)
-        if (mode == TravelMode.WALK) return direct
-        if (direct.failure == RouteFailure.TOO_CLOSE) {
-            // The bicycle stop can be at the origin while the destination still has a walking tail.
-            val walking = plan(from, inCampus, TravelMode.WALK, startFromPlace)
-            return if (walking.routes.isEmpty()) direct else walking
+        val destinations = inCampus.mapNotNull { target ->
+            currentCoroutineContext().ensureActive()
+            val door = target.entrance?.point
+            if (door != null && campus.id == CampusId.TDW && campus.isInsideBuilding(door)) return@mapNotNull null
+            // The bundled access point lies on a walking segment.
+            val endLimit = if (door != null && mode == TravelMode.WALK) ENTRANCE_SNAP_METERS else END_SEARCH_METERS
+            val end = snap(target.point, endLimit, network, segments) { point ->
+                campus.id != CampusId.TDW || !campus.isInsideBuilding(point)
+            } ?: return@mapNotNull null
+            val approachMeters = when {
+                door == null -> 0.0
+                mode == TravelMode.WALK -> end.point.distanceTo(door)
+                // Compare estimated time at cycling speed without adding an inferred walk to the route.
+                else -> (end.distance + target.point.distanceTo(door)) *
+                    (mode.metersPerSecond / TravelMode.WALK.metersPerSecond)
+            }
+            Destination(target, end, approachMeters)
         }
-
-        val walkingRoads = campus.networkRoads.filter { it.walk }
-        val walkingDestinations = destinations(
-            inCampus, TravelMode.WALK, network, walkingRoads.groupBy { streetKey(it.from, it.to) },
-        )
-        val primary = direct.routes.firstOrNull()
-        val reachesWalkingTarget = primary != null && walkingDestinations.any { target ->
-            target.target == primary.target &&
-                primary.points.last().distanceTo(target.target.entrance?.point ?: target.snap.point) < 0.05
-        }
-        if (reachesWalkingTarget || walkingDestinations.isEmpty()) return direct
-
-        val mixed = planBikeThenWalk(network, roads, walkingRoads, segments, start, walkingDestinations, normalStart == null)
-        return mixed?.let { RoutePlan(routes = listOf(it)) } ?: direct
-    }
-
-    private suspend fun destinations(
-        targets: List<CampusRouteTarget>,
-        mode: TravelMode,
-        network: List<GeoPoint>,
-        segments: Map<Long, List<CampusRoad>>,
-    ): List<Destination> = targets.mapNotNull { target ->
-        currentCoroutineContext().ensureActive()
-        val door = target.entrance?.point
-        if (door != null && campus.id == CampusId.TDW && campus.isInsideBuilding(door)) return@mapNotNull null
-        // The bundled access point lies on a walking segment.
-        val endLimit = if (door != null && mode == TravelMode.WALK) ENTRANCE_SNAP_METERS else END_SEARCH_METERS
-        val end = snap(target.point, endLimit, network, segments) { point ->
-            campus.id != CampusId.TDW || !campus.isInsideBuilding(point)
-        } ?: return@mapNotNull null
-        val approachMeters = when {
-            door == null -> 0.0
-            mode == TravelMode.WALK -> end.point.distanceTo(door)
-            // Compare estimated time at cycling speed without adding an inferred walk to the route.
-            else -> (end.distance + target.point.distanceTo(door)) *
-                (mode.metersPerSecond / TravelMode.WALK.metersPerSecond)
-        }
-        Destination(target, end, approachMeters)
-    }
-
-    private suspend fun planDirect(
-        mode: TravelMode,
-        network: List<GeoPoint>,
-        roads: List<CampusRoad>,
-        start: Snap,
-        destinations: List<Destination>,
-        startFromEntrance: Boolean,
-    ): RoutePlan {
         if (destinations.isEmpty()) return RoutePlan(failure = RouteFailure.NO_END_ROAD)
 
         val positions = network + start.point + destinations.map { it.snap.point }
@@ -276,13 +214,29 @@ internal class CampusRouter(private val campus: CampusMapData) {
             connections[a].add(Arc(b, positions[a].distanceTo(positions[b]), key))
         }
         for (road in roads) addArc(road.from, road.to, streetKey(road.from, road.to))
-        connectDeparture(network, start, startIndex, ::addArc)
+        for (road in start.roads) {
+            if (positions[road.to].distanceTo(start.point) >= 0.1) addArc(startIndex, road.to, start.key)
+        }
+        // Points at existing junctions can take any permitted adjoining edge. Mid-edge snaps
+        // keep the direction of the original road, including one-way cycling.
+        fun endpoint(snap: Snap): Int? {
+            val road = snap.roads.first()
+            return listOf(road.from, road.to).firstOrNull { positions[it].distanceTo(snap.point) < 0.1 }
+        }
+        endpoint(start)?.let { addArc(startIndex, it, null) }
 
         for ((index, destination) in destinations.withIndex()) {
             val end = destination.snap
             val endIndex = firstEnd + index
-            connectArrival(network, end, endIndex, 0, ::addArc)
-            if (canTravelOnSameStreet(network, start, end)) {
+            for (road in end.roads) {
+                if (positions[road.from].distanceTo(end.point) >= 0.1) addArc(road.from, endIndex, end.key)
+            }
+            endpoint(end)?.let { addArc(it, endIndex, null) }
+            if (start.key == end.key && start.roads.any { road ->
+                    val a = start.point.projectOnto(network[road.from], network[road.to]).fraction
+                    val b = end.point.projectOnto(network[road.from], network[road.to]).fraction
+                    b >= a
+                }) {
                 addArc(startIndex, endIndex, start.key)
             }
             // A shared terminal lets one shortest-path search compare all reachable stop points.
@@ -301,7 +255,7 @@ internal class CampusRouter(private val campus: CampusMapData) {
         }
         val fastest = selected.copy(
             nodes = selected.nodes.dropLast(1),
-            cost = selected.cost - destination.approachMeters,
+            meters = selected.meters - destination.approachMeters,
         )
         val candidates = mutableListOf(fastest)
         val signatures = mutableSetOf(fastest.nodes)
@@ -312,9 +266,9 @@ internal class CampusRouter(private val campus: CampusMapData) {
         for (street in alternatives) {
             currentCoroutineContext().ensureActive()
             val choice = shortest(connections, startIndex, endIndex, street) ?: continue
-            if (choice.cost <= fastest.cost * MAX_DETOUR && signatures.add(choice.nodes)) found.add(choice)
+            if (choice.meters <= fastest.meters * MAX_DETOUR && signatures.add(choice.nodes)) found.add(choice)
         }
-        for (choice in found.sortedBy { it.cost }) {
+        for (choice in found.sortedBy { it.meters }) {
             if (candidates.none { overlap(it.streets, choice.streets) > MAX_OVERLAP }) {
                 candidates.add(choice)
             }
@@ -339,127 +293,11 @@ internal class CampusRouter(private val campus: CampusMapData) {
                     meters = meters,
                     seconds = ceil(meters / mode.metersPerSecond).toInt(),
                     target = destination.target,
-                    startFromEntrance = startFromEntrance,
+                    startFromEntrance = normalStart == null,
                 )
             },
         )
     }
-
-    private suspend fun planBikeThenWalk(
-        network: List<GeoPoint>,
-        bicycleRoads: List<CampusRoad>,
-        walkingRoads: List<CampusRoad>,
-        bicycleSegments: Map<Long, List<CampusRoad>>,
-        start: Snap,
-        destinations: List<Destination>,
-        startFromEntrance: Boolean,
-    ): CampusRoute? {
-        // A shared vertex gets two states. Directed edges preserve their mode's access,
-        // and a one-way transfer arc prevents returning to the bicycle after dismounting.
-        val walkOffset = network.size
-        val startIndex = 2 * walkOffset
-        val firstEnd = startIndex + 1
-        val positions = network + network + start.point + destinations.map { it.snap.point }
-        val selectionIndex = positions.size
-        val connections = List(selectionIndex + 1) { mutableListOf<Arc>() }
-        fun addArc(from: Int, to: Int, mode: TravelMode) {
-            val seconds = positions[from].distanceTo(positions[to]) / mode.metersPerSecond
-            connections[from].add(Arc(to, seconds, null))
-        }
-        val addBikeArc: (Int, Int, Long?) -> Unit = { from, to, _ -> addArc(from, to, TravelMode.BIKE) }
-        val addWalkArc: (Int, Int, Long?) -> Unit = { from, to, _ -> addArc(from, to, TravelMode.WALK) }
-        for (road in bicycleRoads) addArc(road.from, road.to, TravelMode.BIKE)
-        val walkVertices = BooleanArray(walkOffset)
-        for (road in walkingRoads) {
-            walkVertices[road.from] = true
-            walkVertices[road.to] = true
-            addArc(road.from + walkOffset, road.to + walkOffset, TravelMode.WALK)
-        }
-        connectDeparture(network, start, startIndex, addBikeArc)
-        for (vertex in bicycleRoads.map { it.to }.distinct()) {
-            currentCoroutineContext().ensureActive()
-            if (walkVertices[vertex] && start.point.distanceTo(network[vertex]) >= 0.05 &&
-                !campus.isInsideBuilding(network[vertex])
-            ) {
-                connections[vertex].add(Arc(vertex + walkOffset, 0.0, null))
-            }
-        }
-        for ((index, destination) in destinations.withIndex()) {
-            val end = destination.snap
-            val endIndex = firstEnd + index
-            connectArrival(network, end, endIndex, walkOffset, addWalkArc)
-            // A surveyed entrance can join a street between two graph vertices. A
-            // bicycle can reach that exact point via the same street when allowed.
-            val bicycleDirections = bicycleSegments[end.key]
-            if (bicycleDirections != null && start.point.distanceTo(end.point) >= 0.05) {
-                val bicycleEnd = end.copy(roads = bicycleDirections)
-                connectArrival(network, bicycleEnd, endIndex, 0, addBikeArc)
-                if (canTravelOnSameStreet(network, start, bicycleEnd)) addArc(startIndex, endIndex, TravelMode.BIKE)
-            }
-            connections[endIndex].add(Arc(selectionIndex, destination.approachMeters / TravelMode.WALK.metersPerSecond, null))
-        }
-        val path = shortest(connections, startIndex, selectionIndex) ?: return null
-        val target = destinations[path.nodes[path.nodes.lastIndex - 1] - firstEnd].target
-        val points = mutableListOf<GeoPoint>()
-        var transfer: Int? = null
-        for (vertex in path.nodes.dropLast(1)) {
-            val point = positions[vertex]
-            if (points.lastOrNull()?.distanceTo(point)?.let { it >= 0.05 } != false) points.add(point)
-            if (transfer == null && (vertex in walkOffset until startIndex || vertex >= firstEnd)) {
-                transfer = points.lastIndex
-            }
-        }
-        target.entrance?.point?.let { door ->
-            if (points.last().distanceTo(door) < 0.05) points[points.lastIndex] = door else points.add(door)
-        }
-        val transferIndex = transfer?.takeIf { it > 0 } ?: return null
-        if (points.size < 2) return null
-        val meters = points.zipWithNext(GeoPoint::distanceTo).sum()
-        val cyclingMeters = points.take(transferIndex + 1).zipWithNext(GeoPoint::distanceTo).sum()
-        val seconds = ceil(cyclingMeters / TravelMode.BIKE.metersPerSecond +
-            (meters - cyclingMeters) / TravelMode.WALK.metersPerSecond).toInt()
-        return CampusRoute(
-            id = "route-1",
-            mode = TravelMode.BIKE,
-            points = points,
-            meters = meters,
-            seconds = seconds,
-            target = target,
-            startFromEntrance = startFromEntrance,
-            walkFromIndex = transferIndex.takeIf { it < points.lastIndex },
-        )
-    }
-
-    private fun connectDeparture(
-        network: List<GeoPoint>, snap: Snap, start: Int, addArc: (Int, Int, Long?) -> Unit,
-    ) {
-        for (road in snap.roads) {
-            if (network[road.to].distanceTo(snap.point) >= 0.1) addArc(start, road.to, snap.key)
-        }
-        endpoint(network, snap)?.let { addArc(start, it, null) }
-    }
-
-    private fun connectArrival(
-        network: List<GeoPoint>, snap: Snap, end: Int, offset: Int, addArc: (Int, Int, Long?) -> Unit,
-    ) {
-        for (road in snap.roads) {
-            if (network[road.from].distanceTo(snap.point) >= 0.1) addArc(road.from + offset, end, snap.key)
-        }
-        endpoint(network, snap)?.let { addArc(it + offset, end, null) }
-    }
-
-    // Junctions connect to any adjoining permitted edge. Mid-edge snaps preserve one-way travel.
-    private fun endpoint(network: List<GeoPoint>, snap: Snap): Int? {
-        val road = snap.roads.first()
-        return listOf(road.from, road.to).firstOrNull { network[it].distanceTo(snap.point) < 0.1 }
-    }
-
-    private fun canTravelOnSameStreet(network: List<GeoPoint>, start: Snap, end: Snap): Boolean =
-        start.key == end.key && start.roads.any { road ->
-            val a = start.point.projectOnto(network[road.from], network[road.to]).fraction
-            val b = end.point.projectOnto(network[road.from], network[road.to]).fraction
-            b >= a
-        }
 
     private fun snap(
         point: GeoPoint,
@@ -500,7 +338,7 @@ internal class CampusRouter(private val campus: CampusMapData) {
             if (vertex == end) break
             for (arc in graph[vertex]) {
                 if (banned != null && arc.street == banned) continue
-                val nextCost = cost + arc.cost
+                val nextCost = cost + arc.meters
                 if (nextCost >= costs[arc.to]) continue
                 costs[arc.to] = nextCost
                 previous[arc.to] = vertex
@@ -534,9 +372,9 @@ internal class CampusRouter(private val campus: CampusMapData) {
 
     private data class Snap(val key: Long, val point: GeoPoint, val distance: Double, val roads: List<CampusRoad>)
     private data class Destination(val target: CampusRouteTarget, val snap: Snap, val approachMeters: Double)
-    private data class Arc(val to: Int, val cost: Double, val street: Long?)
+    private data class Arc(val to: Int, val meters: Double, val street: Long?)
     private data class QueueNode(val vertex: Int, val cost: Double)
-    private data class NetworkPath(val nodes: List<Int>, val cost: Double, val streets: Set<Long>)
+    private data class NetworkPath(val nodes: List<Int>, val meters: Double, val streets: Set<Long>)
 
     companion object {
         private const val MAX_ROUTES = 3

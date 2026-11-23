@@ -149,7 +149,7 @@ internal class CampusMapController(
             campus.routeTarget(manual)?.point ?: return reject("此起点暂无可用道路，请选择其他起点")
         }
         resetNavigation()
-        requestRoutes(from, targets, mode = current.mode, forNavigation = false, startFromPlace = manual != null)
+        requestRoutes(from, targets, forNavigation = false, startFromPlace = manual != null)
     }
 
     fun selectRoute(id: String) {
@@ -255,18 +255,15 @@ internal class CampusMapController(
         clearOffRoute()
         val progressMeters = max(previousProgress, match.alongMeters)
         val guidance = route.guidance(progressMeters)
-        val hasWalkedPastTransfer = route.walkFromMeters?.let { progressMeters > it } ?: true
-        val nearEnd = hasWalkedPastTransfer && guidance.remainingMeters < 14 &&
-            usable.point.distanceTo(route.points.last()) < 18
+        val nearEnd = guidance.remainingMeters < 14 && usable.point.distanceTo(route.points.last()) < 18
         arrivalFixes = if (nearEnd) arrivalFixes + 1 else 0
         if (arrivalFixes >= 2) {
-            val reachedEntrance = route.sportsEntrance(current.destination)?.takeIf { it.point == route.points.last() }
             resetNavigation()
             mutableState.value = mutableState.value.copy(
                 status = NavigationStatus.ARRIVED,
                 guidance = null,
                 routeProgressMeters = route.meters,
-                notice = reachedEntrance?.let { "已到达${it.name}" } ?: route.arrivalNotice,
+                notice = route.arrivalNotice,
             )
         } else {
             mutableState.value = mutableState.value.copy(
@@ -304,17 +301,15 @@ internal class CampusMapController(
         if (!campus.contains(fix.point)) return
         val targets = current.destination?.let(campus::routeTargets).orEmpty()
         if (targets.isEmpty()) return
-        val mode = following?.modeAt(current.routeProgressMeters ?: 0.0) ?: current.mode
         lastRerouteAt = fix.elapsedRealtimeMillis
         clearOffRoute()
         mutableState.value = current.copy(manualStart = null)
-        requestRoutes(fix.point, targets, mode = mode, forNavigation = true, preferredTarget = preferredTarget)
+        requestRoutes(fix.point, targets, forNavigation = true, preferredTarget = preferredTarget)
     }
 
     private fun requestRoutes(
         from: GeoPoint,
         targets: List<CampusRouteTarget>,
-        mode: TravelMode,
         forNavigation: Boolean,
         startFromPlace: Boolean = false,
         preferredTarget: CampusRouteTarget? = null,
@@ -342,11 +337,11 @@ internal class CampusMapController(
                 withContext(routingDispatcher) {
                     val router = CampusRouter(campus)
                     if (preferredTarget == null || targets.size == 1) {
-                        router.plan(from, targets, mode, startFromPlace)
+                        router.plan(from, targets, current.mode, startFromPlace)
                     } else {
-                        val preferred = router.plan(from, preferredTarget, mode, startFromPlace)
+                        val preferred = router.plan(from, preferredTarget, current.mode, startFromPlace)
                         if (preferred.failure == RouteFailure.DISCONNECTED || preferred.failure == RouteFailure.NO_END_ROAD) {
-                            router.plan(from, targets.filterNot { it == preferredTarget }, mode, startFromPlace)
+                            router.plan(from, targets.filterNot { it == preferredTarget }, current.mode, startFromPlace)
                         } else {
                             preferred
                         }
@@ -362,7 +357,7 @@ internal class CampusMapController(
             if (result == null || result.routes.isEmpty()) {
                 mutableState.value = latest.copy(
                     status = if (forNavigation) NavigationStatus.NAVIGATION_NO_ROUTE else NavigationStatus.NO_ROUTE,
-                    notice = result?.failure?.let { failureNotice(it, mode, startFromPlace) }
+                    notice = result?.failure?.let { failureNotice(it, current.mode, startFromPlace) }
                         ?: "路线计算失败，请重试",
                     guidance = null,
                 )
@@ -376,14 +371,9 @@ internal class CampusMapController(
                 return@launch
             }
             val usesEntrance = best.target?.entrance != null
-            val sportsEntrance = best.sportsEntrance(latest.destination)
-            val destinationName = sportsEntrance?.name ?: latest.destination?.name ?: "目的地"
+            val destinationName = latest.destination?.name ?: "目的地"
             val destinationNote = when {
-                best.walkFromIndex != null && usesEntrance -> "骑行到下车点，再步行前往$destinationName"
-                best.walkFromIndex != null -> "骑行到下车点，再沿步行道路前往$destinationName 附近"
-                mode == TravelMode.BIKE && best.mode == TravelMode.WALK -> "起点已靠近骑行终点，请沿图中步行路线前往"
-                best.mode == TravelMode.BIKE && sportsEntrance?.point == best.points.last() -> "骑行前往$destinationName"
-                usesEntrance && best.mode == TravelMode.BIKE ->
+                usesEntrance && current.mode == TravelMode.BIKE ->
                     "骑行至附近道路，再步行前往$destinationName"
                 usesEntrance -> "步行前往$destinationName"
                 latest.destination?.confidence == "verified-area" -> "路线到标注区域附近"
@@ -457,9 +447,6 @@ internal class CampusMapController(
         RouteFailure.TOO_CLOSE -> "起终点在同一处道路附近"
         RouteFailure.DISCONNECTED -> "当前方式未找到连通的校内路线，可切换步行或骑行"
     }
-
-    private fun CampusRoute.sportsEntrance(destination: CampusPlace?): CampusPlace? =
-        target?.entrance?.takeIf { destination?.kind == "sport" }
 
     private fun CampusMapState.withoutRoute() = copy(
         status = NavigationStatus.IDLE, routes = emptyList(), selectedRouteId = null, notice = null, guidance = null,

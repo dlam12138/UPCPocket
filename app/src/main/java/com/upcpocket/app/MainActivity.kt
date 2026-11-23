@@ -11,6 +11,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.Lifecycle
@@ -63,20 +65,34 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // 界面风格、配色与深浅色由同一份全局偏好驱动，保存后立即生效。
+            // 界面风格、配色、自定义背景与深浅色由同一份全局偏好驱动，保存后立即生效。
             val prefs by AppGraph.uiPrefsStore.flow
                 .collectAsStateWithLifecycle(initialValue = UiPrefs())
+            val backgroundImage by produceState<ImageBitmap?>(
+                initialValue = null,
+                key1 = prefs.customBackgroundVersion,
+            ) {
+                value = if (prefs.hasCustomBackground) {
+                    AppGraph.customBackgroundStore.loadBitmap()
+                } else {
+                    null
+                }
+            }
             CompositionLocalProvider(LocalUiStyle provides prefs.uiStyle) {
                 UpcPocketTheme(
                     darkMode = prefs.darkMode,
                     preset = prefs.themePreset,
+                    customSeedArgb = prefs.customThemeSeedArgb,
                 ) {
                     val lightStatusBar = MaterialTheme.colorScheme.surface.luminance() > 0.5f
                     LaunchedEffect(lightStatusBar) {
                         WindowCompat.getInsetsController(window, window.decorView)
                             .isAppearanceLightStatusBars = lightStatusBar
                     }
-                    GlassEnvironment {
+                    GlassEnvironment(
+                        backgroundImage = backgroundImage,
+                        backgroundOpacity = prefs.customBackgroundOpacity,
+                    ) {
                         AppNav(
                             launchTarget = widgetTarget.value,
                             onLaunchConsumed = { widgetTarget.value = null },

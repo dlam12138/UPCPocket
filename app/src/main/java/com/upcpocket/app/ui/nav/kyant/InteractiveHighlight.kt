@@ -57,7 +57,7 @@ class InteractiveHighlight(
     val pressProgress: Float get() = pressProgressAnimation.value
     val offset: Offset get() = positionAnimation.value - startPosition
 
-    private val shader =
+    private val shader: RuntimeShader? by lazy(LazyThreadSafetyMode.NONE) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             RuntimeShader(
                 """
@@ -75,17 +75,27 @@ half4 main(float2 coord) {
         } else {
             null
         }
+    }
+
+    private val shaderBrush: ShaderBrush? by lazy(LazyThreadSafetyMode.NONE) {
+        shader?.let(::ShaderBrush)
+    }
 
     val modifier: Modifier =
         Modifier.drawWithContent {
             val progress = pressProgressAnimation.value
             if (progress > 0f) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && shader != null) {
+                val activeShader = shader
+                val activeBrush = shaderBrush
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    activeShader != null &&
+                    activeBrush != null
+                ) {
                     drawRect(
                         Color.White.copy(0.08f * progress),
                         blendMode = BlendMode.Plus
                     )
-                    shader.apply {
+                    activeShader.apply {
                         val position = position(size, positionAnimation.value)
                         setFloatUniform("size", size.width, size.height)
                         setColorUniform("color", Color.White.copy(0.15f * progress).toArgb())
@@ -97,7 +107,7 @@ half4 main(float2 coord) {
                         )
                     }
                     drawRect(
-                        ShaderBrush(shader),
+                        activeBrush,
                         blendMode = BlendMode.Plus
                     )
                 } else {

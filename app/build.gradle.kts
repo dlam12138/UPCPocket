@@ -93,8 +93,8 @@ android {
         // 第四步 0.2.4 / code 16；第五步 0.2.5 / code 17；本轮大字号/时间修复 0.2.6 / code 18。
         // 2.0.7 本地候选：校园卡入口连接恢复；基于已发布 2.0.6（27）。
         // 仅本机受控安装验收可显式传 e2eVersionCode/e2eVersionName，且构建脚本拒绝 Release。
-        versionCode = e2eVersionCode ?: 41
-        versionName = if (e2eVersionCode != null) e2eVersionName else "2.1.0"
+        versionCode = e2eVersionCode ?: 34
+        versionName = if (e2eVersionCode != null) e2eVersionName else "2.0.9"
         buildConfigField("String", "WECHAT_APP_ID", "\"$wechatAppId\"")
         buildConfigField("String", "UPDATE_PUBLIC_KEY", buildConfigString(updatePublicKey))
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
