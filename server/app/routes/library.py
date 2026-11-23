@@ -26,6 +26,11 @@ LIBRARY_LIMITS = {
 ANCHORS = {"tangdaowan": "#library", "east": "#library-east", "qiushi": "#library-qiushi"}
 
 
+def _require_station(request: Request) -> None:
+    if not resources(request).settings.station_enabled:
+        raise ApiError(403, "station_disabled")
+
+
 def _branch(value: str | None) -> str:
     if value is None:
         return "tangdaowan"
@@ -43,7 +48,7 @@ async def _user_allow(request: Request, session, bucket: str) -> None:
 
 async def _session_state(request: Request, branch: str) -> JSONResponse:
     res = resources(request)
-    if not res.settings.booking_enabled:
+    if not res.settings.station_enabled or not res.settings.booking_enabled:
         return JSONResponse({"state": "unavailable"})
     session = await load_session(request)
     if session is None:
@@ -69,6 +74,7 @@ def _library_params(request: Request) -> dict[str, list[str]]:
 
 
 async def _catalog(request: Request, branch: str) -> JSONResponse:
+    _require_station(request)
     res = resources(request)
     session = await require_session(request)
     require_revision(request, session)
@@ -82,6 +88,7 @@ async def _catalog(request: Request, branch: str) -> JSONResponse:
 
 
 async def _reservations(request: Request, branch: str) -> JSONResponse:
+    _require_station(request)
     res = resources(request)
     session = await require_session(request)
     require_revision(request, session)
@@ -98,6 +105,7 @@ async def _reservations(request: Request, branch: str) -> JSONResponse:
 
 
 async def _book(request: Request, branch: str) -> JSONResponse:
+    _require_station(request)
     res = resources(request)
     session = await require_session(request)
     require_revision(request, session)
@@ -113,6 +121,7 @@ async def _book(request: Request, branch: str) -> JSONResponse:
 
 
 async def _cancel(request: Request, branch: str) -> JSONResponse:
+    _require_station(request)
     res = resources(request)
     session = await require_session(request)
     require_revision(request, session)
@@ -128,6 +137,7 @@ async def _cancel(request: Request, branch: str) -> JSONResponse:
 
 
 async def _logout(request: Request, branch: str) -> JSONResponse:
+    _require_station(request)
     res = resources(request)
     session = await require_session(request)
     require_revision(request, session)

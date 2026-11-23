@@ -8,7 +8,7 @@ import { initializeLibrary } from "./library.js?v=20";
 
 const services = [
   { name: "空闲教室", source: "两校区 · 按楼栋和节次查询", icon: "room", color: "sage", route: "classroom", common: true },
-  { name: "图书馆选座", source: "预约座位与查询本人记录", icon: "book", color: "honey", route: "library", common: true },
+  { name: "图书馆", source: "学校官方预约与记录", icon: "book", color: "honey", route: "library", common: true },
   { name: "学校校历", source: "查看教务处发布的校历", icon: "calendar", color: "blue", route: "calendar", common: true },
   { name: "我的课表", source: "学校课表与同步状态", icon: "calendar", color: "sage", route: "timetable", common: true },
   { name: "e站通", source: "公开事项目录与办事指南", icon: "layers", color: "lavender", route: "service-catalog" },
@@ -87,7 +87,8 @@ transparency.addEventListener("change", () => {
 // 地址末尾的 #home、#timetable 等标记当前页面，浏览器的前进和后退也能使用。
 const pages = Array.from(document.querySelectorAll(".page"));
 const navigation = document.querySelectorAll(".dock a");
-const setLibraryActive = initializeLibrary();
+let stationEnabled = false;
+let setLibraryActive = () => {};
 const libraryRoutes = new Map([
   ["library", "tangdaowan"], ["library-east", "east"], ["library-qiushi", "qiushi"],
 ]);
@@ -114,7 +115,7 @@ function showPage(moveFocus) {
   if (active.dataset.route === "todo") refreshTodos();
   if (active.dataset.route === "focus") refreshFocus();
   if (active.dataset.route === "calendar") initializeCalendar();
-  if (active.dataset.route === "service-catalog") initializeServiceCatalog();
+  if (stationEnabled && active.dataset.route === "service-catalog") initializeServiceCatalog();
   setLibraryActive(libraryBranch ?? null);
   if (moveFocus) {
     active.querySelector("h1").focus({ preventScroll: true });
@@ -129,12 +130,85 @@ function resumePage() {
   if (window.location.hash === "#todo") refreshTodos();
 }
 
+// 默认按 official（仅学校官方入口）呈现；只有服务端显式返回 station 才启用站内登录。
+function applyOfficialMode() {
+  document.querySelector("#classroom-app").hidden = true;
+  document.querySelector("#service-catalog-app").hidden = true;
+  for (const node of document.querySelectorAll(".library-campus-nav, .library-booking")) {
+    if (node.dataset.officialPreviousHidden === undefined) {
+      node.dataset.officialPreviousHidden = node.hidden ? "1" : "0";
+    }
+    node.hidden = true;
+  }
+  const libraryOfficial = document.querySelector("#library-official");
+  if (libraryOfficial) {
+    libraryOfficial.hidden = false;
+    const note = libraryOfficial.querySelector("[data-library-official-note]");
+    if (note) note.hidden = false;
+    for (const link of libraryOfficial.querySelectorAll("[data-library-official]")) {
+      link.hidden = false;
+    }
+  }
+  for (const panel of document.querySelectorAll("[data-official-entry]")) panel.hidden = false;
+  const source = { classroom: "官方入口", library: "官方入口", "service-catalog": "官方入口" };
+  for (const card of document.querySelectorAll(".service-card[href^='#']")) {
+    const route = card.getAttribute("href").slice(1);
+    if (!source[route]) continue;
+    const label = card.querySelector(".service-origin");
+    if (!label) continue;
+    // 记录 station 模式的原文，切回站内模式时恢复，避免首页长期停留在「官方入口」。
+    if (!label.dataset.stationSource) label.dataset.stationSource = label.textContent;
+    label.textContent = source[route];
+  }
+}
+
+function applyStationMode() {
+  stationEnabled = true;
+  for (const panel of document.querySelectorAll("[data-official-entry]")) panel.hidden = true;
+  document.querySelector("#classroom-app").hidden = false;
+  document.querySelector("#service-catalog-app").hidden = false;
+  for (const node of document.querySelectorAll(".library-campus-nav, .library-booking")) {
+    node.hidden = node.dataset.officialPreviousHidden === "1";
+  }
+  const libraryOfficial = document.querySelector("#library-official");
+  if (libraryOfficial) {
+    libraryOfficial.hidden = false;
+    const note = libraryOfficial.querySelector("[data-library-official-note]");
+    if (note) note.hidden = true;
+  }
+  for (const label of document.querySelectorAll(".service-origin[data-station-source]")) {
+    label.textContent = label.dataset.stationSource;
+  }
+  initializeClassrooms();
+  setLibraryActive = initializeLibrary();
+  showPage(false);
+}
+
+async function readSchoolAccess() {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+    const response = await fetch("./api/config", {
+      cache: "no-store", credentials: "omit", redirect: "error", signal: controller.signal,
+    });
+    clearTimeout(timer);
+    if (!response.ok) return "official";
+    const data = await response.json();
+    return data?.schoolAccess === "station" ? "station" : "official";
+  } catch {
+    return "official";
+  }
+}
+
 renderServices();
 updateDate();
-initializeClassrooms();
+applyOfficialMode();
 initializeTimetable();
 refreshFocus();
 showPage(false);
+readSchoolAccess().then(mode => {
+  if (mode === "station") applyStationMode();
+});
 window.addEventListener("hashchange", () => showPage(true));
 window.addEventListener("pageshow", resumePage);
 document.addEventListener("visibilitychange", () => {

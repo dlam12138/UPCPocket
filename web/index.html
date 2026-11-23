@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="./calendar.css">
   <link rel="stylesheet" href="./service-catalog.css">
   <link rel="stylesheet" href="./library.css?v=20">
-  <script src="./app.js?v=21" type="module"></script>
+  <script src="./app.js?v=22" type="module"></script>
 </head>
 <body>
   <!-- 页面共用的线条图标。每个 symbol 都可以通过 use 重复使用。 -->
@@ -97,6 +97,10 @@
         <h1 id="classroom-title" tabindex="-1">空闲教室</h1>
       </div>
       <div id="classroom-app"></div>
+      <div class="detail-card" data-official-entry="classroom">
+        <p>空闲教室查询需要校内网络，本站不再代理学校接口。请使用学校官方页面查询，结果以学校页面为准。</p>
+        <a class="text-link" href="https://app.upc.edu.cn/freeclass/wap/default/all" target="_blank" rel="noopener noreferrer">学校空闲教室查询 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
     </section>
 
     <section class="page" data-route="calendar" data-parent="services" aria-labelledby="calendar-title" hidden>
@@ -113,12 +117,16 @@
         <h1 id="service-catalog-title" tabindex="-1">e站通</h1>
       </div>
       <div id="service-catalog-app"></div>
+      <div class="detail-card" data-official-entry="service-catalog">
+        <p>e站通查询需要校内网络或学校授权，本站不再代理学校接口。请使用学校官方服务大厅。</p>
+        <a class="text-link" href="https://service.upc.edu.cn/" target="_blank" rel="noopener noreferrer">学校服务大厅（e站通） <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
+      </div>
     </section>
 
     <section class="page" data-route="library" data-parent="services" aria-labelledby="library-title" hidden>
       <div class="page-heading">
         <a class="text-link" href="#services">校园服务</a>
-        <h1 id="library-title" tabindex="-1">图书馆选座</h1>
+        <h1 id="library-title" tabindex="-1">图书馆</h1>
       </div>
       <nav class="library-campus-nav" aria-label="图书馆馆区">
         <a class="library-campus" data-library-branch="tangdaowan" href="#library" aria-current="page">唐岛湾</a>
@@ -202,7 +210,8 @@
         <p id="library-cancellation-status" role="status"></p>
         <ul class="library-records" id="library-reservation-list" hidden></ul>
       </section>
-      <div class="detail-card workspace-card">
+      <div class="detail-card workspace-card" id="library-official">
+        <p data-library-official-note>站内登录与预约已暂停（等待学校授权）。请在校园网或学校允许的网络下，通过学校官方页面办理；本站不接触账号、Cookie 或预约数据。</p>
         <a class="text-link" data-library-official="tangdaowan" href="https://libspace.upc.edu.cn/libseat/" target="_blank" rel="noopener noreferrer">唐岛湾官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
         <a class="text-link" data-library-official="east" href="https://office.chaoxing.com/front/third/apps/seat/index?fidEnc=e32f8fbde51f9dba&amp;mappId=4197453" target="_blank" rel="noopener noreferrer" hidden>古镇口东区官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>
         <a class="text-link" data-library-official="qiushi" href="https://office.chaoxing.com/front/third/apps/seatengine/index?fidEnc=e32f8fbde51f9dba&amp;mappId=20853788&amp;seatId=4258" target="_blank" rel="noopener noreferrer" hidden>求是官方预约与记录 <svg class="icon" aria-hidden="true"><use href="#i-external"/></svg></a>

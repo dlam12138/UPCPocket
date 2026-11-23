@@ -47,6 +47,7 @@ def settings() -> Settings:
         "SERVE_STATIC": "false",
         "ALLOW_EPHEMERAL_KEYS": "true",
         "RATE_LIMIT_ENABLED": "false",
+        "SCHOOL_ACCESS_MODE": "station",
         "LOGIN_RATE_LIMIT": "100",
         "SESSION_IDLE_SECONDS": "300",
         "SESSION_ABSOLUTE_SECONDS": "3600",

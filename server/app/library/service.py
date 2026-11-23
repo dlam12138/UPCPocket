@@ -74,9 +74,25 @@ class UpstreamFailure(LibraryServiceError):
         super().__init__("upstream_unavailable", 503)
 
 
+# 上游认证错误码到公共错误的唯一映射。只有学校明确判定凭据无效时才返回
+# invalid_credentials；TLS/网络/协议故障必须表达为上游不可用，不能伪装成
+# “账号密码错误”，否则用户会在网络被拦截时反复重试并怀疑自己的密码。
+LOGIN_UPSTREAM_ERRORS: dict[str, tuple[int, str]] = {
+    "invalid_credentials": (401, "invalid_credentials"),
+    "interaction_required": (409, "interaction_required"),
+    "access_denied": (403, "upstream_access_denied"),
+    "tls_error": (502, "upstream_tls_error"),
+    "network_unavailable": (503, "upstream_unavailable"),
+    "upstream_error": (502, "upstream_unavailable"),
+    "protocol_error": (502, "upstream_protocol_error"),
+}
+
+
 class LoginRejected(LibraryServiceError):
-    def __init__(self, code: str = "invalid_credentials"):
-        super().__init__(code, 409 if code == "interaction_required" else 401)
+    def __init__(self, code: str = "invalid_credentials", status: int | None = None):
+        if status is None:
+            status = 409 if code == "interaction_required" else 401
+        super().__init__(code, status)
 
 
 @dataclass(frozen=True)
@@ -170,10 +186,11 @@ class LibraryLoginService:
                 expected=(self.upstream.LibraryAuthError,),
             )
         except self.upstream.LibraryAuthError as error:
-            code = getattr(error, "code", "invalid_credentials")
-            if code == "interaction_required":
-                raise LoginRejected("interaction_required") from None
-            raise LoginRejected("invalid_credentials") from None
+            upstream_code = str(getattr(error, "code", "") or "")
+            status, code = LOGIN_UPSTREAM_ERRORS.get(
+                upstream_code, (502, "upstream_unavailable"),
+            )
+            raise LoginRejected(code, status) from None
         except UpstreamUnavailable:
             raise UpstreamFailure() from None
         finally:

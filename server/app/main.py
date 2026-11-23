@@ -175,9 +175,9 @@ def create_app(
         await resources.close()
 
     logger.info(
-        "service configured env=%s static=%s redis=%s database=%s booking=%s",
+        "service configured env=%s static=%s redis=%s database=%s booking=%s school=%s",
         settings.env, settings.serve_static, bool(settings.redis_url),
-        bool(settings.database_url), settings.booking_enabled,
+        bool(settings.database_url), settings.booking_enabled, settings.school_access_mode,
     )
     app = FastAPI(
         title="UPC Pocket Web",

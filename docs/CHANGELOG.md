@@ -1,5 +1,11 @@
 # 更新与验证
 
+## 2026-11-23 · PWA 校园业务降级为学校官方入口（不属于应用发版）
+
+- 学校尚未给出第三方站点代登录/预约的书面授权，且部署在阿里云 ECS 的站点到学校校内业务系统（`libspace`/`cas`/`app`/`service`）的访问被校园边界按源 IP 拦截。新增 `SCHOOL_ACCESS_MODE`，默认 `official`：`/api/auth/*`、`/api/library/*` 停用（403 `station_disabled`），PWA 的图书馆、空闲教室、e站通只展示学校官方入口，服务端不接收学校凭据。决策与证据见 [ADR 013](adr/013-pwa-official-entry-and-station-login-pause.md)，ADR 012 的站内登录/预约部分标记为暂停。
+- 登录失败区分学校明确拒绝、TLS/协议故障与网络不可用，不再把上游故障显示成账号密码错误。
+- 本轮实际执行：`server/.venv/bin/python -m pytest server/tests` 49 passed、2 skipped；`node --test tools/web/test_login_crypto.mjs` 6 passed；`web/` 脚本 `node --check`。未验证：真实学校授权后的 `station` 恢复、真实 CAS/预约、PWA 浏览器交互冒烟。
+
 ## 2026-11-22 · iOS 网页版多用户 Web 服务文档（不属于应用发版）
 
 - 图书馆从 Mac 回环单用户服务升级为可公网部署的多用户服务：`server/`（FastAPI + Redis + PostgreSQL）负责登录编排、会话、限流、缓存与审计，`deploy/` 提供 Caddy/compose/备份等部署工件，`web/` 增加站内登录对话框；学校协议仍由 `tools/web/` 提供。新增 [ADR 012](adr/012-multi-user-web-library-service.md)，ADR 011 标记本机接入由 012 更新。

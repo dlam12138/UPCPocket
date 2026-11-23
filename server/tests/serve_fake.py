@@ -46,6 +46,7 @@ def main(argv: list[str]) -> int:
         "ALLOW_EPHEMERAL_KEYS": "true",
         "RATE_LIMIT_ENABLED": "false",
         "BOOKING_ENABLED": "true",
+        "SCHOOL_ACCESS_MODE": "station",
         "LOG_LEVEL": "INFO",
     })
     school = FakeSchool()

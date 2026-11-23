@@ -73,6 +73,20 @@ def _path(env: Mapping[str, str], name: str, default: Path | None) -> Path:
     return default
 
 
+SCHOOL_ACCESS_MODES = ("official", "station")
+
+
+def _choice(
+    env: Mapping[str, str], name: str, default: str, allowed: tuple[str, ...],
+) -> str:
+    raw = env.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw not in allowed:
+        raise ConfigError(f"invalid value for {name}")
+    return raw
+
+
 def _read_secret(path: Path, name: str, *, minimum: int, exact: int | None = None) -> bytes:
     try:
         value = path.read_bytes()
@@ -112,6 +126,7 @@ class Settings:
     old_data_keys: tuple[tuple[int, bytes], ...] = field(repr=False)
     session_secret: bytes = field(repr=False)
     booking_enabled: bool
+    school_access_mode: str
     rate_limit_enabled: bool
     trust_proxy: bool
     log_level: str
@@ -132,6 +147,11 @@ class Settings:
     consent_version: str = "2026-11-web-v1"
     retention_attempts_days: int = 90
     retention_audit_days: int = 180
+
+    @property
+    def station_enabled(self) -> bool:
+        """站内登录/预约仅在显式配置且已获学校授权时开启。"""
+        return self.school_access_mode == "station"
 
     @property
     def https(self) -> bool:
@@ -231,6 +251,9 @@ class Settings:
             old_data_keys=tuple(old_data_keys),
             session_secret=session_secret,
             booking_enabled=_bool(env, "BOOKING_ENABLED", True),
+            school_access_mode=_choice(
+                env, "SCHOOL_ACCESS_MODE", "official", SCHOOL_ACCESS_MODES,
+            ),
             rate_limit_enabled=_bool(env, "RATE_LIMIT_ENABLED", True),
             trust_proxy=_bool(env, "TRUST_PROXY", production),
             log_level=env.get("LOG_LEVEL", "INFO").strip().upper() or "INFO",

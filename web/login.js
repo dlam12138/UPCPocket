@@ -23,6 +23,9 @@ const errorMessages = {
   rate_limited: "登录尝试过于频繁，请稍后再试。",
   invalid_request: "登录信息无效，请重新输入后重试。",
   upstream_unavailable: "学校服务暂时不可用，请稍后再试。",
+  upstream_tls_error: "与学校服务的加密连接被中断，可能不在校内网络或链路受限，请稍后再试。",
+  upstream_access_denied: "学校拒绝了本次访问，可能需要校内网络或访问授权，请稍后再试或联系管理员。",
+  upstream_protocol_error: "学校服务返回异常内容，请稍后再试或联系管理员。",
   network_unavailable: "无法连接学校网络，请稍后再试。",
 };
 

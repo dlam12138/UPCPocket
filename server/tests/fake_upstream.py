@@ -170,6 +170,12 @@ def make_upstream(real, school: FakeSchool):
     def authenticate(username, password):
         if password == "challenge":
             raise real.LibraryAuthError("interaction_required")
+        if password == "tlsfail":
+            raise real.LibraryAuthError("tls_error")
+        if password == "offline":
+            raise real.LibraryAuthError("network_unavailable")
+        if password == "garbled":
+            raise real.LibraryAuthError("protocol_error")
         if password != "correct":
             raise real.LibraryAuthError("invalid_credentials")
         return real.LibrarySession("seat-token", f"upc-{username}", username, "测试同学")

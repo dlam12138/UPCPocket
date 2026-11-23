@@ -57,6 +57,16 @@ async def _cached(
     return JSONResponse(payload, headers=headers)
 
 
+@router.get("/config")
+async def public_config(request: Request):
+    """前端启动时读取的部署能力；默认 official，只有显式 station 才启用站内登录。"""
+    res = resources(request)
+    return JSONResponse(
+        {"schoolAccess": res.settings.school_access_mode},
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.get("/classrooms")
 async def classrooms(request: Request):
     res = resources(request)

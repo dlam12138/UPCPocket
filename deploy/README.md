@@ -185,9 +185,11 @@ chmod 600 deploy/.env
 | `REDIS_URL` | `redis://:<密码>@redis:6379/0`，密码必须与 `REDIS_PASSWORD` 完全一致；密码含 `@ : /` 时做 URL 编码或直接用 URL 安全字符 |
 | `POSTGRES_PASSWORD` / `REDIS_PASSWORD` | 32 字节以上随机值，例如 `openssl rand -hex 24`（hex 天然 URL 安全） |
 | `AGE_RECIPIENT` | age 公钥 `age1...`（备份脚本读取 `deploy/.env`，不进入 app 容器） |
+| `SCHOOL_ACCESS_MODE` | `official`（默认）或 `station`。`official` 下服务端不接收学校凭据，PWA 只给学校官方入口；只有取得学校授权且本机/本网络能访问学校上游时才改为 `station`，见 [ADR 013](../docs/adr/013-pwa-official-entry-and-station-login-pause.md) |
 
 其余变量保持模板默认：`ENV=production`、`SERVE_STATIC=false`、`DB_AUTO_MIGRATE=true`、
-`LOGIN_KEY_ID=2026-11`（与生成的 kid 一致）、`BOOKING_ENABLED=true`、`RATE_LIMIT_ENABLED=true`、
+`LOGIN_KEY_ID=2026-11`（与生成的 kid 一致）、`SCHOOL_ACCESS_MODE=official`、
+`BOOKING_ENABLED=false`、`RATE_LIMIT_ENABLED=true`、
 `TRUST_PROXY=true`、`WEB_CONCURRENCY=2`、`LOG_LEVEL=INFO`。
 
 预检（静态解析，不连 daemon、不启动容器）：
@@ -198,6 +200,24 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env config -q; ec
 
 > `.env` 属主保持部署用户、权限 600；**只有** compose 读取它，app 拿到的只是注入的
 > `environment`，`POSTGRES_PASSWORD`/`REDIS_PASSWORD` 不会进入 app 容器。
+
+### 学校接入模式（`SCHOOL_ACCESS_MODE`）
+
+当前生产默认 `official`：阿里云 ECS 到学校校内业务系统（`libspace`/`cas`/`app`/`service`）的访问被校园边界按源 IP 拦截，服务端代登录不可用，PWA 的图书馆、空闲教室、e站通只展示学校官方入口，服务端不接收学校凭据。该模式下 `/api/auth/*`、`/api/library/*` 返回 403 `station_disabled`，`/api/library/session` 返回 `{"state":"unavailable"}`。
+
+只有同时满足以下条件才可改为 `station`：① 学校书面授权第三方站点代登录/预约；② 部署网络（或经授权的出口）能访问学校上游；③ 复查真实 CAS、预约与浏览器冒烟。切换与回滚只改 `deploy/.env` 的该值并重建 app；切回 `official` 后建议清理已存的站内会话与用户数据：
+
+```sh
+# 清理浏览器会话与图书馆学校会话；限流计数和公开缓存可保留。
+$COMPOSE exec -T redis sh -c '
+  export REDISCLI_AUTH="$REDIS_PASSWORD"
+  for pattern in "upcp:sess:*" "upcp:lib:*" "upcp:libabs:*"; do
+    redis-cli --no-auth-warning --scan --pattern "$pattern" | xargs -r redis-cli DEL
+  done
+'
+```
+
+PostgreSQL 中的用户与预约记录不会因此删除，按 `retention_*` 保留策略处理；需要删除某个用户时按第 16 节执行 [`delete_user.py`](../server/scripts/delete_user.py)，不要直接清库。
 
 ## 5. 构建与启动
 

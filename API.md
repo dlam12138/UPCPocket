@@ -85,12 +85,19 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 2.0.7 第二部分组件调度仍由宿主拥有：课表边界和 30 分钟兜底只调用本地快照/恢复路径，不能把 `open()` 或前台联网刷新放入自动周期；校园卡 30 分钟联网读取仅在有组件时保留，目标执行时从当前受控绑定取得。移除课表/校园卡刷新按钮时须联查正式宿主、debug 预览及 renderer 测试消费者；旧系统组件和动作身份保持兼容，电量刷新及全部整卡导航保留。
 
+## Web 配置与学校接入模式
+
+`GET /api/config` 无参数、无凭据，返回 `{schoolAccess}`。`schoolAccess` 为 `official`（默认）或 `station`：`official` 时服务端不接收任何学校凭据，PWA 只展示学校官方入口；`station` 仅在取得学校授权且 ECS 能访问学校上游时显式开启。响应 `Cache-Control: no-store`。前端读取失败或看到其它值时一律按 `official` 处理。
+
 ## Web 登录与会话
 
 来源：[登录路由](server/app/routes/auth.py)、[加密](server/app/crypto.py)、[会话](server/app/sessions.py)、[请求安全](server/app/security.py)、[站内登录前端](web/login.js)。所有响应 `Cache-Control: no-store`，并带 `X-Request-Id`。所有非 GET 请求（含登录）要求 `Origin` 精确等于 `PUBLIC_ORIGIN`（存在时）且 `Sec-Fetch-Site` 为 `same-origin`/`none`，否则返回 403 `invalid_request`。
 
+> `SCHOOL_ACCESS_MODE=official`（默认）时，下列 `/api/auth/*`、`/api/library/*` 端点返回 403 `station_disabled`；`GET /api/library/session` 返回 `{state:"unavailable"}`。只有 `station` 模式且取得学校授权后才恢复下文契约。
+
 | 方法与路径 | 请求与结果 |
 | --- | --- |
+| `GET /api/config` | 无参数。返回 `{schoolAccess:"official"|"station"}`，见上节。 |
 | `GET /api/auth/key` | 无参数。返回 `{kid, spki, alg, enc}`：`kid` 为当前登录密钥编号，`spki` 为 SPKI DER 的标准 base64（带填充，不是 base64url），`alg` 固定 `RSA-OAEP-256`，`enc` 固定 `AES-256-GCM`。端点只返回公开参数，不写服务端状态。 |
 | `POST /api/auth/login` | JSON `{kid, nonce, wrapped, iv, ciphertext, branch, consent}`。`nonce` 由浏览器用 `crypto.getRandomValues` 生成（32 字节 base64url，1–64 字符），必须与密文内 nonce 一致；`wrapped`/`iv`/`ciphertext` 为无填充 base64url；`ciphertext` 用一次性 AES-256-GCM 密钥加密 JSON `{"username","password","nonce"}`（密文内也要带同一个 nonce），密钥再以 RSA-OAEP-SHA256 包裹。`branch` 为 `tangdaowan`、`east` 或 `qiushi`；`consent` 必须为 `true`。成功返回 `{state:"ready", branch, revision, csrf, bookingAvailable, recordsAvailable}` 并下发会话 Cookie；`recordsAvailable` 仅唐岛湾为 `true`。 |
 | `GET /api/session` | 无有效 Cookie 时返回 `{state:"anonymous"}`；有效时返回 `{state:"ready", revision, csrf, branches, bookingAvailable}`，`branches` 为三个馆区是否已有学校会话。 |
@@ -146,11 +153,13 @@ Web 服务实际使用的固定错误码如下（响应体为 `{"error":"…"}`�
 | --- | --- | --- |
 | 400 | `invalid_request` | 参数、JSON、信封字段、UUID 或登录 nonce 校验失败（含 nonce 不一致、已登记/重放） |
 | 400 | `consent_required` | 登录未勾选同意 |
-| 401 | `invalid_credentials` | 学校账号或密码不正确 |
+| 401 | `invalid_credentials` | 学校明确判定账号或密码不正确（网络/TLS/协议故障不使用该码） |
 | 401 | `session_expired` | 浏览器会话缺失、过期或已退出 |
 | 401 | `library_session_expired` | 馆区学校会话失效，需重新登录 |
 | 403 | `invalid_request` | 非同源写入、缺少或错误的 `X-CSRF-Token` |
 | 403 | `booking_disabled` | 部署关闭了预约写操作 |
+| 403 | `station_disabled` | 部署为 `official` 模式，站内登录/预约端点整体停用（不接收学校凭据） |
+| 403 | `upstream_access_denied` | 学校侧拒绝访问（访问限制、账号状态或校内网络要求） |
 | 404 | `unknown_route` | 未定义路径或不存在的馆区 |
 | 409 | `interaction_required` | 学校要求验证码或额外验证，需转官方页面 |
 | 409 | `library_session_changed` | `X-Library-Session` 与当前 revision 不一致 |
@@ -159,6 +168,8 @@ Web 服务实际使用的固定错误码如下（响应体为 `{"error":"…"}`�
 | 415 | `invalid_request` | 写请求 `Content-Type` 不是 `application/json` |
 | 429 | `rate_limited` | 登录超出频率限制 |
 | 500 | `internal` | 未处理的服务端异常 |
-| 502/503 | `upstream_unavailable` | 学校上游不可用、超时或预约锁超时 |
+| 502 | `upstream_tls_error` | 与学校上游的 TLS 握手被中断或失败（非账号密码问题） |
+| 502 | `upstream_protocol_error` | 学校上游返回内容无法解析（页面或接口变更） |
+| 502/503 | `upstream_unavailable` | 学校上游网络不可达、超时、熔断、上游 5xx 或预约锁超时 |
 
 修改契约后，按 [CONTRIBUTING](CONTRIBUTING.md) 运行受影响生产者/消费者验证及模块边界；本机/Mock、设备和真实校园证据分别记录。Web 服务涉及 Redis、PostgreSQL 与会话时，至少运行 `server/.venv/bin/python -m pytest`、`node --test tools/web/test_login_crypto.mjs`，并按需启用 `UPCP_TEST_REDIS_URL`/`UPCP_TEST_DATABASE_URL` 集成用例；`server/tests/serve_fake.py` 只是本地合成验证入口，不代表真实学校验收。公开面变化同步本文；重大边界变化记录 ADR，避免以一次接口整理扩大产品或学校写操作权限。

@@ -31,7 +31,8 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+	# 校历图片由教务处 jwc.upc.edu.cn 提供，只放行该主机的图片；脚本与连接仍限同源。
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: https://jwc.upc.edu.cn; style-src 'self'; script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
 		X-Frame-Options "DENY"
 		-Server
 	}

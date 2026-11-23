@@ -1,6 +1,6 @@
 # ADR 012 · 公网多用户 Web 图书馆服务
 
-- 状态：Accepted，记录于 2026-11-22。
+- 状态：Accepted，记录于 2026-11-22；站内登录与预约部分由 [ADR 013](013-pwa-official-entry-and-station-login-pause.md) 于 2026-11-23 暂停（Superseded），待学校授权后按 `station` 模式恢复。
 - 前提：学校已同意第三方站点代学生完成 CAS 登录与图书馆预约。部署方只有在取得并遵守该授权、且取得必要的域名备案与安全条件后，才能开启站内登录和预约写操作；没有该授权时只能提供公开查询与官方入口。
 - 更新 [ADR 011](011-local-library-companion.md) 的本机接入方式；延续 [ADR 010](010-web-library-reservation.md) 的同源前端契约，以及 [ADR 007](007-ios-pwa-local-data-and-school-links.md) 的 PWA 本机数据、[ADR 008](008-web-public-campus-data.md) 的公开与需授权数据边界。
 

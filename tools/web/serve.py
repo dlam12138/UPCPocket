@@ -56,7 +56,10 @@ class PocketHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            if target.path == "/api/classrooms":
+            if target.path == "/api/config" and not target.query:
+                # 本地回环预览保留站内登录，便于继续开发 station 模式。
+                self.send_json(200, {"schoolAccess": "station"})
+            elif target.path == "/api/classrooms":
                 params = parse_qs(target.query, keep_blank_values=True, max_num_fields=18)
                 self.send_json(200, query_classrooms(params))
             elif target.path == "/api/calendar" and not target.query:

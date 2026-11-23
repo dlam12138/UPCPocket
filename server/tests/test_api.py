@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from conftest import build_client, login, login_payload, ready
+from conftest import build_client, encrypt_login, login, login_payload, ready
 
 CHINA = ZoneInfo("Asia/Shanghai")
 TOMORROW = (datetime.now(CHINA).date() + timedelta(days=1)).isoformat()
@@ -82,10 +82,57 @@ def test_login_rejections(env):
     assert response.status_code == 400
     assert response.json() == {"error": "consent_required"}
 
+    # 网络/TLS/协议故障不是账号密码错误：必须保留为上游错误，便于用户与运维区分。
+    response = env.client.post(
+        "/api/auth/login", json=login_payload(env.client, env.keyring, password="tlsfail"),
+    )
+    assert response.status_code == 502
+    assert response.json() == {"error": "upstream_tls_error"}
+
+    response = env.client.post(
+        "/api/auth/login", json=login_payload(env.client, env.keyring, password="offline"),
+    )
+    assert response.status_code == 503
+    assert response.json() == {"error": "upstream_unavailable"}
+
+    response = env.client.post(
+        "/api/auth/login", json=login_payload(env.client, env.keyring, password="garbled"),
+    )
+    assert response.status_code == 502
+    assert response.json() == {"error": "upstream_protocol_error"}
+
     payload = login_payload(env.client, env.keyring, password="correct")
     payload["ciphertext"] = payload["ciphertext"][:-4] + "AAAA"
     response = env.client.post("/api/auth/login", json=payload)
     assert response.status_code == 400
+
+
+def test_config_reports_station_mode(env):
+    response = env.client.get("/api/config")
+    assert response.status_code == 200
+    assert response.json() == {"schoolAccess": "station"}
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_official_mode_rejects_station_access(settings, keyring):
+    official = dataclasses.replace(settings, school_access_mode="official")
+    client, environment = build_client(official, keyring)
+    with client:
+        assert client.get("/api/config").json() == {"schoolAccess": "official"}
+        key = client.get("/api/auth/key")
+        assert key.status_code == 403
+        assert key.json() == {"error": "station_disabled"}
+        payload = {
+            **encrypt_login(keyring, "20230001", "correct"),
+            "nonce": "test_nonce_value", "branch": "tangdaowan", "consent": True,
+        }
+        login_response = client.post("/api/auth/login", json=payload)
+        assert login_response.status_code == 403
+        assert login_response.json() == {"error": "station_disabled"}
+        assert client.get("/api/library/session").json() == {"state": "unavailable"}
+        book = client.post("/api/library/book", json={})
+        assert book.status_code == 403
+        assert book.json() == {"error": "station_disabled"}
 
 
 def test_login_envelope_cannot_be_replayed(env):
