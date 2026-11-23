@@ -18,6 +18,7 @@ M0–M5 文档保留各阶段的实施、真实证据与当时限制；其中“
 | --- | --- |
 | [用户使用手册](USER-GUIDE.md) | 安装、课表与校园服务、待办、桌面组件和问题反馈 |
 | [学校使用手册](SCHOOL-GUIDE.md) | 业务接入范围、账号与数据、核对和反馈方式 |
+| [iOS 网页版（静态 PWA）](web.md) | 静态站点范围、本机数据、Safari 安装与离线、学期课表导入和学校官方入口 |
 | [2.1.0 更新计划与完成情况](design/2.1.0-update-plan.md) | 日程待办位置（课表/专注）、校园地图、官网固定、场馆预约入口与关于页的开发和验收进度 |
 | [校园导航核心开发计划](design/2026-11-19-campus-navigation-implementation.md) | 地图定位、步骑选路、偏航重算与验收，选型结果见 [ADR 007](adr/007-offline-campus-navigation.md) |
 | [校园地图导航共创提案](design/2026-11-19-campus-map-navigation-plan.md) | 两校区校内步骑行导航和首轮共创验证 |

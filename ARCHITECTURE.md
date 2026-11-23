@@ -4,7 +4,7 @@
 
 ## 系统轮廓
 
-这是直接访问学校服务的 Android 客户端，没有本项目自建的账号或业务中转服务器。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
+这是直接访问学校服务的 Android 客户端，没有本项目自建的账号或业务中转服务器。另有独立的 iOS 静态网页版（`web/`），同样不设账号服务、数据库或 `/api/*` 接口，见下文「iOS 网页版」。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
 
 ```mermaid
 flowchart TD
@@ -156,6 +156,14 @@ sequenceDiagram
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 
 数据模型归业务模块，不能把所有表或凭据移到公共模块。Room schema/file name、Keystore alias、DataStore 文件/键、私有文件格式和稳定 PendingIntent 都属于兼容面；变更需给出迁移与恢复依据。见 [ADR 003](docs/adr/003-data-ownership-and-schema-compatibility.md)。
+
+## iOS 网页版（静态 PWA）
+
+[`web/`](web/) 是独立的静态 PWA，不属于 Android Gradle 模块，也不需要 Android 工具链。浏览器使用哈希路由切换首页、课表、服务、待办和专注；服务页下的空闲教室、学校校历、e站通和图书馆为固定学校官方入口，用户点击后离开本站。站内不收集学校账号密码，不设登录、预约或业务中转接口。
+
+待办、专注状态与历史、导入的学期课表保存在当前浏览环境的 IndexedDB（数据库 `upc-pocket`）；外观偏好保存在 `localStorage`。专注的活动状态及结束记录在同一事务内结算。V3 学期课表在浏览器内严格校验后按学年和学期整体提交，失败保留旧快照；`.ics` 只作当前页面内存中的临时预览。详见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)。
+
+Service Worker 按部署范围和版本缓存允许列表中的静态资源；`.ics` 解析器与 Safari 书签脚本按需加载并进入离线缓存。网站数据与静态缓存分别维护，清除站点数据会移除本机记录。静态 HTTPS 地址和安装身份需保持稳定。整体决策见 [ADR 008](docs/adr/008-ios-pwa-local-data-and-school-links.md)，使用与验证边界见 [iOS 网页版](docs/web.md)。
 
 ## 更新、诊断与验证边界
 

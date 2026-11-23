@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-22 核对的 2.1.0 日程待办位置（课表/专注）。项目没有自建 REST 服务或对第三方承诺稳定的远程 API。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
+本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-22 核对的 2.1.0 日程待办位置（课表/专注），以及 iOS 静态网页版的本机导入契约。项目没有自建 REST 服务或对第三方承诺稳定的远程 API；网页版不请求 `/api/*`，学校业务由固定官方页面处理。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
 
 ## 插件、能力与 UI
 
@@ -107,6 +107,23 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 2.0.9 开发版的课表组件沿用首页的分钟口径，使用一次上海时区时刻判定快照日期、当前课程和剩余分钟。有可靠起止时间且正在上课时，宿主在同一课表本地任务中安排下一个整分钟。实际执行时重新读取本机快照和时钟，因此系统延迟后会直接显示当时的课程状态。 [课表组件开发记录](docs/design/2.0.9-update-plan.md#今日课表组件显示剩余上课时间)
 
 2.1.0 的 `TimetableService.readWeekWidgetSnapshot()` 从当前账号缓存取出上海实际日期所在的周日至周六，按天给出覆盖状态和课程名、节次。相邻成功周可按实际日期补齐。完整覆盖且无课才是空周。宿主使用 `isWeekWidgetSnapshotCurrent()` 在发布前复核账号绑定、读取版本和日期，周组件整卡沿用 `WidgetLaunchTarget.TIMETABLE`。 [课表服务](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt)
+
+## Web 本机导入契约
+
+[`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、待办、专注与外观偏好只使用浏览器本机能力；图书馆、空闲教室、学校校历和 e站通是固定官方链接，点击后由浏览器或学校页面处理认证与业务。
+
+来源：[V3 解析器](web/timetable-import.js)、[本机存储](web/timetable-store.js)、[IndexedDB 封装](web/db.js)、[课表页面](web/timetable.js)。
+
+| 契约 | 输入与结果 | 约定/错误 |
+| --- | --- | --- |
+| V3 学期导出 | JSON 对象须含 `version: 3`、`encoding: "UTF-8"`、空的 `errors` 数组、学期信息、`totalWeeks` 与等长 `weeks` | 文件上限 16 MiB、最多 30 周；周编号唯一且连续，每周七天日期与课程字段完整；课程节次 1–14，1–12 节使用官方作息，13–14 节时刻待确认。任一校验失败整体拒绝，保留旧课表 |
+| 文件读取 | `readSemesterFile(file)`、`readSemesterText(text)` 返回同一 `Semester` 结构 | 严格 UTF-8；损坏字符、空文件、非 JSON 或版本不符抛出 `TimetableImportError`；不把缺失周当成成功空周 |
+| 本机保存 | `saveTimetableSemester(semester)` 以学年和学期为键写入 IndexedDB `timetableSemesters` | 在事务提交成功后才返回；同一学期整体替换；`deleteTimetableSemester(key)` 只删除选中学期 |
+| `todos` / `focusState` / `focusHistory` | IndexedDB 数据库 `upc-pocket` 的对象仓库 | 待办与专注独立于学校账号；专注到点或提前结束时在同一事务内生成历史并清除活动状态 |
+| 外观偏好 | `localStorage` 键 `upc-pocket:reduce-transparency` | 读取失败时只影响本次显示，不阻断页面 |
+| `.ics` 预览 | [ical.js 2.2.1](web/vendor/ical.js) 按需导入，解析结果只留在页面内存 | 离线且此前未加载解析器时提示先联网；关闭页面不保留预览。许可证见 [`ical-LICENSE`](web/vendor/ical-LICENSE) |
+
+静态资源的离线缓存由 [`web/sw.js`](web/sw.js) 按部署范围和版本维护；`.ics` 解析器与 Safari 书签脚本按需缓存，不随安装预下载。修改静态资源需同步缓存版本。见 [ADR 008](docs/adr/008-ios-pwa-local-data-and-school-links.md)与 [ADR 009](docs/adr/009-web-semester-timetable-import.md)。
 
 ## 错误与验证约定
 

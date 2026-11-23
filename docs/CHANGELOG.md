@@ -1,5 +1,12 @@
 # 更新与验证
 
+## 2026-11-23 · iOS 静态网页版整合（不属于应用发版）
+
+- 从 PR [#16](https://github.com/dlam12138/UPCPocket/pull/16)（作者 Lycoris）整合独立的静态 PWA 到 [`web/`](../web/)，只保留应用外壳、Safari 书签与 V3 学期课表导入、`.ics` 临时预览、待办、专注和离线缓存。图书馆（唐岛湾、古镇口东区、求是）、空闲教室、学校校历和 e站通改为固定学校官方入口。
+- 站内登录、站内预约、`server/`、`deploy/`、代登录服务与相关加密脚本不进入本版；`web/` 不请求 `/api/config`、`/api/calendar` 或其它后端接口。保留原设计、官方地址、浏览器数据约定、第三方 ical.js 及其 MPL-2.0 许可证。
+- 同步 [README](../README.md)、[架构](../ARCHITECTURE.md)、[内部契约](../API.md) 的 Web 本机导入契约、[隐私说明](PRIVACY.md)与[文档索引](README.md)，新增 [ADR 008](adr/008-ios-pwa-local-data-and-school-links.md)、[ADR 009](adr/009-web-semester-timetable-import.md)与 [iOS 网页版](web.md)。保留 Android 2.1.0 开发内容与 [ADR 007](adr/007-offline-campus-navigation.md)。
+- 本轮实际执行：源码、静态资源引用、相对链接与差异核查。未构建、未运行单元测试或浏览器、未访问学校服务，也未验证真机安装与离线行为。不改变 Android 行为，不新增应用版本。
+
 ## 2.1.0 · 未发布 · 开发中
 
 - 新增「服务 → 学习平台」。集中打开知到（智慧树）、雨课堂、课堂派、石大云课堂和惟真学堂，提供云课堂校外访问帮助。聚合入口支持搜索和固定到首页。
