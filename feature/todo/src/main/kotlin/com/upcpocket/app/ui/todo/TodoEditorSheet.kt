@@ -46,8 +46,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.TodoDeletedTask
 import com.upcpocket.app.todo.data.TodoFormat
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoSnapshot
 import com.upcpocket.app.todo.data.TodoTask
 import java.time.Instant
 import java.time.LocalDate
@@ -55,13 +59,17 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+
+private val IMPORTANCE_LABELS = listOf("高", "普通", "低")
 
 /**
  * 新增/编辑待办底部面板。
  *
  * 新增模式回车保存后保留面板并清空输入，便于连续添加；编辑模式回车保存并关闭。
  * 截止与一次性提醒分别编辑，时间均按设备本地日期和时分保存；空白标题不可保存。
+ * 编辑时等待真实重要程度到达后才允许保存，内容与重要程度同次写入；仅改程度走轻量路径。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +77,7 @@ fun TodoEditorSheet(
     store: TodoStore,
     initialTask: TodoTask?,
     onDismiss: () -> Unit,
-    onDeleted: (TodoTask) -> Unit = {},
+    onDeleted: (TodoDeletedTask) -> Unit = {},
 ) {
     val context = LocalContext.current
     val zone = remember { ZoneId.systemDefault() }
@@ -79,9 +87,18 @@ fun TodoEditorSheet(
     val keyboard = LocalSoftwareKeyboardController.current
     val focusRequester = remember { FocusRequester() }
 
+    val supportsOrdering = store.supportsOrdering
     var title by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
     var dueAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.dueAt) }
     var reminderAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.reminderAt) }
+    var importance by rememberSaveable(initialTask?.id) {
+        mutableStateOf<TodoImportance?>(
+            if (initialTask == null || !supportsOrdering) TodoImportance.NORMAL else null,
+        )
+    }
+    var importanceLoaded by remember(initialTask?.id) {
+        mutableStateOf(initialTask == null || !supportsOrdering)
+    }
     var showDueDate by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
     var showDueTime by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
     var showReminderDate by rememberSaveable(initialTask?.id) { mutableStateOf(false) }
@@ -89,6 +106,25 @@ fun TodoEditorSheet(
     var saving by remember { mutableStateOf(false) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var access by remember { mutableStateOf(store.reminderAccess()) }
+    val snapshotFlow = remember(store) {
+        store.snapshot.map<TodoSnapshot, TodoSnapshot?> { it }
+    }
+    val listSnapshot by snapshotFlow.collectAsStateWithLifecycle(initialValue = null)
+
+    LaunchedEffect(initialTask?.id, listSnapshot, supportsOrdering) {
+        val task = initialTask ?: return@LaunchedEffect
+        if (!supportsOrdering) {
+            importance = TodoImportance.NORMAL
+            importanceLoaded = true
+            return@LaunchedEffect
+        }
+        if (importanceLoaded) return@LaunchedEffect
+        // 编辑时等重要程度与任务从同一份真实快照到达；不覆盖用户已选值。
+        val snapshot = listSnapshot ?: return@LaunchedEffect
+        val loaded = snapshot.ordering.importanceOf(task.id)
+        importanceLoaded = true
+        if (importance == null) importance = loaded
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -104,16 +140,30 @@ fun TodoEditorSheet(
 
     fun save(keepOpen: Boolean) {
         val trimmed = title.trim()
+        val selectedImportance = importance ?: return
         if (trimmed.isEmpty() || saving) return
         saving = true
         errorText = null
         scope.launch {
             try {
-                val saved = if (initialTask == null) {
-                    store.add(trimmed, reminderAt, dueAt)
-                    true
-                } else {
-                    store.edit(initialTask.id, trimmed, reminderAt, dueAt)
+                // 纯改重要程度由服务在锁内识别；旧 Store 没有排序表时走原有保存路径。
+                val saved = when {
+                    initialTask == null && supportsOrdering -> {
+                        store.add(trimmed, reminderAt, dueAt, selectedImportance)
+                        true
+                    }
+                    initialTask == null -> {
+                        store.add(trimmed, reminderAt, dueAt)
+                        true
+                    }
+                    supportsOrdering -> store.edit(
+                        initialTask.id,
+                        trimmed,
+                        reminderAt,
+                        dueAt,
+                        selectedImportance,
+                    )
+                    else -> store.edit(initialTask.id, trimmed, reminderAt, dueAt)
                 }
                 if (!saved) {
                     saving = false
@@ -124,6 +174,7 @@ fun TodoEditorSheet(
                     title = ""
                     reminderAt = null
                     dueAt = null
+                    importance = TodoImportance.NORMAL
                     saving = false
                     runCatching { focusRequester.requestFocus() }
                     keyboard?.show()
@@ -195,12 +246,36 @@ fun TodoEditorSheet(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
                     onDone = {
-                        if (title.trim().isNotEmpty() && !saving) {
+                        if (title.trim().isNotEmpty() && !saving && importance != null) {
                             save(keepOpen = initialTask == null)
                         }
                     },
                 ),
             )
+
+            if (supportsOrdering) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("重要程度", style = MaterialTheme.typography.titleSmall)
+                    val selectedImportance = importance
+                    if (selectedImportance == null) {
+                        Text(
+                            "正在读取重要程度",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        com.upcpocket.app.ui.components.CampusSegmentedTabs(
+                            tabs = IMPORTANCE_LABELS,
+                            selectedIndex = selectedImportance.ordinal,
+                            onSelect = { index ->
+                                importance = TodoImportance.entries[index]
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("todo_importance"),
+                            enabled = !saving,
+                        )
+                    }
+                }
+            }
 
             Row(
                 Modifier.fillMaxWidth(),
@@ -331,10 +406,24 @@ fun TodoEditorSheet(
                         onClick = {
                             if (saving) return@CampusTextButton
                             saving = true
+                            errorText = null
                             scope.launch {
-                                store.delete(initialTask.id)?.let(onDeleted)
-                                saving = false
-                                onDismiss()
+                                try {
+                                    val deleted = store.deleteWithOrder(initialTask.id)
+                                    saving = false
+                                    if (deleted == null) {
+                                        errorText = "待办已不存在"
+                                    } else {
+                                        onDeleted(deleted)
+                                        onDismiss()
+                                    }
+                                } catch (cancelled: CancellationException) {
+                                    saving = false
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    saving = false
+                                    errorText = "删除失败，请重试"
+                                }
                             }
                         },
                         enabled = !saving,
@@ -352,7 +441,7 @@ fun TodoEditorSheet(
                 ) { Text("取消") }
                 com.upcpocket.app.ui.components.CampusButton(
                     onClick = { save(keepOpen = false) },
-                    enabled = title.trim().isNotEmpty() && !saving,
+                    enabled = title.trim().isNotEmpty() && !saving && importance != null,
                     modifier = Modifier.testTag("todo_save"),
                 ) {
                     Text("保存")

@@ -45,6 +45,25 @@ object TodoOrdering {
         limit: Int = 2,
     ): List<TodoTask> = incomplete(tasks, nowMillis, zone).take(limit)
 
+    /**
+     * 在调用方已有的日期顺序上应用重要程度或手动模式。
+     *
+     * 使用稳定排序：同级任务、无手动位次的任务继续保留传入顺序，不会打乱日期规则。
+     */
+    fun sortByMode(
+        tasks: List<TodoTask>,
+        mode: TodoSortMode,
+        ordering: TodoOrderingSnapshot,
+    ): List<TodoTask> = when (mode) {
+        TodoSortMode.DATE -> tasks
+        TodoSortMode.IMPORTANCE -> tasks.sortedWith(
+            compareBy<TodoTask> { ordering.importanceOf(it.id).sortWeight },
+        )
+        TodoSortMode.MANUAL -> tasks.sortedWith(
+            compareBy<TodoTask> { ordering.manualRankOf(it.id) ?: Int.MAX_VALUE },
+        )
+    }
+
     fun isOverdueOrToday(
         task: TodoTask,
         nowMillis: Long,

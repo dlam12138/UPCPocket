@@ -32,7 +32,14 @@ import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.todo.data.TodoFormat
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoMoveDirection
+import com.upcpocket.app.todo.data.TodoOrdering
+import com.upcpocket.app.todo.data.TodoOrderingSnapshot
+import com.upcpocket.app.todo.data.TodoSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
+import com.upcpocket.app.todo.data.TodoTaskOrder
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import java.time.LocalDate
 import java.time.ZoneId
@@ -41,7 +48,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -303,6 +312,77 @@ class TodoScreenTest {
 
         rule.waitUntil(5_000) { store.pendingOpenTask.value == null }
         rule.onNodeWithText("编辑待办").assertDoesNotExist()
+    }
+
+    @Test
+    fun `legacy store does not present sort or importance controls`() {
+        val store = FakeTodoStore(listOf(task("旧任务", createdAt = 10)))
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("旧任务").assertIsDisplayed()
+        rule.onNodeWithTag("todo_sort_modes").assertDoesNotExist()
+        rule.onNodeWithText("旧任务").performClick()
+        rule.onNodeWithText("编辑待办").assertIsDisplayed()
+        rule.onNodeWithTag("todo_importance").assertDoesNotExist()
+    }
+
+    @Test
+    fun `ordered editor loads importance and saves an importance only change`() {
+        val original = task("分级任务", createdAt = 10)
+        val store = FakeTodoStore(
+            listOf(original),
+            orderingEnabled = true,
+            initialOrdering = TodoOrderingSnapshot(
+                mode = TodoSortMode.DATE,
+                orders = mapOf(
+                    original.id to TodoTaskOrder(original.id, TodoImportance.LOW),
+                ),
+            ),
+        )
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithTag("todo_sort_modes").assertIsDisplayed()
+        rule.onNodeWithText("分级任务").performClick()
+        waitForTag("todo_importance")
+        rule.onNodeWithText("高").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        performClickSemantics("todo_save")
+
+        rule.waitUntil(5_000) { store.lastEditImportance == TodoImportance.HIGH }
+        assertEquals(original.revision, store.current.single().revision)
+        assertEquals(TodoImportance.HIGH, store.orderingSnapshot.importanceOf(original.id))
+    }
+
+    @Test
+    fun `manual controls move the displayed neighbor and disable at group bounds`() {
+        val first = task("甲", createdAt = 10)
+        val second = task("乙", createdAt = 20)
+        val store = FakeTodoStore(
+            listOf(first, second),
+            orderingEnabled = true,
+            initialOrdering = TodoOrderingSnapshot(
+                mode = TodoSortMode.MANUAL,
+                orders = mapOf(
+                    first.id to TodoTaskOrder(first.id, TodoImportance.NORMAL, 1),
+                    second.id to TodoTaskOrder(second.id, TodoImportance.NORMAL, 2),
+                ),
+            ),
+        )
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithTag("todo_move_up_${first.id}").assertIsNotEnabled()
+        rule.onNodeWithTag("todo_move_down_${second.id}").assertIsNotEnabled()
+        rule.onNodeWithTag("todo_move_down_${first.id}").performClick()
+
+        rule.waitUntil(5_000) {
+            store.orderingSnapshot.manualRankOf(first.id) == 2 &&
+                store.orderingSnapshot.manualRankOf(second.id) == 1
+        }
+        assertEquals(Triple(first.id, TodoMoveDirection.DOWN, second.id), store.lastMove)
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithTag("todo_move_up_${first.id}").fetchSemanticsNodes()
+                .any { it.config.getOrNull(SemanticsProperties.Disabled) == null }
+        }
     }
 
     @Test
@@ -672,12 +752,25 @@ class TodoScreenTest {
         initial: List<TodoTask>,
         taskFlow: Flow<List<TodoTask>>? = null,
         private val completionAt: Long = 2_000L,
+        private val orderingEnabled: Boolean = false,
+        initialOrdering: TodoOrderingSnapshot = TodoOrderingSnapshot.Default,
     ) : TodoStore {
         private val state = MutableStateFlow(initial)
+        private val ordering = MutableStateFlow(initialOrdering)
         override val tasks: Flow<List<TodoTask>> = taskFlow ?: state
+        override val supportsOrdering: Boolean = orderingEnabled
+        override val snapshot: Flow<TodoSnapshot> = if (orderingEnabled) {
+            combine(tasks, ordering) { list, order -> TodoSnapshot(tasks = list, ordering = order) }
+        } else {
+            tasks.map { TodoSnapshot(tasks = it) }
+        }
         override val pendingOpenTask = MutableStateFlow<String?>(null)
         override val pendingCreateRequest = MutableStateFlow<String?>(null)
         val current: List<TodoTask> get() = state.value
+        val orderingSnapshot: TodoOrderingSnapshot get() = ordering.value
+        var lastEditImportance: TodoImportance? = null
+        var lastAddedImportance: TodoImportance? = null
+        var lastMove: Triple<String, TodoMoveDirection, String>? = null
         private var access = TodoReminderAccess(
             notificationsEnabled = true,
             exactAlarmsAllowed = true,
@@ -714,6 +807,24 @@ class TodoScreenTest {
             return task
         }
 
+        override suspend fun add(
+            title: String,
+            reminderAt: Long?,
+            dueAt: Long?,
+            importance: TodoImportance,
+        ): TodoTask {
+            lastAddedImportance = importance
+            val task = add(title, reminderAt, dueAt)
+            if (orderingEnabled) {
+                ordering.value = ordering.value.copy(
+                    orders = ordering.value.orders + (
+                        task.id to TodoTaskOrder(task.id, importance)
+                    ),
+                )
+            }
+            return task
+        }
+
         override suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean {
             val task = state.value.firstOrNull { it.id == id } ?: return false
             return edit(id, title, reminderAt, task.dueAt)
@@ -738,6 +849,92 @@ class TodoScreenTest {
                     it
                 }
             }
+            return true
+        }
+
+        override suspend fun edit(
+            id: String,
+            title: String,
+            reminderAt: Long?,
+            dueAt: Long?,
+            importance: TodoImportance,
+        ): Boolean {
+            lastEditImportance = importance
+            val task = state.value.firstOrNull { it.id == id } ?: return false
+            if (orderingEnabled) {
+                ordering.value = ordering.value.copy(
+                    orders = ordering.value.orders + (
+                        id to TodoTaskOrder(id, importance, ordering.value.orders[id]?.manualRank)
+                    ),
+                )
+            }
+            if (task.title == title && task.reminderAt == reminderAt && task.dueAt == dueAt) {
+                return true
+            }
+            return edit(id, title, reminderAt, dueAt)
+        }
+
+        override suspend fun setImportance(id: String, importance: TodoImportance): Boolean {
+            if (!orderingEnabled || state.value.none { it.id == id }) return false
+            ordering.value = ordering.value.copy(
+                orders = ordering.value.orders + (
+                    id to TodoTaskOrder(id, importance, ordering.value.orders[id]?.manualRank)
+                ),
+            )
+            return true
+        }
+
+        override suspend fun setSortMode(mode: TodoSortMode): Boolean {
+            if (!orderingEnabled) return false
+            val current = ordering.value
+            if (mode == TodoSortMode.MANUAL) {
+                val orders = current.orders.toMutableMap()
+                var next = (orders.values.mapNotNull { it.manualRank }.maxOrNull() ?: 0) + 1
+                (TodoOrdering.incomplete(state.value, 0) + TodoOrdering.completed(state.value))
+                    .forEach { task ->
+                        if (orders[task.id]?.manualRank == null) {
+                            orders[task.id] = (orders[task.id] ?: TodoTaskOrder(task.id))
+                                .copy(manualRank = next)
+                            next++
+                        }
+                    }
+                ordering.value = TodoOrderingSnapshot(TodoSortMode.MANUAL, orders)
+            } else {
+                ordering.value = current.copy(mode = mode)
+            }
+            return true
+        }
+
+        override suspend fun moveTask(
+            id: String,
+            direction: TodoMoveDirection,
+            expectedNeighborId: String,
+        ): Boolean {
+            if (!orderingEnabled || ordering.value.mode != TodoSortMode.MANUAL) return false
+            val target = state.value.firstOrNull { it.id == id } ?: return false
+            val neighbor = state.value.firstOrNull { it.id == expectedNeighborId } ?: return false
+            if (target.completed != neighbor.completed) return false
+            val orders = ordering.value.orders
+            val targetRank = orders[id]?.manualRank ?: return false
+            val neighborRank = orders[expectedNeighborId]?.manualRank ?: return false
+            if (targetRank == neighborRank) return false
+            val group = state.value
+                .filter { it.completed == target.completed }
+                .sortedBy { orders[it.id]?.manualRank ?: Int.MAX_VALUE }
+                .map { it.id }
+            val index = group.indexOf(id)
+            val neighborIndex = group.indexOf(expectedNeighborId)
+            val expectedIndex = if (direction == TodoMoveDirection.UP) index - 1 else index + 1
+            if (index < 0 || neighborIndex != expectedIndex) return false
+            ordering.value = ordering.value.copy(
+                orders = orders + (
+                    id to orders.getValue(id).copy(manualRank = neighborRank)
+                ) + (
+                    expectedNeighborId to orders.getValue(expectedNeighborId)
+                        .copy(manualRank = targetRank)
+                ),
+            )
+            lastMove = Triple(id, direction, expectedNeighborId)
             return true
         }
 

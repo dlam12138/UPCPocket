@@ -1,9 +1,15 @@
 package com.upcpocket.app.todo
 
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoMoveDirection
+import com.upcpocket.app.todo.data.TodoOrderDao
+import com.upcpocket.app.todo.data.TodoOrderStateEntity
 import com.upcpocket.app.todo.data.TodoRepository
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.data.TodoTaskDao
 import com.upcpocket.app.todo.data.TodoTaskEntity
+import com.upcpocket.app.todo.data.TodoTaskOrderEntity
 import com.upcpocket.app.todo.data.TodoWidgetSnapshotResult
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import kotlinx.coroutines.CancellationException
@@ -12,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
@@ -295,6 +302,100 @@ class TodoServiceTest {
     }
 
     @Test
+    fun `importance only save keeps revision reminder schedule and refresh untouched`() = runTest {
+        val harness = Harness()
+        val reminderAt = harness.now + 60_000
+        val task = harness.service.add("A", reminderAt = reminderAt, dueAt = 5_000)
+        val before = harness.repository.byId(task.id)!!
+        val changes = harness.taskChanges
+        val scheduled = harness.scheduler.scheduled[task.id]
+        val schedulerCancels = harness.scheduler.cancelCalls
+        val notifierCancels = harness.notifier.cancelCalls
+
+        assertTrue(
+            harness.service.edit(
+                id = task.id,
+                title = before.title,
+                reminderAt = before.reminderAt,
+                dueAt = before.dueAt,
+                importance = TodoImportance.HIGH,
+            ),
+        )
+
+        assertEquals(before, harness.repository.byId(task.id))
+        assertEquals(TodoImportance.HIGH, harness.repository.importanceOf(task.id))
+        assertEquals(changes, harness.taskChanges)
+        assertEquals(scheduled, harness.scheduler.scheduled[task.id])
+        assertEquals(schedulerCancels, harness.scheduler.cancelCalls)
+        assertEquals(notifierCancels, harness.notifier.cancelCalls)
+
+        // 内容改变时仍走完整保存，并保留事务内写入的重要程度。
+        assertTrue(
+            harness.service.edit(
+                id = task.id,
+                title = "A2",
+                reminderAt = before.reminderAt,
+                dueAt = before.dueAt,
+                importance = TodoImportance.HIGH,
+            ),
+        )
+        assertEquals(2, harness.repository.byId(task.id)!!.revision)
+        assertEquals(TodoImportance.HIGH, harness.repository.importanceOf(task.id))
+        assertEquals(changes + 1, harness.taskChanges)
+    }
+
+    @Test
+    fun `importance mode and move never rebuild reminders or publish refresh`() = runTest {
+        val harness = Harness()
+        val first = harness.service.add("A", reminderAt = null, dueAt = 5_000)
+        val second = harness.service.add("B", reminderAt = null, dueAt = 6_000)
+        val changes = harness.taskChanges
+        val scheduled = harness.scheduler.scheduled.toMap()
+        val schedulerCancels = harness.scheduler.cancelCalls
+        val notifierCancels = harness.notifier.cancelCalls
+        val firstRevision = harness.repository.byId(first.id)!!.revision
+
+        assertTrue(harness.service.setImportance(first.id, TodoImportance.LOW))
+        assertTrue(harness.service.setSortMode(TodoSortMode.MANUAL))
+        assertTrue(
+            harness.service.moveTask(first.id, TodoMoveDirection.DOWN, second.id),
+        )
+
+        val snapshot = harness.repository.snapshot.first()
+        assertEquals(TodoImportance.LOW, snapshot.ordering.importanceOf(first.id))
+        assertEquals(2, snapshot.ordering.manualRankOf(first.id))
+        assertEquals(1, snapshot.ordering.manualRankOf(second.id))
+        assertEquals(firstRevision, harness.repository.byId(first.id)!!.revision)
+        assertEquals(changes, harness.taskChanges)
+        assertEquals(scheduled, harness.scheduler.scheduled)
+        assertEquals(schedulerCancels, harness.scheduler.cancelCalls)
+        assertEquals(notifierCancels, harness.notifier.cancelCalls)
+
+        // 点按后原邻居已不再相邻（或指向自身）时拒绝，且不产生额外副作用。
+        assertFalse(harness.service.moveTask(first.id, TodoMoveDirection.DOWN, second.id))
+        assertFalse(harness.service.moveTask(first.id, TodoMoveDirection.DOWN, first.id))
+        assertEquals(changes, harness.taskChanges)
+    }
+
+    @Test
+    fun `legacy restore without a snapshot appends after manual initialization`() = runTest {
+        val harness = Harness()
+        val first = harness.service.add("A", reminderAt = null, dueAt = 5_000)
+        val second = harness.service.add("B", reminderAt = null, dueAt = 6_000)
+        assertTrue(harness.service.setSortMode(TodoSortMode.MANUAL))
+        assertEquals(1, harness.repository.snapshot.first().ordering.manualRankOf(first.id))
+        assertEquals(2, harness.repository.snapshot.first().ordering.manualRankOf(second.id))
+
+        val deleted = harness.service.delete(second.id)!!
+        assertTrue(harness.service.restore(deleted))
+
+        val snapshot = harness.repository.snapshot.first()
+        assertEquals(3, snapshot.ordering.manualRankOf(second.id))
+        assertEquals(4, harness.orderDao.state()!!.nextManualRank)
+        assertEquals(TodoImportance.NORMAL, snapshot.ordering.importanceOf(second.id))
+    }
+
+    @Test
     fun `deadline without a reminder does not schedule or send a notification`() = runTest {
         val harness = Harness()
         val task = harness.service.add("Deadline only", reminderAt = null, dueAt = harness.now - 1)
@@ -388,7 +489,8 @@ class TodoServiceTest {
 
     private class Harness {
         val dao = FakeTodoDao()
-        val repository = TodoRepository(dao)
+        val orderDao = FakeTodoOrderDao()
+        val repository = TodoRepository(dao, orderDao)
         val scheduler = FakeScheduler()
         val notifier = FakeNotifier()
         val access = FakeAccess(TodoReminderAccess(true, true))
@@ -455,6 +557,37 @@ class TodoServiceTest {
         override fun cancel(taskId: String) {
             cancelCalls++
             active.remove(taskId)
+        }
+    }
+
+    private class FakeTodoOrderDao : TodoOrderDao {
+        private val orders = MutableStateFlow<List<TodoTaskOrderEntity>>(emptyList())
+        private val state = MutableStateFlow<TodoOrderStateEntity?>(null)
+
+        override fun observeOrders(): Flow<List<TodoTaskOrderEntity>> = orders
+
+        override suspend fun orders(): List<TodoTaskOrderEntity> = orders.value
+
+        override suspend fun orderFor(taskId: String): TodoTaskOrderEntity? =
+            orders.value.firstOrNull { it.taskId == taskId }
+
+        override fun observeState(): Flow<TodoOrderStateEntity?> = state
+
+        override suspend fun state(): TodoOrderStateEntity? = state.value
+
+        override suspend fun upsertOrder(order: TodoTaskOrderEntity) {
+            orders.value = orders.value.filterNot { it.taskId == order.taskId } + order
+        }
+
+        override suspend fun upsertState(state: TodoOrderStateEntity) {
+            this.state.value = state
+        }
+
+        override suspend fun deleteOrder(taskId: String): Int {
+            val current = orders.value
+            val remaining = current.filterNot { it.taskId == taskId }
+            orders.value = remaining
+            return current.size - remaining.size
         }
     }
 

@@ -3,8 +3,13 @@ package com.upcpocket.app.todo
 import android.app.PendingIntent
 import android.content.Context
 import com.upcpocket.app.todo.data.TodoDatabase
+import com.upcpocket.app.todo.data.TodoDeletedTask
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoMoveDirection
 import com.upcpocket.app.todo.data.TodoOrdering
 import com.upcpocket.app.todo.data.TodoRepository
+import com.upcpocket.app.todo.data.TodoSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.data.TodoWidgetSnapshotResult
 import com.upcpocket.app.todo.reminder.TodoAlarmScheduler
@@ -21,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -29,6 +35,12 @@ interface TodoStore {
     val tasks: Flow<List<TodoTask>>
     val pendingOpenTask: StateFlow<String?>
     val pendingCreateRequest: StateFlow<String?> get() = EMPTY_PENDING_CREATE_REQUEST
+
+    /** 真实实现覆盖为同一 Room 读事务的任务+排序快照；旧实现只映射日期顺序。 */
+    val snapshot: Flow<TodoSnapshot> get() = tasks.map { TodoSnapshot(tasks = it) }
+
+    /** 旧实现没有排序表；UI 据此隐藏排序与重要程度控件，不能把默认快照当成可编辑。 */
+    val supportsOrdering: Boolean get() = false
 
     fun reminderAccess(): TodoReminderAccess
 
@@ -39,12 +51,49 @@ interface TodoStore {
         return add(title, reminderAt)
     }
 
+    suspend fun add(
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+        importance: TodoImportance,
+    ): TodoTask {
+        // 旧 Store 没有排序表，不能静默丢弃非普通重要程度后冒充保存成功。
+        check(importance == TodoImportance.NORMAL) {
+            "This TodoStore does not support importance"
+        }
+        return add(title, reminderAt, dueAt)
+    }
+
     suspend fun edit(id: String, title: String, reminderAt: Long?): Boolean
 
     suspend fun edit(id: String, title: String, reminderAt: Long?, dueAt: Long?): Boolean {
         check(dueAt == null) { "This TodoStore does not support deadlines" }
         return edit(id, title, reminderAt)
     }
+
+    suspend fun edit(
+        id: String,
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+        importance: TodoImportance,
+    ): Boolean = if (importance == TodoImportance.NORMAL) {
+        edit(id, title, reminderAt, dueAt)
+    } else {
+        false
+    }
+
+    /** 仅修改重要程度；不支持排序能力的旧 Store 返回 false，不伪造成功。 */
+    suspend fun setImportance(id: String, importance: TodoImportance): Boolean = false
+
+    suspend fun setSortMode(mode: TodoSortMode): Boolean = false
+
+    /** [expectedNeighborId] 是点按时看到的同组相邻项；实现须在事务内复核后交换。 */
+    suspend fun moveTask(
+        id: String,
+        direction: TodoMoveDirection,
+        expectedNeighborId: String,
+    ): Boolean = false
 
     suspend fun setCompleted(id: String, completed: Boolean): Boolean
 
@@ -58,6 +107,11 @@ interface TodoStore {
     suspend fun delete(id: String): TodoTask?
 
     suspend fun restore(task: TodoTask): Boolean
+
+    suspend fun deleteWithOrder(id: String): TodoDeletedTask? =
+        delete(id)?.let { TodoDeletedTask(task = it) }
+
+    suspend fun restoreWithOrder(deleted: TodoDeletedTask): Boolean = restore(deleted.task)
 
     fun openTask(taskId: String)
 
@@ -112,7 +166,7 @@ internal class TodoServiceDependencies(
         ): TodoServiceDependencies {
             val appContext = context.applicationContext
             return TodoServiceDependencies(
-                repository = { TodoRepository(TodoDatabase.get(appContext).taskDao()) },
+                repository = { TodoRepository(TodoDatabase.get(appContext)) },
                 alarms = { TodoAlarmScheduler(appContext) },
                 notifier = { TodoNotifier(appContext, openAppIntent) },
                 accessProvider = { TodoReminderAccessProvider(appContext) },
@@ -168,6 +222,8 @@ class TodoService internal constructor(
     private var restoreFailed = false
 
     override val tasks: Flow<List<TodoTask>> get() = repository.tasks
+    override val snapshot: Flow<TodoSnapshot> get() = repository.snapshot
+    override val supportsOrdering: Boolean get() = true
     override val pendingOpenTask: StateFlow<String?> = openTaskId.asStateFlow()
     override val pendingCreateRequest: StateFlow<String?> = createRequestId.asStateFlow()
 
@@ -181,7 +237,15 @@ class TodoService internal constructor(
     override suspend fun add(title: String, reminderAt: Long?): TodoTask =
         add(title, reminderAt, dueAt = null)
 
-    override suspend fun add(title: String, reminderAt: Long?, dueAt: Long?): TodoTask = mutex.withLock {
+    override suspend fun add(title: String, reminderAt: Long?, dueAt: Long?): TodoTask =
+        add(title, reminderAt, dueAt, TodoImportance.NORMAL)
+
+    override suspend fun add(
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+        importance: TodoImportance,
+    ): TodoTask = mutex.withLock {
         val normalized = title.trim()
         require(normalized.isNotEmpty()) { "待办标题不能为空" }
         val now = clock()
@@ -197,7 +261,7 @@ class TodoService internal constructor(
             revision = 1,
             dueAt = dueAt,
         )
-        repository.insert(task)
+        repository.insertWithImportance(task, importance)
         notifyTasksChangedSafely()
         reconcileLocked(task)
         task
@@ -215,26 +279,80 @@ class TodoService internal constructor(
         editLocked(id, title, reminderAt, dueAt, preserveExistingDueAt = false)
     }
 
+    override suspend fun edit(
+        id: String,
+        title: String,
+        reminderAt: Long?,
+        dueAt: Long?,
+        importance: TodoImportance,
+    ): Boolean = mutex.withLock {
+        editLocked(
+            id = id,
+            title = title,
+            reminderAt = reminderAt,
+            dueAt = dueAt,
+            preserveExistingDueAt = false,
+            importance = importance,
+        )
+    }
+
+    override suspend fun setImportance(id: String, importance: TodoImportance): Boolean =
+        mutex.withLock { repository.setImportance(id, importance) }
+
+    override suspend fun setSortMode(mode: TodoSortMode): Boolean =
+        mutex.withLock { repository.setSortMode(mode) }
+
+    override suspend fun moveTask(
+        id: String,
+        direction: TodoMoveDirection,
+        expectedNeighborId: String,
+    ): Boolean = mutex.withLock {
+        repository.moveTask(id, direction, expectedNeighborId)
+    }
+
     private suspend fun editLocked(
         id: String,
         title: String,
         reminderAt: Long?,
         dueAt: Long?,
         preserveExistingDueAt: Boolean,
+        importance: TodoImportance? = null,
     ): Boolean {
         val normalized = title.trim()
         if (normalized.isEmpty()) return false
         val old = repository.byId(id) ?: return false
+        val resolvedDueAt = if (preserveExistingDueAt) old.dueAt else dueAt
+        // 纯改重要程度由服务在锁内识别：不增加 revision、不改提醒时间、不重建调度。
+        if (
+            importance != null &&
+            normalized == old.title &&
+            reminderAt == old.reminderAt &&
+            resolvedDueAt == old.dueAt
+        ) {
+            return repository.setImportance(id, importance)
+        }
         val reminderChanged = old.reminderAt != reminderAt
         val firedAt = if (reminderChanged) null else old.reminderFiredAt
-        val updated = repository.updateContent(
-            id = id,
-            title = normalized,
-            reminderAt = reminderAt,
-            dueAt = if (preserveExistingDueAt) old.dueAt else dueAt,
-            firedAt = firedAt,
-            now = clock(),
-        ) ?: return false
+        val updated = if (importance == null) {
+            repository.updateContent(
+                id = id,
+                title = normalized,
+                reminderAt = reminderAt,
+                dueAt = resolvedDueAt,
+                firedAt = firedAt,
+                now = clock(),
+            )
+        } else {
+            repository.updateContentWithImportance(
+                id = id,
+                title = normalized,
+                reminderAt = reminderAt,
+                dueAt = resolvedDueAt,
+                firedAt = firedAt,
+                now = clock(),
+                importance = importance,
+            )
+        } ?: return false
         notifyTasksChangedSafely()
         alarms.cancel(id)
         notifier.cancel(id)
@@ -256,21 +374,22 @@ class TodoService internal constructor(
         setCompletedLocked(id, revision, completed)
     }
 
-    override suspend fun delete(id: String): TodoTask? = mutex.withLock {
-        val deleted = repository.delete(id) ?: return@withLock null
+    override suspend fun delete(id: String): TodoTask? = deleteWithOrder(id)?.task
+
+    override suspend fun deleteWithOrder(id: String): TodoDeletedTask? = mutex.withLock {
+        val deleted = repository.deleteWithOrder(id) ?: return@withLock null
         notifyTasksChangedSafely()
         alarms.cancel(id)
         notifier.cancel(id)
         deleted
     }
 
-    override suspend fun restore(task: TodoTask): Boolean = mutex.withLock {
-        val now = clock()
-        val restored = task.copy(
-            revision = task.revision + 1,
-            updatedAt = now,
-        )
-        repository.insert(restored)
+    /** 旧恢复调用没有排序快照；统一走带顺序的恢复，初始化后无位次项仍会追加。 */
+    override suspend fun restore(task: TodoTask): Boolean =
+        restoreWithOrder(TodoDeletedTask(task = task))
+
+    override suspend fun restoreWithOrder(deleted: TodoDeletedTask): Boolean = mutex.withLock {
+        val restored = repository.restoreWithOrder(deleted, clock()) ?: return@withLock false
         notifyTasksChangedSafely()
         alarms.cancel(restored.id)
         notifier.cancel(restored.id)

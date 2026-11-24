@@ -54,7 +54,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.TodoDeletedTask
 import com.upcpocket.app.todo.data.TodoFormat
+import com.upcpocket.app.todo.data.TodoOrderingSnapshot
+import com.upcpocket.app.todo.data.TodoSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.ui.components.CampusTextButton
 import com.upcpocket.app.ui.components.GlassCard
@@ -96,11 +100,11 @@ fun TodoScheduleSection(
         lifecycleOwner,
     ) {
         value = TodoScheduleLoad.Loading
-        // 页面停止时取消收集，恢复后继续接收最新快照；加载/失败/有效空列表
-        // 的区分保持不变。
+        // 任务与排序来自同一份真实快照；页面停止时取消收集，恢复后继续接收最新值。
+        // 加载/失败/有效空列表的区分保持不变。
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             try {
-                store.tasks.collect { value = TodoScheduleLoad.Ready(it) }
+                store.snapshot.collect { value = TodoScheduleLoad.Ready(it) }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -108,7 +112,9 @@ fun TodoScheduleSection(
             }
         }
     }
-    val tasks = (loadState as? TodoScheduleLoad.Ready)?.tasks.orEmpty()
+    val loadedSnapshot = (loadState as? TodoScheduleLoad.Ready)?.snapshot
+    val ordering = loadedSnapshot?.ordering
+    val tasks = loadedSnapshot?.tasks.orEmpty()
 
     var now by remember { mutableLongStateOf(clock()) }
     var selectedEpochDay by rememberSaveable { mutableLongStateOf(NO_SELECTED_DAY) }
@@ -120,7 +126,7 @@ fun TodoScheduleSection(
     }
     // 每行独立提交；写入期间同一任务不会再次提交，用任务 ID 集合即可锁定。
     var inFlightSubmissions by remember { mutableStateOf(emptySet<String>()) }
-    var pendingDeletion by remember { mutableStateOf<TodoTask?>(null) }
+    var pendingDeletion by remember { mutableStateOf<TodoDeletedTask?>(null) }
     var undoMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -153,8 +159,15 @@ fun TodoScheduleSection(
     }
     val isToday = selectedDate == today
     val weekDates = remember(selectedDate) { TodoSchedule.weekDates(selectedDate) }
-    val dayTasks = remember(tasks, selectedDate, today, zone) {
-        TodoSchedule.tasksForDate(tasks, selectedDate, today, zone)
+    val dayTasks = remember(tasks, selectedDate, today, zone, ordering) {
+        TodoSchedule.tasksForDate(
+            tasks = tasks,
+            date = selectedDate,
+            today = today,
+            zone = zone,
+            mode = ordering?.mode ?: TodoSortMode.DATE,
+            ordering = ordering ?: TodoOrderingSnapshot.Default,
+        )
     }
     val unscheduledOpen = remember(tasks) { TodoSchedule.unscheduledOpenCount(tasks) }
     val editorTask = remember(tasks, editorTaskId) {
@@ -164,7 +177,7 @@ fun TodoScheduleSection(
     LaunchedEffect(editorTaskId, loadState) {
         val id = editorTaskId ?: return@LaunchedEffect
         val ready = loadState as? TodoScheduleLoad.Ready ?: return@LaunchedEffect
-        if (ready.tasks.none { it.id == id }) editorTaskId = null
+        if (ready.snapshot.tasks.none { it.id == id }) editorTaskId = null
     }
 
     fun startAdding() {
@@ -224,12 +237,12 @@ fun TodoScheduleSection(
         }
     }
 
-    fun undoDeletion(pending: TodoTask) {
+    fun undoDeletion(pending: TodoDeletedTask) {
         if (pendingDeletion == pending) pendingDeletion = null
         undoMessage = null
         scope.launch {
             val restored = try {
-                store.restore(pending)
+                store.restoreWithOrder(pending)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -364,15 +377,8 @@ fun TodoScheduleSection(
                 ) { Text("回到今天") }
             }
 
-            when (val load = loadState) {
-                TodoScheduleLoad.Loading -> Text(
-                    "正在读取待办",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-
-                TodoScheduleLoad.Failed -> Row(
+            when {
+                loadState is TodoScheduleLoad.Failed -> Row(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -388,8 +394,9 @@ fun TodoScheduleSection(
                     ) { Text("重试") }
                 }
 
-                is TodoScheduleLoad.Ready -> {
-                    if (load.tasks.isEmpty()) {
+                loadedSnapshot != null -> {
+                    val readyTasks = loadedSnapshot.tasks
+                    if (readyTasks.isEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -457,6 +464,13 @@ fun TodoScheduleSection(
                         }
                     }
                 }
+
+                else -> Text(
+                    "正在读取待办",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
             }
 
             pendingDeletion?.let { pending ->
@@ -671,5 +685,5 @@ private fun scheduleAccent(scheme: ColorScheme, taskId: String): Color {
 private sealed interface TodoScheduleLoad {
     data object Loading : TodoScheduleLoad
     data object Failed : TodoScheduleLoad
-    data class Ready(val tasks: List<TodoTask>) : TodoScheduleLoad
+    data class Ready(val snapshot: TodoSnapshot) : TodoScheduleLoad
 }

@@ -60,6 +60,45 @@ class TodoOrderingTest {
     }
 
     @Test
+    fun `importance and manual modes keep the supplied date order within a level`() {
+        val tasks = listOf(
+            task("first", createdAt = 10, reminder = null),
+            task("second", createdAt = 20, reminder = null),
+            task("third", createdAt = 30, reminder = null),
+            task("unranked", createdAt = 40, reminder = null),
+        )
+        val ordering = TodoOrderingSnapshot(
+            mode = TodoSortMode.IMPORTANCE,
+            orders = mapOf(
+                "third" to TodoTaskOrder("third", TodoImportance.HIGH),
+                "first" to TodoTaskOrder("first", TodoImportance.LOW),
+                "second" to TodoTaskOrder("second", TodoImportance.LOW),
+            ),
+        )
+
+        assertEquals(
+            listOf("third", "unranked", "first", "second"),
+            TodoOrdering.sortByMode(tasks, TodoSortMode.IMPORTANCE, ordering).map { it.id },
+        )
+
+        val manual = ordering.copy(
+            mode = TodoSortMode.MANUAL,
+            orders = mapOf(
+                "second" to TodoTaskOrder("second", manualRank = 2),
+                "third" to TodoTaskOrder("third", manualRank = 1),
+            ),
+        )
+        assertEquals(
+            listOf("third", "second", "first", "unranked"),
+            TodoOrdering.sortByMode(tasks, TodoSortMode.MANUAL, manual).map { it.id },
+        )
+        assertEquals(
+            tasks.map { it.id },
+            TodoOrdering.sortByMode(tasks, TodoSortMode.DATE, ordering).map { it.id },
+        )
+    }
+
+    @Test
     fun `completed tasks never enter home summary`() {
         val tasks = listOf(
             task("done", createdAt = 1, reminder = null, completed = true),

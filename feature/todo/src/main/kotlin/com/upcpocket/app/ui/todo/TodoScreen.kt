@@ -20,12 +20,14 @@ import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.WarningAmber
 import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
@@ -70,12 +72,20 @@ import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.todo.data.TodoFormat
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoMoveDirection
 import com.upcpocket.app.todo.data.TodoOrdering
+import com.upcpocket.app.todo.data.TodoSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+private val TODO_SORT_MODE_LABELS = listOf("日期", "重要程度", "手动")
 
 /**
  * 宿主把完整待办列表作为二级页时注入返回动作；一级 tab 场景为 null，不显示返回键。
@@ -92,11 +102,14 @@ fun TodoScreen(store: TodoStore) {
     val dockClearance = LocalDockClearance.current
     val snackbar = remember { SnackbarHostState() }
     val snackbarBackdrop = rememberGlassSnackbarBackdrop()
-    val taskSnapshotFlow = remember(store) {
-        store.tasks.map<List<TodoTask>, List<TodoTask>?> { it }
+    // 任务与排序来自同一 Room 读事务；首个真实快照到达前不展示旧排序或空结果。
+    val snapshotFlow = remember(store) {
+        store.snapshot.map<TodoSnapshot, TodoSnapshot?> { it }
     }
-    val taskSnapshot by taskSnapshotFlow.collectAsStateWithLifecycle(initialValue = null)
-    val tasks = taskSnapshot.orEmpty()
+    val listSnapshot by snapshotFlow.collectAsStateWithLifecycle(initialValue = null)
+    val tasks = listSnapshot?.tasks.orEmpty()
+    val ordering = listSnapshot?.ordering
+    val supportsOrdering = store.supportsOrdering
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var access by remember { mutableStateOf(store.reminderAccess()) }
     var showCompleted by rememberSaveable { mutableStateOf(false) }
@@ -108,6 +121,8 @@ fun TodoScreen(store: TodoStore) {
     var completionOverrides by remember {
         mutableStateOf(emptyMap<String, TodoCompletionOverride>())
     }
+    var sortSubmitting by remember { mutableStateOf(false) }
+    var movingTaskId by remember { mutableStateOf<String?>(null) }
     val pendingOpenTask by store.pendingOpenTask.collectAsStateWithLifecycle()
     val pendingCreateRequest by store.pendingCreateRequest.collectAsStateWithLifecycle()
 
@@ -131,9 +146,16 @@ fun TodoScreen(store: TodoStore) {
         }
     }
 
-    val incomplete = remember(tasks, now) { TodoOrdering.incomplete(tasks, now) }
-    val completed = remember(tasks) { TodoOrdering.completed(tasks) }
+    val incomplete = remember(tasks, now, ordering) {
+        val dateOrdered = TodoOrdering.incomplete(tasks, now)
+        ordering?.let { TodoOrdering.sortByMode(dateOrdered, it.mode, it) } ?: dateOrdered
+    }
+    val completed = remember(tasks, ordering) {
+        val dateOrdered = TodoOrdering.completed(tasks)
+        ordering?.let { TodoOrdering.sortByMode(dateOrdered, it.mode, it) } ?: dateOrdered
+    }
     val hasReminders = tasks.any { !it.completed && it.reminderAt != null }
+    val manualMode = supportsOrdering && ordering?.mode == TodoSortMode.MANUAL
 
     fun toggleCompletion(task: TodoTask) {
         if (task.id in completionOverrides) return
@@ -211,17 +233,96 @@ fun TodoScreen(store: TodoStore) {
         }
     }
 
-    LaunchedEffect(editorTaskId, taskSnapshot) {
+    fun selectSortMode(mode: TodoSortMode) {
+        val current = ordering ?: return
+        if (sortSubmitting || current.mode == mode) return
+        sortSubmitting = true
+        scope.launch {
+            val saved = try {
+                store.setSortMode(mode)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                sortSubmitting = false
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            sortSubmitting = false
+            when (saved) {
+                null -> snackbar.showSnackbar(
+                    message = "排序设置保存失败，请重试",
+                    duration = SnackbarDuration.Short,
+                )
+                false -> snackbar.showSnackbar(
+                    message = "排序设置未保存",
+                    duration = SnackbarDuration.Short,
+                )
+                true -> Unit
+            }
+        }
+    }
+
+    fun moveTask(task: TodoTask, direction: TodoMoveDirection, neighborId: String) {
+        if (movingTaskId != null) return
+        val current = ordering ?: return
+        if (!supportsOrdering || current.mode != TodoSortMode.MANUAL) return
+        val targetRank = current.manualRankOf(task.id) ?: return
+        val neighborRank = current.manualRankOf(neighborId) ?: return
+        movingTaskId = task.id
+        scope.launch {
+            val moved = try {
+                store.moveTask(task.id, direction, neighborId)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                movingTaskId = null
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+            when (moved) {
+                null -> {
+                    movingTaskId = null
+                    snackbar.showSnackbar(
+                        message = "排序未更新，请重试",
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+                false -> {
+                    movingTaskId = null
+                    snackbar.showSnackbar(
+                        message = "次序已变化，未移动",
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+                true -> {
+                    // 控件等共享快照确认两个位次实际交换后再解锁，避免按旧位置连点。
+                    val confirmed = withTimeoutOrNull(5_000) {
+                        store.snapshot.first { snapshot ->
+                            snapshot.ordering.manualRankOf(task.id) == neighborRank &&
+                                snapshot.ordering.manualRankOf(neighborId) == targetRank
+                        }
+                    } != null
+                    movingTaskId = null
+                    if (!confirmed) {
+                        snackbar.showSnackbar(
+                            message = "排序未更新，请重试",
+                            duration = SnackbarDuration.Short,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(editorTaskId, listSnapshot) {
         val id = editorTaskId ?: return@LaunchedEffect
-        val loadedTasks = taskSnapshot ?: return@LaunchedEffect
+        val loadedTasks = listSnapshot?.tasks ?: return@LaunchedEffect
         if (loadedTasks.none { it.id == id }) editorTaskId = null
     }
 
     // 任务还未从 Room 发出首个快照时保留请求；不存在或已删除的目标在快照到达后清除。
-    LaunchedEffect(pendingOpenTask, taskSnapshot, active) {
+    LaunchedEffect(pendingOpenTask, listSnapshot, active) {
         if (!active) return@LaunchedEffect
         val id = pendingOpenTask ?: return@LaunchedEffect
-        val loadedTasks = taskSnapshot ?: return@LaunchedEffect
+        val loadedTasks = listSnapshot?.tasks ?: return@LaunchedEffect
         val task = loadedTasks.firstOrNull { it.id == id }
         if (task == null) {
             store.consumeOpenTask()
@@ -323,72 +424,119 @@ fun TodoScreen(store: TodoStore) {
                 }
             }
 
-            if (taskSnapshot == null) {
-                item(key = "loading", contentType = "loading") {
-                    Text("正在读取待办", style = MaterialTheme.typography.bodyMedium)
-                }
-            } else if (incomplete.isEmpty()) {
-                item(key = "empty", contentType = "empty") {
-                    EmptyTodoState(onAdd = ::startAdding)
-                }
-            } else {
-                items(
-                    items = incomplete,
-                    key = { it.id },
-                    contentType = { "todo_task" },
-                ) { task ->
-                    TodoRow(
-                        task = task,
-                        now = now,
-                        completionOverride = { completionOverrides[task.id]?.completed },
-                        modifier = Modifier.animateItem(),
-                        onToggle = { toggleCompletion(task) },
-                        onEdit = { editTask(task) },
+            if (supportsOrdering && ordering != null) {
+                item(key = "sort_modes", contentType = "sort_modes") {
+                    com.upcpocket.app.ui.components.CampusSegmentedTabs(
+                        tabs = TODO_SORT_MODE_LABELS,
+                        selectedIndex = ordering.mode.ordinal,
+                        onSelect = { index -> selectSortMode(TodoSortMode.entries[index]) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp)
+                            .testTag("todo_sort_modes"),
+                        enabled = !sortSubmitting,
                     )
                 }
             }
 
-            if (completed.isNotEmpty()) {
-                item(key = "completed_header", contentType = "completed_header") {
-                    val completedHeaderInteractions = remember { MutableInteractionSource() }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .glassPressHighlight(MaterialTheme.shapes.medium, completedHeaderInteractions)
-                            .clickable(
-                                interactionSource = completedHeaderInteractions,
-                                indication = LocalIndication.current,
-                            ) { showCompleted = !showCompleted }
-                            .padding(top = 14.dp, bottom = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "已完成 ${completed.size}",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(
-                            if (showCompleted) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                            contentDescription = if (showCompleted) "收起已完成" else "展开已完成",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+            if (ordering == null) {
+                item(key = "loading", contentType = "loading") {
+                    Text("正在读取待办", style = MaterialTheme.typography.bodyMedium)
                 }
-                if (showCompleted) {
-                    items(
-                        items = completed,
-                        key = { it.id },
-                        contentType = { "todo_task" },
-                    ) { task ->
+            } else {
+                if (incomplete.isEmpty()) {
+                    item(key = "empty", contentType = "empty") {
+                        EmptyTodoState(onAdd = ::startAdding)
+                    }
+                } else {
+                    itemsIndexed(
+                        items = incomplete,
+                        key = { _, task -> task.id },
+                        contentType = { _, _ -> "todo_task" },
+                    ) { index, task ->
                         TodoRow(
                             task = task,
                             now = now,
+                            importance = ordering.importanceOf(task.id),
                             completionOverride = { completionOverrides[task.id]?.completed },
+                            move = if (manualMode) {
+                                TodoMoveControls(
+                                    canMoveUp = index > 0,
+                                    canMoveDown = index < incomplete.lastIndex,
+                                    upNeighborId = incomplete.getOrNull(index - 1)?.id,
+                                    downNeighborId = incomplete.getOrNull(index + 1)?.id,
+                                    enabled = movingTaskId == null,
+                                    onMove = { direction, neighborId ->
+                                        moveTask(task, direction, neighborId)
+                                    },
+                                )
+                            } else {
+                                null
+                            },
                             modifier = Modifier.animateItem(),
                             onToggle = { toggleCompletion(task) },
                             onEdit = { editTask(task) },
                         )
+                    }
+                }
+
+                if (completed.isNotEmpty()) {
+                    item(key = "completed_header", contentType = "completed_header") {
+                        val completedHeaderInteractions = remember { MutableInteractionSource() }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .glassPressHighlight(MaterialTheme.shapes.medium, completedHeaderInteractions)
+                                .clickable(
+                                    interactionSource = completedHeaderInteractions,
+                                    indication = LocalIndication.current,
+                                ) { showCompleted = !showCompleted }
+                                .padding(top = 14.dp, bottom = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "已完成 ${completed.size}",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Icon(
+                                if (showCompleted) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (showCompleted) "收起已完成" else "展开已完成",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (showCompleted) {
+                        itemsIndexed(
+                            items = completed,
+                            key = { _, task -> task.id },
+                            contentType = { _, _ -> "todo_task" },
+                        ) { index, task ->
+                            TodoRow(
+                                task = task,
+                                now = now,
+                                importance = ordering.importanceOf(task.id),
+                                completionOverride = { completionOverrides[task.id]?.completed },
+                                move = if (manualMode) {
+                                    TodoMoveControls(
+                                        canMoveUp = index > 0,
+                                        canMoveDown = index < completed.lastIndex,
+                                        upNeighborId = completed.getOrNull(index - 1)?.id,
+                                        downNeighborId = completed.getOrNull(index + 1)?.id,
+                                        enabled = movingTaskId == null,
+                                        onMove = { direction, neighborId ->
+                                            moveTask(task, direction, neighborId)
+                                        },
+                                    )
+                                } else {
+                                    null
+                                },
+                                modifier = Modifier.animateItem(),
+                                onToggle = { toggleCompletion(task) },
+                                onEdit = { editTask(task) },
+                            )
+                        }
                     }
                 }
             }
@@ -408,7 +556,24 @@ fun TodoScreen(store: TodoStore) {
                         duration = SnackbarDuration.Long,
                     )
                     if (result == SnackbarResult.ActionPerformed) {
-                        store.restore(deleted)
+                        val restored = try {
+                            store.restoreWithOrder(deleted)
+                        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            null
+                        }
+                        when (restored) {
+                            null -> snackbar.showSnackbar(
+                                message = "待办未能恢复，请重试",
+                                duration = SnackbarDuration.Short,
+                            )
+                            false -> snackbar.showSnackbar(
+                                message = "待办已变化，无法撤销",
+                                duration = SnackbarDuration.Short,
+                            )
+                            true -> Unit
+                        }
                     }
                 }
             },
@@ -427,11 +592,22 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
     }
 }
 
+private data class TodoMoveControls(
+    val canMoveUp: Boolean,
+    val canMoveDown: Boolean,
+    val upNeighborId: String?,
+    val downNeighborId: String?,
+    val enabled: Boolean,
+    val onMove: (TodoMoveDirection, String) -> Unit,
+)
+
 @Composable
 private fun TodoRow(
     task: TodoTask,
     now: Long,
+    importance: TodoImportance,
     completionOverride: () -> Boolean?,
+    move: TodoMoveControls?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
@@ -482,6 +658,21 @@ private fun TodoRow(
                 },
                 textDecoration = if (completed) TextDecoration.LineThrough else null,
             )
+            if (importance != TodoImportance.NORMAL) {
+                Text(
+                    text = if (importance == TodoImportance.HIGH) {
+                        "重要程度：高"
+                    } else {
+                        "重要程度：低"
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (importance == TodoImportance.HIGH) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
             task.dueAt?.let { deadline ->
                 Text(
                     text = "截止 ${TodoFormat.shortTime(deadline, now)}",
@@ -503,6 +694,34 @@ private fun TodoRow(
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
+            }
+        }
+        move?.let { controls ->
+            val upNeighborId = controls.upNeighborId
+            val downNeighborId = controls.downNeighborId
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = {
+                        upNeighborId?.let { controls.onMove(TodoMoveDirection.UP, it) }
+                    },
+                    enabled = controls.enabled && controls.canMoveUp && upNeighborId != null,
+                    modifier = Modifier
+                        .semantics { contentDescription = "上移：${task.title}" }
+                        .testTag("todo_move_up_${task.id}"),
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = null)
+                }
+                IconButton(
+                    onClick = {
+                        downNeighborId?.let { controls.onMove(TodoMoveDirection.DOWN, it) }
+                    },
+                    enabled = controls.enabled && controls.canMoveDown && downNeighborId != null,
+                    modifier = Modifier
+                        .semantics { contentDescription = "下移：${task.title}" }
+                        .testTag("todo_move_down_${task.id}"),
+                ) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = null)
+                }
             }
         }
     }

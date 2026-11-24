@@ -1,6 +1,10 @@
 package com.upcpocket.app.ui.todo
 
+import com.upcpocket.app.todo.data.TodoImportance
+import com.upcpocket.app.todo.data.TodoOrderingSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
+import com.upcpocket.app.todo.data.TodoTaskOrder
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -223,6 +227,55 @@ class TodoScheduleTest {
         assertEquals(
             expected,
             TodoSchedule.tasksForDate(completed, today, today, zone).map { it.id },
+        )
+    }
+
+    @Test
+    fun `selected mode applies after filtering to the chosen day`() {
+        val early = task("early", dueAt = at("2026-11-20", 8))
+        val late = task("late", dueAt = at("2026-11-20", 18))
+        val otherDay = task("other-day", dueAt = at("2026-11-21", 9))
+        val ordering = TodoOrderingSnapshot(
+            mode = TodoSortMode.IMPORTANCE,
+            orders = mapOf(
+                "late" to TodoTaskOrder("late", TodoImportance.HIGH),
+                "other-day" to TodoTaskOrder("other-day", TodoImportance.HIGH, manualRank = 1),
+                "early" to TodoTaskOrder("early", TodoImportance.LOW, manualRank = 2),
+            ),
+        )
+
+        assertEquals(
+            listOf("late", "early"),
+            TodoSchedule.tasksForDate(
+                listOf(early, otherDay, late),
+                date = today,
+                today = today,
+                zone = zone,
+                mode = TodoSortMode.IMPORTANCE,
+                ordering = ordering,
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf("early", "late"),
+            TodoSchedule.tasksForDate(
+                listOf(early, otherDay, late),
+                date = today,
+                today = today,
+                zone = zone,
+                mode = TodoSortMode.MANUAL,
+                ordering = ordering.copy(mode = TodoSortMode.MANUAL),
+            ).map { it.id },
+        )
+        // 日期模式即使带有排序快照也不改变裁剪后的当天顺序。
+        assertEquals(
+            listOf("early", "late"),
+            TodoSchedule.tasksForDate(
+                listOf(early, otherDay, late),
+                date = today,
+                today = today,
+                zone = zone,
+                ordering = ordering,
+            ).map { it.id },
         )
     }
 

@@ -33,7 +33,7 @@ class TodoRepositoryTest {
     @Test
     fun `crud and revision guarded reminder actions stay consistent`() = runBlocking {
         val db = inMemory()
-        val repository = TodoRepository(db.taskDao())
+        val repository = TodoRepository(db)
         val task = sampleTask()
         repository.insert(task)
 
@@ -61,7 +61,7 @@ class TodoRepositoryTest {
     @Test
     fun `deadline edits preserve the independent reminder and increment revision`() = runBlocking {
         val db = inMemory()
-        val repository = TodoRepository(db.taskDao())
+        val repository = TodoRepository(db)
         val task = sampleTask(dueAt = 2_000)
         repository.insert(task)
 
@@ -83,7 +83,7 @@ class TodoRepositoryTest {
     @Test
     fun `completion undo is compare and set and never restores an old row`() = runBlocking {
         val db = inMemory()
-        val repository = TodoRepository(db.taskDao())
+        val repository = TodoRepository(db)
         val task = sampleTask()
         repository.insert(task)
 
@@ -147,18 +147,194 @@ class TodoRepositoryTest {
     @Test
     fun `delete and restore keeps the same library task and a new revision`() = runBlocking {
         val db = inMemory()
-        val repository = TodoRepository(db.taskDao())
+        val repository = TodoRepository(db)
         val task = sampleTask()
         repository.insert(task)
 
-        val deleted = repository.delete(task.id)
-        assertEquals(task, deleted)
+        val deleted = repository.deleteWithOrder(task.id)!!
+        assertEquals(task, deleted.task)
+        assertEquals(TodoImportance.NORMAL, deleted.importance)
+        assertNull(deleted.manualRank)
         assertTrue(repository.tasks.first().isEmpty())
 
-        val restored = deleted!!.copy(revision = deleted.revision + 1)
-        repository.insert(restored)
+        val restored = repository.restoreWithOrder(deleted, now = 500)!!
+        assertEquals(2, restored.revision)
         assertEquals(restored, repository.tasks.first().single())
         assertNull(repository.byId("missing"))
+        assertNull(repository.restoreWithOrder(deleted, now = 600))
+        db.close()
+    }
+
+    @Test
+    fun `snapshot reads tasks and ordering as one consistent result`() = runBlocking {
+        val db = inMemory()
+        val repository = TodoRepository(db)
+        val undated = sampleTask(id = "11111111-1111-4111-8111-111111111111")
+        val deadline = sampleTask(
+            id = "22222222-2222-4222-8222-222222222222",
+            dueAt = 2_000,
+        )
+        repository.insertWithImportance(undated, TodoImportance.HIGH)
+        repository.insertWithImportance(deadline, TodoImportance.LOW)
+        assertTrue(repository.setSortMode(TodoSortMode.MANUAL))
+
+        val snapshot = repository.snapshot.first()
+
+        assertEquals(
+            setOf(undated.id, deadline.id),
+            snapshot.tasks.map(TodoTask::id).toSet(),
+        )
+        assertEquals(TodoSortMode.MANUAL, snapshot.ordering.mode)
+        assertEquals(TodoImportance.HIGH, snapshot.ordering.importanceOf(undated.id))
+        assertEquals(TodoImportance.LOW, snapshot.ordering.importanceOf(deadline.id))
+        // 手动初始化沿用完整列表的日期顺序：有截止的在前，无截止的在后。
+        assertEquals(1, snapshot.ordering.manualRankOf(deadline.id))
+        assertEquals(2, snapshot.ordering.manualRankOf(undated.id))
+        db.close()
+    }
+
+    @Test
+    fun `manual ordering initializes once appends new tasks and restores deleted rank`() =
+        runBlocking {
+            val db = inMemory()
+            val repository = TodoRepository(db)
+            val later = sampleTask(id = "11111111-1111-4111-8111-111111111111", dueAt = 300)
+            val earlier = sampleTask(id = "22222222-2222-4222-8222-222222222222", dueAt = 100)
+            val undated = sampleTask(id = "33333333-3333-4333-8333-333333333333")
+            repository.insert(later)
+            repository.insert(earlier)
+            repository.insert(undated)
+
+            assertTrue(repository.setSortMode(TodoSortMode.MANUAL))
+            var snapshot = repository.snapshot.first()
+            assertEquals(1, snapshot.ordering.manualRankOf(earlier.id))
+            assertEquals(2, snapshot.ordering.manualRankOf(later.id))
+            assertEquals(3, snapshot.ordering.manualRankOf(undated.id))
+
+            val appended = sampleTask(
+                id = "44444444-4444-4444-8444-444444444444",
+                dueAt = 50,
+            )
+            repository.insertWithImportance(appended, TodoImportance.LOW)
+            snapshot = repository.snapshot.first()
+            assertEquals(4, snapshot.ordering.manualRankOf(appended.id))
+            assertEquals(TodoImportance.LOW, snapshot.ordering.importanceOf(appended.id))
+
+            // 切走再切回不重置已有手排。
+            assertTrue(repository.setSortMode(TodoSortMode.IMPORTANCE))
+            assertTrue(repository.setSortMode(TodoSortMode.MANUAL))
+            snapshot = repository.snapshot.first()
+            assertEquals(1, snapshot.ordering.manualRankOf(earlier.id))
+            assertEquals(2, snapshot.ordering.manualRankOf(later.id))
+            assertEquals(3, snapshot.ordering.manualRankOf(undated.id))
+            assertEquals(4, snapshot.ordering.manualRankOf(appended.id))
+
+            // 删除后新建先占新位次，撤销删除项恢复原排名。
+            val deleted = repository.deleteWithOrder(earlier.id)!!
+            assertEquals(1, deleted.manualRank)
+            val fresh = sampleTask(
+                id = "55555555-5555-4555-8555-555555555555",
+                dueAt = 60,
+            )
+            repository.insertWithImportance(fresh, TodoImportance.HIGH)
+            val restored = repository.restoreWithOrder(deleted, now = 500)!!
+            assertEquals(earlier.id, restored.id)
+            snapshot = repository.snapshot.first()
+            assertEquals(1, snapshot.ordering.manualRankOf(earlier.id))
+            assertEquals(5, snapshot.ordering.manualRankOf(fresh.id))
+            assertEquals(TodoImportance.NORMAL, snapshot.ordering.importanceOf(earlier.id))
+            assertEquals(6, db.orderDao().state()!!.nextManualRank)
+
+            // 迟到/重复恢复不能覆盖仍存在的任务，也不能占用已用位次。
+            assertNull(repository.restoreWithOrder(deleted, now = 600))
+            val late = TodoDeletedTask(
+                task = sampleTask(id = "66666666-6666-4666-8666-666666666666"),
+                importance = TodoImportance.HIGH,
+                manualRank = 5,
+            )
+            assertTrue(repository.restoreWithOrder(late, now = 700) != null)
+            snapshot = repository.snapshot.first()
+            assertEquals(6, snapshot.ordering.manualRankOf(late.task.id))
+            assertEquals(TodoImportance.HIGH, snapshot.ordering.importanceOf(late.task.id))
+            assertEquals(7, db.orderDao().state()!!.nextManualRank)
+            db.close()
+        }
+
+    @Test
+    fun `content and importance save keeps the manual rank`() = runBlocking {
+        val db = inMemory()
+        val repository = TodoRepository(db)
+        val task = sampleTask(dueAt = 2_000)
+        repository.insertWithImportance(task, TodoImportance.NORMAL)
+        assertTrue(repository.setSortMode(TodoSortMode.MANUAL))
+        val rank = repository.snapshot.first().ordering.manualRankOf(task.id)
+
+        val updated = repository.updateContentWithImportance(
+            id = task.id,
+            title = "改标题",
+            reminderAt = task.reminderAt,
+            dueAt = task.dueAt,
+            firedAt = task.reminderFiredAt,
+            now = 500,
+            importance = TodoImportance.HIGH,
+        )!!
+
+        assertEquals("改标题", updated.title)
+        assertEquals(2, updated.revision)
+        val snapshot = repository.snapshot.first()
+        assertEquals(TodoImportance.HIGH, snapshot.ordering.importanceOf(task.id))
+        assertEquals(rank, snapshot.ordering.manualRankOf(task.id))
+        assertNull(
+            repository.updateContentWithImportance(
+                id = "missing",
+                title = "无",
+                reminderAt = null,
+                dueAt = null,
+                firedAt = null,
+                now = 600,
+                importance = TodoImportance.LOW,
+            ),
+        )
+        db.close()
+    }
+
+    @Test
+    fun `manual move only swaps the expected adjacent task in the same group`() = runBlocking {
+        val db = inMemory()
+        val repository = TodoRepository(db)
+        val first = sampleTask(id = "11111111-1111-4111-8111-111111111111", dueAt = 100)
+        val second = sampleTask(id = "22222222-2222-4222-8222-222222222222", dueAt = 200)
+        val third = sampleTask(id = "33333333-3333-4333-8333-333333333333", dueAt = 300)
+        repository.insert(first)
+        repository.insert(second)
+        repository.insert(third)
+        assertTrue(repository.setSortMode(TodoSortMode.MANUAL))
+
+        // 越界、跳过相邻项、跨完成分组、邻居已删除时都拒绝，且不改动次序。
+        assertFalse(repository.moveTask(first.id, TodoMoveDirection.UP, second.id))
+        assertFalse(repository.moveTask(first.id, TodoMoveDirection.DOWN, third.id))
+        repository.setCompleted(second.id, true, 250)
+        assertFalse(repository.moveTask(first.id, TodoMoveDirection.DOWN, second.id))
+        repository.setCompleted(second.id, false, 260)
+        val deletedThird = repository.deleteWithOrder(third.id)!!
+        assertFalse(repository.moveTask(second.id, TodoMoveDirection.DOWN, third.id))
+        repository.restoreWithOrder(deletedThird, now = 270)
+
+        assertTrue(repository.moveTask(first.id, TodoMoveDirection.DOWN, second.id))
+        var snapshot = repository.snapshot.first()
+        assertEquals(2, snapshot.ordering.manualRankOf(first.id))
+        assertEquals(1, snapshot.ordering.manualRankOf(second.id))
+        assertEquals(3, snapshot.ordering.manualRankOf(third.id))
+
+        // 点按后原邻居已反向移动：同一个预期邻居不再相邻，必须拒绝。
+        assertFalse(repository.moveTask(first.id, TodoMoveDirection.DOWN, second.id))
+        assertTrue(repository.moveTask(first.id, TodoMoveDirection.UP, second.id))
+        snapshot = repository.snapshot.first()
+        assertEquals(1, snapshot.ordering.manualRankOf(first.id))
+        assertEquals(2, snapshot.ordering.manualRankOf(second.id))
+
+        assertTrue(repository.setSortMode(TodoSortMode.DATE))
+        assertFalse(repository.moveTask(first.id, TodoMoveDirection.DOWN, second.id))
         db.close()
     }
 
@@ -170,22 +346,29 @@ class TodoRepositoryTest {
             .allowMainThreadQueries()
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .build()
-        TodoRepository(first.taskDao()).insert(sampleTask())
+        val task = sampleTask()
+        TodoRepository(first).insertWithImportance(task, TodoImportance.HIGH)
+        assertTrue(TodoRepository(first).setSortMode(TodoSortMode.MANUAL))
         first.close()
 
         val second = Room.databaseBuilder(context, TodoDatabase::class.java, name)
             .allowMainThreadQueries()
             .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
             .build()
-        val reopened = TodoRepository(second.taskDao()).tasks.first().single()
+        val reopenedRepository = TodoRepository(second)
+        val reopened = reopenedRepository.tasks.first().single()
         assertEquals("买牛奶", reopened.title)
+        val snapshot = reopenedRepository.snapshot.first()
+        assertEquals(TodoSortMode.MANUAL, snapshot.ordering.mode)
+        assertEquals(TodoImportance.HIGH, snapshot.ordering.importanceOf(task.id))
+        assertEquals(1, snapshot.ordering.manualRankOf(task.id))
         second.close()
         context.deleteDatabase(name)
         Unit
     }
 
     @Test
-    fun `migration preserves v1 fields`() = runBlocking {
+    fun `migration from v1 through v3 preserves fields and seeds date ordering`() = runBlocking {
         val name = "t-${UUID.randomUUID().toString().take(8)}.db"
         val legacyTasks = listOf(
             TodoTask(
@@ -222,31 +405,66 @@ class TodoRepositoryTest {
                 revision = 9,
             ),
         )
-        createVersionOneDatabase(name, legacyTasks)
+        createVersionDatabase(name, version = 1, rows = legacyTasks)
 
         val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
-            .addMigrations(TodoDatabase.MIGRATION_1_2)
+            .addMigrations(TodoDatabase.MIGRATION_1_2, TodoDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
-            val rows = TodoRepository(migrated.taskDao()).all().associateBy(TodoTask::id)
+            val repository = TodoRepository(migrated)
+            val rows = repository.all().associateBy(TodoTask::id)
             assertEquals(legacyTasks.associateBy(TodoTask::id), rows)
+            assertEquals(TodoOrderStateEntity(mode = "DATE", nextManualRank = 0), migrated.orderDao().state())
+            assertTrue(migrated.orderDao().orders().isEmpty())
+            assertEquals(TodoSortMode.DATE, repository.snapshot.first().ordering.mode)
         } finally {
             migrated.close()
             context.deleteDatabase(name)
         }
     }
 
-    private fun createVersionOneDatabase(name: String, rows: List<TodoTask>) {
-        val schemaRoot = Json.parseToJsonElement(versionOneSchemaFile().readText()).jsonObject
+    @Test
+    fun `migration from v2 to v3 preserves fields and seeds date ordering`() = runBlocking {
+        val name = "t-${UUID.randomUUID().toString().take(8)}.db"
+        val legacyTasks = listOf(
+            sampleTask(id = "with-deadline", dueAt = 4_000),
+            sampleTask(id = "without-deadline", dueAt = null).copy(completed = true, completedAt = 400),
+        )
+        createVersionDatabase(name, version = 2, rows = legacyTasks)
+
+        val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
+            .addMigrations(TodoDatabase.MIGRATION_2_3)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val repository = TodoRepository(migrated)
+            assertEquals(
+                legacyTasks.associateBy(TodoTask::id),
+                repository.all().associateBy(TodoTask::id),
+            )
+            assertEquals(
+                TodoOrderStateEntity(mode = "DATE", nextManualRank = 0),
+                migrated.orderDao().state(),
+            )
+            assertTrue(migrated.orderDao().orders().isEmpty())
+            assertEquals(TodoImportance.NORMAL, repository.importanceOf("with-deadline"))
+        } finally {
+            migrated.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    private fun createVersionDatabase(name: String, version: Int, rows: List<TodoTask>) {
+        val schemaRoot = Json.parseToJsonElement(versionSchemaFile(version).readText()).jsonObject
         val databaseSchema = schemaRoot.getValue("database").jsonObject
         val tableSchema = databaseSchema.getValue("entities").jsonArray
             .map { it.jsonObject }
             .single { it.getValue("tableName").jsonPrimitive.content == "todo_tasks" }
         val tableSql = tableSchema.getValue("createSql").jsonPrimitive.content
             .replace("\${TABLE_NAME}", "todo_tasks")
-        val version = databaseSchema.getValue("version").jsonPrimitive.content.toInt()
-        check(version == 1) { "Expected committed Todo schema v1" }
+        val schemaVersion = databaseSchema.getValue("version").jsonPrimitive.content.toInt()
+        check(schemaVersion == version) { "Expected committed Todo schema v$version" }
 
         val databaseFile = context.getDatabasePath(name)
         val parent = requireNotNull(databaseFile.parentFile)
@@ -268,6 +486,9 @@ class TodoRepositoryTest {
                     if (task.reminderAt == null) putNull("reminderAt") else put("reminderAt", task.reminderAt)
                     if (task.reminderFiredAt == null) putNull("reminderFiredAt") else put("reminderFiredAt", task.reminderFiredAt)
                     put("revision", task.revision)
+                    if (version >= 2) {
+                        if (task.dueAt == null) putNull("dueAt") else put("dueAt", task.dueAt)
+                    }
                 }
                 legacy.insertOrThrow("todo_tasks", null, values)
             }
@@ -277,20 +498,21 @@ class TodoRepositoryTest {
         }
     }
 
-    private fun versionOneSchemaFile(): File {
+    private fun versionSchemaFile(version: Int): File {
         val relativePaths = listOf(
-            "schemas/com.upcpocket.app.todo.data.TodoDatabase/1.json",
-            "feature/todo/schemas/com.upcpocket.app.todo.data.TodoDatabase/1.json",
+            "schemas/com.upcpocket.app.todo.data.TodoDatabase/$version.json",
+            "feature/todo/schemas/com.upcpocket.app.todo.data.TodoDatabase/$version.json",
         )
-        var directory: File? = File(System.getProperty("user.dir")).canonicalFile
-        while (directory != null) {
+        val workingDirectory = requireNotNull(System.getProperty("user.dir"))
+        var directory: File? = File(workingDirectory).canonicalFile
+        while (true) {
             val currentDirectory = directory ?: break
             relativePaths.firstNotNullOfOrNull { relative ->
                 File(currentDirectory, relative).takeIf { it.isFile }
             }?.let { return it }
-            directory = directory.parentFile
+            directory = currentDirectory.parentFile
         }
-        error("Committed Todo schema v1 was not found")
+        error("Committed Todo schema v$version was not found")
     }
 
     private fun inMemory(): TodoDatabase = Room.inMemoryDatabaseBuilder(

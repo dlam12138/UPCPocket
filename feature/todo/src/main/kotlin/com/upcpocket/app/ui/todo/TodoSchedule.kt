@@ -1,5 +1,8 @@
 package com.upcpocket.app.ui.todo
 
+import com.upcpocket.app.todo.data.TodoOrdering
+import com.upcpocket.app.todo.data.TodoOrderingSnapshot
+import com.upcpocket.app.todo.data.TodoSortMode
 import com.upcpocket.app.todo.data.TodoTask
 import java.time.Instant
 import java.time.LocalDate
@@ -28,14 +31,20 @@ internal object TodoSchedule {
         date: LocalDate,
         today: LocalDate,
         zone: ZoneId,
-    ): List<TodoTask> = tasks.asSequence()
-        .filter { matches(it, date, today, zone) }
-        .sortedWith(
-            compareBy<TodoTask> { anchorMillis(it, date, today, zone) ?: Long.MAX_VALUE }
-                .thenBy { it.title }
-                .thenBy { it.id },
-        )
-        .toList()
+        mode: TodoSortMode = TodoSortMode.DATE,
+        ordering: TodoOrderingSnapshot = TodoOrderingSnapshot.Default,
+    ): List<TodoTask> = TodoOrdering.sortByMode(
+        tasks.asSequence()
+            .filter { matches(it, date, today, zone) }
+            .sortedWith(
+                compareBy<TodoTask> { anchorMillis(it, date, today, zone) ?: Long.MAX_VALUE }
+                    .thenBy { it.title }
+                    .thenBy { it.id },
+            )
+            .toList(),
+        mode,
+        ordering,
+    )
 
     fun unscheduledOpenCount(tasks: List<TodoTask>): Int =
         tasks.count { !it.completed && it.dueAt == null && it.reminderAt == null }
