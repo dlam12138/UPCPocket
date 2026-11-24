@@ -81,6 +81,8 @@ fun TodoEditorSheet(
     initialTask: TodoTask?,
     onDismiss: () -> Unit,
     onDeleted: (TodoDeletedTask) -> Unit = {},
+    /** 仅新增模式生效：从选中日期进入时预填的截止时点。 */
+    initialDueAt: Long? = null,
 ) {
     val context = LocalContext.current
     val zone = remember { ZoneId.systemDefault() }
@@ -91,8 +93,11 @@ fun TodoEditorSheet(
     val focusRequester = remember { FocusRequester() }
 
     val supportsOrdering = store.supportsOrdering
+    val newTaskInitialDueAt = initialDueAt.takeIf { initialTask == null }
     var title by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
-    var dueAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.dueAt) }
+    var dueAt by rememberSaveable(initialTask?.id, newTaskInitialDueAt) {
+        mutableStateOf(initialTask?.dueAt ?: newTaskInitialDueAt)
+    }
     var reminderAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.reminderAt) }
     // 打开或还原表单时的基准字段；initialTask 会随外部更新变化，不能拿最新任务反推用户改过什么。
     val baselineTitle by rememberSaveable(initialTask?.id) {

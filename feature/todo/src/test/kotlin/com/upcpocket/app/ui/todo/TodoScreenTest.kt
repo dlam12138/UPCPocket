@@ -10,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -29,8 +30,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
+import com.upcpocket.app.todo.PersonalSchedule
+import com.upcpocket.app.todo.PersonalScheduleStore
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.PersonalScheduleTime
 import com.upcpocket.app.todo.data.TodoDeletedTask
 import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoImportance
@@ -43,6 +47,7 @@ import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.data.TodoTaskOrder
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
@@ -500,6 +505,202 @@ class TodoScreenTest {
     }
 
     @Test
+    fun `schedule add shares the type chooser and prefills the selected date`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val todoStore = FakeTodoStore(emptyList())
+        val scheduleStore = FakePersonalScheduleStore()
+
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = todoStore,
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                    personalScheduleStore = scheduleStore,
+                )
+            }
+        }
+
+        rule.onNodeWithTag("todo_schedule_day_2026-11-21").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("todo_schedule_add").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("新建").assertIsDisplayed()
+
+        performClickSemantics("agenda_type_todo")
+        rule.waitForIdle()
+        rule.onNodeWithText("新增待办").assertIsDisplayed()
+        val expectedDue = LocalDate.parse("2026-11-21")
+            .atTime(9, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        rule.onNodeWithTag("todo_due_value")
+            .assertTextEquals(TodoFormat.editorTime(expectedDue, zone))
+        performClickSemantics("todo_editor_cancel")
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("todo_schedule_add").performClick()
+        rule.waitForIdle()
+        performClickSemantics("agenda_type_schedule")
+        rule.waitForIdle()
+        rule.onNodeWithText("新增日程").assertIsDisplayed()
+        assertEquals(
+            2,
+            rule.onAllNodesWithText("2026年11月21日").fetchSemanticsNodes().size,
+        )
+        rule.onNodeWithText("09:00").assertIsDisplayed()
+        rule.onNodeWithText("10:00").assertIsDisplayed()
+
+        rule.onNodeWithTag("schedule_title_input").performTextInput("组会")
+        performClickSemantics("schedule_save")
+        rule.waitForIdle()
+
+        val added = requireNotNull(scheduleStore.lastAdded)
+        assertEquals("组会", added.title)
+        assertEquals(shanghaiMillis("2026-11-21T09:00"), added.startAt)
+        assertEquals(shanghaiMillis("2026-11-21T10:00"), added.endAt)
+        rule.onNodeWithTag("todo_schedule_item_${added.id}").assertIsDisplayed()
+        rule.onNodeWithText("组会").assertIsDisplayed()
+        rule.onNodeWithText("09:00–10:00").assertIsDisplayed()
+        assertTrue(
+            rule.onAllNodesWithText("设备时间").fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
+    fun `schedule row shows the device day fragment and editor restores shanghai time`() {
+        val tokyo = ZoneId.of("Asia/Tokyo")
+        val now = LocalDate.parse("2026-11-25")
+            .atTime(12, 0)
+            .atZone(tokyo)
+            .toInstant()
+            .toEpochMilli()
+        val schedule = PersonalSchedule(
+            id = "cross-day",
+            title = "跨日日程",
+            startAt = shanghaiMillis("2026-11-24T23:30"),
+            endAt = shanghaiMillis("2026-11-24T23:50"),
+            location = "图书馆",
+            note = null,
+            revision = 1,
+        )
+        val scheduleStore = FakePersonalScheduleStore(listOf(schedule))
+
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = FakeTodoStore(emptyList()),
+                    onOpenAll = {},
+                    zone = tokyo,
+                    clock = { now },
+                    personalScheduleStore = scheduleStore,
+                )
+            }
+        }
+
+        rule.onNodeWithText("跨日日程").assertIsDisplayed()
+        rule.onNodeWithText("00:30–00:50").assertIsDisplayed()
+        rule.onNodeWithText("设备时间").assertIsDisplayed()
+
+        rule.onNodeWithTag("todo_schedule_item_cross-day").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("编辑日程").assertIsDisplayed()
+        rule.onNodeWithTag("schedule_title_input").assertTextContains("跨日日程")
+        rule.onNodeWithText("23:30").assertIsDisplayed()
+        rule.onNodeWithText("23:50").assertIsDisplayed()
+        assertEquals(
+            2,
+            rule.onAllNodesWithText("2026年11月24日").fetchSemanticsNodes().size,
+        )
+        performClickSemantics("schedule_cancel")
+        rule.waitForIdle()
+        rule.onNodeWithText("编辑日程").assertDoesNotExist()
+    }
+
+    @Test
+    fun `schedule editor restores draft and selected date after recreation`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = FakeTodoStore(emptyList()),
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                    personalScheduleStore = FakePersonalScheduleStore(),
+                )
+            }
+        }
+
+        rule.onNodeWithTag("todo_schedule_day_2026-11-21").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("todo_schedule_add").performClick()
+        rule.waitForIdle()
+        performClickSemantics("agenda_type_schedule")
+        rule.waitForIdle()
+        rule.onNodeWithTag("schedule_title_input").performTextInput("草稿日程")
+
+        restoration.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+
+        rule.onNodeWithText("11月21日 周六").assertIsDisplayed()
+        rule.onNodeWithTag("schedule_title_input").assertTextContains("草稿日程")
+        assertEquals(
+            2,
+            rule.onAllNodesWithText("2026年11月21日").fetchSemanticsNodes().size,
+        )
+    }
+
+    @Test
+    fun `schedule list distinguishes read failure from a true empty day`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val scheduleStore = FakePersonalScheduleStore(failObserve = true)
+
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = FakeTodoStore(emptyList()),
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                    personalScheduleStore = scheduleStore,
+                )
+            }
+        }
+
+        rule.onNodeWithText("日程读取失败。").assertIsDisplayed()
+        assertTrue(
+            rule.onAllNodesWithText("这天没有日程。").fetchSemanticsNodes().isEmpty(),
+        )
+
+        scheduleStore.failObserve = false
+        rule.onNodeWithTag("todo_schedule_schedule_retry").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("这天没有日程。").assertIsDisplayed()
+        assertTrue(
+            rule.onAllNodesWithText("日程读取失败。").fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    @Test
     fun `schedule section defaults to today and keeps an explicit date across restore`() {
         val zone = ZoneId.of("Asia/Shanghai")
         val now = LocalDate.parse("2026-11-20")
@@ -858,6 +1059,9 @@ class TodoScreenTest {
         }
     }
 
+    private fun shanghaiMillis(text: String): Long =
+        requireNotNull(PersonalScheduleTime.resolve(LocalDateTime.parse(text)))
+
     private class FakeHost : PluginSectionHost {
         var opened: PluginRouteId? = null
 
@@ -1198,5 +1402,89 @@ class TodoScreenTest {
         override fun ensureNotificationChannel() = Unit
 
         override suspend fun reconcileAll() = Unit
+    }
+
+    private class FakePersonalScheduleStore(
+        initial: List<PersonalSchedule> = emptyList(),
+        var failObserve: Boolean = false,
+    ) : PersonalScheduleStore {
+        private val state = MutableStateFlow(initial)
+        var lastAdded: PersonalSchedule? = null
+        var rejectNextUpdate = false
+
+        override fun observeWindow(
+            fromInclusive: Long,
+            untilExclusive: Long,
+        ): Flow<List<PersonalSchedule>> =
+            if (failObserve) {
+                flow<List<PersonalSchedule>> {
+                    throw IllegalStateException("synthetic schedule read failure")
+                }
+            } else {
+                state.map { schedules ->
+                    schedules
+                        .filter { it.startAt < untilExclusive && it.endAt > fromInclusive }
+                        .sortedWith(compareBy({ it.startAt }, { it.endAt }, { it.id }))
+                }
+            }
+
+        override suspend fun byId(id: String): PersonalSchedule? =
+            state.value.firstOrNull { it.id == id }
+
+        override suspend fun add(
+            title: String,
+            startAt: Long,
+            endAt: Long,
+            location: String?,
+            note: String?,
+        ): PersonalSchedule {
+            if (title.isBlank() || endAt <= startAt) throw IllegalArgumentException()
+            val schedule = PersonalSchedule(
+                id = UUID.randomUUID().toString(),
+                title = title.trim(),
+                startAt = startAt,
+                endAt = endAt,
+                location = location?.trim()?.takeIf(String::isNotEmpty),
+                note = note?.trim()?.takeIf(String::isNotEmpty),
+                revision = 1,
+            )
+            state.value = state.value + schedule
+            lastAdded = schedule
+            return schedule
+        }
+
+        override suspend fun update(
+            id: String,
+            expectedRevision: Int,
+            title: String,
+            startAt: Long,
+            endAt: Long,
+            location: String?,
+            note: String?,
+        ): PersonalSchedule? {
+            if (rejectNextUpdate) {
+                rejectNextUpdate = false
+                return null
+            }
+            val current = byId(id) ?: return null
+            if (current.revision != expectedRevision) return null
+            val updated = current.copy(
+                title = title.trim(),
+                startAt = startAt,
+                endAt = endAt,
+                location = location?.trim()?.takeIf(String::isNotEmpty),
+                note = note?.trim()?.takeIf(String::isNotEmpty),
+                revision = current.revision + 1,
+            )
+            state.value = state.value.map { if (it.id == id) updated else it }
+            return updated
+        }
+
+        override suspend fun delete(id: String, expectedRevision: Int): PersonalSchedule? {
+            val current = byId(id) ?: return null
+            if (current.revision != expectedRevision) return null
+            state.value = state.value.filterNot { it.id == id }
+            return current
+        }
     }
 }

@@ -56,6 +56,7 @@ import com.upcpocket.app.timetable.TimetableCampusMap
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.todo.PersonalScheduleStore
 import com.upcpocket.app.todo.TodoCapabilities
 import com.upcpocket.app.todo.TodoLaunchContract
 import com.upcpocket.app.todo.TodoPlugin
@@ -602,6 +603,10 @@ object AppGraph {
     /** 通知点击/待办页共享的本地数据源；插件未激活时不打开任何任务。 */
     val todoStoreOrNull: TodoStore?
         get() = activePlugins.capability(TodoCapabilities.store)
+
+    /** 个人日程仅由待办插件提供；缺失时课表与首页不显示本机日程入口。 */
+    val personalScheduleStoreOrNull: PersonalScheduleStore?
+        get() = activePlugins.capability(TodoCapabilities.personalSchedule)
 
     /**
      * 启动装配；由 Application 在设置 Context 后调用。

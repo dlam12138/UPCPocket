@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -52,9 +53,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -64,6 +67,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -233,6 +237,46 @@ internal fun TimetableScreen(
 
     val scrollState = rememberScrollState()
     val todoSlot = LocalTimetableTodoSlot.current
+    val personalAgenda = LocalTimetablePersonalAgenda.current
+    // 日期与当日列表都是本机状态；保存 epochDay，配置变更后仍停留在同一日期。
+    var agendaEpochDay by rememberSaveable {
+        mutableLongStateOf(LocalDate.now(TIMETABLE_ZONE).toEpochDay())
+    }
+    var agendaSheetEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
+    val agendaDate = LocalDate.ofEpochDay(agendaEpochDay)
+    val agendaNowMillis = rememberAgendaNowMillis()
+    val agendaDayState = if (personalAgenda != null) {
+        personalAgenda.windowState(timetableAgendaDayWindow(agendaDate))
+    } else {
+        TimetableAgendaState.Loading
+    }
+    // 周网格标记只读取当前实际周列日期；未查询或日期不完整时不推断。
+    val weekAgendaWindow = remember(state.weekDates) {
+        timetableAgendaWeekWindow(state.weekDates)
+            ?.takeIf { state.weekDates.size == 7 }
+    }
+    val weekAgendaState = if (personalAgenda != null && weekAgendaWindow != null) {
+        personalAgenda.windowState(weekAgendaWindow)
+    } else {
+        null
+    }
+    val daysWithAgenda = remember(weekAgendaState, state.weekDates) {
+        val entries = (weekAgendaState as? TimetableAgendaState.Ready)?.entries.orEmpty()
+        if (entries.isEmpty() || state.weekDates.size != 7) {
+            emptySet()
+        } else {
+            state.weekDates.filterTo(mutableSetOf()) { date ->
+                entries.any { timetableAgendaCoversDate(it, date) }
+            }
+        }
+    }
+    val sheetEpochDay = agendaSheetEpochDay
+    val agendaSheetDate = sheetEpochDay?.let { LocalDate.ofEpochDay(it) }
+    val agendaSheetState = if (personalAgenda != null && agendaSheetDate != null) {
+        personalAgenda.windowState(timetableAgendaDayWindow(agendaSheetDate))
+    } else {
+        null
+    }
     val moduleLayout = LocalTimetableModuleLayout.current
     val normalizedOrder = remember(moduleLayout.order) {
         normalizeModuleOrder(moduleLayout.order, TimetableModuleId.DEFAULT_ORDER)
@@ -307,6 +351,20 @@ internal fun TimetableScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
+                            // 个人日程只读本机，不依赖学校账号、登录或周查询；始终在
+                            // 课表模块内提供日期入口与新增/编辑。
+                            if (personalAgenda != null) {
+                                TimetablePersonalAgendaCard(
+                                    state = agendaDayState,
+                                    selectedDate = agendaDate,
+                                    // 只有查看上海实际今天时才标「进行中/已结束」。
+                                    nowMinute = agendaMinuteForDate(agendaNowMillis, agendaDate),
+                                    showShanghaiTime = timetableAgendaNeedsShanghaiNote(),
+                                    onSelectDate = { agendaEpochDay = it.toEpochDay() },
+                                    onCreate = personalAgenda::openCreate,
+                                    onEdit = personalAgenda::openEdit,
+                                )
+                            }
                             when {
                                 state.accountBlocked -> {
                                     AccountBlockedCard(
@@ -351,6 +409,13 @@ internal fun TimetableScreen(
                                             state,
                                             onCourseClick = {
                                                 detail = it.selection(state.accountEpoch)
+                                            },
+                                            daysWithAgenda = daysWithAgenda,
+                                            onAgendaDateClick = personalAgenda?.let { agenda ->
+                                                { date ->
+                                                    agendaEpochDay = date.toEpochDay()
+                                                    agendaSheetEpochDay = date.toEpochDay()
+                                                }
                                             },
                                         )
                                     }
@@ -404,6 +469,24 @@ internal fun TimetableScreen(
             },
         )
     }
+    if (personalAgenda != null && agendaSheetDate != null && agendaSheetState != null) {
+        TimetableAgendaDaySheet(
+            state = agendaSheetState,
+            date = agendaSheetDate,
+            // 弹窗可能停留在昨天或明天，只有实际今天才显示进行状态。
+            nowMinute = agendaMinuteForDate(agendaNowMillis, agendaSheetDate),
+            showShanghaiTime = timetableAgendaNeedsShanghaiNote(),
+            onEdit = { id ->
+                agendaSheetEpochDay = null
+                personalAgenda.openEdit(id)
+            },
+            onCreate = { date ->
+                agendaSheetEpochDay = null
+                personalAgenda.openCreate(date)
+            },
+            onDismiss = { agendaSheetEpochDay = null },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -428,6 +511,12 @@ internal fun TimetableHomeSection(
         }
     }
 
+    val personalAgenda = LocalTimetablePersonalAgenda.current
+    val agendaState = if (personalAgenda != null) {
+        personalAgenda.windowState(timetableAgendaDayWindow(actualToday))
+    } else {
+        null
+    }
     val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked &&
         state.today == actualToday
     ) {
@@ -457,6 +546,13 @@ internal fun TimetableHomeSection(
         onCourseClick = { detail = it.selection(state.accountEpoch) },
         onOpenTimetable = onOpenTimetable,
         onOpenAccountSettings = onOpenAccountSettings,
+        agenda = agendaState,
+        onAgendaClick = personalAgenda?.let { agenda ->
+            { id -> agenda.openEdit(id) }
+        },
+        onAgendaCreate = personalAgenda?.let { agenda ->
+            { agenda.openCreate(actualToday) }
+        },
     )
     visibleDetail?.let { meeting ->
         CourseDetailBottomSheet(
@@ -846,6 +942,8 @@ internal fun ConnectionBanner(
 internal fun WeekPanel(
     state: TimetableUiState,
     onCourseClick: (TimetableMeeting) -> Unit,
+    daysWithAgenda: Set<LocalDate> = emptySet(),
+    onAgendaDateClick: ((LocalDate) -> Unit)? = null,
 ) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(8.dp)) {
@@ -886,12 +984,12 @@ internal fun WeekPanel(
                         CircularProgressIndicator(Modifier.size(26.dp), strokeWidth = 2.dp)
                     }
                 } else {
-                    WeekGrid(state, onCourseClick)
+                    WeekGrid(state, onCourseClick, daysWithAgenda, onAgendaDateClick)
                 }
                 TimetableWeekState.EMPTY -> EmptyWeekHint("本周无课程")
                 TimetableWeekState.READY,
                 TimetableWeekState.CACHED,
-                -> WeekGrid(state, onCourseClick)
+                -> WeekGrid(state, onCourseClick, daysWithAgenda, onAgendaDateClick)
             }
         }
     }
@@ -931,6 +1029,8 @@ private val CARD_COMPACT_MIN_WIDTH = 24.dp
 private fun WeekGrid(
     state: TimetableUiState,
     onCourseClick: (TimetableMeeting) -> Unit,
+    daysWithAgenda: Set<LocalDate> = emptySet(),
+    onAgendaDateClick: ((LocalDate) -> Unit)? = null,
 ) {
     var actualToday by remember { mutableStateOf(LocalDate.now(TIMETABLE_ZONE)) }
     LaunchedEffect(Unit) {
@@ -1028,9 +1128,13 @@ private fun WeekGrid(
                     dayHeaderHeight = dayHeaderHeight,
                     isToday = date == actualToday,
                     known = date in view.knownDates,
+                    hasAgenda = date in daysWithAgenda,
                     meetings = byDate[date].orEmpty(),
                     colorSlots = state.courseColorSlots,
                     onCourseClick = onCourseClick,
+                    onAgendaClick = onAgendaDateClick?.let { callback ->
+                        { callback(date) }
+                    },
                 )
             }
         }
@@ -1048,6 +1152,8 @@ private fun DayColumn(
     meetings: List<TimetableMeeting>,
     colorSlots: Map<String, Int>,
     onCourseClick: (TimetableMeeting) -> Unit,
+    hasAgenda: Boolean = false,
+    onAgendaClick: (() -> Unit)? = null,
 ) {
     val laneInfo = remember(meetings) { assignLanes(meetings) }
     Column(
@@ -1055,7 +1161,7 @@ private fun DayColumn(
             .width(width)
             .padding(horizontal = 0.5.dp),
     ) {
-        Column(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .height(dayHeaderHeight)
@@ -1068,38 +1174,64 @@ private fun DayColumn(
                     } else {
                         Color.Transparent
                     },
+                )
+                .then(
+                    if (onAgendaClick != null) {
+                        Modifier.clickable(
+                            onClickLabel = "查看 ${date.monthValue}月${date.dayOfMonth}日个人日程",
+                            role = Role.Button,
+                            onClick = onAgendaClick,
+                        )
+                    } else {
+                        Modifier
+                    },
                 ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = weekdayLabel(date.dayOfWeek.value),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                color = if (isToday) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                fontSize = 9.sp,
-                lineHeight = 10.sp,
-                maxLines = 1,
-            )
-            Text(
-                "${date.monthValue}/${date.dayOfMonth}",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 8.sp,
-                lineHeight = 9.sp,
-                maxLines = 1,
-            )
-            if (!known) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(
-                    "未同步",
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 7.sp,
-                    lineHeight = 8.sp,
+                    text = weekdayLabel(date.dayOfWeek.value),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isToday) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    fontSize = 9.sp,
+                    lineHeight = 10.sp,
                     maxLines = 1,
+                )
+                Text(
+                    "${date.monthValue}/${date.dayOfMonth}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 8.sp,
+                    lineHeight = 9.sp,
+                    maxLines = 1,
+                )
+                if (!known) {
+                    Text(
+                        "未同步",
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 7.sp,
+                        lineHeight = 8.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+            if (hasAgenda) {
+                Box(
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 3.dp, end = 3.dp)
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.tertiary)
+                        .testTag("timetable_day_agenda_$date"),
                 )
             }
         }
@@ -1257,6 +1389,9 @@ internal fun TodayPanel(
     showDate: Boolean = true,
     onOpenTimetable: (() -> Unit)? = null,
     onOpenAccountSettings: (() -> Unit)? = null,
+    agenda: TimetableAgendaState? = null,
+    onAgendaClick: ((String) -> Unit)? = null,
+    onAgendaCreate: (() -> Unit)? = null,
 ) {
     val today = state.today
     var todayNow by remember { mutableStateOf(java.time.LocalDate.now(TIMETABLE_ZONE)) }
@@ -1282,7 +1417,10 @@ internal fun TodayPanel(
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("今日课程", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (agenda == null) "今日课程" else "今日安排",
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 if (showDate) {
                     Spacer(Modifier.width(8.dp))
                     Text(
@@ -1290,6 +1428,16 @@ internal fun TodayPanel(
                             weekdayLabel(todayNow.dayOfWeek.value),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (agenda != null && timetableAgendaNeedsShanghaiNote()) {
+                    Text(
+                        "上海时间",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(start = 8.dp)
+                            .testTag("today_agenda_timezone"),
                     )
                 }
                 Spacer(Modifier.weight(1f))
@@ -1302,154 +1450,357 @@ internal fun TodayPanel(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-            }
-            when (state.todayState) {
-                TimetableTodayState.ACCOUNT_RESTORING -> TodayStatus(
-                    text = state.todayMessage ?: "正在恢复学校账号。",
-                )
-                TimetableTodayState.ACCOUNT_REQUIRED -> TodayStatus(
-                    text = state.todayMessage ?: "请先保存学校账号。",
-                    actionLabel = "学校账号",
-                    action = onOpenAccountSettings,
-                )
-                TimetableTodayState.ACCOUNT_BLOCKED -> TodayStatus(
-                    text = state.todayMessage ?: "学校账号暂不可用。",
-                    actionLabel = "学校账号",
-                    action = onOpenAccountSettings,
-                )
-                TimetableTodayState.READING_CACHE -> TodayStatus(
-                    text = if (matchesActualToday) {
-                        "正在读取本机课表…"
-                    } else {
-                        "今日课表尚未同步。"
-                    },
-                    actionLabel = if (matchesActualToday) null else "去课表",
-                    action = if (matchesActualToday) null else onOpenTimetable,
-                )
-                TimetableTodayState.NOT_SYNCED -> TodayStatus(
-                    text = "今日课表尚未同步。",
-                    actionLabel = "去课表",
-                    action = onOpenTimetable,
-                )
-                TimetableTodayState.OUTSIDE_TERM -> if (!matchesActualToday) {
-                    TodayStatus(
-                        text = "今日课表尚未同步。",
-                        actionLabel = "去课表",
-                        action = onOpenTimetable,
-                    )
-                } else {
-                    TodayStatus(
-                        text = "今天不在已同步学期内。",
-                        actionLabel = "查看课表",
-                        action = onOpenTimetable,
-                    )
-                }
-                TimetableTodayState.READ_ERROR -> TodayStatus(
-                    text = if (matchesActualToday) {
-                        state.todayMessage ?: "本机课表读取失败。"
-                    } else {
-                        "今日课表尚未同步。"
-                    },
-                    actionLabel = "去课表",
-                    action = onOpenTimetable,
-                )
-                TimetableTodayState.EMPTY -> if (!state.todayLoaded || !matchesActualToday) {
-                    TodayStatus(
-                        text = "今日课表尚未同步。",
-                        actionLabel = "去课表",
-                        action = onOpenTimetable,
-                    )
-                } else {
-                    TodayStatus(text = "今天没有排课。")
-                }
-                TimetableTodayState.READY -> if (!state.todayLoaded || !matchesActualToday) {
-                    TodayStatus(
-                        text = "今日课表尚未同步。",
-                        actionLabel = "去课表",
-                        action = onOpenTimetable,
-                    )
-                } else state.todayMeetings.forEach { meeting ->
-                    val range = ranges[meeting]
-                    val ended = range != null && range.endMinute <= nowMinute
-                    val isCurrent = meeting == current
-                    val isNext = meeting == next
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
+                if (agenda != null && onAgendaCreate != null) {
+                    com.upcpocket.app.ui.components.CampusTextButton(
+                        onClick = onAgendaCreate,
+                        modifier = Modifier
                             .heightIn(min = 48.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onCourseClick(meeting) }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        val tone = courseTone(
-                            meeting,
-                            state.todayCourseColorSlots[courseColorKey(meeting)],
+                            .testTag("today_agenda_add"),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) { Text("新增日程") }
+                }
+            }
+            val schoolStatus = todaySchoolStatus(
+                state = state,
+                matchesActualToday = matchesActualToday,
+                onOpenTimetable = onOpenTimetable,
+                onOpenAccountSettings = onOpenAccountSettings,
+            )
+            schoolStatus?.let { status ->
+                TodayStatus(
+                    text = status.text,
+                    actionLabel = status.actionLabel,
+                    action = status.action,
+                )
+            }
+            val schoolReady = schoolStatus == null &&
+                state.todayState == TimetableTodayState.READY
+            val schoolEmptyToday = schoolStatus == null &&
+                state.todayState == TimetableTodayState.EMPTY
+            val agendaState = agenda
+            if (agendaState == null) {
+                when {
+                    schoolReady -> state.todayMeetings.forEach { meeting ->
+                        TodayCourseRow(
+                            meeting = meeting,
+                            range = ranges[meeting],
+                            toneSlot = state.todayCourseColorSlots[courseColorKey(meeting)],
+                            nowMinute = nowMinute,
+                            isCurrent = meeting == current,
+                            isNext = meeting == next,
+                            showSource = false,
+                            onClick = { onCourseClick(meeting) },
                         )
-                        Box(
-                            Modifier
-                                .width(4.dp)
-                                .height(32.dp)
-                                .background(tone.container, RoundedCornerShape(2.dp))
-                                .glassHighlight(RoundedCornerShape(2.dp)),
+                    }
+
+                    schoolEmptyToday -> TodayStatus(text = "今天没有排课。")
+                    else -> Unit
+                }
+            } else {
+                if (agendaState is TimetableAgendaState.Loading) {
+                    Text(
+                        "正在读取本机日程…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp).testTag("today_agenda_loading"),
+                    )
+                } else if (agendaState is TimetableAgendaState.Failed) {
+                    Text(
+                        "本机日程读取失败。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(vertical = 4.dp).testTag("today_agenda_failed"),
+                    )
+                }
+                val segments = (agendaState as? TimetableAgendaState.Ready)
+                    ?.let { ready -> projectTimetableAgendaDay(ready.entries, todayNow) }
+                val openAgenda: (String) -> Unit = onAgendaClick ?: {}
+                when {
+                    schoolReady -> {
+                        val items = buildMergedToday(
+                            state = state,
+                            ranges = ranges,
+                            current = current,
+                            next = next,
+                            segments = segments.orEmpty(),
                         )
-                        Spacer(Modifier.width(8.dp))
-                        Column(
-                            Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(1.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    meeting.courseName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                when {
-                                    isCurrent -> TodayTag("上课中", MaterialTheme.colorScheme.primary)
-                                    isNext -> TodayTag("下一堂", MaterialTheme.colorScheme.tertiary)
-                                }
+                        if (items.isEmpty()) {
+                            // 只有日程也读取成功时才说“没有安排”；读取中/失败时
+                            // 保留上面的状态行，不伪装成真正的空结果。
+                            if (segments != null) {
+                                TodayStatus(text = "今天没有安排。")
                             }
-                            Text(
-                                listOfNotNull(
-                                    range?.label ?: "时间待确认",
-                                    meeting.location ?: "地点未提供",
-                                    if (range == null) periodLabel(meeting) else null,
-                                ).joinToString(" · "),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (isCurrent && range != null) {
-                                val duration = (range.endMinute - range.startMinute).coerceAtLeast(1)
-                                val elapsed = (nowMinute - range.startMinute).coerceIn(0, duration)
-                                val remaining = (duration - elapsed).coerceAtLeast(0)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    LinearProgressIndicator(
-                                        progress = { elapsed.toFloat() / duration.toFloat() },
-                                        modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(999.dp)),
+                        } else {
+                            items.forEach { item ->
+                                when (item) {
+                                    is TodayAgendaItem.Course -> TodayCourseRow(
+                                        meeting = item.meeting,
+                                        range = item.range,
+                                        toneSlot = item.toneSlot,
+                                        nowMinute = nowMinute,
+                                        isCurrent = item.isCurrent,
+                                        isNext = item.isNext,
+                                        showSource = true,
+                                        onClick = { onCourseClick(item.meeting) },
                                     )
-                                    Text(
-                                        "剩 $remaining 分钟",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                    )
+
+                                    is TodayAgendaItem.Schedule -> key(item.segment.entry.id) {
+                                        TimetableAgendaRow(
+                                            segment = item.segment,
+                                            nowMinute = nowMinute,
+                                            showSourceTag = true,
+                                            onClick = { openAgenda(item.segment.entry.id) },
+                                        )
+                                    }
                                 }
                             }
                         }
-                        if (ended) {
-                            Text(
-                                "已结束",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                            )
+                    }
+
+                    schoolEmptyToday -> when {
+                        segments == null -> Unit
+                        segments.isEmpty() -> TodayStatus(text = "今天没有安排。")
+                        else -> segments.forEach { segment ->
+                            key(segment.entry.id) {
+                                TimetableAgendaRow(
+                                    segment = segment,
+                                    nowMinute = nowMinute,
+                                    showSourceTag = true,
+                                    onClick = { openAgenda(segment.entry.id) },
+                                )
+                            }
+                        }
+                    }
+
+                    else -> when {
+                        segments == null -> Unit
+                        segments.isEmpty() -> TodayStatus(text = "今天没有个人日程。")
+                        else -> segments.forEach { segment ->
+                            key(segment.entry.id) {
+                                TimetableAgendaRow(
+                                    segment = segment,
+                                    nowMinute = nowMinute,
+                                    showSourceTag = true,
+                                    onClick = { openAgenda(segment.entry.id) },
+                                )
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+private data class TodayStatusSpec(
+    val text: String,
+    val actionLabel: String? = null,
+    val action: (() -> Unit)? = null,
+)
+
+/**
+ * 首页学校课程的展示状态；返回 null 表示课程数据可用（READY 或 EMPTY 且已读本机）。
+ *
+ * 课表账号未保存、未同步、旧账号或旧日期的课程都在这里收敛成明确状态，绝不把过期
+ * 课程混入「今日安排」。
+ */
+private fun todaySchoolStatus(
+    state: TimetableTodayUiState,
+    matchesActualToday: Boolean,
+    onOpenTimetable: (() -> Unit)?,
+    onOpenAccountSettings: (() -> Unit)?,
+): TodayStatusSpec? = when (state.todayState) {
+    TimetableTodayState.ACCOUNT_RESTORING -> TodayStatusSpec(
+        text = state.todayMessage ?: "正在恢复学校账号。",
+    )
+
+    TimetableTodayState.ACCOUNT_REQUIRED -> TodayStatusSpec(
+        text = state.todayMessage ?: "请先保存学校账号。",
+        actionLabel = "学校账号",
+        action = onOpenAccountSettings,
+    )
+
+    TimetableTodayState.ACCOUNT_BLOCKED -> TodayStatusSpec(
+        text = state.todayMessage ?: "学校账号暂不可用。",
+        actionLabel = "学校账号",
+        action = onOpenAccountSettings,
+    )
+
+    TimetableTodayState.READING_CACHE -> TodayStatusSpec(
+        text = if (matchesActualToday) "正在读取本机课表…" else "今日课表尚未同步。",
+        actionLabel = if (matchesActualToday) null else "去课表",
+        action = if (matchesActualToday) null else onOpenTimetable,
+    )
+
+    TimetableTodayState.NOT_SYNCED -> TodayStatusSpec(
+        text = "今日课表尚未同步。",
+        actionLabel = "去课表",
+        action = onOpenTimetable,
+    )
+
+    TimetableTodayState.OUTSIDE_TERM -> if (!matchesActualToday) {
+        TodayStatusSpec("今日课表尚未同步。", "去课表", onOpenTimetable)
+    } else {
+        TodayStatusSpec("今天不在已同步学期内。", "查看课表", onOpenTimetable)
+    }
+
+    TimetableTodayState.READ_ERROR -> TodayStatusSpec(
+        text = if (matchesActualToday) {
+            state.todayMessage ?: "本机课表读取失败。"
+        } else {
+            "今日课表尚未同步。"
+        },
+        actionLabel = "去课表",
+        action = onOpenTimetable,
+    )
+
+    TimetableTodayState.EMPTY,
+    TimetableTodayState.READY,
+    -> if (!state.todayLoaded || !matchesActualToday) {
+        TodayStatusSpec("今日课表尚未同步。", "去课表", onOpenTimetable)
+    } else {
+        null
+    }
+}
+
+private sealed interface TodayAgendaItem {
+    val sortMinute: Int
+    val sortKey: String
+    val sortOrder: Int
+
+    data class Course(
+        val meeting: TimetableMeeting,
+        val range: TimetableClockRange?,
+        val toneSlot: Int?,
+        val isCurrent: Boolean,
+        val isNext: Boolean,
+        val order: Int,
+    ) : TodayAgendaItem {
+        override val sortMinute: Int get() = range?.startMinute ?: Int.MAX_VALUE
+        override val sortKey: String get() = "课程 ${meeting.courseName}"
+        override val sortOrder: Int get() = order
+    }
+
+    data class Schedule(
+        val segment: TimetableAgendaSegment,
+    ) : TodayAgendaItem {
+        override val sortMinute: Int get() = segment.startMinute
+        override val sortKey: String get() = "日程 ${segment.entry.title} ${segment.entry.id}"
+        override val sortOrder: Int get() = 0
+    }
+}
+
+/**
+ * 学校课程与本机日程按上海当日分钟数合并；时间未知的课程排在最后并保留原文案，
+ * 不按节次推算时刻。
+ */
+private fun buildMergedToday(
+    state: TimetableTodayUiState,
+    ranges: Map<TimetableMeeting, TimetableClockRange?>,
+    current: TimetableMeeting?,
+    next: TimetableMeeting?,
+    segments: List<TimetableAgendaSegment>,
+): List<TodayAgendaItem> {
+    val courses = state.todayMeetings.mapIndexed { index, meeting ->
+        TodayAgendaItem.Course(
+            meeting = meeting,
+            range = ranges[meeting],
+            toneSlot = state.todayCourseColorSlots[courseColorKey(meeting)],
+            isCurrent = meeting == current,
+            isNext = meeting == next,
+            order = index,
+        )
+    }
+    return (courses + segments.map { TodayAgendaItem.Schedule(it) }).sortedWith(
+        compareBy({ it.sortMinute }, { it.sortKey }, { it.sortOrder }),
+    )
+}
+
+@Composable
+private fun TodayCourseRow(
+    meeting: TimetableMeeting,
+    range: TimetableClockRange?,
+    toneSlot: Int?,
+    nowMinute: Int,
+    isCurrent: Boolean,
+    isNext: Boolean,
+    showSource: Boolean,
+    onClick: () -> Unit,
+) {
+    val ended = range != null && range.endMinute <= nowMinute
+    val tone = courseTone(meeting, toneSlot)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            Modifier
+                .width(4.dp)
+                .height(32.dp)
+                .background(tone.container, RoundedCornerShape(2.dp))
+                .glassHighlight(RoundedCornerShape(2.dp)),
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(
+            Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    meeting.courseName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f),
+                )
+                if (showSource) {
+                    TodayTag("课程", MaterialTheme.colorScheme.secondary)
+                }
+                when {
+                    isCurrent -> TodayTag("上课中", MaterialTheme.colorScheme.primary)
+                    isNext -> TodayTag("下一堂", MaterialTheme.colorScheme.tertiary)
+                }
+            }
+            Text(
+                listOfNotNull(
+                    range?.label ?: "时间待确认",
+                    meeting.location ?: "地点未提供",
+                    if (range == null) periodLabel(meeting) else null,
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (isCurrent && range != null) {
+                val duration = (range.endMinute - range.startMinute).coerceAtLeast(1)
+                val elapsed = (nowMinute - range.startMinute).coerceIn(0, duration)
+                val remaining = (duration - elapsed).coerceAtLeast(0)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    LinearProgressIndicator(
+                        progress = { elapsed.toFloat() / duration.toFloat() },
+                        modifier = Modifier.weight(1f).height(4.dp).clip(RoundedCornerShape(999.dp)),
+                    )
+                    Text(
+                        "剩 $remaining 分钟",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+        if (ended) {
+            Text(
+                "已结束",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
     }
 }

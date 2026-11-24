@@ -7,7 +7,7 @@
 | 文件 | 作用 |
 | --- | --- |
 | [TodoService.kt](src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | TodoStore、串行写入、提醒重建与旧动作守卫 |
-| [TodoDatabase.kt](src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) | 独立 Room `upcpocket-todo.db`。v1 → v2 新增可空截止，2.1.1 开发版 v2 → v3 新增排序记录。 |
+| [TodoDatabase.kt](src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) | 独立 Room `upcpocket-todo.db`。v1 → v2 新增可空截止，2.1.1 开发版 v2 → v3 新增排序记录，v3 → v4 增加个人日程表。 |
 | [TodoReminderPlanner.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoReminderPlanner.kt) | 提醒时间/可用权限派生 |
 | [TodoAlarmScheduler.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoAlarmScheduler.kt) | AlarmManager 单次调度 |
 | [TodoIntents.kt](src/main/kotlin/com/upcpocket/app/todo/reminder/TodoIntents.kt) | 显式 PendingIntent 与身份 |

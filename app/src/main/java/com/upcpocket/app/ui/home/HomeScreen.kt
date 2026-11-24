@@ -131,6 +131,7 @@ fun HomeScreen(
     moduleOrder: List<HomeModuleId> = HomeModuleId.DEFAULT_ORDER,
     reorderEnabled: Boolean = false,
     onModuleOrderChange: (List<HomeModuleId>) -> Unit = {},
+    personalAgendaHome: (@Composable () -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val today = rememberCampusDate()
@@ -203,13 +204,15 @@ fun HomeScreen(
     val visibleModules = remember(
         normalizedOrder,
         timetableSections.isNotEmpty(),
+        personalAgendaHome != null,
         todoSections.isNotEmpty(),
         actions.isNotEmpty(),
         cardSections.isNotEmpty(),
     ) {
         normalizedOrder.filter { module ->
             when (module) {
-                HomeModuleId.TIMETABLE -> timetableSections.isNotEmpty()
+                HomeModuleId.TIMETABLE ->
+                    timetableSections.isNotEmpty() || personalAgendaHome != null
                 HomeModuleId.TODO -> todoSections.isNotEmpty()
                 HomeModuleId.SERVICES -> actions.isNotEmpty()
                 HomeModuleId.CARD -> cardSections.isNotEmpty()
@@ -266,10 +269,16 @@ fun HomeScreen(
                     when (module) {
                         HomeModuleId.TIMETABLE -> {
                             Column(modifier = Modifier.fillMaxWidth()) {
-                                timetableSections.forEach { section ->
-                                    androidx.compose.runtime.key(section.entryId) {
-                                        section.content(sectionHost)
+                                if (timetableSections.isNotEmpty()) {
+                                    timetableSections.forEach { section ->
+                                        androidx.compose.runtime.key(section.entryId) {
+                                            section.content(sectionHost)
+                                        }
                                     }
+                                } else {
+                                    // 课表插件缺失但待办提供个人日历时，首页仍保留
+                                    // 稳定的课表模块位置，只展示本机「今日安排」。
+                                    personalAgendaHome?.invoke()
                                 }
                             }
                         }

@@ -53,7 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.upcpocket.app.todo.PersonalSchedule
+import com.upcpocket.app.todo.PersonalScheduleStore
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.PersonalScheduleTime
 import com.upcpocket.app.todo.data.TodoDeletedTask
 import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoOrderingSnapshot
@@ -79,16 +82,22 @@ private val WEEKDAY_LABELS = listOf("日", "一", "二", "三", "四", "五", "�
 /**
  * 课表页顶部的本机日程待办。
  *
- * 只读本机 [TodoStore]；不申请权限、不触发学校登录或课表查询。日期条固定周日至
- * 周六，默认跟随设备本地“今天”，显式选日后保持，直到用户点“回到今天”。
+ * 只读本机 [TodoStore] 与可选的 [PersonalScheduleStore]；不申请权限、不触发学校
+ * 登录或课表查询。日期条固定周日至周六，默认跟随设备本地“今天”，显式选日后保持，
+ * 直到用户点“回到今天”。日程按设备本地日期的半开窗口读取，列表用设备本地时刻
+ * 显示所选日期内的片段；未接入日程存储时保持原有待办入口与行为。
+ *
+ * [zone] 为 null 时随前台恢复和分钟刷新重新读取设备时区；测试可显式注入固定时区
+ * 与 [clock]，避免依赖运行环境。
  */
 @Composable
 fun TodoScheduleSection(
     store: TodoStore,
     onOpenAll: () -> Unit,
     modifier: Modifier = Modifier,
-    zone: ZoneId = ZoneId.systemDefault(),
+    zone: ZoneId? = null,
     clock: () -> Long = System::currentTimeMillis,
+    personalScheduleStore: PersonalScheduleStore? = null,
 ) {
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -117,9 +126,11 @@ fun TodoScheduleSection(
     val tasks = loadedSnapshot?.tasks.orEmpty()
 
     var now by remember { mutableLongStateOf(clock()) }
+    var effectiveZone by remember { mutableStateOf(zone ?: ZoneId.systemDefault()) }
     var selectedEpochDay by rememberSaveable { mutableLongStateOf(NO_SELECTED_DAY) }
     var adding by rememberSaveable { mutableStateOf(false) }
     var editorTaskId by rememberSaveable { mutableStateOf<String?>(null) }
+    var agendaRequest by rememberSaveable { mutableStateOf<AgendaEditorRequest?>(null) }
     var expanded by rememberSaveable { mutableStateOf(false) }
     var completionOverrides by remember {
         mutableStateOf(emptyMap<String, TodoCompletionOverride>())
@@ -129,10 +140,16 @@ fun TodoScheduleSection(
     var pendingDeletion by remember { mutableStateOf<TodoDeletedTask?>(null) }
     var undoMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000)
+    // 前台恢复立即刷新日期与设备时区；停留在前台时每分钟推进日期并复核时区。
+    LaunchedEffect(lifecycleOwner, zone) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            effectiveZone = zone ?: ZoneId.systemDefault()
             now = clock()
+            while (true) {
+                delay(60_000)
+                now = clock()
+                if (zone == null) effectiveZone = ZoneId.systemDefault()
+            }
         }
     }
     LaunchedEffect(tasks, completionOverrides) {
@@ -151,20 +168,20 @@ fun TodoScheduleSection(
         }
     }
 
-    val today = remember(now, zone) {
-        Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val today = remember(now, effectiveZone) {
+        Instant.ofEpochMilli(now).atZone(effectiveZone).toLocalDate()
     }
     val selectedDate = remember(selectedEpochDay, today) {
         if (selectedEpochDay == NO_SELECTED_DAY) today else LocalDate.ofEpochDay(selectedEpochDay)
     }
     val isToday = selectedDate == today
     val weekDates = remember(selectedDate) { TodoSchedule.weekDates(selectedDate) }
-    val dayTasks = remember(tasks, selectedDate, today, zone, ordering) {
+    val dayTasks = remember(tasks, selectedDate, today, effectiveZone, ordering) {
         TodoSchedule.tasksForDate(
             tasks = tasks,
             date = selectedDate,
             today = today,
-            zone = zone,
+            zone = effectiveZone,
             mode = ordering?.mode ?: TodoSortMode.DATE,
             ordering = ordering ?: TodoOrderingSnapshot.Default,
         )
@@ -182,7 +199,12 @@ fun TodoScheduleSection(
 
     fun startAdding() {
         editorTaskId = null
-        adding = true
+        val scheduleStore = personalScheduleStore
+        if (scheduleStore != null) {
+            agendaRequest = AgendaEditorRequest.Add(selectedDate, effectiveZone)
+        } else {
+            adding = true
+        }
     }
 
     fun selectDate(date: LocalDate) {
@@ -299,7 +321,14 @@ fun TodoScheduleSection(
                     onClick = ::startAdding,
                     modifier = Modifier.testTag("todo_schedule_add"),
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "新增待办")
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = if (personalScheduleStore == null) {
+                            "新增待办"
+                        } else {
+                            "新增待办或日程"
+                        },
+                    )
                 }
             }
 
@@ -377,6 +406,17 @@ fun TodoScheduleSection(
                 ) { Text("回到今天") }
             }
 
+            personalScheduleStore?.let { scheduleStore ->
+                ScheduleDayList(
+                    store = scheduleStore,
+                    date = selectedDate,
+                    zone = effectiveZone,
+                    onEdit = { schedule ->
+                        agendaRequest = AgendaEditorRequest.EditSchedule(schedule.id)
+                    },
+                )
+            }
+
             when {
                 loadState is TodoScheduleLoad.Failed -> Row(
                     modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
@@ -436,7 +476,7 @@ fun TodoScheduleSection(
                                     ScheduleTaskRow(
                                         task = task,
                                         now = now,
-                                        zone = zone,
+                                        zone = effectiveZone,
                                         completionOverride = completionOverrides[task.id],
                                         submitting = task.id in inFlightSubmissions,
                                         onToggle = { target -> submitCompletion(task, target) },
@@ -517,6 +557,22 @@ fun TodoScheduleSection(
             },
         )
     }
+
+    val scheduleStore = personalScheduleStore
+    if (scheduleStore != null) {
+        val activeAgendaRequest = agendaRequest
+        AgendaEditorHost(
+            todoStore = store,
+            personalScheduleStore = scheduleStore,
+            request = activeAgendaRequest,
+            onDismiss = {
+                // 旧面板的异步收尾（如 NonCancellable 删除）不得清掉随后打开的新请求。
+                if (agendaRequest === activeAgendaRequest) {
+                    agendaRequest = null
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -577,6 +633,174 @@ private fun ScheduleDayCell(
                     else -> scheme.onSurface
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun ScheduleDayList(
+    store: PersonalScheduleStore,
+    date: LocalDate,
+    zone: ZoneId,
+    onEdit: (PersonalSchedule) -> Unit,
+) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var readGeneration by rememberSaveable { mutableIntStateOf(0) }
+    // 设备本地半开窗口：结束恰好落在次日零点的日程不会漏到次日。
+    val window = remember(date, zone) { PersonalScheduleTime.dayWindow(date, zone) }
+    val loadState by produceState<ScheduleListLoad>(
+        initialValue = ScheduleListLoad.Loading,
+        store,
+        window,
+        readGeneration,
+        lifecycleOwner,
+    ) {
+        value = ScheduleListLoad.Loading
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            try {
+                store.observeWindow(window.fromInclusive, window.untilExclusive)
+                    .collect { value = ScheduleListLoad.Ready(it) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                value = ScheduleListLoad.Failed
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().testTag("todo_schedule_schedule_list"),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("日程", style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.weight(1f))
+            if (zone != PersonalScheduleTime.SHANGHAI) {
+                Text(
+                    "设备时间",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("todo_schedule_schedule_timezone"),
+                )
+            }
+        }
+        when (val state = loadState) {
+            ScheduleListLoad.Failed -> Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 32.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "日程读取失败。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                CampusTextButton(
+                    onClick = { readGeneration++ },
+                    modifier = Modifier.testTag("todo_schedule_schedule_retry"),
+                ) { Text("重试") }
+            }
+
+            is ScheduleListLoad.Ready -> {
+                val schedules = PersonalSchedulePresentation.sorted(state.schedules)
+                if (schedules.isEmpty()) {
+                    Text(
+                        "这天没有日程。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("todo_schedule_schedule_empty"),
+                    )
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        schedules.forEach { schedule ->
+                            key(schedule.id) {
+                                ScheduleItemRow(
+                                    schedule = schedule,
+                                    date = date,
+                                    zone = zone,
+                                    onEdit = { onEdit(schedule) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            else -> Text(
+                "正在读取日程",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.testTag("todo_schedule_schedule_loading"),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ScheduleItemRow(
+    schedule: PersonalSchedule,
+    date: LocalDate,
+    zone: ZoneId,
+    onEdit: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    GlassSurface(
+        onClick = onEdit,
+        shape = RoundedCornerShape(14.dp),
+        color = scheme.surfaceContainerHigh.copy(alpha = 0.55f),
+        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("todo_schedule_item_${schedule.id}"),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 44.dp)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .width(3.dp)
+                    .height(30.dp)
+                    .background(
+                        scheduleAccent(scheme, schedule.id),
+                        RoundedCornerShape(2.dp),
+                    ),
+            )
+            Column(
+                modifier = Modifier.weight(1f).padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Text(
+                    schedule.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = scheme.onSurface,
+                    modifier = Modifier.testTag("todo_schedule_item_title_${schedule.id}"),
+                )
+                Text(
+                    PersonalSchedulePresentation.timeLabel(schedule, date, zone),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.testTag("todo_schedule_item_time_${schedule.id}"),
+                )
+                schedule.location?.takeIf { it.isNotBlank() }?.let { location ->
+                    Text(
+                        location,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("todo_schedule_item_location_${schedule.id}"),
+                    )
+                }
+            }
         }
     }
 }
@@ -686,4 +910,10 @@ private sealed interface TodoScheduleLoad {
     data object Loading : TodoScheduleLoad
     data object Failed : TodoScheduleLoad
     data class Ready(val snapshot: TodoSnapshot) : TodoScheduleLoad
+}
+
+private sealed interface ScheduleListLoad {
+    data object Loading : ScheduleListLoad
+    data object Failed : ScheduleListLoad
+    data class Ready(val schedules: List<PersonalSchedule>) : ScheduleListLoad
 }

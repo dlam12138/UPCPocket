@@ -125,6 +125,8 @@ sequenceDiagram
 
 [TimetableService](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt) 首入/刷新确认真实学期和当前周，再按需查周；历史缓存的 currentWeek 不作为学校现状。用户查看周与实际今日状态分开，上海时区实际日期驱动首页今日课程和桌面组件。周网格连续周日至周六，官方 1–12 节作息与 13–14 节“时间待确认”规则见[设计](docs/m5/2026-11-05-课表与组件设计.md)。
 
+2.1.1 开发版由 `app` 将待办插件持有的个人日程订阅和编辑入口注入课表 UI。首页在「今日安排」合并两种来源，学校课程仍按当前账号与上海实际日期核对，本机日程可独立显示。课表按周选择日期查看个人日程，课表和首页使用上海时区，日程待办使用设备本地时区。 [内部契约](API.md#业务能力与系统消费者)
+
 周缓存只保存完整成功且归属当前账号的结果。失败保留历史缓存并标示，完整空周、未查询、无缓存与协议失败不混同。会话单独加密；本机周缓存本身未单独加密，依赖应用沙箱与 noBackup 范围。新课表不读 focus 的停用兼容表。
 
 四类 RemoteViews 的渲染器分别归 card/power/timetable/todo，Provider、点击 Intent 和 Worker 归 app。课表和校园卡使用整卡导航，电量另有手动刷新。2.0.8 为每类组件增加一个固定使用静态磨砂背景的 Launcher Provider，复用业务布局和动作。原组件继续使用原 Provider 身份与宿主 `UiPrefsStore` 中的全局外观偏好，保存只本地重绘。玻璃版与原组件共享数据、校园卡发布屏障和同类调度，最后一个同类实例移除时取消调度。
@@ -149,6 +151,7 @@ sequenceDiagram
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
 | 待办、截止、排序与提醒 revision | todo 的 Room `upcpocket-todo.db` | 2.1.0 使用 v2，v1 → v2 添加可空截止。2.1.1 开发版 v3 新增任务排序和模式记录，保留原任务表及提醒状态。Alarm 和通知可从任务重建，旧动作按 taskId 与 revision 拒绝。 |
+| 个人日程与起止时点 | todo 的 Room `upcpocket-todo.db` v4，独立 `personal_schedules` 表 | `3 → 4` 追加日程表与时间索引。个人日程和其 `revision` 独立于待办与学校账号。 |
 | 配色与深色模式、桌面外观、首页固定、寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 学校账号清理保留这些本机选项；普通组件外观归 UiPrefsStore，固定玻璃版由 Provider 身份决定，首页固定项缺键与显式空集分别处理 |
 | 自定义配色与自定义背景（开发改动，未发布） | app 的 `UiPrefsStore`（`custom_theme_seed_argb`、`custom_background_opacity`）与私有 `noBackupFilesDir/appearance/custom_background.jpg` | 背景 JPEG 是唯一事实来源，导入/清除经存储层互斥串行并在成功后由 `CustomBackgroundStore.revision` 通知重新读盘；配色与可见度缺键分别回退默认种子色和默认可见度，可见度限制在 0.15–0.90；通过系统照片选择器无权限读取并下采样保存在本机，不随学校账号清理 |
 | 常用校区 | app 的 `UiPrefsStore` | 缺有效偏好默认全部校区。教室在全部校区模式下沿用原有上次校区记录 |

@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TodoTaskEntity::class,
         TodoTaskOrderEntity::class,
         TodoOrderStateEntity::class,
+        PersonalScheduleEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class TodoDatabase : RoomDatabase() {
@@ -24,6 +25,8 @@ abstract class TodoDatabase : RoomDatabase() {
     abstract fun taskDao(): TodoTaskDao
 
     abstract fun orderDao(): TodoOrderDao
+
+    abstract fun personalScheduleDao(): PersonalScheduleDao
 
     companion object {
         const val DB_NAME = "upcpocket-todo.db"
@@ -36,7 +39,8 @@ abstract class TodoDatabase : RoomDatabase() {
                 context.applicationContext,
                 TodoDatabase::class.java,
                 DB_NAME,
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4).build()
+                .also { instance = it }
         }
 
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
@@ -74,6 +78,36 @@ abstract class TodoDatabase : RoomDatabase() {
                 database.execSQL(
                     "INSERT OR IGNORE INTO `todo_order_state` (`id`, `mode`, `nextManualRank`) " +
                         "VALUES (0, 'DATE', 0)",
+                )
+            }
+        }
+
+        /**
+         * 只新增个人日程表与窗口索引；既有任务、截止、排序记录和 revision 原样保留。
+         */
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `personal_schedules` (
+                        `id` TEXT NOT NULL,
+                        `title` TEXT NOT NULL,
+                        `startAt` INTEGER NOT NULL,
+                        `endAt` INTEGER NOT NULL,
+                        `location` TEXT,
+                        `note` TEXT,
+                        `revision` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent(),
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_personal_schedules_startAt` " +
+                        "ON `personal_schedules` (`startAt`)",
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_personal_schedules_endAt` " +
+                        "ON `personal_schedules` (`endAt`)",
                 )
             }
         }
