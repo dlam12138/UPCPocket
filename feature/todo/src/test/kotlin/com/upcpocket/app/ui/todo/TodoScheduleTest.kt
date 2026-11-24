@@ -23,7 +23,7 @@ class TodoScheduleTest {
     }
 
     @Test
-    fun `today keeps overdue and untimed tasks and lists each task once`() {
+    fun `today matches completed and open tasks while keeping overdue and untimed open tasks`() {
         val overdue = task("overdue", dueAt = at("2026-11-19", 9))
         val dueToday = task("due-today", dueAt = at("2026-11-20", 9))
         val reminderToday = task("reminder-today", reminderAt = at("2026-11-20", 10))
@@ -56,7 +56,14 @@ class TodoScheduleTest {
         )
 
         assertEquals(
-            listOf("overdue", "due-today", "reminder-today", "both-today", "untimed"),
+            listOf(
+                "overdue",
+                "completed",
+                "due-today",
+                "reminder-today",
+                "both-today",
+                "untimed",
+            ),
             visible.map { it.id },
         )
         assertEquals(1, visible.count { it.id == "both-today" })
@@ -64,7 +71,7 @@ class TodoScheduleTest {
     }
 
     @Test
-    fun `other days match due or reminder dates but never hide untimed tasks`() {
+    fun `other days match due or reminder for completed and open tasks`() {
         val dueTomorrow = task("due-tomorrow", dueAt = at("2026-11-21", 9))
         val reminderTomorrow = task("reminder-tomorrow", reminderAt = at("2026-11-21", 8))
         val crossDay = task(
@@ -87,7 +94,7 @@ class TodoScheduleTest {
         )
 
         assertEquals(
-            listOf("cross-day", "reminder-tomorrow", "due-tomorrow"),
+            listOf("cross-day", "reminder-tomorrow", "due-tomorrow", "completed"),
             visible.map { it.id },
         )
         assertEquals(1, TodoSchedule.unscheduledOpenCount(listOf(dueTomorrow, reminderTomorrow, crossDay, untimed)))
@@ -127,6 +134,98 @@ class TodoScheduleTest {
         )
     }
 
+    @Test
+    fun `completed overdue and undated tasks stay on their completion date only`() {
+        val completedAt = at("2026-11-20", 23, 50)
+        val overdue = task(
+            "overdue",
+            dueAt = at("2026-11-19", 9),
+            completed = true,
+            completedAt = completedAt,
+        )
+        val undated = task("undated", completed = true, completedAt = completedAt)
+        val oldDue = task(
+            "old-due",
+            dueAt = at("2026-11-18", 9),
+            completed = true,
+            completedAt = null,
+        )
+        val oldReminder = task(
+            "old-reminder",
+            reminderAt = at("2026-11-17", 9),
+            completed = true,
+            completedAt = null,
+        )
+        val tasks = listOf(overdue, undated, oldDue, oldReminder)
+
+        assertEquals(
+            listOf("overdue", "undated"),
+            TodoSchedule.tasksForDate(tasks, today, today, zone).map { it.id },
+        )
+        assertEquals(
+            listOf("overdue"),
+            TodoSchedule.tasksForDate(
+                tasks,
+                LocalDate.parse("2026-11-19"),
+                today,
+                zone,
+            ).map { it.id },
+        )
+        assertEquals(
+            emptyList<String>(),
+            TodoSchedule.tasksForDate(
+                tasks,
+                LocalDate.parse("2026-11-21"),
+                LocalDate.parse("2026-11-21"),
+                zone,
+            ).map { it.id },
+        )
+        // 缺少 completedAt 的旧记录仍只按明确的截止或提醒日期展示。
+        assertEquals(
+            listOf("old-due"),
+            TodoSchedule.tasksForDate(
+                tasks,
+                LocalDate.parse("2026-11-18"),
+                today,
+                zone,
+            ).map { it.id },
+        )
+        assertEquals(
+            listOf("old-reminder"),
+            TodoSchedule.tasksForDate(
+                tasks,
+                LocalDate.parse("2026-11-17"),
+                today,
+                zone,
+            ).map { it.id },
+        )
+    }
+
+    @Test
+    fun `completion state does not reorder the same day`() {
+        val open = listOf(
+            task("later-due", dueAt = at("2026-11-19", 15)),
+            task("undated"),
+            task("earlier-due", dueAt = at("2026-11-18", 9)),
+        )
+        val completed = open.map {
+            it.copy(
+                completed = true,
+                completedAt = at("2026-11-20", 12),
+            )
+        }
+
+        val expected = listOf("earlier-due", "later-due", "undated")
+        assertEquals(
+            expected,
+            TodoSchedule.tasksForDate(open, today, today, zone).map { it.id },
+        )
+        assertEquals(
+            expected,
+            TodoSchedule.tasksForDate(completed, today, today, zone).map { it.id },
+        )
+    }
+
     private fun at(date: String, hour: Int, minute: Int = 0): Long =
         LocalDate.parse(date)
             .atTime(hour, minute)
@@ -139,13 +238,14 @@ class TodoScheduleTest {
         dueAt: Long? = null,
         reminderAt: Long? = null,
         completed: Boolean = false,
+        completedAt: Long? = if (completed) 0 else null,
     ) = TodoTask(
         id = id.ifEmpty { UUID.randomUUID().toString() },
         title = id,
         completed = completed,
         createdAt = 0,
         updatedAt = 0,
-        completedAt = if (completed) 0 else null,
+        completedAt = completedAt,
         reminderAt = reminderAt,
         reminderFiredAt = null,
         revision = 1,

@@ -8,10 +8,12 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -41,6 +43,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -338,7 +341,7 @@ class TodoScreenTest {
         }
 
         rule.onNodeWithText("今天 · 11月20日").assertIsDisplayed()
-        rule.onNodeWithText("3 项").assertIsDisplayed()
+        rule.onNodeWithText("3 项未完成").assertIsDisplayed()
         rule.onNodeWithText("逾期").assertIsDisplayed()
         rule.onNodeWithText("今天截止").assertIsDisplayed()
         rule.onNodeWithText("未定时").assertIsDisplayed()
@@ -353,7 +356,7 @@ class TodoScreenTest {
         rule.onNodeWithTag("todo_schedule_day_2026-11-17").performClick()
         rule.waitForIdle()
         rule.onNodeWithText("11月17日 周二").assertIsDisplayed()
-        rule.onNodeWithText("这天没有未完成待办。").assertIsDisplayed()
+        rule.onNodeWithText("这天没有待办。").assertIsDisplayed()
         rule.onNodeWithText("另有 1 项未设置时间。").assertIsDisplayed()
 
         rule.onNodeWithTag("todo_schedule_next_week").performClick()
@@ -376,14 +379,22 @@ class TodoScreenTest {
     }
 
     @Test
-    fun `schedule completion is revision guarded and offers undo`() {
+    fun `schedule completion stays inline and each row undoes independently`() {
         val zone = ZoneId.of("Asia/Shanghai")
         val now = LocalDate.parse("2026-11-20")
             .atTime(12, 0)
             .atZone(zone)
             .toInstant()
             .toEpochMilli()
-        val store = FakeTodoStore(listOf(task("今天任务", createdAt = 10)))
+        val store = FakeTodoStore(
+            listOf(
+                task("任务甲", createdAt = 10),
+                task("任务乙", createdAt = 20),
+            ),
+            completionAt = now,
+        )
+        val gate = CompletableDeferred<Unit>()
+        store.completionReturnGate = gate
         rule.setContent {
             MaterialTheme {
                 TodoScheduleSection(
@@ -395,15 +406,118 @@ class TodoScreenTest {
             }
         }
 
-        rule.onNodeWithContentDescription("标记完成：今天任务").performClick()
-        rule.waitUntil(5_000) { store.current.single().completed }
-        rule.onNodeWithTag("todo_schedule_undo").assertIsDisplayed()
-        assertEquals(1, store.revisionUpdates)
+        rule.onNodeWithText("2 项未完成").assertIsDisplayed()
+        val first = store.current.first { it.title == "任务甲" }
+        val second = store.current.first { it.title == "任务乙" }
+        val firstTop = scheduleRowTop(first.id)
+        val secondTop = scheduleRowTop(second.id)
+        assertTrue(firstTop != secondTop)
 
-        rule.onNodeWithText("撤销").performClick()
-        rule.waitUntil(5_000) { !store.current.single().completed }
-        assertEquals(3, store.current.single().revision)
-        assertEquals(2, store.revisionUpdates)
+        // 甲已写入并回流，但服务尚未完成提醒协调时仍保持锁定；乙独立完成。
+        rule.onNodeWithContentDescription("标记完成：任务甲").performClick()
+        rule.waitUntil(5_000) { store.current.first { it.id == first.id }.completed }
+        rule.onNodeWithContentDescription("标记未完成：任务甲")
+            .assertIsDisplayed()
+            .assertIsNotEnabled()
+
+        rule.onNodeWithContentDescription("标记完成：任务乙").performClick()
+        rule.waitUntil(5_000) { store.current.first { it.id == second.id }.completed }
+        waitForEnabledContentDescription("标记未完成：任务乙")
+        rule.onNodeWithContentDescription("标记未完成：任务乙")
+            .assertIsDisplayed()
+            .assertIsEnabled()
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("0 项未完成").fetchSemanticsNodes().isNotEmpty()
+        }
+
+        gate.complete(Unit)
+        waitForEnabledContentDescription("标记未完成：任务甲")
+        rule.onNodeWithContentDescription("标记未完成：任务乙").assertIsDisplayed()
+        assertEquals(firstTop, scheduleRowTop(first.id), 0.5f)
+        assertEquals(secondTop, scheduleRowTop(second.id), 0.5f)
+        assertTrue(rule.onAllNodesWithTag("todo_schedule_undo").fetchSemanticsNodes().isEmpty())
+
+        rule.onNodeWithContentDescription("标记未完成：任务甲").performClick()
+        rule.waitUntil(5_000) { !store.current.first { it.id == first.id }.completed }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("1 项未完成").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithContentDescription("标记完成：任务甲").assertIsDisplayed()
+        rule.onNodeWithContentDescription("标记未完成：任务乙").assertIsDisplayed()
+
+        rule.onNodeWithContentDescription("标记未完成：任务乙").performClick()
+        rule.waitUntil(5_000) { !store.current.first { it.id == second.id }.completed }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("2 项未完成").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithContentDescription("标记完成：任务乙").assertIsDisplayed()
+        assertEquals(firstTop, scheduleRowTop(first.id), 0.5f)
+        assertEquals(secondTop, scheduleRowTop(second.id), 0.5f)
+        assertEquals(3, store.current.first { it.id == first.id }.revision)
+        assertEquals(3, store.current.first { it.id == second.id }.revision)
+        assertEquals(4, store.revisionUpdates)
+    }
+
+    @Test
+    fun `schedule rejected completion restores the row and reports`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val store = FakeTodoStore(
+            listOf(task("未写入", createdAt = 10)),
+            completionAt = now,
+        )
+        store.rejectNextCompletion = true
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = store,
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("标记完成：未写入").performClick()
+        waitForEnabledContentDescription("标记完成：未写入")
+        rule.onNodeWithText("待办已变化，未能更新").assertIsDisplayed()
+        assertFalse(store.current.single().completed)
+        assertEquals(0, store.revisionUpdates)
+    }
+
+    @Test
+    fun `schedule completion write exception restores the row and asks to retry`() {
+        val zone = ZoneId.of("Asia/Shanghai")
+        val now = LocalDate.parse("2026-11-20")
+            .atTime(12, 0)
+            .atZone(zone)
+            .toInstant()
+            .toEpochMilli()
+        val store = FakeTodoStore(
+            listOf(task("写入异常", createdAt = 10)),
+            completionAt = now,
+        )
+        store.throwNextCompletion = true
+        rule.setContent {
+            MaterialTheme {
+                TodoScheduleSection(
+                    store = store,
+                    onOpenAll = {},
+                    zone = zone,
+                    clock = { now },
+                )
+            }
+        }
+
+        rule.onNodeWithContentDescription("标记完成：写入异常").performClick()
+        waitForEnabledContentDescription("标记完成：写入异常")
+        rule.onNodeWithText("待办未能更新，请重试").assertIsDisplayed()
+        assertFalse(store.current.single().completed)
+        assertEquals(0, store.revisionUpdates)
     }
 
     @Test
@@ -510,6 +624,16 @@ class TodoScreenTest {
         dueAt = dueAt,
     )
 
+    private fun scheduleRowTop(taskId: String): Float =
+        rule.onNodeWithTag("todo_schedule_task_$taskId").fetchSemanticsNode().boundsInRoot.top
+
+    private fun waitForEnabledContentDescription(description: String) {
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithContentDescription(description).fetchSemanticsNodes()
+                .any { it.config.getOrNull(SemanticsProperties.Disabled) == null }
+        }
+    }
+
     private fun textForTag(tag: String): String = rule.onNodeWithTag(tag)
         .fetchSemanticsNode()
         .config
@@ -547,6 +671,7 @@ class TodoScreenTest {
     private class FakeTodoStore(
         initial: List<TodoTask>,
         taskFlow: Flow<List<TodoTask>>? = null,
+        private val completionAt: Long = 2_000L,
     ) : TodoStore {
         private val state = MutableStateFlow(initial)
         override val tasks: Flow<List<TodoTask>> = taskFlow ?: state
@@ -559,6 +684,9 @@ class TodoScreenTest {
         )
         var revisionUpdates = 0
         var completionGate: CompletableDeferred<Unit>? = null
+        var completionReturnGate: CompletableDeferred<Unit>? = null
+        var rejectNextCompletion = false
+        var throwNextCompletion = false
         var createRequestConsumptions = 0
         var addCalls = 0
 
@@ -618,7 +746,8 @@ class TodoScreenTest {
                 if (it.id == id) {
                     it.copy(
                         completed = completed,
-                        completedAt = if (completed) 2_000 else null,
+                        completedAt = if (completed) completionAt else null,
+                        updatedAt = completionAt,
                         revision = it.revision + 1,
                     )
                 } else {
@@ -634,16 +763,25 @@ class TodoScreenTest {
             completed: Boolean,
         ): TodoTask? {
             completionGate?.also { completionGate = null }?.await()
+            if (rejectNextCompletion) {
+                rejectNextCompletion = false
+                return null
+            }
+            if (throwNextCompletion) {
+                throwNextCompletion = false
+                throw IllegalStateException("synthetic write failure")
+            }
             val currentTask = state.value.firstOrNull { it.id == id } ?: return null
             if (currentTask.revision != revision || currentTask.completed == completed) return null
             val updated = currentTask.copy(
                 completed = completed,
-                completedAt = if (completed) 2_000 else null,
-                updatedAt = 2_000,
+                completedAt = if (completed) completionAt else null,
+                updatedAt = completionAt,
                 revision = currentTask.revision + 1,
             )
             revisionUpdates++
             state.value = state.value.map { if (it.id == id) updated else it }
+            completionReturnGate?.also { completionReturnGate = null }?.await()
             return updated
         }
 

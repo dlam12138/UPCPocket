@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -117,7 +118,9 @@ fun TodoScheduleSection(
     var completionOverrides by remember {
         mutableStateOf(emptyMap<String, TodoCompletionOverride>())
     }
-    var pendingUndo by remember { mutableStateOf<PendingScheduleUndo?>(null) }
+    // 每行独立提交；写入期间同一任务不会再次提交，用任务 ID 集合即可锁定。
+    var inFlightSubmissions by remember { mutableStateOf(emptySet<String>()) }
+    var pendingDeletion by remember { mutableStateOf<TodoTask?>(null) }
     var undoMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
@@ -130,10 +133,10 @@ fun TodoScheduleSection(
         val reconciled = reconcileTodoCompletionOverrides(tasks, completionOverrides)
         if (reconciled != completionOverrides) completionOverrides = reconciled
     }
-    LaunchedEffect(pendingUndo) {
-        val pending = pendingUndo ?: return@LaunchedEffect
+    LaunchedEffect(pendingDeletion) {
+        val pending = pendingDeletion ?: return@LaunchedEffect
         delay(5_000)
-        if (pendingUndo == pending) pendingUndo = null
+        if (pendingDeletion == pending) pendingDeletion = null
     }
     LaunchedEffect(undoMessage) {
         if (undoMessage != null) {
@@ -174,89 +177,69 @@ fun TodoScheduleSection(
         selectedEpochDay = if (date == today) NO_SELECTED_DAY else date.toEpochDay()
     }
 
-    fun toggleCompletion(task: TodoTask) {
-        if (task.id in completionOverrides) return
-        completionOverrides = completionOverrides + (
-            task.id to TodoCompletionOverride(
-                revision = task.revision + 1,
-                completed = true,
-            )
+    fun submitCompletion(task: TodoTask, target: Boolean) {
+        // 本行在写入结果或 Room Flow 确认前保持锁定；不同任务各自独立。
+        if (task.id in completionOverrides || task.id in inFlightSubmissions) return
+        val optimistic = TodoCompletionOverride(
+            revision = task.revision + 1,
+            completed = target,
         )
-        scope.launch {
-            val completed = try {
-                store.setCompletedIfRevision(task.id, task.revision, completed = true)
-            } catch (cancelled: CancellationException) {
-                completionOverrides = completionOverrides - task.id
-                throw cancelled
-            } catch (_: Exception) {
-                null
-            }
-            if (completed == null) {
-                completionOverrides = completionOverrides - task.id
-                undoMessage = "待办已变化，未能完成"
-                return@launch
-            }
-            completionOverrides = completionOverrides + (
-                completed.id to TodoCompletionOverride(
-                    revision = completed.revision,
-                    completed = true,
-                )
-            )
-            pendingUndo = PendingScheduleUndo.Completion(
-                taskId = completed.id,
-                revision = completed.revision,
-            )
-        }
-    }
-
-    fun undoCompletion(pending: PendingScheduleUndo.Completion) {
-        if (pendingUndo == pending) pendingUndo = null
+        inFlightSubmissions = inFlightSubmissions + task.id
+        completionOverrides = completionOverrides + (task.id to optimistic)
         undoMessage = null
-        completionOverrides = completionOverrides + (
-            pending.taskId to TodoCompletionOverride(
-                revision = pending.revision + 1,
-                completed = false,
-            )
-        )
         scope.launch {
-            val undone = try {
-                store.setCompletedIfRevision(
-                    pending.taskId,
-                    pending.revision,
-                    completed = false,
-                )
+            var writeFailed = false
+            val updated = try {
+                store.setCompletedIfRevision(task.id, task.revision, target)
             } catch (cancelled: CancellationException) {
-                completionOverrides = completionOverrides - pending.taskId
+                if (completionOverrides[task.id] == optimistic) {
+                    completionOverrides = completionOverrides - task.id
+                }
+                inFlightSubmissions = inFlightSubmissions - task.id
                 throw cancelled
             } catch (_: Exception) {
+                writeFailed = true
                 null
             }
-            if (undone == null) {
-                completionOverrides = completionOverrides - pending.taskId
-                undoMessage = "待办已变化，无法撤销"
-            } else {
-                completionOverrides = completionOverrides + (
-                    undone.id to TodoCompletionOverride(
-                        revision = undone.revision,
-                        completed = false,
+            if (completionOverrides[task.id] == optimistic) {
+                if (updated == null) {
+                    completionOverrides = completionOverrides - task.id
+                } else {
+                    completionOverrides = completionOverrides + (
+                        task.id to TodoCompletionOverride(
+                            revision = updated.revision,
+                            completed = updated.completed,
+                        )
                     )
-                )
+                }
+            }
+            inFlightSubmissions = inFlightSubmissions - task.id
+            if (updated == null) {
+                undoMessage = if (writeFailed) {
+                    "待办未能更新，请重试"
+                } else {
+                    "待办已变化，未能更新"
+                }
             }
         }
     }
 
-    fun undoDeletion(pending: PendingScheduleUndo.Deletion) {
-        if (pendingUndo == pending) pendingUndo = null
+    fun undoDeletion(pending: TodoTask) {
+        if (pendingDeletion == pending) pendingDeletion = null
         undoMessage = null
         scope.launch {
             val restored = try {
-                store.restore(pending.task)
+                store.restore(pending)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                false
+                null
             }
-            if (!restored) undoMessage = "待办已变化，无法撤销"
+            undoMessage = when (restored) {
+                null -> "待办未能恢复，请重试"
+                false -> "待办已变化，无法撤销"
+                true -> null
+            }
         }
     }
 
@@ -279,8 +262,10 @@ fun TodoScheduleSection(
                 "${first.year}年${first.monthValue}月–${last.year}年${last.monthValue}月"
         }
     }
-    // 加载/失败/有效空列表已由正文唯一表达；这里只显示确实存在的日程数量。
-    val countLabel = dayTasks.size.takeIf { it > 0 }?.let { "$it 项" }
+    // 加载/失败/有效空列表已由正文唯一表达；未完成计数独立于当天含已完成项的总数。
+    val countLabel = dayTasks.count { !it.completed }
+        .takeIf { dayTasks.isNotEmpty() }
+        ?.let { "$it 项未完成" }
 
     GlassCard(modifier = modifier.fillMaxWidth().testTag("todo_schedule_section")) {
         Column(
@@ -420,7 +405,7 @@ fun TodoScheduleSection(
                     } else if (dayTasks.isEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
-                                "这天没有未完成待办。",
+                                "这天没有待办。",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -440,17 +425,20 @@ fun TodoScheduleSection(
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             visibleTasks.forEach { task ->
-                                ScheduleTaskRow(
-                                    task = task,
-                                    now = now,
-                                    zone = zone,
-                                    completionOverride = completionOverrides[task.id],
-                                    onToggle = { toggleCompletion(task) },
-                                    onEdit = {
-                                        adding = false
-                                        editorTaskId = task.id
-                                    },
-                                )
+                                key(task.id) {
+                                    ScheduleTaskRow(
+                                        task = task,
+                                        now = now,
+                                        zone = zone,
+                                        completionOverride = completionOverrides[task.id],
+                                        submitting = task.id in inFlightSubmissions,
+                                        onToggle = { target -> submitCompletion(task, target) },
+                                        onEdit = {
+                                            adding = false
+                                            editorTaskId = task.id
+                                        },
+                                    )
+                                }
                             }
                         }
                         if (dayTasks.size > VISIBLE_TASK_LIMIT) {
@@ -471,7 +459,7 @@ fun TodoScheduleSection(
                 }
             }
 
-            pendingUndo?.let { pending ->
+            pendingDeletion?.let { pending ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -480,21 +468,13 @@ fun TodoScheduleSection(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        when (pending) {
-                            is PendingScheduleUndo.Completion -> "已完成"
-                            is PendingScheduleUndo.Deletion -> "已删除"
-                        },
+                        "已删除",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f),
                     )
                     CampusTextButton(
-                        onClick = {
-                            when (pending) {
-                                is PendingScheduleUndo.Completion -> undoCompletion(pending)
-                                is PendingScheduleUndo.Deletion -> undoDeletion(pending)
-                            }
-                        },
+                        onClick = { undoDeletion(pending) },
                     ) { Text("撤销") }
                 }
             }
@@ -518,7 +498,7 @@ fun TodoScheduleSection(
             },
             onDeleted = { deleted ->
                 // 与完整待办编辑器一致：删除后在同一页给一次恢复机会。
-                pendingUndo = PendingScheduleUndo.Deletion(deleted)
+                pendingDeletion = deleted
                 undoMessage = null
             },
         )
@@ -593,11 +573,13 @@ private fun ScheduleTaskRow(
     now: Long,
     zone: ZoneId,
     completionOverride: TodoCompletionOverride?,
-    onToggle: () -> Unit,
+    submitting: Boolean,
+    onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
 ) {
     val completed = completionOverride?.completed ?: task.completed
-    val pending = completionOverride != null
+    // 与 submitCompletion 的拒绝条件保持一致，避免可点击但提交被丢弃。
+    val pending = completionOverride != null || submitting
     val scheme = MaterialTheme.colorScheme
     val deadline = task.dueAt
     val accent = if (!completed && deadline != null && deadline <= now) {
@@ -627,7 +609,7 @@ private fun ScheduleTaskRow(
             )
             GlassCheckbox(
                 checked = completed,
-                onCheckedChange = { if (!pending) onToggle() },
+                onCheckedChange = { target -> if (!pending) onToggle(target) },
                 enabled = !pending,
                 modifier = Modifier.semantics {
                     contentDescription = if (completed) {
@@ -690,9 +672,4 @@ private sealed interface TodoScheduleLoad {
     data object Loading : TodoScheduleLoad
     data object Failed : TodoScheduleLoad
     data class Ready(val tasks: List<TodoTask>) : TodoScheduleLoad
-}
-
-private sealed interface PendingScheduleUndo {
-    data class Completion(val taskId: String, val revision: Int) : PendingScheduleUndo
-    data class Deletion(val task: TodoTask) : PendingScheduleUndo
 }
