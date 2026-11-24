@@ -18,6 +18,7 @@ object AppRoutes {
     const val ACCOUNT = "account"
     const val APPEARANCE = "appearance"
     const val WIDGETS = "widgets"
+    const val HOME_ANNIVERSARY = "home-anniversary"
     const val OFFICIAL_WEB = "official-web"
 
     /** 宿主学习平台聚合页：二级页，不占底部 tab，也不接受外部深链。 */

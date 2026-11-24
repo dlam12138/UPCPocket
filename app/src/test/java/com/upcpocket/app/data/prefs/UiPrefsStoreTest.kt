@@ -3,7 +3,9 @@ package com.upcpocket.app.data.prefs
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_BACKGROUND_OPACITY
 import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_THEME_SEED_ARGB
@@ -14,6 +16,7 @@ import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.timetable.TimetableModuleId
 import androidx.datastore.preferences.core.floatPreferencesKey
 import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +26,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -178,6 +182,75 @@ class UiPrefsStoreTest {
         assertFalse(off.moduleReorderEnabled)
         assertEquals(customHome, off.homeModuleOrder)
         assertEquals(customTimetable, off.timetableModuleOrder)
+    }
+
+    @Test
+    fun `home anniversary defaults off and tolerates missing or unavailable stored values`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        val initial = store.flow.first().homeAnniversary
+        assertEquals("", initial.title)
+        assertNull(initial.date)
+        assertEquals(HomeAnniversaryMode.COUNT_DOWN, initial.mode)
+        assertFalse(initial.visible)
+
+        val date = LocalDate.of(2026, 11, 24)
+        dataStore.edit {
+            it[stringPreferencesKey("home_anniversary_title")] = "校庆"
+            it[longPreferencesKey("home_anniversary_epoch_day")] = date.toEpochDay()
+            it[stringPreferencesKey("home_anniversary_mode")] = "SYNTHETIC_MODE"
+            it[booleanPreferencesKey("home_anniversary_visible")] = true
+        }
+        val unknownMode = UiPrefsStore(dataStore).flow.first().homeAnniversary
+        assertEquals("校庆", unknownMode.title)
+        assertEquals(date, unknownMode.date)
+        assertEquals(HomeAnniversaryMode.COUNT_DOWN, unknownMode.mode)
+        assertTrue(unknownMode.visible)
+
+        // 历史脏数据或损坏的 epoch day 不能阻止首页读取，按“没有可用日期”处理。
+        dataStore.edit {
+            it[longPreferencesKey("home_anniversary_epoch_day")] = Long.MAX_VALUE
+        }
+        val unavailableDate = UiPrefsStore(dataStore).flow.first().homeAnniversary
+        assertNull(unavailableDate.date)
+        assertEquals("校庆", unavailableDate.title)
+    }
+
+    @Test
+    fun `home anniversary saves all fields once and hiding keeps the saved values`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        val date = LocalDate.of(2026, 9, 1)
+        store.saveHomeAnniversary(
+            HomeAnniversarySettings(
+                title = "  入学纪念日  ",
+                date = date,
+                mode = HomeAnniversaryMode.COUNT_UP,
+                visible = true,
+            ),
+        )
+
+        val shown = UiPrefsStore(dataStore).flow.first().homeAnniversary
+        assertEquals("入学纪念日", shown.title)
+        assertEquals(date, shown.date)
+        assertEquals(HomeAnniversaryMode.COUNT_UP, shown.mode)
+        assertTrue(shown.visible)
+
+        store.saveHomeAnniversary(shown.copy(visible = false))
+        val hidden = UiPrefsStore(dataStore).flow.first().homeAnniversary
+        assertFalse(hidden.visible)
+        assertEquals("入学纪念日", hidden.title)
+        assertEquals(date, hidden.date)
+        assertEquals(HomeAnniversaryMode.COUNT_UP, hidden.mode)
+
+        // 缺标题不写，避免未完成表单覆盖已保存内容。
+        store.saveHomeAnniversary(
+            HomeAnniversarySettings(
+                title = "   ",
+                date = date.plusDays(1),
+                mode = HomeAnniversaryMode.COUNT_DOWN,
+                visible = true,
+            ),
+        )
+        assertEquals(hidden, UiPrefsStore(dataStore).flow.first().homeAnniversary)
     }
 
     @Test

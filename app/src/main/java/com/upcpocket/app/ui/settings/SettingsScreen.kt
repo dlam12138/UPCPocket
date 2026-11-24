@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -68,6 +69,7 @@ fun SettingsScreen(
     onTodoHostPlacementChange: (TodoHostPlacement) -> Unit = {},
     moduleReorderEnabled: Boolean? = null,
     onModuleReorderEnabledChange: (Boolean) -> Unit = {},
+    onOpenHomeAnniversary: () -> Unit = {},
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -146,6 +148,13 @@ fun SettingsScreen(
                 moduleReorderEnabled = moduleReorderEnabled,
                 onChange = onModuleReorderEnabledChange,
             )
+            GlassCard(Modifier.fillMaxWidth()) {
+                SettingsNavigationRow(
+                    title = "首页纪念日",
+                    icon = Icons.Outlined.CalendarMonth,
+                    onClick = onOpenHomeAnniversary,
+                )
+            }
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     SettingsNavigationRow(
