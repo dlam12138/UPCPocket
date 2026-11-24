@@ -18,8 +18,8 @@ commit `896a94a3ade1cc1a940b92365f942a34971fecda`:
 
 - Relocated the Kotlin package to `com.upcpocket.app.ui.nav.kyant` and added explicit source/license headers.
 - Renamed the controlled selection parameter to `selectedIndex` and added an explicit `darkTheme` input so the host can honor its in-app theme setting.
-- Kept the original component-owned drag state, spring constants, velocity deformation, panel displacement, and the selected capsule lens, shadow and interaction highlight.
-- Draw the panel with a translucent theme tint, highlight, and border. The moving capsule combines the shared theme backdrop with the recorded navigation icons during interaction.
+- Kept the original component-owned drag state, spring constants, velocity deformation, and panel displacement, while tightening the selected capsule to 40dp inside a 56dp offscreen-composited (`CompositingStrategy.Offscreen`) clipped bar so it stays clear of the outer rim.
+- Draw the panel with a higher-opacity frosted theme tint (`0.88` light / `0.90` dark), highlight, and clipped outer border. The selected indicator sits behind the navigation icons and samples only the shared static theme backdrop during interaction, removing the hidden duplicate icon refraction layer to prevent double-icon ghosting.
 - Kept updated host selection/callback references and recreate geometry-dependent state when tab count, width or layout direction changes. Host selection changes do not echo into `onTabSelected`, which would otherwise restart a Pager navigation.
 - Added selected-tab semantics and a selectable group. The provided `LiquidBottomTab` disables click/focus targets for the hidden refraction copy while preserving its drawing.
 - Resolve a tap intercepted by the moving lens against the touched tab in the fixed navigation bar. Drag gestures still use the original settling logic.

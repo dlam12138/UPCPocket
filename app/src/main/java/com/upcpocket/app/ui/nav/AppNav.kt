@@ -61,10 +61,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -882,17 +884,17 @@ private fun FloatingDock(
     val scheme = MaterialTheme.colorScheme
     val dockShape = RoundedCornerShape(28.dp)
     val dockColor = when {
-        glass -> Color.White.copy(alpha = if (dockDark) 0.05f else 0.15f)
+        glass -> scheme.surfaceContainerHigh.copy(alpha = if (dockDark) 0.90f else 0.88f)
         dockDark -> scheme.surface
         else -> scheme.surface.copy(alpha = 0.5f)
     }
     val dockElevation = when {
-        glass -> 0.dp
+        glass -> if (dockDark) 2.dp else 4.dp
         dockDark -> 1.dp
         else -> 6.dp
     }
     val selectedBubble = when {
-        glass -> scheme.primary.copy(alpha = 0.16f)
+        glass -> scheme.primary.copy(alpha = if (dockDark) 0.24f else 0.16f)
         dockDark -> scheme.primaryContainer
         else -> scheme.secondaryContainer.copy(alpha = 0.85f)
     }
@@ -904,34 +906,7 @@ private fun FloatingDock(
     val tabIndication = if (glass) null else LocalIndication.current
     val lastIndex = destinations.lastIndex
 
-    Surface(
-        shape = dockShape,
-        color = dockColor,
-        tonalElevation = dockElevation,
-        shadowElevation = 0.dp,
-        border = if (glass) glassBorder(1.2.dp) else BorderStroke(
-            0.5.dp,
-            Brush.verticalGradient(
-                listOf(
-                    Color.White.copy(alpha = 0.25f),
-                    scheme.outlineVariant.copy(alpha = 0.6f),
-                    scheme.outlineVariant.copy(alpha = 0.6f),
-                ),
-            ),
-        ),
-        modifier = modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-            .fillMaxWidth()
-            .height(56.dp)
-            .pointerInput(Unit) { detectTapGestures { } }
-            .shadow(
-                elevation = dockElevation,
-                shape = dockShape,
-                clip = false,
-            )
-            .testTag("floating_dock"),
-    ) {
+    val dockContent: @Composable () -> Unit = {
         BoxWithConstraints(Modifier.fillMaxSize().glassHighlight(dockShape)) {
             val slotWidth = maxWidth / destinations.size
             if (!glass) {
@@ -983,6 +958,65 @@ private fun FloatingDock(
                     }
                 }
             }
+        }
+    }
+
+    if (glass) {
+        val shadowColor = Color.Black.copy(alpha = if (dockDark) 0.28f else 0.12f)
+        Box(
+            modifier = modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .fillMaxWidth()
+                .height(56.dp)
+                .pointerInput(Unit) { detectTapGestures { } }
+                .shadow(
+                    elevation = dockElevation,
+                    shape = dockShape,
+                    clip = false,
+                    ambientColor = shadowColor,
+                    spotColor = shadowColor,
+                )
+                .graphicsLayer {
+                    compositingStrategy = CompositingStrategy.Offscreen
+                }
+                .clip(dockShape)
+                .background(dockColor, dockShape)
+                .border(glassBorder(0.85.dp), dockShape)
+                .testTag("floating_dock"),
+        ) {
+            dockContent()
+        }
+    } else {
+        Surface(
+            shape = dockShape,
+            color = dockColor,
+            tonalElevation = dockElevation,
+            shadowElevation = 0.dp,
+            border = BorderStroke(
+                0.5.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.25f),
+                        scheme.outlineVariant.copy(alpha = 0.6f),
+                        scheme.outlineVariant.copy(alpha = 0.6f),
+                    ),
+                ),
+            ),
+            modifier = modifier
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .fillMaxWidth()
+                .height(56.dp)
+                .pointerInput(Unit) { detectTapGestures { } }
+                .shadow(
+                    elevation = dockElevation,
+                    shape = dockShape,
+                    clip = false,
+                )
+                .testTag("floating_dock"),
+        ) {
+            dockContent()
         }
     }
 }

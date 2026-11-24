@@ -110,7 +110,7 @@ internal fun Modifier.liquidDockIndicator(
 
     return drawWithCache {
         val slotWidth = size.width / tabCount
-        val edgeMargin = 3.dp.toPx().coerceAtMost(slotWidth * 0.12f)
+        val edgeMargin = 8.dp.toPx().coerceAtMost(slotWidth * 0.16f)
         val halfWidth = (minOf(56.dp.toPx(), slotWidth - edgeMargin * 2f)) / 2f
         val restingHalfHeight = minOf(20.dp.toPx(), size.height / 2f)
         val centerY = size.height / 2f
