@@ -247,6 +247,7 @@ internal fun TimetableScreen(
             moduleLayout.onOrderChange(mergeReorderedSubset(normalizedOrder, reordered))
         }
     }
+    val timetableIsGrouped = !state.accountBlocked && state.accountSavedUnverified
 
     Scaffold(
         containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
@@ -292,6 +293,9 @@ internal fun TimetableScreen(
                 enabled = moduleLayout.reorderEnabled,
                 itemLabel = ::timetableModuleLabel,
                 itemTestTag = ::timetableModuleTestTag,
+                itemGrouped = { module ->
+                    module == TimetableModuleId.TIMETABLE && timetableIsGrouped
+                },
                 onReorderFinished = onReorderFinished,
             ) { module, _ ->
                 when (module) {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +26,19 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
@@ -42,9 +52,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.ui.theme.LocalHasCustomBackground
+import com.upcpocket.app.ui.theme.LocalUiStyle
 import kotlin.math.abs
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -159,13 +174,232 @@ private class ReorderLayoutTracker {
     var settleGeneration: Int = 0
 }
 
+internal data class ReorderDragVisualSpec(
+    val isGlass: Boolean,
+    val layerAlpha: Float,
+    val maxShadowElevationDp: Dp,
+    val m3SurfaceColor: Color,
+    val m3CardColor: Color,
+    val m3TrayColor: Color,
+    val m3StateOverlayColor: Color,
+    val m3BorderColor: Color,
+    val m3ShadowColor: Color,
+    val glassCarrierColor: Color,
+    val glassTintColor: Color,
+    val glassSheenTopColor: Color,
+    val glassSheenMidColor: Color,
+    val glassRimTopColor: Color,
+    val glassRimMidColor: Color,
+    val glassRimBottomColor: Color,
+)
+
+internal fun resolveReorderDragVisualSpec(
+    uiStyle: UiStyle,
+    scheme: ColorScheme,
+): ReorderDragVisualSpec {
+    val isGlass = uiStyle == UiStyle.LIQUID_GLASS
+    val dark = scheme.surface.luminance() < 0.5f
+    return ReorderDragVisualSpec(
+        isGlass = isGlass,
+        layerAlpha = 1f,
+        maxShadowElevationDp = if (isGlass) 0.dp else 8.dp,
+        m3SurfaceColor = scheme.surface,
+        m3CardColor = scheme.surfaceContainerLow,
+        m3TrayColor = scheme.surfaceContainer,
+        m3StateOverlayColor = scheme.primary.copy(alpha = 0.05f),
+        m3BorderColor = lerp(scheme.outlineVariant, scheme.primary, 0.78f).copy(alpha = 0.90f),
+        m3ShadowColor = scheme.scrim,
+        glassCarrierColor = scheme.surfaceContainerLow.copy(alpha = if (dark) 0.34f else 0.44f),
+        glassTintColor = scheme.primary.copy(alpha = if (dark) 0.10f else 0.07f),
+        glassSheenTopColor = Color.White.copy(alpha = if (dark) 0.16f else 0.42f),
+        glassSheenMidColor = Color.White.copy(alpha = if (dark) 0.06f else 0.16f),
+        glassRimTopColor = Color.White.copy(alpha = if (dark) 0.72f else 0.98f),
+        glassRimMidColor = Color.White.copy(alpha = if (dark) 0.24f else 0.48f),
+        glassRimBottomColor = scheme.primary.copy(alpha = if (dark) 0.54f else 0.42f),
+    )
+}
+
+private data class ExpandedRoundedRectShape(
+    val horizontalExpandPx: Float,
+    val verticalExpandPx: Float,
+    val cornerRadiusPx: Float,
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density,
+    ): Outline = Outline.Rounded(
+        RoundRect(
+            left = -horizontalExpandPx,
+            top = -verticalExpandPx,
+            right = size.width + horizontalExpandPx,
+            bottom = size.height + verticalExpandPx,
+            cornerRadius = CornerRadius(cornerRadiusPx, cornerRadiusPx),
+        ),
+    )
+}
+
+private fun Modifier.reorderDragVisuals(
+    spec: ReorderDragVisualSpec,
+    isGrouped: Boolean,
+    hasCustomBackground: Boolean,
+    progressProvider: () -> Float,
+    groupPadXPx: Float,
+    groupPadYPx: Float,
+    cardCornerRadiusPx: Float,
+    groupCornerRadiusPx: Float,
+    strokeWidthPx: Float,
+): Modifier = drawWithCache {
+    val left = if (isGrouped) -groupPadXPx else 0f
+    val top = if (isGrouped) -groupPadYPx else 0f
+    val width = size.width - left * 2f
+    val height = size.height - top * 2f
+    val topLeft = Offset(left, top)
+    val rectSize = Size(width.coerceAtLeast(0f), height.coerceAtLeast(0f))
+    val radiusPx = if (isGrouped) groupCornerRadiusPx else cardCornerRadiusPx
+    val cornerRadius = CornerRadius(radiusPx, radiusPx)
+
+    val halfStroke = strokeWidthPx * 0.5f
+    val strokeTopLeft = Offset(left + halfStroke, top + halfStroke)
+    val strokeSize = Size(
+        (width - strokeWidthPx).coerceAtLeast(0f),
+        (height - strokeWidthPx).coerceAtLeast(0f),
+    )
+    val strokeRadiusPx = (radiusPx - halfStroke).coerceAtLeast(0f)
+    val strokeCorner = CornerRadius(strokeRadiusPx, strokeRadiusPx)
+    val borderStroke = Stroke(width = strokeWidthPx)
+
+    val sheenBrush = if (spec.isGlass) {
+        Brush.linearGradient(
+            0f to spec.glassSheenTopColor,
+            0.32f to spec.glassSheenMidColor,
+            1f to Color.Transparent,
+            start = Offset(left + rectSize.width * 0.38f, top),
+            end = Offset(left + rectSize.width * 0.58f, top + rectSize.height.coerceAtLeast(1f)),
+        )
+    } else {
+        null
+    }
+    val rimBrush = if (spec.isGlass) {
+        Brush.verticalGradient(
+            0f to spec.glassRimTopColor,
+            0.50f to spec.glassRimMidColor,
+            1f to spec.glassRimBottomColor,
+            startY = top,
+            endY = (top + rectSize.height).coerceAtLeast(top + 1f),
+        )
+    } else {
+        null
+    }
+
+    onDrawWithContent {
+        val p = progressProvider().coerceIn(0f, 1f)
+        if (p <= 0f || rectSize.width <= 0f || rectSize.height <= 0f) {
+            drawContent()
+            return@onDrawWithContent
+        }
+
+        if (!spec.isGlass) {
+            // Material 3：不透明实色托底 + 圆角轮廓阴影 + 纯色描边，避免拖动卡片透出底层内容。
+            if (isGrouped) {
+                val fill = if (hasCustomBackground) {
+                    spec.m3TrayColor.copy(alpha = p)
+                } else {
+                    lerp(spec.m3SurfaceColor, spec.m3TrayColor, p)
+                }
+                drawRoundRect(
+                    color = fill,
+                    topLeft = topLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadius,
+                )
+            } else if (hasCustomBackground) {
+                drawRoundRect(
+                    color = spec.m3CardColor.copy(alpha = p),
+                    topLeft = topLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadius,
+                )
+            }
+
+            drawContent()
+
+            if (!isGrouped) {
+                drawRoundRect(
+                    color = spec.m3StateOverlayColor.copy(alpha = spec.m3StateOverlayColor.alpha * p),
+                    topLeft = topLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadius,
+                )
+            }
+            if (strokeSize.width > 0f && strokeSize.height > 0f) {
+                drawRoundRect(
+                    color = spec.m3BorderColor.copy(alpha = spec.m3BorderColor.alpha * p),
+                    topLeft = strokeTopLeft,
+                    size = strokeSize,
+                    cornerRadius = strokeCorner,
+                    style = borderStroke,
+                )
+            }
+        } else {
+            // 轻量玻璃：零硬件阴影，半透明底衬 + 斜向镜面柔光 + 方向性高光边缘。
+            val carrierAlphaScale = if (isGrouped) 1f else 0.50f
+            drawRoundRect(
+                color = spec.glassCarrierColor.copy(
+                    alpha = spec.glassCarrierColor.alpha * carrierAlphaScale * p,
+                ),
+                topLeft = topLeft,
+                size = rectSize,
+                cornerRadius = cornerRadius,
+            )
+            drawRoundRect(
+                color = spec.glassTintColor.copy(alpha = spec.glassTintColor.alpha * p),
+                topLeft = topLeft,
+                size = rectSize,
+                cornerRadius = cornerRadius,
+            )
+            if (isGrouped && sheenBrush != null) {
+                drawRoundRect(
+                    brush = sheenBrush,
+                    topLeft = topLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadius,
+                    alpha = p,
+                )
+            }
+
+            drawContent()
+
+            if (!isGrouped && sheenBrush != null) {
+                drawRoundRect(
+                    brush = sheenBrush,
+                    topLeft = topLeft,
+                    size = rectSize,
+                    cornerRadius = cornerRadius,
+                    alpha = 0.28f * p,
+                )
+            }
+            if (rimBrush != null && strokeSize.width > 0f && strokeSize.height > 0f) {
+                drawRoundRect(
+                    brush = rimBrush,
+                    topLeft = strokeTopLeft,
+                    size = strokeSize,
+                    cornerRadius = strokeCorner,
+                    alpha = p,
+                    style = borderStroke,
+                )
+            }
+        }
+    }
+}
+
 /**
  * 支持长按拖动排序的垂直模块容器，适用于数量有界（通常 2~10 项）的页面区块。
  *
- * - 空闲态不附加额外 `graphicsLayer` / `drawWithContent` / 常驻动画协程，避免页面切换与滚动合成掉帧；
+ * - 空闲态不附加额外 `graphicsLayer` / `drawWithCache` / 常驻动画协程，避免页面切换与滚动合成掉帧；
  * - 普通点击、上下滚动和外层 HorizontalPager 横滑在长按触发前不被拦截且按下瞬间零列表分配；
  * - 长按激活后在 [PointerEventPass.Initial] 消费拖动与抬起事件，避免松手误触发子项点击；
- * - 拖动位移、让位动画与抬起缩放全部延后到 Draw 阶段（`graphicsLayer`）；
+ * - 拖动视觉随 [LocalUiStyle] 区分 Material 3 与轻量玻璃；位移动画与抬升进度延后到 Draw 阶段；
  * - 提供无障碍「上移 / 下移」自定义操作，松手时回调 [onReorderFinished] 持久化；
  * - [enabled] 为 false 时不挂载拖动监听和无障碍排序动作，只按传入顺序渲染；
  * - 仅在实际松手、仍可拖动且可见模块集合未变化时提交；取消或关闭开关丢弃草稿。
@@ -183,16 +417,66 @@ fun <T> ReorderableModuleColumn(
     itemTestTag: ((T) -> String)? = null,
     itemContent: @Composable (item: T, isDragging: Boolean) -> Unit,
 ) {
+    ReorderableModuleColumn(
+        items = items,
+        key = key,
+        onReorderFinished = onReorderFinished,
+        modifier = modifier,
+        scrollState = scrollState,
+        spacing = spacing,
+        enabled = enabled,
+        itemLabel = itemLabel,
+        itemTestTag = itemTestTag,
+        itemGrouped = { false },
+        itemContent = itemContent,
+    )
+}
+
+/**
+ * [ReorderableModuleColumn] 的分组重载：由 [itemGrouped] 标记需要整体托底的模块。
+ *
+ * - 分组模块的拖动轮廓向四周扩展，Material 3 使用主题实色托盘，轻量玻璃使用半透明托盘；
+ * - 未分组模块保持单卡轮廓；未声明分组的现有调用继续使用无 [itemGrouped] 的重载。
+ */
+@Composable
+fun <T> ReorderableModuleColumn(
+    items: List<T>,
+    key: (T) -> Any,
+    onReorderFinished: (List<T>) -> Unit,
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState? = null,
+    spacing: Dp = 14.dp,
+    enabled: Boolean = true,
+    itemLabel: (T) -> String = { "" },
+    itemTestTag: ((T) -> String)? = null,
+    itemGrouped: (T) -> Boolean,
+    itemContent: @Composable (item: T, isDragging: Boolean) -> Unit,
+) {
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val uiStyle = LocalUiStyle.current
+    val hasCustomBackground = LocalHasCustomBackground.current
+    val colorScheme = MaterialTheme.colorScheme
+    val visualSpec = remember(uiStyle, colorScheme) {
+        resolveReorderDragVisualSpec(uiStyle, colorScheme)
+    }
+
     val spacingPx = with(density) { spacing.toPx() }
     val edgeThresholdPx = with(density) { 72.dp.toPx() }
     val maxAutoScrollPerFramePx = with(density) { 14.dp.toPx() }
-    val dragElevationPx = with(density) { 12.dp.toPx() }
-    val borderRadiusPx = with(density) { 20.dp.toPx() }
+    val maxShadowElevationPx = with(density) { visualSpec.maxShadowElevationDp.toPx() }
+    val cardCornerRadiusPx = with(density) { 20.dp.toPx() }
+    val groupCornerRadiusPx = with(density) { 24.dp.toPx() }
+    val groupPadXPx = with(density) { 8.dp.toPx() }
+    val groupPadYPx = with(density) { 6.dp.toPx() }
     val borderStrokePx = with(density) { 1.5.dp.toPx() }
-    val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+    val singleCardShape = remember(cardCornerRadiusPx) {
+        ExpandedRoundedRectShape(0f, 0f, cardCornerRadiusPx)
+    }
+    val groupedTrayShape = remember(groupPadXPx, groupPadYPx, groupCornerRadiusPx) {
+        ExpandedRoundedRectShape(groupPadXPx, groupPadYPx, groupCornerRadiusPx)
+    }
 
     val layoutTracker = remember { ReorderLayoutTracker() }
     val shiftAnimations = remember { mutableMapOf<Any, Animatable<Float, AnimationVector1D>>() }
@@ -356,7 +640,8 @@ fun <T> ReorderableModuleColumn(
                             var lastSwapDirection = 0
                             var lastSwapPointerY = downPosition.y
 
-                            // 若上次松手回弹未结束，直接接管。
+                            // 若上次松手回弹未结束，直接接管；切换到新模块时从 0 重新抬升。
+                            val sameLiftedItem = liftKey == activeKey
                             layoutTracker.settleGeneration++
                             layoutTracker.liftGeneration++
                             settlingKey = null
@@ -366,6 +651,9 @@ fun <T> ReorderableModuleColumn(
                             dragOffsetY.floatValue = 0f
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             scope.launch {
+                                if (!sameLiftedItem) {
+                                    dragProgress.snapTo(0f)
+                                }
                                 dragProgress.animateTo(
                                     targetValue = 1f,
                                     animationSpec = tween(
@@ -538,7 +826,7 @@ fun <T> ReorderableModuleColumn(
                                             dragProgress.animateTo(
                                                 targetValue = 0f,
                                                 animationSpec = tween(
-                                                    durationMillis = 160,
+                                                    durationMillis = 180,
                                                     easing = FastOutSlowInEasing,
                                                 ),
                                             )
@@ -651,6 +939,9 @@ fun <T> ReorderableModuleColumn(
                     baseModifier
                 } else {
                     val shiftAnim = if (isShifting) shiftAnimations[itemKey] else null
+                    val isElevated = isDragging || isLifted || isSettling
+                    val isGrouped = itemGrouped(item)
+                    val activeShape = if (isGrouped) groupedTrayShape else singleCardShape
                     baseModifier
                         .then(
                             when {
@@ -666,25 +957,35 @@ fun <T> ReorderableModuleColumn(
                                 shiftAnim != null -> shiftAnim.value
                                 else -> 0f
                             }
-                            if (isDragging || isLifted) {
+                            if (isElevated) {
                                 val p = dragProgress.value
                                 val s = 1f + 0.02f * p
                                 scaleX = s
                                 scaleY = s
-                                alpha = 1f - 0.04f * p
-                                shadowElevation = dragElevationPx * p
+                                alpha = visualSpec.layerAlpha
+                                if (!visualSpec.isGlass) {
+                                    shape = activeShape
+                                    shadowElevation = maxShadowElevationPx * p
+                                    ambientShadowColor = visualSpec.m3ShadowColor
+                                    spotShadowColor = visualSpec.m3ShadowColor
+                                } else {
+                                    shadowElevation = 0f
+                                }
                             }
                         }
                         .then(
-                            if (isDragging) {
-                                Modifier.drawWithContent {
-                                    drawContent()
-                                    drawRoundRect(
-                                        color = highlightColor,
-                                        cornerRadius = CornerRadius(borderRadiusPx, borderRadiusPx),
-                                        style = Stroke(width = borderStrokePx),
-                                    )
-                                }
+                            if (isElevated) {
+                                Modifier.reorderDragVisuals(
+                                    spec = visualSpec,
+                                    isGrouped = isGrouped,
+                                    hasCustomBackground = hasCustomBackground,
+                                    progressProvider = { dragProgress.value },
+                                    groupPadXPx = groupPadXPx,
+                                    groupPadYPx = groupPadYPx,
+                                    cardCornerRadiusPx = cardCornerRadiusPx,
+                                    groupCornerRadiusPx = groupCornerRadiusPx,
+                                    strokeWidthPx = borderStrokePx,
+                                )
                             } else {
                                 Modifier
                             },
