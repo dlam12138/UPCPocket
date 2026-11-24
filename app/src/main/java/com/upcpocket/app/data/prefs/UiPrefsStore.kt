@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,7 @@ import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.normalizeOpaqueSeedArgb
 import com.upcpocket.app.designsystem.sanitizeCustomBackgroundOpacity
 import com.upcpocket.app.timetable.TimetableModuleId
+import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -90,6 +92,12 @@ data class UiPrefs(
      * 关闭只锁定交互，不影响 [homeModuleOrder] / [timetableModuleOrder] 的渲染与保留。
      */
     val moduleReorderEnabled: Boolean = false,
+    /**
+     * 首页纪念日：单条标题、日历日期、正/倒计时与首页显示开关。
+     *
+     * 缺键默认关闭；独立于学校账号，只保存在本机。
+     */
+    val homeAnniversary: HomeAnniversarySettings = HomeAnniversarySettings(),
 ) {
     companion object {
         val DEFAULT_PINNED_SERVICES = setOf(
@@ -146,6 +154,14 @@ class UiPrefsStore internal constructor(
             homeModuleOrder = HomeModuleId.fromStoredValue(p[KEY_HOME_MODULE_ORDER]),
             timetableModuleOrder = TimetableModuleId.fromStoredValue(p[KEY_TIMETABLE_MODULE_ORDER]),
             moduleReorderEnabled = p[KEY_MODULE_REORDER_ENABLED] ?: false,
+            homeAnniversary = HomeAnniversarySettings(
+                title = p[KEY_HOME_ANNIVERSARY_TITLE].orEmpty(),
+                date = p[KEY_HOME_ANNIVERSARY_EPOCH_DAY]?.let { epochDay ->
+                    runCatching { LocalDate.ofEpochDay(epochDay) }.getOrNull()
+                },
+                mode = HomeAnniversaryMode.fromStoredValue(p[KEY_HOME_ANNIVERSARY_MODE]),
+                visible = p[KEY_HOME_ANNIVERSARY_VISIBLE] ?: false,
+            ),
         )
     }
 
@@ -240,6 +256,22 @@ class UiPrefsStore internal constructor(
         widgetAppearanceSnapshot = v
     }
 
+    /**
+     * 一次编辑保存首页纪念日的全部字段。
+     *
+     * 标题去首尾空白；标题为空或日期不可用时不写入，避免把未完成表单落成
+     * “已配置”。隐藏时仍写标题、日期与模式，重新打开可恢复上次内容。
+     */
+    suspend fun saveHomeAnniversary(settings: HomeAnniversarySettings) = store.edit { p ->
+        val title = settings.title.trim()
+        val date = settings.date
+        if (title.isEmpty() || date == null) return@edit
+        p[KEY_HOME_ANNIVERSARY_TITLE] = title
+        p[KEY_HOME_ANNIVERSARY_EPOCH_DAY] = date.toEpochDay()
+        p[KEY_HOME_ANNIVERSARY_MODE] = settings.mode.name
+        p[KEY_HOME_ANNIVERSARY_VISIBLE] = settings.visible
+    }
+
     private companion object {
         val KEY_THEME_PRESET = stringPreferencesKey("theme_preset")
         val KEY_CUSTOM_THEME_SEED = intPreferencesKey("custom_theme_seed_argb")
@@ -282,5 +314,11 @@ class UiPrefsStore internal constructor(
 
         /** 首页/课表长按拖动开关；缺键默认关闭。 */
         val KEY_MODULE_REORDER_ENABLED = booleanPreferencesKey("module_reorder_enabled")
+
+        /** 首页纪念日：标题、日历日期（epoch day）、计时方向、显示开关。 */
+        val KEY_HOME_ANNIVERSARY_TITLE = stringPreferencesKey("home_anniversary_title")
+        val KEY_HOME_ANNIVERSARY_EPOCH_DAY = longPreferencesKey("home_anniversary_epoch_day")
+        val KEY_HOME_ANNIVERSARY_MODE = stringPreferencesKey("home_anniversary_mode")
+        val KEY_HOME_ANNIVERSARY_VISIBLE = booleanPreferencesKey("home_anniversary_visible")
     }
 }

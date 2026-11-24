@@ -127,6 +127,7 @@ import com.upcpocket.app.ui.nav.kyant.LiquidBottomTabs
 import com.upcpocket.app.ui.official.OfficialWebScreen
 import com.upcpocket.app.ui.services.ServicesScreen
 import com.upcpocket.app.ui.settings.AppearanceScreen
+import com.upcpocket.app.ui.settings.HomeAnniversaryScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
 import com.upcpocket.app.ui.theme.LocalUiStyle
@@ -525,6 +526,7 @@ fun AppNav(
                                         reorderEnabled = prefs.moduleReorderEnabled,
                                         onModuleOrderChange = onHomeModuleOrderChange,
                                         personalAgendaHome = personalAgendaHome,
+                                        homeAnniversary = prefs.homeAnniversary,
                                     )
                                     AppRoutes.SERVICES -> ServicesScreen(
                                         entries = allServiceEntries,
@@ -637,6 +639,11 @@ fun AppNav(
                         onModuleReorderEnabledChange = { enabled ->
                             scope.launch { AppGraph.uiPrefsStore.setModuleReorderEnabled(enabled) }
                         },
+                        onOpenHomeAnniversary = {
+                            navController.navigate(AppRoutes.HOME_ANNIVERSARY) {
+                                launchSingleTop = true
+                            }
+                        },
                         onBack = { navController.popBackStack() },
                         onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },
                         onOpenAppearance = { navController.navigate(AppRoutes.APPEARANCE) },
@@ -654,6 +661,19 @@ fun AppNav(
                 }
                 composable(AppRoutes.APPEARANCE) {
                     AppearanceScreen(onBack = { navController.popBackStack() })
+                }
+                composable(AppRoutes.HOME_ANNIVERSARY) { entry ->
+                    HomeAnniversaryScreen(
+                        settings = storedPrefs?.homeAnniversary,
+                        onSave = { AppGraph.uiPrefsStore.saveHomeAnniversary(it) },
+                        // 保存期间用户可能已返回；旧路由退场组合里的迟到成功回调
+                        // 只能关闭它自己，不能把当前设置页一并弹走。
+                        onBack = {
+                            if (navController.currentBackStackEntry === entry) {
+                                navController.popBackStack()
+                            }
+                        },
+                    )
                 }
                 composable(AppRoutes.WIDGETS) {
                     WidgetSettingsScreen(onBack = { navController.popBackStack() })

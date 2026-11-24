@@ -275,6 +275,37 @@ class SettingsScreenTest {
             .assertIsNotEnabled()
     }
 
+    @Test
+    fun `home anniversary entry opens its settings page`() {
+        var opened = false
+        rule.setContent {
+            UpcPocketTheme {
+                SettingsScreen(
+                    accountState = SchoolAccountState(
+                        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                        generation = AccountGeneration(11),
+                    ),
+                    schoolSections = emptyList(),
+                    sectionHost = FakeSectionHost(),
+                    onOpenHomeAnniversary = { opened = true },
+                    onBack = {},
+                    onOpenAccount = {},
+                    onOpenAppearance = {},
+                    onOpenWidgets = {},
+                    onOpenOfficialWeb = {},
+                    onOpenAbout = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("首页纪念日")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .performClick()
+
+        assertTrue(opened)
+    }
+
     private class FakeSectionHost : PluginSectionHost {
         override fun openSchoolAccountSettings() = Unit
     }

@@ -32,17 +32,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.upcpocket.app.data.prefs.HomeAnniversarySettings
 import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.plugin.ui.PluginEntry
 import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.LocalDockClearance
+import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.data.prefs.HomeModuleId
 import com.upcpocket.app.data.prefs.UiPrefs
@@ -132,12 +138,16 @@ fun HomeScreen(
     reorderEnabled: Boolean = false,
     onModuleOrderChange: (List<HomeModuleId>) -> Unit = {},
     personalAgendaHome: (@Composable () -> Unit)? = null,
+    homeAnniversary: HomeAnniversarySettings = HomeAnniversarySettings(),
 ) {
     val context = LocalContext.current
     val today = rememberCampusDate()
     val dockClearance = LocalDockClearance.current
     val scrollState = rememberScrollState()
     val dateLabel = remember(today) { today.format(HOME_DATE_FORMATTER) }
+    val anniversaryLine = remember(homeAnniversary, today) {
+        homeAnniversaryLine(homeAnniversary, today)
+    }
     val pinnedEntries = remember(serviceEntries, pinnedServiceIds) {
         pinnedPluginEntries(serviceEntries, pinnedServiceIds)
     }
@@ -250,6 +260,7 @@ fun HomeScreen(
             Header(
                 eyebrow = "UPC POCKET",
                 date = dateLabel,
+                anniversary = anniversaryLine,
                 onOpenSettings = onOpenSettings,
             )
 
@@ -339,13 +350,21 @@ fun HomeScreen(
 
 @Composable
 private fun rememberCampusDate(): LocalDate {
+    val pageActive = LocalPluginPageActive.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     var today by remember { mutableStateOf(LocalDate.now(CAMPUS_ZONE)) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            val now = ZonedDateTime.now(CAMPUS_ZONE)
-            val nextDate = now.toLocalDate().plusDays(1).atStartOfDay(CAMPUS_ZONE)
-            delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
-            today = LocalDate.now(CAMPUS_ZONE)
+
+    // 只在首页可见且应用处于前台时计时。回到首页或回前台会重启循环，
+    // 用同一个 now 写入日期并计算下一个上海午夜，避免沿用调整系统时间前的旧延时。
+    LaunchedEffect(pageActive, lifecycle) {
+        if (!pageActive) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                val now = ZonedDateTime.now(CAMPUS_ZONE)
+                today = now.toLocalDate()
+                val nextDate = now.toLocalDate().plusDays(1).atStartOfDay(CAMPUS_ZONE)
+                delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
+            }
         }
     }
     return today
@@ -355,6 +374,7 @@ private fun rememberCampusDate(): LocalDate {
 private fun Header(
     eyebrow: String,
     date: String,
+    anniversary: HomeAnniversaryLine?,
     onOpenSettings: () -> Unit,
 ) {
     Row(
@@ -381,6 +401,33 @@ private fun Header(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            anniversary?.let { line ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("home_anniversary"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = line.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    // 先测量计时值，剩余宽度留给标题省略，避免长标题挤掉天数。
+                    Text(
+                        text = line.countText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
         }
         androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
         CampusIconButton(
