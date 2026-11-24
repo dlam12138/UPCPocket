@@ -18,4 +18,10 @@ data class TodoTask(
     val revision: Int,
     /** Optional deadline instant; independent from the reminder schedule. */
     val dueAt: Long? = null,
-)
+    /** Epoch millis when pinned; non-null means the task is pinned to the top. */
+    val pinnedAt: Long? = null,
+    /** Optional manual display order within the task's pin group (ascending). */
+    val sortOrder: Long? = null,
+) {
+    val pinned: Boolean get() = pinnedAt != null
+}

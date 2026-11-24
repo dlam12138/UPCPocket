@@ -12,7 +12,7 @@
 
 业务模型与存储归所属 feature，platform 仅给基础加密/诊断等能力。focus 保持 Room `upcpocket.db` v1，包括停用课表兼容表结构；这些表没有当前课表业务读写路径。新只读课表属于 timetable，用独立账号绑定会话/周缓存，不回写旧表。
 
-todo 使用独立 `upcpocket-todo.db` v1；Room 任务和 revision 是事实来源，Alarm/通知是可重建副作用，旧动作按 taskId+revision 拒绝。学校账号换号/删除不清专注、待办、个人隐藏、主题或寝室配置。
+todo 使用独立 `upcpocket-todo.db`（当前 v3：v1→v2 无损增加可空 `dueAt`，v2→v3 无损增加可空 `pinnedAt` 与 `sortOrder`）；Room 任务和 revision 是事实来源，Alarm/通知是可重建副作用，旧动作按 taskId+revision 拒绝。学校账号换号/删除不清专注、待办、个人隐藏、主题或寝室配置。
 
 学校凭据与需要持久化的业务会话/充值待查使用各自独立加密边界；余额和课表缓存当前为应用私有 noBackup JSON，未单独加密，不宣称所有数据均密文。流水列表为内存。个人缓存带归属/代次，只有完整成功结果写入，失败不冒充有效空数据。
 

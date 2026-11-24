@@ -4,6 +4,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.semantics.SemanticsActions
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.plugin.ui.PluginRouteId
@@ -491,6 +493,110 @@ class TodoScreenTest {
         rule.onNodeWithText("待办读取失败。").assertDoesNotExist()
     }
 
+    @Test
+    fun `pin button pins and unpins incomplete tasks and completed rows omit reorder controls`() {
+        val first = task("第一项", createdAt = 30)
+        val second = task("第二项", createdAt = 20)
+        val done = task("已完成项", createdAt = 10, completed = true)
+        val store = FakeTodoStore(listOf(first, second, done))
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithTag("todo_pinned_header").assertDoesNotExist()
+        rule.onNodeWithTag("todo_pin_${second.id}").performClick()
+        rule.waitUntil(5_000) { store.current.first { it.id == second.id }.pinned }
+
+        rule.onNodeWithTag("todo_pinned_header").assertIsDisplayed()
+        val secondTop = rule.onNodeWithTag("todo_row_${second.id}").fetchSemanticsNode().boundsInRoot.top
+        val firstTop = rule.onNodeWithTag("todo_row_${first.id}").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Pinned task should appear above unpinned task", secondTop < firstTop)
+
+        rule.onNodeWithTag("todo_pin_${second.id}").performClick()
+        rule.waitUntil(5_000) { !store.current.first { it.id == second.id }.pinned }
+        rule.onNodeWithTag("todo_pinned_header").assertDoesNotExist()
+
+        rule.onNodeWithText("已完成 1").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("todo_pin_${done.id}").assertDoesNotExist()
+        rule.onNodeWithTag("todo_drag_${done.id}").assertDoesNotExist()
+    }
+
+    @Test
+    fun `drag handle reorders incomplete tasks via press and drag and accessibility actions`() {
+        val first = task("任务一", createdAt = 30)
+        val second = task("任务二", createdAt = 20)
+        val third = task("任务三", createdAt = 10)
+        val store = FakeTodoStore(listOf(first, second, third))
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        val firstBounds = rule.onNodeWithTag("todo_row_${first.id}").fetchSemanticsNode().boundsInRoot
+        val secondBounds = rule.onNodeWithTag("todo_row_${second.id}").fetchSemanticsNode().boundsInRoot
+        val dragDistance = (secondBounds.center.y - firstBounds.center.y) + 20f
+
+        rule.onNodeWithTag("todo_drag_${first.id}").performTouchInput {
+            down(center)
+            advanceEventTime(200)
+            moveBy(Offset(0f, dragDistance / 2f), delayMillis = 32)
+            moveBy(Offset(0f, dragDistance / 2f), delayMillis = 32)
+            up()
+        }
+
+        rule.waitUntil(5_000) { store.reorderCalls.isNotEmpty() }
+        assertEquals(listOf(second.id, first.id, third.id), store.reorderCalls.last())
+        rule.waitForIdle()
+        val afterFirstTop = rule.onNodeWithTag("todo_row_${first.id}").fetchSemanticsNode().boundsInRoot.top
+        val afterSecondTop = rule.onNodeWithTag("todo_row_${second.id}").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("Dragged item should move below second item", afterFirstTop > afterSecondTop)
+
+        // Accessibility custom action moves third up above first.
+        val actions = rule.onNodeWithTag("todo_drag_${third.id}")
+            .fetchSemanticsNode()
+            .config[SemanticsActions.CustomActions]
+        val moveUp = actions.first { it.label == "上移" }
+        rule.runOnIdle { assertTrue(moveUp.action()) }
+        rule.waitUntil(5_000) { store.reorderCalls.size >= 2 }
+        assertEquals(listOf(second.id, third.id, first.id), store.reorderCalls.last())
+    }
+
+    @Test
+    fun `swap helper respects lazy layout order and hysteresis`() {
+        val dragged = TodoSwapCandidate("a", lazyIndex = 0, offset = 0, size = 100)
+        val next = TodoSwapCandidate("b", lazyIndex = 1, offset = 100, size = 100)
+        assertEquals(
+            1,
+            findTodoSwapTarget(
+                draggedTop = 60f,
+                dragged = dragged,
+                prev = null,
+                next = next,
+                allowSwapUp = true,
+                allowSwapDown = true,
+            ),
+        )
+        // Stale lazyIndex (next.lazyIndex <= dragged.lazyIndex) prevents double-swap before layout settles.
+        assertEquals(
+            0,
+            findTodoSwapTarget(
+                draggedTop = 60f,
+                dragged = dragged.copy(lazyIndex = 2),
+                prev = null,
+                next = next,
+                allowSwapUp = true,
+                allowSwapDown = true,
+            ),
+        )
+        assertEquals(
+            0,
+            findTodoSwapTarget(
+                draggedTop = 60f,
+                dragged = dragged,
+                prev = null,
+                next = next,
+                allowSwapUp = true,
+                allowSwapDown = false,
+            ),
+        )
+    }
+
     private fun task(
         title: String,
         createdAt: Long,
@@ -561,6 +667,8 @@ class TodoScreenTest {
         var completionGate: CompletableDeferred<Unit>? = null
         var createRequestConsumptions = 0
         var addCalls = 0
+        var nextPinnedAt = 10_000L
+        val reorderCalls = mutableListOf<List<String>>()
 
         override fun reminderAccess(): TodoReminderAccess = access
 
@@ -655,6 +763,28 @@ class TodoScreenTest {
 
         override suspend fun restore(task: TodoTask): Boolean {
             state.value = state.value + task.copy(revision = task.revision + 1)
+            return true
+        }
+
+        override suspend fun setPinned(id: String, pinned: Boolean): Boolean {
+            val currentTask = state.value.firstOrNull { it.id == id } ?: return false
+            if (pinned && currentTask.completed) return false
+            val pinnedAt = if (pinned) ++nextPinnedAt else null
+            state.value = state.value.map {
+                if (it.id == id) it.copy(pinnedAt = pinnedAt, sortOrder = null) else it
+            }
+            return true
+        }
+
+        override suspend fun reorderIncomplete(orderedIds: List<String>): Boolean {
+            val uniqueIds = orderedIds.distinct()
+            if (uniqueIds.isEmpty()) return false
+            reorderCalls += uniqueIds
+            val orderById = uniqueIds.withIndex().associate { it.value to it.index.toLong() }
+            state.value = state.value.map { task ->
+                val order = orderById[task.id]
+                if (order != null && !task.completed) task.copy(sortOrder = order) else task
+            }
             return true
         }
 

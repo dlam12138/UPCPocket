@@ -4,10 +4,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Indication
 import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,29 +26,35 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.WarningAmber
-import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
-import com.upcpocket.app.ui.components.GlassIconButton as IconButton
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
-import com.upcpocket.app.ui.components.GlassSnackbarHost as SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
-import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -52,19 +65,22 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.upcpocket.app.ui.components.glassPressHighlight
-import com.upcpocket.app.ui.components.isGlassSheetVisible
-import com.upcpocket.app.ui.components.rememberGlassSnackbarBackdrop
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.foundation.Indication
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,6 +91,14 @@ import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoOrdering
 import com.upcpocket.app.todo.data.TodoTask
 import com.upcpocket.app.todo.reminder.TodoReminderAccess
+import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
+import com.upcpocket.app.ui.components.GlassIconButton as IconButton
+import com.upcpocket.app.ui.components.GlassSnackbarHost as SnackbarHost
+import com.upcpocket.app.ui.components.GlassSurface as Surface
+import com.upcpocket.app.ui.components.glassPressHighlight
+import com.upcpocket.app.ui.components.isGlassSheetVisible
+import com.upcpocket.app.ui.components.rememberGlassSnackbarBackdrop
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -94,6 +118,7 @@ fun TodoScreen(store: TodoStore) {
     val dockClearance = LocalDockClearance.current
     val snackbar = remember { SnackbarHostState() }
     val snackbarBackdrop = rememberGlassSnackbarBackdrop()
+    val listState = rememberLazyListState()
     val taskSnapshotFlow = remember(store) {
         store.tasks.map<List<TodoTask>, List<TodoTask>?> { it }
     }
@@ -137,6 +162,64 @@ fun TodoScreen(store: TodoStore) {
     val completed = remember(tasks) { TodoOrdering.completed(tasks) }
     val hasReminders = remember(tasks) { tasks.any { !it.completed && it.reminderAt != null } }
 
+    lateinit var reorderState: TodoDragReorderState
+    reorderState = rememberTodoDragReorderState(
+        lazyListState = listState,
+        onCommitGroupOrder = { orderedGroupIds ->
+            scope.launch {
+                val saved = try {
+                    store.reorderIncomplete(orderedGroupIds)
+                } catch (cancelled: CancellationException) {
+                    reorderState.rollbackLocalOrder()
+                    throw cancelled
+                } catch (_: Exception) {
+                    false
+                }
+                if (!saved) {
+                    reorderState.rollbackLocalOrder()
+                    snackbar.showSnackbar(
+                        message = "排序保存失败",
+                        duration = SnackbarDuration.Short,
+                    )
+                }
+            }
+        },
+    )
+    SideEffect {
+        reorderState.updateExternalSnapshot(incomplete)
+    }
+    LaunchedEffect(incomplete, reorderState.draggingTaskId) {
+        reorderState.reconcileExternal(incomplete)
+    }
+
+    val displayedIncomplete = reorderState.localOrder ?: incomplete
+    val pinnedTasks = remember(displayedIncomplete) {
+        displayedIncomplete.filter { it.pinned }
+    }
+    val unpinnedTasks = remember(displayedIncomplete) {
+        displayedIncomplete.filterNot { it.pinned }
+    }
+
+    fun togglePin(task: TodoTask) {
+        if (reorderState.draggingTaskId != null) return
+        val desiredPinned = !task.pinned
+        scope.launch {
+            val saved = try {
+                store.setPinned(task.id, desiredPinned)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+            if (!saved) {
+                snackbar.showSnackbar(
+                    message = if (desiredPinned) "置顶失败" else "取消置顶失败",
+                    duration = SnackbarDuration.Short,
+                )
+            }
+        }
+    }
+
     fun toggleCompletion(task: TodoTask) {
         if (task.id in completionOverrides) return
         val desiredCompleted = !task.completed
@@ -153,7 +236,7 @@ fun TodoScreen(store: TodoStore) {
                     task.revision,
                     completed = desiredCompleted,
                 )
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            } catch (cancelled: CancellationException) {
                 completionOverrides = completionOverrides - task.id
                 throw cancelled
             } catch (_: Exception) {
@@ -189,7 +272,7 @@ fun TodoScreen(store: TodoStore) {
                         updated.revision,
                         completed = false,
                     )
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                } catch (cancelled: CancellationException) {
                     completionOverrides = completionOverrides - updated.id
                     throw cancelled
                 } catch (_: Exception) {
@@ -304,11 +387,22 @@ fun TodoScreen(store: TodoStore) {
             },
         ),
     ) { padding ->
-        val background = MaterialTheme.colorScheme.surface
+        val colorScheme = MaterialTheme.colorScheme
+        val background = colorScheme.surface
         val rowShape = MaterialTheme.shapes.medium
         val rowIndication = LocalIndication.current
+        val placementSpring = remember {
+            spring(
+                stiffness = Spring.StiffnessMediumLow,
+                visibilityThreshold = IntOffset.VisibilityThreshold,
+            )
+        }
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding)
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .onPlaced { reorderState.listCoordsRef.coords = it }
                 .then(snackbarBackdrop?.recordContent(background) ?: Modifier),
             contentPadding = PaddingValues(
                 start = 16.dp,
@@ -331,25 +425,79 @@ fun TodoScreen(store: TodoStore) {
                 item(key = "loading", contentType = "loading") {
                     Text("正在读取待办", style = MaterialTheme.typography.bodyMedium)
                 }
-            } else if (incomplete.isEmpty()) {
+            } else if (displayedIncomplete.isEmpty()) {
                 item(key = "empty", contentType = "empty") {
                     EmptyTodoState(onAdd = ::startAdding)
                 }
             } else {
-                items(
-                    items = incomplete,
-                    key = { it.id },
-                    contentType = { "todo_task" },
-                ) { task ->
+                if (pinnedTasks.isNotEmpty()) {
+                    item(key = "pinned_header", contentType = "pinned_header") {
+                        Text(
+                            text = "已置顶",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = colorScheme.primary,
+                            modifier = Modifier
+                                .padding(top = 4.dp, bottom = 4.dp)
+                                .testTag("todo_pinned_header"),
+                        )
+                    }
+                    itemsIndexed(
+                        items = pinnedTasks,
+                        key = { _, task -> task.id },
+                        contentType = { _, _ -> "todo_task" },
+                    ) { index, task ->
+                        val isActive = reorderState.isActiveOrSettling(task.id)
+                        TodoRow(
+                            task = task,
+                            now = now,
+                            colorScheme = colorScheme,
+                            rowShape = rowShape,
+                            rowIndication = rowIndication,
+                            completionOverride = { completionOverrides[task.id]?.completed },
+                            modifier = Modifier.animateItem(
+                                placementSpec = if (isActive) null else placementSpring,
+                            ),
+                            onToggle = { toggleCompletion(task) },
+                            onEdit = { editTask(task) },
+                            reorderState = reorderState,
+                            canDrag = pinnedTasks.size > 1,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < pinnedTasks.lastIndex,
+                            onTogglePin = { togglePin(task) },
+                        )
+                    }
+                    if (unpinnedTasks.isNotEmpty()) {
+                        item(key = "pinned_divider", contentType = "pinned_divider") {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 6.dp),
+                                color = colorScheme.outlineVariant.copy(alpha = 0.45f),
+                            )
+                        }
+                    }
+                }
+                itemsIndexed(
+                    items = unpinnedTasks,
+                    key = { _, task -> task.id },
+                    contentType = { _, _ -> "todo_task" },
+                ) { index, task ->
+                    val isActive = reorderState.isActiveOrSettling(task.id)
                     TodoRow(
                         task = task,
                         now = now,
+                        colorScheme = colorScheme,
                         rowShape = rowShape,
                         rowIndication = rowIndication,
                         completionOverride = { completionOverrides[task.id]?.completed },
-                        modifier = Modifier.animateItem(),
+                        modifier = Modifier.animateItem(
+                            placementSpec = if (isActive) null else placementSpring,
+                        ),
                         onToggle = { toggleCompletion(task) },
                         onEdit = { editTask(task) },
+                        reorderState = reorderState,
+                        canDrag = unpinnedTasks.size > 1,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < unpinnedTasks.lastIndex,
+                        onTogglePin = { togglePin(task) },
                     )
                 }
             }
@@ -371,13 +519,13 @@ fun TodoScreen(store: TodoStore) {
                         Text(
                             "已完成 ${completed.size}",
                             style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f),
                         )
                         Icon(
                             if (showCompleted) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                             contentDescription = if (showCompleted) "收起已完成" else "展开已完成",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -385,11 +533,12 @@ fun TodoScreen(store: TodoStore) {
                     items(
                         items = completed,
                         key = { it.id },
-                        contentType = { "todo_task" },
+                        contentType = { "todo_task_completed" },
                     ) { task ->
                         TodoRow(
                             task = task,
                             now = now,
+                            colorScheme = colorScheme,
                             rowShape = rowShape,
                             rowIndication = rowIndication,
                             completionOverride = { completionOverrides[task.id]?.completed },
@@ -439,20 +588,48 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
 private fun TodoRow(
     task: TodoTask,
     now: Long,
+    colorScheme: ColorScheme,
     rowShape: Shape,
     rowIndication: Indication?,
     completionOverride: () -> Boolean?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
     modifier: Modifier = Modifier,
+    reorderState: TodoDragReorderState? = null,
+    canDrag: Boolean = false,
+    canMoveUp: Boolean = false,
+    canMoveDown: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
 ) {
     val editInteractions = remember(task.id) { MutableInteractionSource() }
+    val handleCoordsRef = remember(task.id) { LayoutCoordsRef() }
     val override = completionOverride()
     val pending = override != null
     val completed = override ?: task.completed
+    val isDragging = reorderState?.draggingTaskId == task.id
+    val isActiveOrSettling = reorderState?.isActiveOrSettling(task.id) == true
+
+    val rowContainerModifier = when {
+        reorderState != null && isActiveOrSettling -> Modifier
+            .zIndex(1f)
+            .graphicsLayer {
+                val lift = reorderState.liftProgressFor(task.id)
+                translationY = reorderState.translationYFor(task.id)
+                val scale = 1f + 0.02f * lift
+                scaleX = scale
+                scaleY = scale
+            }
+            .background(colorScheme.surfaceContainerHigh, rowShape)
+            .border(1.dp, colorScheme.primary.copy(alpha = 0.65f), rowShape)
+        task.pinned && !completed -> Modifier
+            .background(colorScheme.primaryContainer.copy(alpha = 0.22f), rowShape)
+        else -> Modifier
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .then(rowContainerModifier)
             .heightIn(min = 54.dp)
             .testTag("todo_row_${task.id}"),
         verticalAlignment = Alignment.CenterVertically,
@@ -486,9 +663,9 @@ private fun TodoRow(
                 text = task.title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (completed) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
+                    colorScheme.onSurfaceVariant
                 } else {
-                    MaterialTheme.colorScheme.onSurface
+                    colorScheme.onSurface
                 },
                 textDecoration = if (completed) TextDecoration.LineThrough else null,
             )
@@ -497,9 +674,9 @@ private fun TodoRow(
                     text = "截止 ${TodoFormat.shortTime(deadline, now)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (!completed && deadline <= now) {
-                        MaterialTheme.colorScheme.error
+                        colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        colorScheme.onSurfaceVariant
                     },
                 )
             }
@@ -508,10 +685,82 @@ private fun TodoRow(
                     text = "提醒 ${TodoFormat.shortTime(reminder, now)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (!completed && reminder <= now && task.reminderFiredAt == null) {
-                        MaterialTheme.colorScheme.error
+                        colorScheme.error
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        colorScheme.onSurfaceVariant
                     },
+                )
+            }
+        }
+        if (onTogglePin != null && !completed) {
+            IconButton(
+                onClick = onTogglePin,
+                enabled = !pending && !isDragging,
+                modifier = Modifier
+                    .size(40.dp)
+                    .testTag("todo_pin_${task.id}"),
+            ) {
+                Icon(
+                    imageVector = if (task.pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                    contentDescription = if (task.pinned) {
+                        "取消置顶：${task.title}"
+                    } else {
+                        "置顶：${task.title}"
+                    },
+                    tint = if (task.pinned) {
+                        colorScheme.primary
+                    } else {
+                        colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        if (reorderState != null && !completed) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .todoDragHandle(
+                        taskId = task.id,
+                        canDrag = canDrag && !pending,
+                        reorderState = reorderState,
+                        handleCoordsRef = handleCoordsRef,
+                    )
+                    .semantics {
+                        contentDescription = "按住拖动排序：${task.title}"
+                        val actions = buildList {
+                            if (canMoveUp) {
+                                add(
+                                    CustomAccessibilityAction("上移") {
+                                        reorderState.moveByAccessibility(task.id, -1)
+                                    },
+                                )
+                            }
+                            if (canMoveDown) {
+                                add(
+                                    CustomAccessibilityAction("下移") {
+                                        reorderState.moveByAccessibility(task.id, +1)
+                                    },
+                                )
+                            }
+                        }
+                        if (actions.isNotEmpty()) {
+                            customActions = actions
+                        }
+                    }
+                    .testTag("todo_drag_${task.id}"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.DragHandle,
+                    contentDescription = null,
+                    tint = when {
+                        isDragging -> colorScheme.primary
+                        canDrag -> colorScheme.onSurfaceVariant
+                        else -> colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    },
+                    modifier = Modifier.size(20.dp),
                 )
             }
         }

@@ -127,6 +127,22 @@ class TodoScheduleTest {
         )
     }
 
+    @Test
+    fun `pinned tasks sort before unpinned tasks on the same day`() {
+        val overdue = task("overdue", dueAt = at("2026-11-19", 9))
+        val pinnedUntimed = task("pinned", pinnedAt = 500L)
+        val dueToday = task("due-today", dueAt = at("2026-11-20", 9))
+
+        val visible = TodoSchedule.tasksForDate(
+            listOf(overdue, dueToday, pinnedUntimed),
+            date = today,
+            today = today,
+            zone = zone,
+        )
+
+        assertEquals(listOf("pinned", "overdue", "due-today"), visible.map { it.id })
+    }
+
     private fun at(date: String, hour: Int, minute: Int = 0): Long =
         LocalDate.parse(date)
             .atTime(hour, minute)
@@ -139,6 +155,8 @@ class TodoScheduleTest {
         dueAt: Long? = null,
         reminderAt: Long? = null,
         completed: Boolean = false,
+        pinnedAt: Long? = null,
+        sortOrder: Long? = null,
     ) = TodoTask(
         id = id.ifEmpty { UUID.randomUUID().toString() },
         title = id,
@@ -150,5 +168,7 @@ class TodoScheduleTest {
         reminderFiredAt = null,
         revision = 1,
         dueAt = dueAt,
+        pinnedAt = pinnedAt,
+        sortOrder = sortOrder,
     )
 }

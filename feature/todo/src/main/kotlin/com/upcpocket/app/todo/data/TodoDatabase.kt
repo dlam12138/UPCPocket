@@ -12,7 +12,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [TodoTaskEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class TodoDatabase : RoomDatabase() {
@@ -30,12 +30,19 @@ abstract class TodoDatabase : RoomDatabase() {
                 context.applicationContext,
                 TodoDatabase::class.java,
                 DB_NAME,
-            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { instance = it }
         }
 
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE `todo_tasks` ADD COLUMN `dueAt` INTEGER")
+            }
+        }
+
+        val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `todo_tasks` ADD COLUMN `pinnedAt` INTEGER")
+                database.execSQL("ALTER TABLE `todo_tasks` ADD COLUMN `sortOrder` INTEGER")
             }
         }
     }

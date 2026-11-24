@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -136,4 +137,32 @@ interface TodoTaskDao {
         """,
     )
     suspend fun clearFiredIfRevision(id: String, revision: Int, now: Long): Int
+
+    @Query(
+        """
+        UPDATE todo_tasks
+        SET pinnedAt = :pinnedAt,
+            sortOrder = NULL
+        WHERE id = :id
+        """,
+    )
+    suspend fun setPinned(id: String, pinnedAt: Long?): Int
+
+    @Query(
+        """
+        UPDATE todo_tasks
+        SET sortOrder = :sortOrder
+        WHERE id = :id AND completed = 0
+        """,
+    )
+    suspend fun updateSortOrder(id: String, sortOrder: Long): Int
+
+    @Transaction
+    suspend fun updateSortOrders(orderedIds: List<String>): Int {
+        var updated = 0
+        orderedIds.forEachIndexed { index, id ->
+            updated += updateSortOrder(id, index.toLong())
+        }
+        return updated
+    }
 }

@@ -110,6 +110,24 @@ private class PromotionTodoStore : TodoStore {
         tasks.value = tasks.value + task.copy(revision = task.revision + 1)
         return true
     }
+    override suspend fun setPinned(id: String, pinned: Boolean): Boolean {
+        val current = tasks.value.firstOrNull { it.id == id } ?: return false
+        if (pinned && current.completed) return false
+        val pinnedAt = if (pinned) System.currentTimeMillis() else null
+        tasks.value = tasks.value.map {
+            if (it.id == id) it.copy(pinnedAt = pinnedAt, sortOrder = null) else it
+        }
+        return true
+    }
+    override suspend fun reorderIncomplete(orderedIds: List<String>): Boolean {
+        val indexById = orderedIds.distinct().withIndex().associate { it.value to it.index.toLong() }
+        if (indexById.isEmpty()) return false
+        tasks.value = tasks.value.map { task ->
+            val order = indexById[task.id]
+            if (order != null && !task.completed) task.copy(sortOrder = order) else task
+        }
+        return true
+    }
     override fun openTask(taskId: String) { pendingOpenTask.value = taskId }
     override fun consumeOpenTask() { pendingOpenTask.value = null }
     override fun ensureNotificationChannel() = Unit

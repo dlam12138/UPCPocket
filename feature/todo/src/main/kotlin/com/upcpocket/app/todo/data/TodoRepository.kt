@@ -106,4 +106,12 @@ class TodoRepository(
         if (dao.delete(id) == 0) return null
         return task
     }
+
+    suspend fun setPinned(id: String, pinnedAt: Long?): TodoTask? {
+        if (dao.setPinned(id, pinnedAt) == 0) return null
+        return byId(id)
+    }
+
+    suspend fun updateSortOrders(orderedIds: List<String>): Int =
+        dao.updateSortOrders(orderedIds)
 }

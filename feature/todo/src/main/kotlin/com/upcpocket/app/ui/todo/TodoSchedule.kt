@@ -29,7 +29,11 @@ internal object TodoSchedule {
     ): List<TodoTask> = tasks.asSequence()
         .filter { !it.completed && matches(it, date, today, zone) }
         .sortedWith(
-            compareBy<TodoTask> { anchorMillis(it, date, today, zone) ?: Long.MAX_VALUE }
+            compareByDescending<TodoTask> { it.pinned }
+                .thenBy { if (it.pinned) it.sortOrder ?: Long.MIN_VALUE else 0L }
+                .thenByDescending { if (it.pinned) it.pinnedAt ?: 0L else 0L }
+                .thenBy { anchorMillis(it, date, today, zone) ?: Long.MAX_VALUE }
+                .thenBy { it.sortOrder ?: Long.MAX_VALUE }
                 .thenBy { it.title }
                 .thenBy { it.id },
         )

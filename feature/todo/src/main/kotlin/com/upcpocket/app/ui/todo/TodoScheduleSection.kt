@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -642,18 +643,31 @@ private fun ScheduleTaskRow(
                 modifier = Modifier.weight(1f).padding(vertical = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
-                Text(
-                    task.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textDecoration = if (completed) TextDecoration.LineThrough else null,
-                    color = if (completed) {
-                        scheme.onSurfaceVariant
-                    } else {
-                        scheme.onSurface
-                    },
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    if (task.pinned && !completed) {
+                        Icon(
+                            imageVector = Icons.Filled.PushPin,
+                            contentDescription = null,
+                            tint = scheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                    Text(
+                        task.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textDecoration = if (completed) TextDecoration.LineThrough else null,
+                        color = if (completed) {
+                            scheme.onSurfaceVariant
+                        } else {
+                            scheme.onSurface
+                        },
+                    )
+                }
                 deadline?.let { dueAt ->
                     Text(
                         "截止 ${TodoFormat.shortTime(dueAt, now, zone)}",

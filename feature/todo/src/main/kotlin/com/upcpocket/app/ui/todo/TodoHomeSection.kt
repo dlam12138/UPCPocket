@@ -9,8 +9,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PushPin
 import com.upcpocket.app.ui.components.GlassCheckbox as Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -316,17 +318,30 @@ private fun HomeTodoRow(
                 .padding(vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
-            Text(
-                task.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                textDecoration = if (completionState) TextDecoration.LineThrough else null,
-                color = if (completionState) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (task.pinned && !completionState) {
+                    Icon(
+                        imageVector = Icons.Filled.PushPin,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+                Text(
+                    task.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    textDecoration = if (completionState) TextDecoration.LineThrough else null,
+                    color = if (completionState) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+            }
             task.dueAt?.let { deadline ->
                 Text(
                     "截止 ${TodoFormat.shortTime(deadline, now)}",

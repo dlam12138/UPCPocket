@@ -59,6 +59,10 @@ interface TodoStore {
 
     suspend fun restore(task: TodoTask): Boolean
 
+    suspend fun setPinned(id: String, pinned: Boolean): Boolean = false
+
+    suspend fun reorderIncomplete(orderedIds: List<String>): Boolean = false
+
     fun openTask(taskId: String)
 
     fun consumeOpenTask()
@@ -276,6 +280,30 @@ class TodoService internal constructor(
         notifier.cancel(restored.id)
         reconcileLocked(restored)
         true
+    }
+
+    override suspend fun setPinned(id: String, pinned: Boolean): Boolean = mutex.withLock {
+        val current = repository.byId(id) ?: return@withLock false
+        if (pinned && current.completed) return@withLock false
+        if (current.pinned == pinned) return@withLock true
+        val pinnedAt = if (pinned) {
+            val now = clock()
+            val maxExisting = repository.all().mapNotNull { it.pinnedAt }.maxOrNull()
+            if (maxExisting != null && maxExisting >= now) maxExisting + 1L else now
+        } else {
+            null
+        }
+        val updated = repository.setPinned(id, pinnedAt) != null
+        if (updated) notifyTasksChangedSafely()
+        updated
+    }
+
+    override suspend fun reorderIncomplete(orderedIds: List<String>): Boolean = mutex.withLock {
+        val uniqueIds = orderedIds.distinct()
+        if (uniqueIds.isEmpty()) return@withLock false
+        val updated = repository.updateSortOrders(uniqueIds)
+        if (updated > 0) notifyTasksChangedSafely()
+        updated > 0
     }
 
     override fun openTask(taskId: String) {

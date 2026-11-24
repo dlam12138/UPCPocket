@@ -69,12 +69,38 @@ class TodoOrderingTest {
         assertEquals(listOf("done"), TodoOrdering.completed(tasks).map { it.id })
     }
 
+    @Test
+    fun `pinned tasks always sort ahead of unpinned tasks with manual order preserved`() {
+        val tasks = listOf(
+            task("overdue", createdAt = 10, reminder = null, due = today.minusDays(1).atTime(8, 0), sortOrder = 1),
+            task("manual-first", createdAt = 20, reminder = null, sortOrder = 0),
+            task("new-unranked", createdAt = 30, reminder = null),
+            task("pin-older", createdAt = 5, reminder = null, pinnedAt = 100, sortOrder = 1),
+            task("pin-first", createdAt = 6, reminder = null, pinnedAt = 90, sortOrder = 0),
+            task("pin-fresh", createdAt = 7, reminder = null, pinnedAt = 200),
+            task("pin-done", createdAt = 8, reminder = null, pinnedAt = 300, completed = true),
+        )
+
+        val ordered = TodoOrdering.incomplete(tasks, now, zone).map { it.id }
+
+        assertEquals(
+            listOf("pin-fresh", "pin-first", "pin-older", "new-unranked", "manual-first", "overdue"),
+            ordered,
+        )
+        assertEquals(
+            listOf("pin-fresh", "pin-first"),
+            TodoOrdering.homeSummary(tasks, now, zone).map { it.id },
+        )
+    }
+
     private fun task(
         id: String,
         createdAt: Long,
         reminder: java.time.LocalDateTime?,
         due: java.time.LocalDateTime? = null,
         completed: Boolean = false,
+        pinnedAt: Long? = null,
+        sortOrder: Long? = null,
     ) = TodoTask(
         id = id,
         title = id,
@@ -86,5 +112,7 @@ class TodoOrderingTest {
         reminderFiredAt = null,
         revision = 1,
         dueAt = due?.atZone(zone)?.toInstant()?.toEpochMilli(),
+        pinnedAt = pinnedAt,
+        sortOrder = sortOrder,
     )
 }

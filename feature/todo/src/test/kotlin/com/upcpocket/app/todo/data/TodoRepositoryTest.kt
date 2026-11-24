@@ -185,7 +185,39 @@ class TodoRepositoryTest {
     }
 
     @Test
-    fun `migration preserves v1 fields`() = runBlocking {
+    fun `pin and atomic sort order preserve revision and ignore completed rows`() = runBlocking {
+        val db = inMemory()
+        val repository = TodoRepository(db.taskDao())
+        val first = sampleTask(id = "11111111-1111-4111-8111-111111111111", dueAt = 2_000)
+        val second = sampleTask(id = "22222222-2222-4222-8222-222222222222", dueAt = 3_000)
+        val done = sampleTask(id = "33333333-3333-4333-8333-333333333333")
+            .copy(completed = true, completedAt = 150)
+        repository.insert(first)
+        repository.insert(second)
+        repository.insert(done)
+
+        val pinned = repository.setPinned(first.id, 9_000L)!!
+        assertEquals(9_000L, pinned.pinnedAt)
+        assertNull(pinned.sortOrder)
+        assertEquals(first.revision, pinned.revision)
+        assertEquals(first.dueAt, pinned.dueAt)
+        assertEquals(first.reminderAt, pinned.reminderAt)
+
+        val updatedCount = repository.updateSortOrders(listOf(second.id, first.id, done.id))
+        assertEquals(2, updatedCount)
+        assertEquals(0L, repository.byId(second.id)!!.sortOrder)
+        assertEquals(1L, repository.byId(first.id)!!.sortOrder)
+        assertNull(repository.byId(done.id)!!.sortOrder)
+        assertEquals(first.revision, repository.byId(first.id)!!.revision)
+
+        val unpinned = repository.setPinned(first.id, null)!!
+        assertNull(unpinned.pinnedAt)
+        assertNull(unpinned.sortOrder)
+        db.close()
+    }
+
+    @Test
+    fun `migration preserves v1 fields through v3`() = runBlocking {
         val name = "t-${UUID.randomUUID().toString().take(8)}.db"
         val legacyTasks = listOf(
             TodoTask(
@@ -222,10 +254,10 @@ class TodoRepositoryTest {
                 revision = 9,
             ),
         )
-        createVersionOneDatabase(name, legacyTasks)
+        createSchemaDatabase(name, schemaVersion = 1, rows = legacyTasks)
 
         val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
-            .addMigrations(TodoDatabase.MIGRATION_1_2)
+            .addMigrations(TodoDatabase.MIGRATION_1_2, TodoDatabase.MIGRATION_2_3)
             .allowMainThreadQueries()
             .build()
         try {
@@ -237,8 +269,52 @@ class TodoRepositoryTest {
         }
     }
 
-    private fun createVersionOneDatabase(name: String, rows: List<TodoTask>) {
-        val schemaRoot = Json.parseToJsonElement(versionOneSchemaFile().readText()).jsonObject
+    @Test
+    fun `migration preserves v2 fields through v3`() = runBlocking {
+        val name = "t2-${UUID.randomUUID().toString().take(8)}.db"
+        val v2Tasks = listOf(
+            TodoTask(
+                id = "v2-deadline",
+                title = "有截止待办",
+                completed = false,
+                createdAt = 101,
+                updatedAt = 102,
+                completedAt = null,
+                reminderAt = 1_100,
+                reminderFiredAt = null,
+                revision = 4,
+                dueAt = 2_200,
+            ),
+            TodoTask(
+                id = "v2-undated",
+                title = "无截止待办",
+                completed = false,
+                createdAt = 201,
+                updatedAt = 202,
+                completedAt = null,
+                reminderAt = null,
+                reminderFiredAt = null,
+                revision = 1,
+                dueAt = null,
+            ),
+        )
+        createSchemaDatabase(name, schemaVersion = 2, rows = v2Tasks)
+
+        val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
+            .addMigrations(TodoDatabase.MIGRATION_1_2, TodoDatabase.MIGRATION_2_3)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val rows = TodoRepository(migrated.taskDao()).all().associateBy(TodoTask::id)
+            assertEquals(v2Tasks.associateBy(TodoTask::id), rows)
+        } finally {
+            migrated.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    private fun createSchemaDatabase(name: String, schemaVersion: Int, rows: List<TodoTask>) {
+        val schemaRoot = Json.parseToJsonElement(schemaFile(schemaVersion).readText()).jsonObject
         val databaseSchema = schemaRoot.getValue("database").jsonObject
         val tableSchema = databaseSchema.getValue("entities").jsonArray
             .map { it.jsonObject }
@@ -246,7 +322,7 @@ class TodoRepositoryTest {
         val tableSql = tableSchema.getValue("createSql").jsonPrimitive.content
             .replace("\${TABLE_NAME}", "todo_tasks")
         val version = databaseSchema.getValue("version").jsonPrimitive.content.toInt()
-        check(version == 1) { "Expected committed Todo schema v1" }
+        check(version == schemaVersion) { "Expected committed Todo schema v$schemaVersion" }
 
         val databaseFile = context.getDatabasePath(name)
         val parent = requireNotNull(databaseFile.parentFile)
@@ -268,6 +344,9 @@ class TodoRepositoryTest {
                     if (task.reminderAt == null) putNull("reminderAt") else put("reminderAt", task.reminderAt)
                     if (task.reminderFiredAt == null) putNull("reminderFiredAt") else put("reminderFiredAt", task.reminderFiredAt)
                     put("revision", task.revision)
+                    if (schemaVersion >= 2) {
+                        if (task.dueAt == null) putNull("dueAt") else put("dueAt", task.dueAt)
+                    }
                 }
                 legacy.insertOrThrow("todo_tasks", null, values)
             }
@@ -277,10 +356,10 @@ class TodoRepositoryTest {
         }
     }
 
-    private fun versionOneSchemaFile(): File {
+    private fun schemaFile(version: Int): File {
         val relativePaths = listOf(
-            "schemas/com.upcpocket.app.todo.data.TodoDatabase/1.json",
-            "feature/todo/schemas/com.upcpocket.app.todo.data.TodoDatabase/1.json",
+            "schemas/com.upcpocket.app.todo.data.TodoDatabase/$version.json",
+            "feature/todo/schemas/com.upcpocket.app.todo.data.TodoDatabase/$version.json",
         )
         var directory: File? = File(System.getProperty("user.dir")).canonicalFile
         while (directory != null) {
@@ -290,7 +369,7 @@ class TodoRepositoryTest {
             }?.let { return it }
             directory = directory.parentFile
         }
-        error("Committed Todo schema v1 was not found")
+        error("Committed Todo schema v$version was not found")
     }
 
     private fun inMemory(): TodoDatabase = Room.inMemoryDatabaseBuilder(

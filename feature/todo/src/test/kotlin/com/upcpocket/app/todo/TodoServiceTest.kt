@@ -386,6 +386,43 @@ class TodoServiceTest {
         assertEquals(1, harness.taskChanges)
     }
 
+    @Test
+    fun `pinning and reordering refresh widgets without disrupting active alarm revisions`() = runTest {
+        val harness = Harness()
+        val reminderAt = harness.now + 60_000
+        val first = harness.service.add("First", reminderAt = reminderAt)
+        val second = harness.service.add("Second", reminderAt = null)
+        val completed = harness.service.add("Done", reminderAt = null)
+        harness.service.setCompleted(completed.id, true)
+        val changesBefore = harness.taskChanges
+        val scheduledBefore = harness.scheduler.scheduled[first.id]
+
+        assertFalse(harness.service.setPinned(completed.id, true))
+        assertEquals(changesBefore, harness.taskChanges)
+
+        assertTrue(harness.service.setPinned(first.id, true))
+        assertTrue(harness.service.setPinned(second.id, true))
+        val pinnedFirst = harness.repository.byId(first.id)!!
+        val pinnedSecond = harness.repository.byId(second.id)!!
+        assertTrue(pinnedFirst.pinned)
+        assertTrue(pinnedSecond.pinned)
+        assertTrue(pinnedSecond.pinnedAt!! > pinnedFirst.pinnedAt!!)
+        assertEquals(first.revision, pinnedFirst.revision)
+        assertEquals(scheduledBefore, harness.scheduler.scheduled[first.id])
+        assertEquals(changesBefore + 2, harness.taskChanges)
+
+        assertTrue(harness.service.reorderIncomplete(listOf(first.id, second.id)))
+        assertEquals(0L, harness.repository.byId(first.id)!!.sortOrder)
+        assertEquals(1L, harness.repository.byId(second.id)!!.sortOrder)
+        assertEquals(first.revision, harness.repository.byId(first.id)!!.revision)
+        assertEquals(changesBefore + 3, harness.taskChanges)
+
+        assertTrue(harness.service.setPinned(second.id, false))
+        assertFalse(harness.repository.byId(second.id)!!.pinned)
+        assertNull(harness.repository.byId(second.id)!!.sortOrder)
+        assertEquals(changesBefore + 4, harness.taskChanges)
+    }
+
     private class Harness {
         val dao = FakeTodoDao()
         val repository = TodoRepository(dao)
@@ -613,6 +650,20 @@ class TodoServiceTest {
                     updatedAt = now,
                     revision = current.revision + 1,
                 )
+            }
+
+        override suspend fun setPinned(id: String, pinnedAt: Long?): Int =
+            mutate(id) { current ->
+                current.copy(
+                    pinnedAt = pinnedAt,
+                    sortOrder = null,
+                )
+            }
+
+        override suspend fun updateSortOrder(id: String, sortOrder: Long): Int =
+            mutate(id) { current ->
+                if (current.completed) return@mutate null
+                current.copy(sortOrder = sortOrder)
             }
 
         private fun mutate(
