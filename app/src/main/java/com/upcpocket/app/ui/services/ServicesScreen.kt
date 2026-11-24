@@ -133,7 +133,8 @@ fun ServicesScreen(
 
     val officialCandidates = remember(selectedFilter, preferredCampus, pinnedServiceIds) {
         val candidates = when (selectedFilter) {
-            ServiceFilterTab.ALL, ServiceFilterTab.OFFICIAL -> OfficialWebCatalog.all
+            ServiceFilterTab.ALL -> OfficialWebCatalog.serviceLinks
+            ServiceFilterTab.OFFICIAL -> OfficialWebCatalog.all
             else -> selectedFilter.category?.let { OfficialWebCatalog.serviceLinksFor(it) }.orEmpty()
         }
         // 已固定的另一校区入口保留在列表中，用户可在该校区偏好下取消固定。

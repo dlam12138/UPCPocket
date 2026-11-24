@@ -47,6 +47,7 @@ include(
     ":feature:library",
     ":feature:focus",
     ":feature:timetable",
+    ":feature:grades",
     ":feature:todo",
     ":feature:shiguang",
     ":feature:service-portal",

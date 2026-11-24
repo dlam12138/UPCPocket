@@ -28,7 +28,7 @@ flowchart TD
 
 ## 模块与依赖
 
-[settings.gradle.kts](settings.gradle.kts) 当前包含 20 个模块，包括 app、8 个 core 和 11 个 feature。表中依赖只列仓库内部直接 project 依赖。
+[settings.gradle.kts](settings.gradle.kts) 当前包含 21 个模块，包括 app、8 个 core 和 12 个 feature。表中依赖只列仓库内部直接 project 依赖。
 
 | 模块 | 职责 | 内部直接依赖 |
 | --- | --- | --- |
@@ -47,19 +47,20 @@ flowchart TD
 | `feature:library` | libseat 与超星座位、会话/本人校验、查询与预约 UI、个人隐藏 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:focus` | 本机计时、专注数据库、统计、通知与前台服务 | designsystem、plugin-api、plugin-ui |
 | `feature:timetable` | 学期/周查询、账号绑定只读缓存、周网格/今日课程、组件渲染 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
+| `feature:grades` | 成绩只读同步、账号绑定的加密学期快照、总览及可筛选课程明细 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:todo` | 本机任务、截止和排序，独立 Room、一次性提醒、通知动作与组件渲染 | designsystem、plugin-api、plugin-ui |
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 | `feature:campusmap` | 两校区地图、地点搜索、步骑算路与前台引导 | plugin-api、plugin-ui |
 | `feature:directory` | 校园通讯录、校区筛选、办事搜索、公开电话及地址 | designsystem、plugin-api、plugin-ui |
 
-feature 之间不相互依赖，core 不依赖 app/feature；业务 feature 不依赖账号实现。card 的认证适配由宿主注入，其他四个需要 upc-auth 的模块按现有类型契约依赖它。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 方向和指定核心白名单；不检查所有源码调用或运行时网络白名单。
+feature 之间不相互依赖，core 不依赖 app/feature，业务 feature 不依赖账号实现。card 的认证适配由宿主注入，表中的五个 feature 通过 `upc-auth` 使用相应认证契约。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 依赖方向和指定核心白名单。
 
 ## 启动、扩展与导航
 
 真实入口是 [UpcPocketApp](app/src/main/java/com/upcpocket/app/UpcPocketApp.kt) 与 [AppGraph](app/src/main/java/com/upcpocket/app/core/AppGraph.kt)。
 
-1. 安装固定诊断 sink，显式注册十一个内置插件并校验宿主 API、能力与插件依赖。
+1. 安装固定诊断 sink，显式注册内置插件并校验宿主 API、能力与插件依赖。
 2. [PluginRuntime](core/plugin-runtime/src/main/kotlin/com/upcpocket/app/plugin/runtime/PluginRuntime.kt) 激活健康插件；[HostUiAssembly](app/src/main/java/com/upcpocket/app/core/HostUiAssembly.kt) 对各贡献 fork 校验后合并，失败插件及必需依赖者从最终集合移除。
 3. debug 对装配失败快速报错；release 记录脱敏诊断后保留健康插件。生命周期和系统能力都从最终活动集合解析，不能绕过缺插件状态。
 4. 轻量 Application 初始化后，先恢复本机账号及未完成清理，再恢复插件本机状态。插件构造不联网或写业务数据；恢复不等于自动登录全部业务。
@@ -120,6 +121,7 @@ sequenceDiagram
 - **图书馆**：libseat、超星 seat、seatengine 按各自协议登录/核验 → 房间/座位/时段读取 → 当前上下文预检 → 用户确认后单次写。提交后超时/畸形响应保持未知，不自动回官方页重复写。列表/地图由同一房间布局派生，共用原座位 ID 和时段；展示状态与坐标变换归 feature/library UI，不合并学校协议。个人隐藏进入房间后异步恢复，未完成或失败时阻止选择与确认，仅影响本机展示。唐岛湾同一 ViewModel 内的隐藏读写串行，切房再返回时等候旧写入完成，并按房间和代次校验后发布名单。真实预约/取消/签到尚未完成开发侧验收。
 - **空教室/电量**：独立来源与查询键，不混入学校账号密码。教室失败或不完整不能显示成空闲；预设自动查、自选手动查。唐岛湾电量直接读取，古镇口通过学校页面。
 - **石光/e站通**：业务独立认证/本人数据读取，正常网页登录是已有回退；活动报名、签到、事项提交等写操作不在范围。
+- 打开**成绩与学分**时读取所属账号的本机快照。主动同步通过独立学校成绩会话取得学期索引及逐学期明细。学期索引查询成功后，即使本轮所有学期查询失败，也会保留已有结果和原成功时间。快照保存成功后，重开应用仍提示失败范围。点击学期或分布可在本机筛选明细。 [学校成绩来源](docs/upc/官方入口.md#211-成绩与学分学校来源)
 
 ## 只读课表与组件
 
@@ -148,6 +150,7 @@ sequenceDiagram
 | 校园卡流水 | card；运行期内存 | 离页/进程退出后不持久化列表；换号/改密失效 |
 | 充值待查 | card；独立 Keystore 密文 | 可靠同步/读回后才请求；未知防重；同号改密保留用于查单 |
 | 课表会话/周缓存 | timetable；会话密文、账号绑定私有 JSON | 会话与缓存分离；同号可保留历史，换号清理 |
+| 成绩会话与学期快照 | grades 的内存会话与独立 Keystore 加密文件 | 同账号改密保留快照，换号或删号清理，包括插件未激活时 |
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
 | 待办、截止、排序与提醒 revision | todo 的 Room `upcpocket-todo.db` | 2.1.0 使用 v2，v1 → v2 添加可空截止。2.1.1 开发版 v3 新增任务排序和模式记录，保留原任务表及提醒状态。Alarm 和通知可从任务重建，旧动作按 taskId 与 revision 拒绝。 |

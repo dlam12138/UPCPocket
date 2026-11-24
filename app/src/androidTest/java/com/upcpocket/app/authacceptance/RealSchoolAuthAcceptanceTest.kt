@@ -11,6 +11,7 @@ import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.grades.GradesFiles
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Locale
@@ -287,10 +288,12 @@ class RealSchoolAuthAcceptanceTest {
 
     /** Checks all app-owned persistent personal sessions/caches that delete() can invalidate. */
     private suspend fun hasExistingPersonalState(): Boolean {
-        val timetableDirectory = File(context.noBackupFilesDir, TIMETABLE_DIRECTORY)
-        if (timetableDirectory.exists() &&
-            (!timetableDirectory.isDirectory || timetableDirectory.listFiles()?.isNotEmpty() != false)
-        ) return true
+        for (name in listOf(TIMETABLE_DIRECTORY, GradesFiles.DIRECTORY)) {
+            val directory = File(context.noBackupFilesDir, name)
+            if (directory.exists() &&
+                (!directory.isDirectory || directory.listFiles()?.isNotEmpty() != false)
+            ) return true
+        }
 
         val cardCacheNames = listOf(
             CARD_CURRENT_FILE,

@@ -181,6 +181,7 @@ dependencies {
     implementation(project(":feature:library"))
     implementation(project(":feature:focus"))
     implementation(project(":feature:timetable"))
+    implementation(project(":feature:grades"))
     implementation(project(":feature:todo"))
     implementation(project(":feature:shiguang"))
     implementation(project(":feature:service-portal"))

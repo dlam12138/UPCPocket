@@ -39,6 +39,15 @@
       "verification": "2026-11-17: the official HTTPS academic-calendar column, latest observed annual article and its two semester JPGs were reviewed without authentication. The local 2.0.8 host implementation shares the fixed column URL across service directory, optional home pin and official web catalog; it requires neither an account nor the timetable plugin. Browser-navigation and mobile-reading acceptance remain pending; see docs/releases/2.0.8-development.md. The target is the column, not a pinned annual image or automatic current-academic-year inference. The images include undergraduate, graduate and general student notes but do not split the two campuses or prove identical individual schedules. This development catalog is not runtime API configuration."
     },
     {
+      "id": "academic_scores",
+      "name": "成绩与学分",
+      "campus": null,
+      "url": "https://app.upc.edu.cn/site/score/index",
+      "official_source": "https://cie.upc.edu.cn/info/1101/1882.htm",
+      "integration": "development_native_read_only_with_official_page_fallback",
+      "verification": "On 2026-11-24, the authorized account completed official CAS and retrieved the term index and course results for one term through the mobile page's read-only query. The session established account provenance. The inspected responses provided no independent student identifier for comparison. Coverage is limited to the stated protocol verification."
+    },
+    {
       "id": "academic_affairs_system",
       "name": "教务系统",
       "campus": null,

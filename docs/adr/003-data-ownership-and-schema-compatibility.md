@@ -41,3 +41,7 @@ todo 使用独立 `upcpocket-todo.db` v1；Room 任务和 revision 是事实来�
 `upcpocket-todo.db` 的 v3 → v4 追加 `personal_schedules` 与时间索引。已发布的 v2 和历史 v1 继续沿原迁移链升级。旧任务的 ID、完成状态、截止、提醒、`revision` 和已有排序记录在迁移后保留。
 
 个人日程用独立 ID 和版本保存标题、起止时点、可选地点及备注。表单按上海时间编辑，窗口按各视图的日期和时区求时段交集。账号清理保留本机日程。 [TodoDatabase](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) · [2.1.1 计划](../design/2.1.1-update-plan.md#个人日程与今日安排)
+
+## 2.1.1 成绩快照
+
+`feature:grades` 将账号归属、学期索引、成功查询的学期明细和成功时间写入 `noBackupFilesDir/grades/` 下的版本化 Keystore 加密文件。完整空学期也可保存。部分学期查询失败时，快照记录失败状态，并沿用失败学期上一份完整结果及其时间。文件无法保存时，本次结果可在当前进程查看，页面提示重开后会读取上次保存的快照。统计和筛选由当前已加载的成绩在应用内派生。 [成绩存储](../../feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesFiles.kt)

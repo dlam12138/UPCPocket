@@ -32,6 +32,9 @@ import com.upcpocket.app.directory.DirectoryCampusMap
 import com.upcpocket.app.directory.DirectoryPlugin
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.focus.FocusPlugin
+import com.upcpocket.app.grades.GradesCapabilities
+import com.upcpocket.app.grades.GradesFiles
+import com.upcpocket.app.grades.GradesPlugin
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.library.ChaoxingAccountAuthResult
 import com.upcpocket.app.library.ChaoxingAccountAuthenticator
@@ -63,9 +66,11 @@ import com.upcpocket.app.todo.TodoPlugin
 import com.upcpocket.app.todo.TodoStore
 import com.upcpocket.app.update.UpdateController
 import com.upcpocket.app.update.UpdateControllerFactory
+import com.upcpocket.app.ui.official.OfficialWebCatalog
 import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
 import com.upcpocket.app.upcauth.UpcChaoxingAuthResult
 import com.upcpocket.app.upcauth.UpcChaoxingAuthenticator
+import com.upcpocket.app.upcauth.UpcGradesAuthenticator
 import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
 import com.upcpocket.app.upcauth.UpcLibraryAuthResult
 import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
@@ -207,6 +212,13 @@ object AppGraph {
             TimetableFiles.clearSession(appContext)
         }
         if (!timetableCleared) {
+            failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
+        }
+        val grades = activePlugins.capability(GradesCapabilities.read)
+        val gradesCleared = grades?.invalidateForAccount(request.scope)
+            ?: (request.scope != AccountDataScope.PERSONAL_DATA ||
+                GradesFiles.clearAll(appContext.noBackupFilesDir))
+        if (!gradesCleared) {
             failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
         }
         if (request.scope == AccountDataScope.PERSONAL_DATA) {
@@ -495,6 +507,12 @@ object AppGraph {
         ShiguangPlugin(account = account, authenticator = authenticator, interactiveAuthenticator = authenticator)
     }
 
+    private val gradesPlugin: GradesPlugin by lazy {
+        GradesPlugin(appContext, account, UpcGradesAuthenticator(account)) { context ->
+            OfficialWebCatalog.open(context, OfficialWebCatalog.academicScores)
+        }
+    }
+
     private val servicePortalPlugin: ServicePortalPlugin by lazy {
         ServicePortalPlugin(account = account, authenticator = UpcServicePortalAuthenticator(account))
     }
@@ -531,6 +549,7 @@ object AppGraph {
             runtime.register(focusPlugin.descriptor) { focusPlugin }
             runtime.register(todoPlugin.descriptor) { todoPlugin }
             runtime.register(timetablePlugin.descriptor) { timetablePlugin }
+            runtime.register(gradesPlugin.descriptor) { gradesPlugin }
             runtime.register(shiguangPlugin.descriptor) { shiguangPlugin }
             runtime.register(servicePortalPlugin.descriptor) { servicePortalPlugin }
             runtime.register(campusMapPlugin.descriptor) { campusMapPlugin }

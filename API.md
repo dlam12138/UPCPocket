@@ -22,6 +22,8 @@
 
 2.0.8 增加 `UiSurface.SERVICE_DIRECTORY`，`PluginEntry.category: UiCategory = GENERAL` 和 `keywords: String = ""` 作为分类/搜索元数据；分类为学习与空间、校园生活、校务与成长、常用工具。稳定 ID 和路由保持；服务目录与首页固定共用贡献，不复制业务状态。宿主 `official.calendar` 是固定公开外链服务，不塞入课表领域契约，也不要求账号或课表插件。
 
+2.1.1 开发版的成绩使用 `grades.home` 作为服务入口 ID 和应用内路由。宿主为该页注入仅打开固定学校成绩网页的回调，用户主动选择后由系统浏览器处理。 [成绩插件](feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesPlugin.kt) · [官方网页目录](app/src/main/java/com/upcpocket/app/ui/official/OfficialWebLinks.kt)
+
 2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
 2.1.0 后开发改动（未发布）：首页与课表页模块支持长按拖动排序。通用容器 `ReorderableModuleColumn` 归 `core:designsystem`，由宿主传入稳定 key、可见项、`scrollState`、`enabled` 与写回回调；课表页通过 `LocalTimetableModuleLayout`（`TimetableModuleLayout`、`TimetableModuleId`）接收宿主顺序、开关与回调，缺省回退 `[TODO_SCHEDULE, TIMETABLE]`。顺序只保存在宿主 `UiPrefsStore`，不改变业务数据或触发校园请求；开关关闭时仍按已保存顺序渲染并锁定，写回前在同一 edit 内复核开关。
@@ -77,6 +79,8 @@ suspend fun authenticate(
 
 `Success` 返回业务 Cookie 列表；`Failure` 返回固定 `UpcAuthFailure`，仅 `INTERACTION_REQUIRED` 可带学校正常登录入口。失败枚举区分凭据、交互、网络、TLS、上游、协议、账号不可用/变化、访问拒绝。结果到达后调用方仍复核账号及代次，不能只凭 Success 持久化。
 
+[GradesAuthenticator](core/upc-auth/src/main/kotlin/com/upcpocket/app/upcauth/UpcGradesAuthenticator.kt) 使用相同的账号与代次入参，并建立独立的成绩会话。认证适配校验 CAS 的成绩回调，成绩服务仅对学校成绩接口使用业务 Cookie。当前响应的归属依据本次认证会话与本机账号引用。
+
 校园卡、libseat、超星、石光与 e站通各有业务结果/适配接口，不强制套用课表结果类型。入口索引：[UpcCardAuthenticator](core/upc-auth/src/main/kotlin/com/upcpocket/app/upcauth/UpcCardAuthenticator.kt)、[LibraryAccountAuthenticator](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryAccountAuthenticator.kt)、[ChaoxingAccountAuthenticator](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingAccountAuthenticator.kt)、[石光认证契约](core/upc-auth/src/main/kotlin/com/upcpocket/app/upcauth/UpcShiguangAuthModels.kt)、[e站通认证契约](core/upc-auth/src/main/kotlin/com/upcpocket/app/upcauth/UpcServicePortalAuthModels.kt)。业务 token/Cookie 均为敏感值，不输出结果对象作调试记录。
 
 ## 业务能力与系统消费者
@@ -89,6 +93,7 @@ suspend fun authenticate(
 | [DirectCardSnapshot](feature/card/src/main/kotlin/com/upcpocket/app/data/ecard/DirectCardBalance.kt) | 原始 `balanceCents`/`transitionCents`、格式化 `balanceText`/`transitionText`；新增派生 `totalBalanceText` | 总额以十进制相加，页面与组件用总额为主值、小字展示过渡余额；不改原始字段含义或持久化格式 |
 | [PowerService](feature/power/src/main/kotlin/com/upcpocket/app/power/PowerService.kt) | 电量查询与快照能力 | 唐岛湾输入/协议，组件与页面同源；完整签名以源码为准 |
 | [TimetableService](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt) | `state`/`todayState`，`suspend open()`、`refresh()`、`selectWeek(week: Int)`、`refreshToday()`；`readWidgetSnapshot()` | 查看周与今日分离；refreshToday 为本地恢复，不等同周联网刷新 |
+| [GradesService](feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesService.kt) | 恢复当前账号的成绩快照，用户主动同步学校可查学期，按账号失效范围清理 | 各学期的完整结果独立更新，快照同时保存部分失败的范围。筛选由界面根据已加载的快照完成 |
 | `CampusMapCapabilities.PLACE_REQUESTS` | `CampusMapPlaceRequests.offer(location: String)`、`offer(campus: CampusId, placeId: String)` | 宿主从活动插件解析并在内存中交给地图页。第一种用于课表的地点文字，第二种用于通讯录的已关联地址。两种请求都由用户主动触发 |
 | [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；原 `add(title, reminderAt)` / `edit(id, title, reminderAt)` 保留，新增带 `dueAt: Long?` 的重载；`delete(id): TodoTask?` | 截止与提醒独立；原新增无截止，原编辑保留已有截止，新编辑可显式清除；写入维护 revision；失败不捏造已保存任务 |
 | `TodoStore.setCompletedIfRevision(id: String, revision: Int, completed: Boolean): TodoTask?` | suspend；成功条件更新后返回任务，否则 null | 提醒/撤销旧动作必须守住 revision，不能退化成无条件更新 |

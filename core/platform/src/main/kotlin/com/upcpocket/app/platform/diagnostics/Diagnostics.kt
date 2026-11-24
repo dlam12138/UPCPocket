@@ -12,6 +12,7 @@ import java.util.concurrent.ThreadLocalRandom
 enum class DiagnosticModule {
     APP,
     TIMETABLE,
+    GRADES,
     LIBRARY,
     SERVICE_PORTAL,
     SHIGUANG,

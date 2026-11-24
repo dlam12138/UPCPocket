@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.prefs.PreferredCampus
 import com.upcpocket.app.data.prefs.UiPrefs
+import com.upcpocket.app.grades.GradesPlugin
 import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.ui.official.GymReservationHandoff
@@ -65,6 +66,35 @@ class ServicesCatalogTest {
     }
 
     @Test
+    fun `grades has one native service route and an official directory fallback`() {
+        val entry = AppGraph.ui.entriesIn(UiSurface.HOME_SERVICES, UiSurface.SERVICE_DIRECTORY)
+            .single { it.title == "成绩与学分" }
+        assertEquals(UiSurface.SERVICE_DIRECTORY, entry.surface)
+        assertEquals(UiCategory.STUDY, entry.category)
+        assertEquals(GradesPlugin.ROUTE, entry.route)
+        assertEquals(GradesPlugin.ROUTE.value, entry.entryId.value)
+        assertTrue(AppGraph.ui.page(GradesPlugin.ROUTE) != null)
+        assertFalse(entry.entryId.value in UiPrefs.DEFAULT_PINNED_SERVICES)
+
+        val fallback = OfficialWebCatalog.academicScores
+        assertEquals("学校成绩网页", fallback.title)
+        assertNull(fallback.serviceId)
+        assertTrue(fallback in OfficialWebCatalog.all)
+        assertFalse(fallback in OfficialWebCatalog.serviceLinks)
+        assertFalse(fallback in OfficialWebCatalog.serviceLinksFor(UiCategory.STUDY))
+
+        for (campus in listOf(PreferredCampus.TANGDAOWAN, PreferredCampus.GUZHENKOU)) {
+            assertTrue(fallback in OfficialWebCatalog.visibleFor(OfficialWebCatalog.all, campus))
+        }
+
+        val intent = OfficialWebCatalog.browserIntent(fallback)
+        assertEquals(Intent.ACTION_VIEW, intent.action)
+        assertEquals(Uri.parse("https://app.upc.edu.cn/site/score/index"), intent.data)
+        assertTrue(intent.hasCategory(Intent.CATEGORY_BROWSABLE))
+        assertNull(intent.extras)
+    }
+
+    @Test
     fun `official study directory appends four general school links after calendar`() {
         val expected = listOf(
             Triple("教务系统", "https://jwxt.upc.edu.cn/jsxsd/framework/xsMainV.htmlx", "official.academic_system"),
@@ -103,7 +133,7 @@ class ServicesCatalogTest {
     }
 
     @Test
-    fun `all browser entries have stable unique home pin ids`() {
+    fun `pinnable browser entries have stable unique home pin ids`() {
         val expected = mapOf(
             "课表" to "official.timetable",
             "空闲教室" to "official.free_classroom",
@@ -116,7 +146,7 @@ class ServicesCatalogTest {
             "唐岛湾剩余电量" to "official.power_tangdaowan",
             "古镇口电费" to "official.power_guzhenkou",
         )
-        val browserLinks = OfficialWebCatalog.all.filter { it.weChatHandoff == null }
+        val browserLinks = OfficialWebCatalog.all.filter { it.serviceId != null }
 
         assertEquals(expected.keys, browserLinks.map { it.title }.toSet())
         assertEquals(expected, browserLinks.associate { it.title to it.serviceId })

@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.MeetingRoom
@@ -64,6 +65,7 @@ object OfficialWebCatalog {
     const val TANGDAOWAN_POWER_SERVICE_ID = "official.power_tangdaowan"
     const val GUZHENKOU_POWER_SERVICE_ID = "official.power_guzhenkou"
     const val CALENDAR_URL = "https://jwc.upc.edu.cn/603/list.htm"
+    const val ACADEMIC_SCORES_URL = "https://app.upc.edu.cn/site/score/index"
 
     val calendar = OfficialLink(
         title = "校历",
@@ -73,6 +75,14 @@ object OfficialWebCatalog {
         group = "学习",
         serviceId = CALENDAR_SERVICE_ID,
         serviceCategory = UiCategory.STUDY,
+    )
+
+    val academicScores = OfficialLink(
+        title = "学校成绩网页",
+        subtitle = "教务成绩查询",
+        url = ACADEMIC_SCORES_URL,
+        icon = Icons.Filled.Assessment,
+        group = "学习",
     )
 
     val learning: List<OfficialLink> = listOf(
@@ -102,6 +112,7 @@ object OfficialWebCatalog {
             campus = PreferredCampus.TANGDAOWAN,
         ),
         calendar,
+        academicScores,
         OfficialLink(
             title = "教务系统",
             subtitle = "学校登录",
@@ -181,6 +192,7 @@ object OfficialWebCatalog {
     )
 
     val all: List<OfficialLink> = learning + life
+    val serviceLinks: List<OfficialLink> = all - academicScores
 
     /**
      * 「服务」页（全部/分类）候选：按 [OfficialLink.serviceCategory] 归类。
@@ -189,7 +201,7 @@ object OfficialWebCatalog {
      * 体育馆、游泳馆预约等交接入口可以出现在校园生活目录但不出现在首页固定项。
      */
     fun serviceLinksFor(category: UiCategory): List<OfficialLink> =
-        all.filter { it.serviceCategory == category }
+        serviceLinks.filter { it.serviceCategory == category }
 
     /**
      * 「服务」页候选：常用校区为单一校区时，隐藏另一校区专属入口，保留通用入口。

@@ -29,3 +29,7 @@
 ## 证据与验证
 
 [SchoolAccount API](../../core/account-api/src/main/kotlin/com/upcpocket/app/account/api/SchoolAccount.kt)、[Repository](../../core/account/src/main/kotlin/com/upcpocket/app/account/SchoolAccountRepository.kt)、[CredentialAccess](../../core/account/src/main/kotlin/com/upcpocket/app/account/SchoolCredentialAccess.kt)、[宿主协调](../../app/src/main/java/com/upcpocket/app/core/AppGraph.kt)、[隐私](../PRIVACY.md)。变更按影响验证账号/认证/相关业务正常路径与必要隔离，不扩大为无关极端注入；当前历史验收范围以各记录为准。
+
+## 2.1.1 成绩查询
+
+用户点「教务同步」时，成绩认证适配使用当前本人凭据建立独立会话，校验学校 CAS 的成绩回调。成绩服务复核账号引用、凭据代次与业务代次后才写入或发布结果。学校返回的索引和明细目前以本次会话作为归属依据。打开页面只读本机缓存，同账号改密时保留缓存，换号和删除账号时由宿主清理。 [成绩认证适配](../../core/upc-auth/src/main/kotlin/com/upcpocket/app/upcauth/UpcGradesAuthenticator.kt) · [成绩服务](../../feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesService.kt)

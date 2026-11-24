@@ -240,6 +240,7 @@ class HostPluginUiTest {
                 "focus",
                 "focus.stats",
                 "timetable.week",
+                "grades.home",
                 "todo.list",
                 "shiguang.home",
                 "serviceportal.home",
@@ -251,7 +252,7 @@ class HostPluginUiTest {
         assertTrue(
             AppGraph.ui.pages.all {
                 it.pluginId.value in setOf(
-                    "card", "power", "classroom", "library", "focus", "timetable", "todo",
+                    "card", "power", "classroom", "library", "focus", "timetable", "grades", "todo",
                     "shiguang", "serviceportal", "campusmap", "directory",
                 )
             },
