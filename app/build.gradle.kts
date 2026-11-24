@@ -187,6 +187,7 @@ dependencies {
     implementation(project(":feature:service-portal"))
     implementation(project(":feature:campusmap"))
     implementation(project(":feature:directory"))
+    implementation(project(":feature:floorplan"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

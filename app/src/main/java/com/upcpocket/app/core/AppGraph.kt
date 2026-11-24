@@ -30,6 +30,7 @@ import com.upcpocket.app.diagnostics.DiagnosticStore
 import com.upcpocket.app.directory.DirectoryCampus
 import com.upcpocket.app.directory.DirectoryCampusMap
 import com.upcpocket.app.directory.DirectoryPlugin
+import com.upcpocket.app.floorplan.FloorPlanPlugin
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.grades.GradesCapabilities
@@ -540,6 +541,10 @@ object AppGraph {
         )
     }
 
+    private val floorPlanPlugin: FloorPlanPlugin by lazy {
+        FloorPlanPlugin(appContext)
+    }
+
     private val pluginRuntime: PluginRuntime by lazy {
         PluginRuntime().also { runtime ->
             runtime.register(cardPlugin.descriptor) { cardPlugin }
@@ -554,6 +559,7 @@ object AppGraph {
             runtime.register(servicePortalPlugin.descriptor) { servicePortalPlugin }
             runtime.register(campusMapPlugin.descriptor) { campusMapPlugin }
             runtime.register(directoryPlugin.descriptor) { directoryPlugin }
+            runtime.register(floorPlanPlugin.descriptor) { floorPlanPlugin }
         }
     }
 

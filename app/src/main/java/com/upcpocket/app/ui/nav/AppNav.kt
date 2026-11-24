@@ -102,11 +102,14 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
+import com.upcpocket.app.timetable.LocalTimetableDisplayPreference
 import com.upcpocket.app.timetable.LocalTimetableModuleLayout
 import com.upcpocket.app.timetable.LocalTimetablePersonalAgenda
 import com.upcpocket.app.timetable.LocalTimetableTodoSlot
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.timetable.TIMETABLE_ZONE
+import com.upcpocket.app.timetable.TimetableDisplayMode
+import com.upcpocket.app.timetable.TimetableDisplayPreference
 import com.upcpocket.app.timetable.TimetableModuleId
 import com.upcpocket.app.timetable.TimetableModuleLayout
 import com.upcpocket.app.timetable.TimetablePersonalAgendaTodayCard
@@ -457,6 +460,12 @@ fun AppNav(
             scope.launch { AppGraph.uiPrefsStore.setTimetableModuleOrder(newOrder) }
         }
     }
+    // 课表显示范围只写本机偏好；切换不触发学校请求，也不改变业务页状态。
+    val onTimetableDisplayModeChange: (TimetableDisplayMode) -> Unit = remember(scope) {
+        { mode ->
+            scope.launch { AppGraph.uiPrefsStore.setTimetableDisplayMode(mode) }
+        }
+    }
 
     val dockDark = when (prefs.darkMode) {
         DarkMode.DARK -> true
@@ -575,9 +584,22 @@ fun AppNav(
                                                 } else {
                                                     null
                                                 }
+                                                // 偏好未读到时保持 null，课表页据此暂不露出
+                                                // 可能被“仅看课程”隐藏的本机日程内容。
+                                                val displayPreference = remember(
+                                                    storedPrefs?.timetableDisplayMode,
+                                                    onTimetableDisplayModeChange,
+                                                ) {
+                                                    TimetableDisplayPreference(
+                                                        mode = storedPrefs?.timetableDisplayMode,
+                                                        onModeChange = onTimetableDisplayModeChange,
+                                                    )
+                                                }
                                                 CompositionLocalProvider(
                                                     LocalTimetableTodoSlot provides activeSlot,
                                                     LocalTimetableModuleLayout provides timetableLayout,
+                                                    LocalTimetableDisplayPreference provides
+                                                        displayPreference,
                                                 ) {
                                                     pageContent.content(pageHost)
                                                 }

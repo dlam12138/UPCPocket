@@ -24,7 +24,11 @@
 
 2.1.1 开发版的成绩使用 `grades.home` 作为服务入口 ID 和应用内路由。宿主为该页注入仅打开固定学校成绩网页的回调，用户主动选择后由系统浏览器处理。 [成绩插件](feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesPlugin.kt) · [官方网页目录](app/src/main/java/com/upcpocket/app/ui/official/OfficialWebLinks.kt)
 
+卓越楼平面图使用 `floorplan.home` 作为「学习与空间」服务入口 ID 和应用内路由。服务搜索和首页固定共用该贡献。楼区、图注楼层、来源页、房间轮廓和图上房号由插件的离线资源提供。楼层图插件缺失时，宿主省略对应入口和页面。 [平面图插件](feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)
+
 2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
+
+2.1.1 开发版通过 `LocalTimetableDisplayPreference` 接收宿主提供的课表展示偏好和写回回调。`ALL` 展示课程及可用的本机日程，`COURSES_ONLY` 隐藏日程待办、个人日程和日期日程入口，并停用该页的日程窗口订阅及计时。两种视图共用课程网格、学期和选周、详情及同步入口。宿主显式传入 `mode = null` 时先展示课程，等偏好恢复后再显示切换控件。控件需要 `onModeChange` 和至少一种日程来源。未注入的调用默认 `ALL`。`UiPrefsStore` 在 `timetable_display_mode` 保存枚举名，缺键或遇到未知值时使用 `ALL`。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
 2.1.0 后开发改动（未发布）：首页与课表页模块支持长按拖动排序。通用容器 `ReorderableModuleColumn` 归 `core:designsystem`，由宿主传入稳定 key、可见项、`scrollState`、`enabled` 与写回回调；课表页通过 `LocalTimetableModuleLayout`（`TimetableModuleLayout`、`TimetableModuleId`）接收宿主顺序、开关与回调，缺省回退 `[TODO_SCHEDULE, TIMETABLE]`。顺序只保存在宿主 `UiPrefsStore`，不改变业务数据或触发校园请求；开关关闭时仍按已保存顺序渲染并锁定，写回前在同一 edit 内复核开关。
 

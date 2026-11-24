@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    A[app：Application / AppGraph / 导航] --> F[11 个 feature：业务与 UI]
+    A[app：Application / AppGraph / 导航] --> F[13 个 feature：业务与 UI]
     A --> R[plugin-runtime]
     A --> C[account：本机账号]
     A --> U[upc-auth：认证适配]
@@ -28,7 +28,7 @@ flowchart TD
 
 ## 模块与依赖
 
-[settings.gradle.kts](settings.gradle.kts) 当前包含 21 个模块，包括 app、8 个 core 和 12 个 feature。表中依赖只列仓库内部直接 project 依赖。
+[settings.gradle.kts](settings.gradle.kts) 当前包含 22 个模块，包括 app、8 个 core 和 13 个 feature。表中依赖只列仓库内部直接 project 依赖。
 
 | 模块 | 职责 | 内部直接依赖 |
 | --- | --- | --- |
@@ -52,6 +52,7 @@ flowchart TD
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 | `feature:campusmap` | 两校区地图、地点搜索、步骑算路与前台引导 | plugin-api、plugin-ui |
+| `feature:floorplan` | 卓越教学楼 A、B 区的原生离线平面图与房号搜索 | designsystem、plugin-api、plugin-ui |
 | `feature:directory` | 校园通讯录、校区筛选、办事搜索、公开电话及地址 | designsystem、plugin-api、plugin-ui |
 
 feature 之间不相互依赖，core 不依赖 app/feature，业务 feature 不依赖账号实现。card 的认证适配由宿主注入，表中的五个 feature 通过 `upc-auth` 使用相应认证契约。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 依赖方向和指定核心白名单。
@@ -84,6 +85,8 @@ feature 之间不相互依赖，core 不依赖 app/feature，业务 feature 不�
 透明底部表单打开期间，宿主收起浮动导航，待办页收起浮动添加按钮，避免下方的操作控件与表单内容视觉重叠。
 
 2.1.0 开发版的校园地图是二级插件页，通过服务目录及首页固定进入。AppGraph 注入常用校区和课表到地图的地点选择动作。课表详情通过宿主查找已激活的地图能力，仅把选中的地点文字交给地图内存中的一次请求。地图插件独立读取随应用分发的 OSM 数据与地点清单，在本机算路并消费前台定位，具体数据与验收边界见 [ADR 007](docs/adr/007-offline-campus-navigation.md)。
+
+2.1.1 的卓越楼平面图由独立插件提供。「服务 → 学习与空间」和服务搜索共用 `floorplan.home`，打开后按需读取随包提供的结构化图形。楼层切换、图面变换与房号查找在本机完成，独立于校园地图、前台定位和学校账号。 [平面图插件](feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)
 
 校园通讯录从随应用分发的资料加载单位和办事信息。宿主注入常用校区及可用的地图能力。对于关联了可信地图地点的办公地址，宿主将校区和地点 ID 交给地图选中对应楼栋。
 
@@ -129,6 +132,8 @@ sequenceDiagram
 
 2.1.1 开发版由 `app` 将待办插件持有的个人日程订阅和编辑入口注入课表 UI。首页在「今日安排」合并两种来源，学校课程仍按当前账号与上海实际日期核对，本机日程可独立显示。课表按周选择日期查看个人日程，课表和首页使用上海时区，日程待办使用设备本地时区。 [内部契约](API.md#业务能力与系统消费者)
 
+2.1.1 开发版的课表页在可拖模块之外提供「全部 / 仅看课程」切换。宿主将选择保存在 `UiPrefsStore` 并注入课表页。切至仅看课程时，移除该页的日程待办、个人日程和日期日程入口，停止关联的窗口订阅及计时。两种展示共用同一 `TimetableService` 和当前学期、教学周。
+
 周缓存只保存完整成功且归属当前账号的结果。失败保留历史缓存并标示，完整空周、未查询、无缓存与协议失败不混同。会话单独加密；本机周缓存本身未单独加密，依赖应用沙箱与 noBackup 范围。新课表不读 focus 的停用兼容表。
 
 四类 RemoteViews 的渲染器分别归 card/power/timetable/todo，Provider、点击 Intent 和 Worker 归 app。课表和校园卡使用整卡导航，电量另有手动刷新。2.0.8 为每类组件增加一个固定使用静态磨砂背景的 Launcher Provider，复用业务布局和动作。原组件继续使用原 Provider 身份与宿主 `UiPrefsStore` 中的全局外观偏好，保存只本地重绘。玻璃版与原组件共享数据、校园卡发布屏障和同类调度，最后一个同类实例移除时取消调度。
@@ -151,6 +156,7 @@ sequenceDiagram
 | 充值待查 | card；独立 Keystore 密文 | 可靠同步/读回后才请求；未知防重；同号改密保留用于查单 |
 | 课表会话/周缓存 | timetable；会话密文、账号绑定私有 JSON | 会话与缓存分离；同号可保留历史，换号清理 |
 | 成绩会话与学期快照 | grades 的内存会话与独立 Keystore 加密文件 | 同账号改密保留快照，换号或删号清理，包括插件未激活时 |
+| 卓越楼平面图 | floorplan 的随包矢量数据、图面房号和来源页 | 搜索与选层使用页面状态，图形随应用升级更新 |
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
 | 待办、截止、排序与提醒 revision | todo 的 Room `upcpocket-todo.db` | 2.1.0 使用 v2，v1 → v2 添加可空截止。2.1.1 开发版 v3 新增任务排序和模式记录，保留原任务表及提醒状态。Alarm 和通知可从任务重建，旧动作按 taskId 与 revision 拒绝。 |
@@ -161,6 +167,7 @@ sequenceDiagram
 | 日程待办位置 | app 的 `UiPrefsStore`（`todo_host_placement`） | 缺键或未知值回退课表页；只决定槽位页面，不改待办数据、提醒或系统入口；不随学校账号清理 |
 | 首页纪念日（开发改动，未发布） | app 的 `UiPrefsStore`（`home_anniversary_*`） | 标题、以 epoch day 表示的日历日期、计时方式与显示开关在一次编辑中保存。未配置时隐藏，关闭显示及学校账号清理时保留配置 |
 | 首页与课表页模块排序与拖动开关（开发改动，未发布） | app 的 `UiPrefsStore`（`home_module_order`、`timetable_module_order`、`module_reorder_enabled`） | 逗号分隔稳定枚举名；缺键或未知项归一化回退默认顺序，重排可见子集时保留隐藏模块相对位置；开关缺键默认关闭，关闭时仍渲染已保存顺序并锁定，排序写回在同一 edit 内复核开关；不随学校账号清理 |
+| 课表页展示范围（开发改动，未发布） | app 的 `UiPrefsStore`（`timetable_display_mode`） | 以枚举名保存，缺键或未知值使用「全部」。控制课表页本机日程内容显隐，学校账号清理后保留 |
 | 应用内界面风格 | app 的 `UiPrefsStore`（`app_ui_style`） | 缺键或未知值保持 Material 3；不读取或清除旧候选的 `ui_style` 键；不随学校账号清理，也不改变桌面组件 |
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 
