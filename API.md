@@ -90,6 +90,10 @@ suspend fun authenticate(
 | `CampusMapCapabilities.PLACE_REQUESTS` | `CampusMapPlaceRequests.offer(location: String)`、`offer(campus: CampusId, placeId: String)` | 宿主从活动插件解析并在内存中交给地图页。第一种用于课表的地点文字，第二种用于通讯录的已关联地址。两种请求都由用户主动触发 |
 | [TodoStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt) | `tasks: Flow<List<TodoTask>>`；原 `add(title, reminderAt)` / `edit(id, title, reminderAt)` 保留，新增带 `dueAt: Long?` 的重载；`delete(id): TodoTask?` | 截止与提醒独立；原新增无截止，原编辑保留已有截止，新编辑可显式清除；写入维护 revision；失败不捏造已保存任务 |
 | `TodoStore.setCompletedIfRevision(id: String, revision: Int, completed: Boolean): TodoTask?` | suspend；成功条件更新后返回任务，否则 null | 提醒/撤销旧动作必须守住 revision，不能退化成无条件更新 |
+| `TodoStore.snapshot` / `supportsOrdering`（2.1.1 开发版） | `Flow<TodoSnapshot>` 同时包含任务和排序，完整列表与日程共用 | Room 在同一次读事务取得任务、模式和各项排序记录。旧 Store 默认日期模式，排序控件按排序能力显示 |
+| `TodoStore.setSortMode` / `moveTask(id, direction, expectedNeighborId)` | 选择模式或按当前同组邻居换位，返回请求是否生效 | 换位事务复核手动模式、任务和相邻位置，只更新独立排序记录 |
+| `TodoStore.add/edit(..., importance)` / `setImportance` | 可在内容保存时指定重要程度，也可只更新重要程度 | 内容和重要程度共用写事务。纯重要程度修改保留提醒时刻、发送状态和 revision |
+| `TodoStore.deleteWithOrder` / `restoreWithOrder` | 删除与撤销通过 `TodoDeletedTask` 携带任务、重要程度和手动位次 | 同一事务写任务和其排序记录。恢复时拒绝覆盖已存在的任务 |
 | [LibraryService](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryService.kt) / [ChaoxingService](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingService.kt) | 各系统会话、本人验证、读取与受控提交 | 两套协议/结果不混用，未知提交保持防重 |
 | [FocusService](feature/focus/src/main/kotlin/com/upcpocket/app/focus/FocusService.kt) | 本机计时/记录能力 | 独立于学校账号，Room 历史兼容 |
 | [ShiguangService](feature/shiguang/src/main/kotlin/com/upcpocket/app/shiguang/ShiguangService.kt) / [ServicePortalService](feature/service-portal/src/main/kotlin/com/upcpocket/app/serviceportal/ServicePortalService.kt) | 各自只读查询/分页与 UI 状态 | 失败、有效空、部分结果与登录回退分别表达 |

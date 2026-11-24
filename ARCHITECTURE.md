@@ -47,7 +47,7 @@ flowchart TD
 | `feature:library` | libseat 与超星座位、会话/本人校验、查询与预约 UI、个人隐藏 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:focus` | 本机计时、专注数据库、统计、通知与前台服务 | designsystem、plugin-api、plugin-ui |
 | `feature:timetable` | 学期/周查询、账号绑定只读缓存、周网格/今日课程、组件渲染 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
-| `feature:todo` | 本机任务/截止、独立 Room、一次性提醒/通知动作与组件渲染 | designsystem、plugin-api、plugin-ui |
+| `feature:todo` | 本机任务、截止和排序，独立 Room、一次性提醒、通知动作与组件渲染 | designsystem、plugin-api、plugin-ui |
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 | `feature:campusmap` | 两校区地图、地点搜索、步骑算路与前台引导 | plugin-api、plugin-ui |
@@ -148,7 +148,7 @@ sequenceDiagram
 | 课表会话/周缓存 | timetable；会话密文、账号绑定私有 JSON | 会话与缓存分离；同号可保留历史，换号清理 |
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
-| 待办/截止/提醒 revision | todo；Room `upcpocket-todo.db` v2 | v1 显式新增可空 dueAt，旧任务截止为空且原字段保留；任务为事实，Alarm/通知可重建；旧动作按 taskId+revision 拒绝 |
+| 待办、截止、排序与提醒 revision | todo 的 Room `upcpocket-todo.db` | 2.1.0 使用 v2，v1 → v2 添加可空截止。2.1.1 开发版 v3 新增任务排序和模式记录，保留原任务表及提醒状态。Alarm 和通知可从任务重建，旧动作按 taskId 与 revision 拒绝。 |
 | 配色与深色模式、桌面外观、首页固定、寝室与公开查询缓存 | 所属宿主/feature 的 DataStore 或缓存 | 学校账号清理保留这些本机选项；普通组件外观归 UiPrefsStore，固定玻璃版由 Provider 身份决定，首页固定项缺键与显式空集分别处理 |
 | 自定义配色与自定义背景（开发改动，未发布） | app 的 `UiPrefsStore`（`custom_theme_seed_argb`、`custom_background_opacity`）与私有 `noBackupFilesDir/appearance/custom_background.jpg` | 背景 JPEG 是唯一事实来源，导入/清除经存储层互斥串行并在成功后由 `CustomBackgroundStore.revision` 通知重新读盘；配色与可见度缺键分别回退默认种子色和默认可见度，可见度限制在 0.15–0.90；通过系统照片选择器无权限读取并下采样保存在本机，不随学校账号清理 |
 | 常用校区 | app 的 `UiPrefsStore` | 缺有效偏好默认全部校区。教室在全部校区模式下沿用原有上次校区记录 |

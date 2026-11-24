@@ -29,3 +29,9 @@ todo 使用独立 `upcpocket-todo.db` v1；Room 任务和 revision 是事实来�
 ## 证据与验证
 
 [focus AppDatabase](../../feature/focus/src/main/kotlin/com/upcpocket/app/data/db/AppDatabase.kt)、[LegacyScheduleTables](../../feature/focus/src/main/kotlin/com/upcpocket/app/data/db/LegacyScheduleTables.kt)、[TodoDatabase](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt)、[TodoService](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoService.kt)、[M2](../m2/README.md)、[PRIVACY](../PRIVACY.md)。验证按实际结构变更选择既有 schema/Repository 测试与必要保留数据安装；本轮只建文档，不迁移或清数据。
+
+## 2.1.1 待办排序兼容
+
+在 `upcpocket-todo.db` 中保留 v1 → v2 的可空截止迁移。v2 → v3 新增按任务 ID 存重要程度和手动位次的 `todo_task_order`，以及存排序模式和下一个位次的 `todo_order_state`。旧任务默认普通，排序模式默认日期。两条升级路径共用原任务表，保留 ID、内容、完成时间、截止与提醒字段。 [TodoDatabase](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt)
+
+模式切换、纯重要程度修改和手动换位只写排序记录。手动换位在一个事务内完成，任务的提醒时刻、发送状态与 `revision` 保持原值。删除撤销快照携带任务和排序记录，恢复时同时写回。 [待办数据入口](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoRepository.kt) · [2.1.1 验证](../design/2.1.1-update-plan.md#已合入的改动)
