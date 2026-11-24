@@ -96,6 +96,7 @@ suspend fun authenticate(
 | `TodoStore.setSortMode` / `moveTask(id, direction, expectedNeighborId)` | 选择模式或按当前同组邻居换位，返回请求是否生效 | 换位事务复核手动模式、任务和相邻位置，只更新独立排序记录 |
 | `TodoStore.add/edit(..., importance)` / `setImportance` | 可在内容保存时指定重要程度，也可只更新重要程度 | 内容和重要程度共用写事务。纯重要程度修改保留提醒时刻、发送状态和 revision |
 | `TodoStore.deleteWithOrder` / `restoreWithOrder` | 删除与撤销通过 `TodoDeletedTask` 携带任务、重要程度和手动位次 | 同一事务写任务和其排序记录。恢复时拒绝覆盖已存在的任务 |
+| `TodoCapabilities.personalSchedule` (`todo.schedule`) | [PersonalScheduleStore](feature/todo/src/main/kotlin/com/upcpocket/app/todo/PersonalSchedule.kt) 按 `observeWindow(fromInclusive, untilExclusive)` 订阅本机日程，窗口使用毫秒时点 | 记录使用独立 ID 与 `revision`。编辑和删除按当前版本提交，冲突时由表单保留草稿并提示 |
 | [LibraryService](feature/library/src/main/kotlin/com/upcpocket/app/library/LibraryService.kt) / [ChaoxingService](feature/library/src/main/kotlin/com/upcpocket/app/library/ChaoxingService.kt) | 各系统会话、本人验证、读取与受控提交 | 两套协议/结果不混用，未知提交保持防重 |
 | [FocusService](feature/focus/src/main/kotlin/com/upcpocket/app/focus/FocusService.kt) | 本机计时/记录能力 | 独立于学校账号，Room 历史兼容 |
 | [ShiguangService](feature/shiguang/src/main/kotlin/com/upcpocket/app/shiguang/ShiguangService.kt) / [ServicePortalService](feature/service-portal/src/main/kotlin/com/upcpocket/app/serviceportal/ServicePortalService.kt) | 各自只读查询/分页与 UI 状态 | 失败、有效空、部分结果与登录回退分别表达 |
@@ -107,6 +108,8 @@ suspend fun authenticate(
 课表页和首页今日课程的详情通过宿主注入的 `TimetableCampusMap.select(location: String): PluginRouteId` 提交地点并打开地图。地图插件缺失时，详情省略地图操作。收到同名、不明确或只含房间编号的地点时，由用户在地图中核对候选。
 
 Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`、`openCreate(requestId: String): Boolean` 与 `consumeCreateRequest()`，与原任务打开请求分别消费；只有活动页面打开编辑器。`TodoLaunchContract` 的新建/打开只接受完整 UUID 分组，合法大小写规范为同一 UUID，拒绝 `UUID.fromString` 宽松接受的缩写。`readWidgetSnapshot(maxVisibleRows: Int = 4)` 异步读取本机库，区分 `NotRestored`、`ReadFailed` 与 `Ready(tasks, incompleteCount)`；Ready 空列表才是有效空，总数包含全部未完成任务。`onTasksChanged` 是宿主注入的窄本地刷新回调，覆盖存储/revision 的成功变化、首次恢复成功与首次恢复失败的状态更新，不向 feature 暴露 AppGraph；回调失败不改变已提交结果。
+
+个人日程的时间窗包含起点、排除终点。宿主从最终激活的待办插件取得日程能力，将窗口订阅和打开编辑器的动作交给课表 UI。`AgendaEditorHost` 接收所选日期及其时区，或接收已有日程的 ID。日程表单统一按 `Asia/Shanghai` 录入，课表和首页按上海日期订阅，日程待办按设备本地日期订阅。日程写入只更新个人日程表。 [能力声明](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoPlugin.kt) · [Room 数据库](feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt)
 
 [TodoWidgetRenderer](feature/todo/src/main/kotlin/com/upcpocket/app/todo/TodoWidgetRenderer.kt) 只接收本机摘要、实际尺寸派生的 `TodoWidgetLayout` 和宿主提供的 `TodoWidgetActions`；最多四行，总数不限于可见行。标题/数量、正文、新建与完成分别绑定动作，完成使用 `setOnCheckedChangeResponse`，PendingIntent 的身份/可变性与实例验证归宿主；null 摘要表示插件不可用，不等同有效空。
 

@@ -57,6 +57,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -99,11 +101,17 @@ import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
 import com.upcpocket.app.timetable.LocalTimetableModuleLayout
+import com.upcpocket.app.timetable.LocalTimetablePersonalAgenda
 import com.upcpocket.app.timetable.LocalTimetableTodoSlot
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
+import com.upcpocket.app.timetable.TIMETABLE_ZONE
 import com.upcpocket.app.timetable.TimetableModuleId
 import com.upcpocket.app.timetable.TimetableModuleLayout
+import com.upcpocket.app.timetable.TimetablePersonalAgendaTodayCard
 import com.upcpocket.app.todo.TODO_ROUTE
+import com.upcpocket.app.ui.agenda.rememberTimetablePersonalAgenda
+import com.upcpocket.app.ui.todo.AgendaEditorHost
+import com.upcpocket.app.ui.todo.AgendaEditorRequest
 import com.upcpocket.app.ui.todo.LocalTodoListBack
 import com.upcpocket.app.ui.todo.TodoScheduleSection
 import com.upcpocket.app.ui.about.AboutScreen
@@ -182,6 +190,25 @@ fun AppNav(
     val onMain = currentRoute == MAIN_ROUTE
     val pluginUi = AppGraph.ui
     val todoStore = AppGraph.todoStoreOrNull
+    val personalScheduleStore = AppGraph.personalScheduleStoreOrNull
+    // 日程编辑请求跨配置变更与进程重建保存；同一时刻只保留一个请求，
+    // 新建与按 ID 编辑互斥，避免同时叠两个表单。
+    var agendaRequest by rememberSaveable { mutableStateOf<AgendaEditorRequest?>(null) }
+    val personalAgenda = rememberTimetablePersonalAgenda(
+        store = personalScheduleStore,
+        openCreate = { date ->
+            agendaRequest = AgendaEditorRequest.Add(date = date, zone = TIMETABLE_ZONE)
+        },
+        openEdit = { id ->
+            agendaRequest = AgendaEditorRequest.EditSchedule(id)
+        },
+    )
+    // 课表插件缺失时首页仍以本机日程提供「今日安排」；课表模块位置保持不变。
+    val personalAgendaHome: (@Composable () -> Unit)? = if (personalAgenda == null) {
+        null
+    } else {
+        { TimetablePersonalAgendaTodayCard(agenda = personalAgenda) }
+    }
     val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
     val legacyCardStudentId by AppGraph.cardInputRepository.studentId
         .collectAsStateWithLifecycle(initialValue = "")
@@ -235,6 +262,7 @@ fun AppNav(
     val todoScheduleSlot: (@Composable () -> Unit)? = remember(
         todoHost.host,
         todoStore,
+        personalScheduleStore,
         navController,
     ) {
         val store = todoStore
@@ -245,6 +273,7 @@ fun AppNav(
                     onOpenAll = {
                         navController.navigate(TODO_ROUTE.value) { launchSingleTop = true }
                     },
+                    personalScheduleStore = personalScheduleStore,
                 )
             }
             slot
@@ -467,7 +496,10 @@ fun AppNav(
                         } else {
                             Modifier.fillMaxSize().clearAndSetSemantics { }
                         }
-                        CompositionLocalProvider(LocalPluginPageActive provides active) {
+                        CompositionLocalProvider(
+                            LocalPluginPageActive provides active,
+                            LocalTimetablePersonalAgenda provides personalAgenda,
+                        ) {
                             Box(pageModifier) {
                                 val destination = destinations.getOrNull(page)
                                 when (destination?.route) {
@@ -492,6 +524,7 @@ fun AppNav(
                                         moduleOrder = prefs.homeModuleOrder,
                                         reorderEnabled = prefs.moduleReorderEnabled,
                                         onModuleOrderChange = onHomeModuleOrderChange,
+                                        personalAgendaHome = personalAgendaHome,
                                     )
                                     AppRoutes.SERVICES -> ServicesScreen(
                                         entries = allServiceEntries,
@@ -634,6 +667,24 @@ fun AppNav(
                 composable(AppRoutes.ABOUT) {
                     AboutScreen(onBack = { navController.popBackStack() })
                 }
+            }
+
+            // 课表日期入口、周网格日期和周课表卡片都只提交编辑请求；表单、校验
+            // 与写入统一由待办插件的宿主处理。
+            val pendingAgendaRequest = agendaRequest
+            if (pendingAgendaRequest != null && todoStore != null && personalScheduleStore != null) {
+                AgendaEditorHost(
+                    todoStore = todoStore,
+                    personalScheduleStore = personalScheduleStore,
+                    request = pendingAgendaRequest,
+                    onDismiss = {
+                        // 按引用判断：旧面板异步完成不能清掉之后重新打开的同日/同 ID
+                        // 请求，只有仍是同一请求实例时才关闭。
+                        if (agendaRequest === pendingAgendaRequest) {
+                            agendaRequest = null
+                        }
+                    },
+                )
             }
 
             if (drawDock) {

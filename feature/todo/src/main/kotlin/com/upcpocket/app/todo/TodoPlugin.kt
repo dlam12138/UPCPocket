@@ -3,6 +3,7 @@ package com.upcpocket.app.todo
 import android.app.PendingIntent
 import android.content.Context
 import com.upcpocket.app.plugin.api.Plugin
+import com.upcpocket.app.todo.data.TodoDatabase
 import com.upcpocket.app.plugin.api.PluginAppLifecycle
 import com.upcpocket.app.plugin.api.PluginCapability
 import com.upcpocket.app.plugin.api.PluginDescriptor
@@ -23,6 +24,7 @@ import com.upcpocket.app.ui.todo.TodoScreen
 /** 待办插件公开能力的稳定键。 */
 object TodoCapabilities {
     val store = capabilityKey<TodoStore>("todo.store")
+    val personalSchedule = capabilityKey<PersonalScheduleStore>("todo.schedule")
 }
 
 val TODO_PLUGIN_ID: PluginId = PluginId.parse("todo")
@@ -43,16 +45,28 @@ class TodoPlugin(
     constructor(context: Context, openAppIntent: (String) -> PendingIntent) :
         this(context, {}, openAppIntent)
 
+    private val appContext = context.applicationContext
+
     override val descriptor: PluginDescriptor = PluginDescriptor(
         id = TODO_PLUGIN_ID,
-        version = "1.0.0",
-        capabilities = setOf(TodoCapabilities.store.id),
+        version = "1.1.0",
+        capabilities = setOf(
+            TodoCapabilities.store.id,
+            TodoCapabilities.personalSchedule.id,
+        ),
     )
 
     val service: TodoService = TodoService(context, onTasksChanged, openAppIntent)
 
-    override fun capabilities(): List<PluginCapability> =
-        listOf(PluginCapability(TodoCapabilities.store, service))
+    // 构造只持有数据库提供器；第一次读写日程时才打开 Room 与 DAO。
+    private val scheduleService: PersonalScheduleStore by lazy {
+        PersonalScheduleService { TodoDatabase.get(appContext) }
+    }
+
+    override fun capabilities(): List<PluginCapability> = listOf(
+        PluginCapability(TodoCapabilities.store, service),
+        PluginCapability(TodoCapabilities.personalSchedule, scheduleService),
+    )
 
     override fun onAppCreated() {
         TodoRuntime.install(service)

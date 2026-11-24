@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -19,6 +20,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -90,6 +92,25 @@ class TimetableScreenStateTest {
         todayState = status,
         todayMessage = message,
         todayLoaded = loaded,
+    )
+
+    private fun agendaEntry(
+        id: String,
+        title: String,
+        date: LocalDate,
+        startHour: Int,
+        endHour: Int,
+    ): TimetableAgendaEntry = TimetableAgendaEntry(
+        id = id,
+        title = title,
+        startAt = date.atTime(startHour, 0)
+            .atZone(TIMETABLE_ZONE)
+            .toInstant()
+            .toEpochMilli(),
+        endAt = date.atTime(endHour, 0)
+            .atZone(TIMETABLE_ZONE)
+            .toInstant()
+            .toEpochMilli(),
     )
 
     @Test
@@ -317,5 +338,208 @@ class TimetableScreenStateTest {
         rule.onNodeWithText("第 8 周").performClick()
         rule.onNodeWithText("第 2 周").performClick()
         assertEquals(2, selected)
+    }
+
+    @Test
+    fun todayMergedAgendaMarksSourcesAndKeepsUnknownCourseTime() {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        val known = meeting.copy(courseName = "示例课程A")
+        val unknown = meeting.copy(
+            courseName = "时间未知课程",
+            startPeriod = 13,
+            endPeriod = 13,
+            periods = listOf(13),
+            sourcePeriods = listOf(13),
+        )
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(
+                        status = TimetableTodayState.READY,
+                        loaded = true,
+                        meetings = listOf(known, unknown),
+                    ),
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Ready(
+                        listOf(agendaEntry("a1", "个人安排一", today, 13, 14)),
+                    ),
+                    onAgendaClick = {},
+                    onAgendaCreate = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("今日安排").assertIsDisplayed()
+        rule.onNodeWithText("示例课程A").assertIsDisplayed()
+        rule.onNodeWithText("时间未知课程").assertIsDisplayed()
+        rule.onNodeWithText("个人安排一").assertIsDisplayed()
+        rule.onAllNodesWithText("课程").assertCountEquals(2)
+        rule.onNodeWithText("日程").assertIsDisplayed()
+        rule.onNodeWithText("时间待确认 · 地点未提供 · 第13节").assertExists()
+        val agendaTop = rule.onNodeWithText("个人安排一").fetchSemanticsNode().boundsInRoot.top
+        val courseTop = rule.onNodeWithText("示例课程A").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("13:00 的本机日程应排在 14:00 的课程之前", agendaTop < courseTop)
+    }
+
+    @Test
+    fun todayMergedAgendaNeverShowsCoursesFromAnOldDate() {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        val stale = todayState(
+            status = TimetableTodayState.READY,
+            loaded = true,
+            meetings = listOf(meeting.copy(courseName = "旧日期课程")),
+        ).copy(today = today.minusDays(1))
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = stale,
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Ready(
+                        listOf(agendaEntry("a2", "当天日程", today, 9, 10)),
+                    ),
+                    onAgendaClick = {},
+                    onAgendaCreate = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("今日课表尚未同步。").assertIsDisplayed()
+        rule.onNodeWithText("当天日程").assertIsDisplayed()
+        rule.onNodeWithText("旧日期课程").assertDoesNotExist()
+    }
+
+    @Test
+    fun todayAgendaShowsLocalListWhenSchoolIsNotSynced() {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        var created = 0
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(),
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Ready(
+                        listOf(agendaEntry("a3", "本机安排", today, 9, 10)),
+                    ),
+                    onAgendaClick = {},
+                    onAgendaCreate = { created++ },
+                )
+            }
+        }
+
+        rule.onNodeWithText("今日课表尚未同步。").assertIsDisplayed()
+        rule.onNodeWithText("本机安排").assertIsDisplayed()
+        rule.onNodeWithText("新增日程").performClick()
+        assertEquals(1, created)
+    }
+
+    @Test
+    fun todayAgendaFailureIsNotShownAsEmpty() {
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(status = TimetableTodayState.READY, loaded = true),
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Failed,
+                )
+            }
+        }
+
+        rule.onNodeWithText("本机日程读取失败。").assertIsDisplayed()
+        rule.onNodeWithText("今天没有安排。").assertDoesNotExist()
+        rule.onNodeWithText("今天没有个人日程。").assertDoesNotExist()
+    }
+
+    @Test
+    fun todayMergedEmptyIsShownOnlyAfterBothSourcesLoad() {
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(status = TimetableTodayState.EMPTY, loaded = true),
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Ready(emptyList()),
+                    onAgendaClick = {},
+                    onAgendaCreate = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("今天没有安排。").assertIsDisplayed()
+        rule.onNodeWithText("今天没有个人日程。").assertDoesNotExist()
+        rule.onNodeWithText("今天没有排课。").assertDoesNotExist()
+    }
+
+    @Test
+    fun todayAgendaEntryOpensEditorById() {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        var opened: String? = null
+        rule.setContent {
+            MaterialTheme {
+                TodayPanel(
+                    state = todayState(status = TimetableTodayState.EMPTY, loaded = true),
+                    onCourseClick = {},
+                    agenda = TimetableAgendaState.Ready(
+                        listOf(agendaEntry("a4", "待编辑日程", today, 15, 16)),
+                    ),
+                    onAgendaClick = { opened = it },
+                    onAgendaCreate = {},
+                )
+            }
+        }
+
+        rule.onNodeWithText("待编辑日程").performClick()
+        assertEquals("a4", opened)
+    }
+
+    @Test
+    fun weekHeaderMarksAgendaDateAndOpensDayEntry() {
+        var opened: LocalDate? = null
+        rule.setContent {
+            MaterialTheme {
+                WeekPanel(
+                    state = state(TimetableWeekState.READY, meetings = listOf(meeting)),
+                    onCourseClick = {},
+                    daysWithAgenda = setOf(dates[2]),
+                    onAgendaDateClick = { opened = it },
+                )
+            }
+        }
+
+        rule.onNodeWithTag(
+            "timetable_day_agenda_${dates[2]}",
+            useUnmergedTree = true,
+        ).assertExists()
+        rule.onNodeWithTag("timetable_day_header_${dates[2]}").performClick()
+        assertEquals(dates[2], opened)
+    }
+
+    @Test
+    fun personalAgendaCardNavigatesAndOpensEntry() {
+        val day = LocalDate.parse("2026-10-26")
+        var selected: LocalDate? = null
+        var created: LocalDate? = null
+        var edited: String? = null
+        rule.setContent {
+            MaterialTheme {
+                TimetablePersonalAgendaCard(
+                    state = TimetableAgendaState.Ready(
+                        listOf(agendaEntry("a5", "卡片日程", day, 8, 9)),
+                    ),
+                    selectedDate = day,
+                    nowMinute = null,
+                    showShanghaiTime = false,
+                    onSelectDate = { selected = it },
+                    onCreate = { created = it },
+                    onEdit = { edited = it },
+                )
+            }
+        }
+
+        rule.onNodeWithText("卡片日程").assertIsDisplayed()
+        rule.onNodeWithText("08:00–09:00").performClick()
+        rule.onNodeWithText("新增").performClick()
+        rule.onNodeWithTag("timetable_agenda_previous_day").performClick()
+        assertEquals("a5", edited)
+        assertEquals(day, created)
+        assertEquals(day.minusDays(1), selected)
     }
 }

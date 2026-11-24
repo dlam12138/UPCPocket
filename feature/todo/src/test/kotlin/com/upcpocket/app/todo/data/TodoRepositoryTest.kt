@@ -368,7 +368,7 @@ class TodoRepositoryTest {
     }
 
     @Test
-    fun `migration from v1 through v3 preserves fields and seeds date ordering`() = runBlocking {
+    fun `migration from v1 through v4 preserves fields and seeds date ordering`() = runBlocking {
         val name = "t-${UUID.randomUUID().toString().take(8)}.db"
         val legacyTasks = listOf(
             TodoTask(
@@ -408,7 +408,11 @@ class TodoRepositoryTest {
         createVersionDatabase(name, version = 1, rows = legacyTasks)
 
         val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
-            .addMigrations(TodoDatabase.MIGRATION_1_2, TodoDatabase.MIGRATION_2_3)
+            .addMigrations(
+                TodoDatabase.MIGRATION_1_2,
+                TodoDatabase.MIGRATION_2_3,
+                TodoDatabase.MIGRATION_3_4,
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -418,6 +422,12 @@ class TodoRepositoryTest {
             assertEquals(TodoOrderStateEntity(mode = "DATE", nextManualRank = 0), migrated.orderDao().state())
             assertTrue(migrated.orderDao().orders().isEmpty())
             assertEquals(TodoSortMode.DATE, repository.snapshot.first().ordering.mode)
+            assertTrue(
+                migrated.personalScheduleDao()
+                    .observeWindow(0, Long.MAX_VALUE)
+                    .first()
+                    .isEmpty(),
+            )
         } finally {
             migrated.close()
             context.deleteDatabase(name)
@@ -425,7 +435,7 @@ class TodoRepositoryTest {
     }
 
     @Test
-    fun `migration from v2 to v3 preserves fields and seeds date ordering`() = runBlocking {
+    fun `migration from v2 to v4 preserves fields and seeds date ordering`() = runBlocking {
         val name = "t-${UUID.randomUUID().toString().take(8)}.db"
         val legacyTasks = listOf(
             sampleTask(id = "with-deadline", dueAt = 4_000),
@@ -434,7 +444,7 @@ class TodoRepositoryTest {
         createVersionDatabase(name, version = 2, rows = legacyTasks)
 
         val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
-            .addMigrations(TodoDatabase.MIGRATION_2_3)
+            .addMigrations(TodoDatabase.MIGRATION_2_3, TodoDatabase.MIGRATION_3_4)
             .allowMainThreadQueries()
             .build()
         try {
@@ -449,31 +459,115 @@ class TodoRepositoryTest {
             )
             assertTrue(migrated.orderDao().orders().isEmpty())
             assertEquals(TodoImportance.NORMAL, repository.importanceOf("with-deadline"))
+            assertTrue(
+                migrated.personalScheduleDao()
+                    .observeWindow(0, Long.MAX_VALUE)
+                    .first()
+                    .isEmpty(),
+            )
         } finally {
             migrated.close()
             context.deleteDatabase(name)
         }
     }
 
-    private fun createVersionDatabase(name: String, version: Int, rows: List<TodoTask>) {
+    @Test
+    fun `migration from v3 to v4 keeps tasks orders and manual state`() = runBlocking {
+        val name = "t-${UUID.randomUUID().toString().take(8)}.db"
+        val legacyTasks = listOf(
+            sampleTask(id = "with-deadline", dueAt = 4_000),
+            sampleTask(id = "completed", dueAt = null)
+                .copy(completed = true, completedAt = 400, revision = 3),
+        )
+        val legacyOrders = listOf(
+            TodoTaskOrderEntity("with-deadline", "HIGH", 1),
+            TodoTaskOrderEntity("completed", "LOW", 2),
+        )
+        val legacyState = TodoOrderStateEntity(mode = "MANUAL", nextManualRank = 3)
+        createVersionDatabase(
+            name = name,
+            version = 3,
+            rows = legacyTasks,
+            orders = legacyOrders,
+            orderState = legacyState,
+        )
+
+        val migrated = Room.databaseBuilder(context, TodoDatabase::class.java, name)
+            .addMigrations(TodoDatabase.MIGRATION_3_4)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val repository = TodoRepository(migrated)
+            assertEquals(
+                legacyTasks.associateBy(TodoTask::id),
+                repository.all().associateBy(TodoTask::id),
+            )
+            assertEquals(
+                legacyOrders.associateBy(TodoTaskOrderEntity::taskId),
+                migrated.orderDao().orders().associateBy(TodoTaskOrderEntity::taskId),
+            )
+            assertEquals(legacyState, migrated.orderDao().state())
+            val snapshot = repository.snapshot.first()
+            assertEquals(TodoSortMode.MANUAL, snapshot.ordering.mode)
+            assertEquals(TodoImportance.HIGH, snapshot.ordering.importanceOf("with-deadline"))
+            assertEquals(1, snapshot.ordering.manualRankOf("with-deadline"))
+            assertEquals(2, snapshot.ordering.manualRankOf("completed"))
+
+            val schedule = PersonalScheduleEntity(
+                id = "schedule-after-migration",
+                title = "迁移后日程",
+                startAt = 10_000,
+                endAt = 20_000,
+                location = null,
+                note = null,
+                revision = 1,
+            )
+            migrated.personalScheduleDao().insert(schedule)
+            assertEquals(
+                listOf(schedule),
+                migrated.personalScheduleDao().observeWindow(0, Long.MAX_VALUE).first(),
+            )
+        } finally {
+            migrated.close()
+            context.deleteDatabase(name)
+        }
+    }
+
+    private fun createVersionDatabase(
+        name: String,
+        version: Int,
+        rows: List<TodoTask>,
+        orders: List<TodoTaskOrderEntity> = emptyList(),
+        orderState: TodoOrderStateEntity? = null,
+    ) {
         val schemaRoot = Json.parseToJsonElement(versionSchemaFile(version).readText()).jsonObject
         val databaseSchema = schemaRoot.getValue("database").jsonObject
-        val tableSchema = databaseSchema.getValue("entities").jsonArray
+        val tableSchemas = databaseSchema.getValue("entities").jsonArray
             .map { it.jsonObject }
-            .single { it.getValue("tableName").jsonPrimitive.content == "todo_tasks" }
-        val tableSql = tableSchema.getValue("createSql").jsonPrimitive.content
-            .replace("\${TABLE_NAME}", "todo_tasks")
+            .associateBy { it.getValue("tableName").jsonPrimitive.content }
         val schemaVersion = databaseSchema.getValue("version").jsonPrimitive.content.toInt()
         check(schemaVersion == version) { "Expected committed Todo schema v$version" }
+
+        fun tableSql(tableName: String): String {
+            val schema = requireNotNull(tableSchemas[tableName]) {
+                "Todo schema v$version has no $tableName table"
+            }
+            return schema.getValue("createSql").jsonPrimitive.content
+                .replace("\${TABLE_NAME}", tableName)
+        }
 
         val databaseFile = context.getDatabasePath(name)
         val parent = requireNotNull(databaseFile.parentFile)
         check(parent.mkdirs() || parent.isDirectory) { "Todo migration test directory is unavailable" }
         val legacy = context.openOrCreateDatabase(name, Context.MODE_PRIVATE, null)
         try {
-            legacy.execSQL(tableSql)
+            legacy.execSQL(tableSql("todo_tasks"))
             databaseSchema.getValue("setupQueries").jsonArray.forEach { query ->
                 legacy.execSQL(query.jsonPrimitive.content)
+            }
+            if (version >= 3) {
+                legacy.execSQL(tableSql("todo_task_order"))
+                legacy.execSQL(tableSql("todo_order_state"))
             }
             rows.forEach { task ->
                 val values = ContentValues().apply {
@@ -491,6 +585,28 @@ class TodoRepositoryTest {
                     }
                 }
                 legacy.insertOrThrow("todo_tasks", null, values)
+            }
+            if (version >= 3) {
+                orders.forEach { order ->
+                    val values = ContentValues().apply {
+                        put("taskId", order.taskId)
+                        put("importance", order.importance)
+                        if (order.manualRank == null) {
+                            putNull("manualRank")
+                        } else {
+                            put("manualRank", order.manualRank)
+                        }
+                    }
+                    legacy.insertOrThrow("todo_task_order", null, values)
+                }
+                orderState?.let { state ->
+                    val values = ContentValues().apply {
+                        put("id", state.id)
+                        put("mode", state.mode)
+                        put("nextManualRank", state.nextManualRank)
+                    }
+                    legacy.insertOrThrow("todo_order_state", null, values)
+                }
             }
             legacy.execSQL("PRAGMA user_version = $version")
         } finally {

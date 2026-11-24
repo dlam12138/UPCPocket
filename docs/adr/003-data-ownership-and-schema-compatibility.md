@@ -35,3 +35,9 @@ todo 使用独立 `upcpocket-todo.db` v1；Room 任务和 revision 是事实来�
 在 `upcpocket-todo.db` 中保留 v1 → v2 的可空截止迁移。v2 → v3 新增按任务 ID 存重要程度和手动位次的 `todo_task_order`，以及存排序模式和下一个位次的 `todo_order_state`。旧任务默认普通，排序模式默认日期。两条升级路径共用原任务表，保留 ID、内容、完成时间、截止与提醒字段。 [TodoDatabase](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt)
 
 模式切换、纯重要程度修改和手动换位只写排序记录。手动换位在一个事务内完成，任务的提醒时刻、发送状态与 `revision` 保持原值。删除撤销快照携带任务和排序记录，恢复时同时写回。 [待办数据入口](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoRepository.kt) · [2.1.1 验证](../design/2.1.1-update-plan.md#已合入的改动)
+
+## 2.1.1 个人日程兼容
+
+`upcpocket-todo.db` 的 v3 → v4 追加 `personal_schedules` 与时间索引。已发布的 v2 和历史 v1 继续沿原迁移链升级。旧任务的 ID、完成状态、截止、提醒、`revision` 和已有排序记录在迁移后保留。
+
+个人日程用独立 ID 和版本保存标题、起止时点、可选地点及备注。表单按上海时间编辑，窗口按各视图的日期和时区求时段交集。账号清理保留本机日程。 [TodoDatabase](../../feature/todo/src/main/kotlin/com/upcpocket/app/todo/data/TodoDatabase.kt) · [2.1.1 计划](../design/2.1.1-update-plan.md#个人日程与今日安排)
