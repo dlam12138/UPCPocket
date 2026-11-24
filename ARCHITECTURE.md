@@ -129,11 +129,11 @@ sequenceDiagram
 
 四类 RemoteViews 的渲染器分别归 card/power/timetable/todo，Provider、点击 Intent 和 Worker 归 app。课表和校园卡使用整卡导航，电量另有手动刷新。2.0.8 为每类组件增加一个固定使用静态磨砂背景的 Launcher Provider，复用业务布局和动作。原组件继续使用原 Provider 身份与宿主 `UiPrefsStore` 中的全局外观偏好，保存只本地重绘。玻璃版与原组件共享数据、校园卡发布屏障和同类调度，最后一个同类实例移除时取消调度。
 
-2.1.0 增加独立的「本周课表」Provider。周快照由课表模块从当前账号的成功缓存派生，按上海日期组成周日至周六。渲染器接收日期、节次、课程名称与覆盖状态，宿主负责整卡导航和重绘。周组件采用全局桌面外观，与今日组件共用本地刷新任务。只有周组件时，时刻边界为上海午夜。 [桌面入口](docs/m5/README.md#210-开发入口2026-11-20未发布)
+2.1.0 增加「本周课表」，2.1.1 开发版增加「今明课表」。课表模块从当前账号的缓存按上海日期查找每一天的课程，供周日至周六和今明两种视图使用。渲染器接收日期、节次、课名与覆盖状态，两种组件使用全局桌面外观。宿主负责整卡导航与发布校验。只放置今明、本周或两者时，课表组件的时刻边界为上海午夜。 [桌面入口](docs/m5/README.md#210-后开发改动2026-11-24未发布)
 
 待办组件经最终 `TodoStore` 能力异步读取 Room 的有限摘要与全部未完成数，区分尚未恢复、读取失败、缺插件和有效空。存储/revision 变化经宿主注入的窄回调刷新所有实例，不依赖 Activity 收集 Flow。完成 Receiver 非导出，仅框架勾选值需要可变 PendingIntent；实例、完整 UUID、revision 与目标 true 绑定 Intent 身份，旧动作不能重绑新版本。新建与导航保持 immutable，冷/暖 Activity 经同一契约解析并仅在活动待办页消费；桌面不承载编辑输入。[TodoWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TodoWidgetTicker.kt) 在截止和设备本地午夜安排本地重绘，最后实例移除取消，不使用校园网络或常驻服务。
 
-[TimetableWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TimetableWidgetTicker.kt) 在课程开始、结束和上海午夜安排一次性本地重绘。组件显示有可靠起止时间的在上主课时，继续安排下一个整分钟重绘。两种外观共享此调度，[WidgetAutoRefresh](app/src/main/java/com/upcpocket/app/widget/WidgetAutoRefresh.kt) 维护 30 分钟本地周期兜底。重绘与续排分开，防止同名任务替换正在运行的自身或每次渲染重置等待；自动课表路径不调用会联网的 `open()`，不登录 CAS，也不遍历未缓存周。校园卡另有独立的 30 分钟联网条件任务，仅存在组件时保留，首轮在联网条件满足后执行，不额外叠加一次性查询；执行时有界恢复本机账号并由 `CardBalanceService` 读取当前受控本人余额。周期不因重绘而重置，最后组件删除取消；无账号、清理中或插件不可用时不查询。
+[TimetableWidgetTicker](app/src/main/java/com/upcpocket/app/widget/TimetableWidgetTicker.kt) 安排上海午夜的一次性本地重绘。放置「今日课表」标准版或玻璃版时，同时考虑课程开始、结束和上课期间的下一个整分钟边界。各课表组件共用该调度，[WidgetAutoRefresh](app/src/main/java/com/upcpocket/app/widget/WidgetAutoRefresh.kt) 维护 30 分钟本地周期兜底。重绘与续排分开，防止同名任务替换正在运行的自身或每次渲染重置等待；自动课表路径不调用会联网的 `open()`，不登录 CAS，也不遍历未缓存周。校园卡另有独立的 30 分钟联网条件任务，仅存在组件时保留，首轮在联网条件满足后执行，不额外叠加一次性查询；执行时有界恢复本机账号并由 `CardBalanceService` 读取当前受控本人余额。周期不因重绘而重置，最后组件删除取消；无账号、清理中或插件不可用时不查询。
 
 [WidgetTimeReceiver](app/src/main/java/com/upcpocket/app/widget/WidgetTimeReceiver.kt) 只接收固定的时间/时区、开机和应用包更新系统动作，保持非导出，只处理本地重绘及调度恢复。沿用 WorkManager，不新增精确闹钟权限或常驻服务。省电等系统限制可能延迟分钟更新或下课切换。校园卡发布前复核绑定、业务和快照版本，失败保留所属账号历史数据。视觉与尺寸见[组件修订](docs/m5/2026-11-05-组件视觉修订.md)，本轮验证见 [2.0.9 开发计划](docs/design/2.0.9-update-plan.md#今日课表组件显示剩余上课时间)。
 

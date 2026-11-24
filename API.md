@@ -116,6 +116,8 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 2.1.0 的 `TimetableService.readWeekWidgetSnapshot()` 从当前账号缓存取出上海实际日期所在的周日至周六，按天给出覆盖状态和课程名、节次。相邻成功周可按实际日期补齐。完整覆盖且无课才是空周。宿主使用 `isWeekWidgetSnapshotCurrent()` 在发布前复核账号绑定、读取版本和日期，周组件整卡沿用 `WidgetLaunchTarget.TIMETABLE`。 [课表服务](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt)
 
+2.1.1 的「今明课表」和「本周课表」可通过 `readCalendarWidgetSnapshots()` 共用一次本机缓存读取。今明快照按上海日期查找今天和次日各自的覆盖，周六的次日可来自另一教学周。每一天分别报告课程、已同步无课、未同步、学期外、冲突或读取失败。`isTodayTomorrowWidgetSnapshotCurrent()` 在发布前复核账号、凭据、业务与缓存代次、读取版本和日期。整卡沿用不可变的课表导航动作。 [课表服务](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableService.kt)
+
 ## Web 本机导入契约
 
 [`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、待办、专注与外观偏好只使用浏览器本机能力；图书馆、空闲教室、学校校历和 e站通是固定官方链接，点击后由浏览器或学校页面处理认证与业务。
