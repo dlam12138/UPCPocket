@@ -71,6 +71,8 @@
     <string name="widget_timetable_tt_state_reading_hint">稍后自动显示</string>
     <string name="widget_timetable_tt_state_read_error">本机课表读取失败</string>
     <string name="widget_timetable_tt_state_read_error_hint">打开课表页重试</string>
+    <string name="widget_timetable_tt_state_unavailable">课表功能不可用</string>
+    <string name="widget_timetable_tt_state_unavailable_hint">打开应用后重试</string>
 
     <!-- 本周课表：独立 Provider，与今日组件共用本地缓存与调度，不新增持久化。 -->
     <string name="widget_timetable_week_title">本周课表</string>

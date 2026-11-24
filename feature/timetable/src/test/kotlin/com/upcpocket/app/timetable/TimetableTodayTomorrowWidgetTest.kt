@@ -51,7 +51,6 @@ class TimetableTodayTomorrowWidgetTest {
         assertTrue("课程名空间不足：$line", name.length >= 3)
         assertTrue("课程名未按预期省略：$line", name.endsWith("…"))
         assertEquals("高等…", name)
-        assertTrue(lines.truncated)
         assertEquals(0, lines.hiddenCount)
     }
 
@@ -66,7 +65,6 @@ class TimetableTodayTomorrowWidgetTest {
 
         // 连一个课程名字符都放不下时只省略名称，仍完整显示“13–14节”。
         assertEquals("13–14节 …", lines.lines.single())
-        assertTrue(lines.truncated)
     }
 
     @Test
@@ -85,7 +83,6 @@ class TimetableTodayTomorrowWidgetTest {
             compactPeriod = layout.compactPeriod,
         )
         assertEquals("第1–2节 高等数学", lines.lines.single())
-        assertFalse(lines.truncated)
     }
 
     @Test
@@ -105,7 +102,6 @@ class TimetableTodayTomorrowWidgetTest {
 
         assertEquals(2, lines.lines.size)
         assertEquals(3, lines.hiddenCount)
-        assertFalse(lines.truncated)
         assertTrue(lines.lines[0].endsWith("高等数学"))
         assertTrue(lines.lines[1].endsWith("大学物理"))
     }

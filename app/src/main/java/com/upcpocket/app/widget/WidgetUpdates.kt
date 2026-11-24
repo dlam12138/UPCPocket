@@ -17,8 +17,6 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.timetable.TIMETABLE_ZONE
 import com.upcpocket.app.timetable.TimetableService
-import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetDay
-import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetDayState
 import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetLayout
 import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetRenderer
 import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetSnapshot
@@ -322,9 +320,9 @@ object WidgetUpdates {
         if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
 
         // 先撤下不再可信的旧内容，再等待本次缓存读取；读取不在 Receiver 线程。
-        if (weekInstances.isNotEmpty()) publishImmediateWeek(context, weekInstances)
+        if (weekInstances.isNotEmpty()) publishImmediateWeek(context)
         if (todayTomorrowInstances.isNotEmpty()) {
-            publishImmediateTodayTomorrow(context, todayTomorrowInstances)
+            publishImmediateTodayTomorrow(context)
         }
         refreshCalendarWidgets(context, forceRead = forceCalendarRead)
     }
@@ -346,9 +344,9 @@ object WidgetUpdates {
             it.second == WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW
         }
         if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
-        if (weekInstances.isNotEmpty()) publishImmediateWeek(context, weekInstances)
+        if (weekInstances.isNotEmpty()) publishImmediateWeek(context)
         if (todayTomorrowInstances.isNotEmpty()) {
-            publishImmediateTodayTomorrow(context, todayTomorrowInstances)
+            publishImmediateTodayTomorrow(context)
         }
         val appContext = context.applicationContext
         scope.launch {
@@ -473,56 +471,48 @@ object WidgetUpdates {
     }
 
     /**
-     * 宿主拿不到服务时的今明占位：两个日期都是真实上海今天/次日，内容明确为
-     * 未同步，不能显示成两天无课，也不能沿用旧账号课名。
+     * 宿主拿不到课表服务时的今明状态：保留真实上海今明日期，但明确呈现
+     * “课表功能不可用”，不能伪装成未同步或两天无课，也不读缓存/不联网。
      */
     private fun unavailableTodayTomorrowSnapshot(): TimetableTodayTomorrowWidgetSnapshot {
         val today = LocalDate.now(TIMETABLE_ZONE)
-        val tomorrow = today.plusDays(1)
         return TimetableTodayTomorrowWidgetSnapshot(
-            status = TimetableTodayTomorrowWidgetStatus.OK,
+            status = TimetableTodayTomorrowWidgetStatus.UNAVAILABLE,
             today = today,
-            tomorrow = tomorrow,
-            days = listOf(
-                TimetableTodayTomorrowWidgetDay(
-                    date = today,
-                    state = TimetableTodayTomorrowWidgetDayState.UNSYNCED,
-                ),
-                TimetableTodayTomorrowWidgetDay(
-                    date = tomorrow,
-                    state = TimetableTodayTomorrowWidgetDayState.UNSYNCED,
-                ),
-            ),
+            tomorrow = today.plusDays(1),
         )
     }
 
     /** 今明版立即发布：与周版共用发布锁，失效快照必须换成日期真实的状态。 */
-    private fun publishImmediateTodayTomorrow(
-        context: Context,
-        instances: List<Pair<Int, WidgetProviderVariant>>,
-    ) = synchronized(calendarPublicationLock) {
-        val service = AppGraph.timetableServiceOrNull
-        val cached = cachedTodayTomorrowSnapshot
-        val snapshot = when {
-            service == null -> {
-                cachedTodayTomorrowSnapshot = null
-                unavailableTodayTomorrowSnapshot()
+    private fun publishImmediateTodayTomorrow(context: Context) =
+        synchronized(calendarPublicationLock) {
+            val appContext = context.applicationContext
+            val service = AppGraph.timetableServiceOrNull
+            val cached = cachedTodayTomorrowSnapshot
+            val snapshot = when {
+                service == null -> {
+                    cachedTodayTomorrowSnapshot = null
+                    unavailableTodayTomorrowSnapshot()
+                }
+                cached != null && service.isTodayTomorrowWidgetSnapshotCurrent(cached) -> cached
+                else -> {
+                    cachedTodayTomorrowSnapshot = null
+                    service.todayTomorrowWidgetPlaceholderNow()
+                }
             }
-            cached != null && service.isTodayTomorrowWidgetSnapshotCurrent(cached) -> cached
-            else -> {
-                cachedTodayTomorrowSnapshot = null
-                service.todayTomorrowWidgetPlaceholderNow()
-            }
+            publishTodayTomorrowWidgets(
+                appContext,
+                currentCalendarInstances(appContext, WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW),
+                snapshot,
+            )
         }
-        publishTodayTomorrowWidgets(context.applicationContext, instances, snapshot)
-    }
 
     /** 今明版读后提交：锁内复核候选快照，过期读取只发布占位状态。 */
     private fun commitTodayTomorrowRead(
         context: Context,
-        instances: List<Pair<Int, WidgetProviderVariant>>,
         read: TimetableTodayTomorrowWidgetSnapshot,
     ) = synchronized(calendarPublicationLock) {
+        val appContext = context.applicationContext
         val service = AppGraph.timetableServiceOrNull
         val snapshot = if (!read.isReadResult) {
             read
@@ -533,7 +523,11 @@ object WidgetUpdates {
             cachedTodayTomorrowSnapshot = null
             service?.todayTomorrowWidgetPlaceholderNow() ?: unavailableTodayTomorrowSnapshot()
         }
-        publishTodayTomorrowWidgets(context.applicationContext, instances, snapshot)
+        publishTodayTomorrowWidgets(
+            appContext,
+            currentCalendarInstances(appContext, WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW),
+            snapshot,
+        )
     }
 
     private fun unavailableWeekSnapshot(): TimetableWeekWidgetSnapshot {
@@ -549,32 +543,35 @@ object WidgetUpdates {
      * 立即撤下/重绘：在发布锁内复核内存快照，失效就改发不含课程的占位状态。
      * 与读后发布共用同一把锁，保证清理后的空状态不会被迟到的旧读取覆盖。
      */
-    private fun publishImmediateWeek(
-        context: Context,
-        instances: List<Pair<Int, WidgetProviderVariant>>,
-    ) = synchronized(calendarPublicationLock) {
-        val service = AppGraph.timetableServiceOrNull
-        val cached = cachedWeekSnapshot
-        val snapshot = when {
-            service == null -> {
-                cachedWeekSnapshot = null
-                unavailableWeekSnapshot()
+    private fun publishImmediateWeek(context: Context) =
+        synchronized(calendarPublicationLock) {
+            val appContext = context.applicationContext
+            val service = AppGraph.timetableServiceOrNull
+            val cached = cachedWeekSnapshot
+            val snapshot = when {
+                service == null -> {
+                    cachedWeekSnapshot = null
+                    unavailableWeekSnapshot()
+                }
+                cached != null && service.isWeekWidgetSnapshotCurrent(cached) -> cached
+                else -> {
+                    cachedWeekSnapshot = null
+                    service.weekWidgetPlaceholderNow()
+                }
             }
-            cached != null && service.isWeekWidgetSnapshotCurrent(cached) -> cached
-            else -> {
-                cachedWeekSnapshot = null
-                service.weekWidgetPlaceholderNow()
-            }
+            publishWeekWidgets(
+                appContext,
+                currentCalendarInstances(appContext, WidgetProviderVariant.TIMETABLE_WEEK),
+                snapshot,
+            )
         }
-        publishWeekWidgets(context.applicationContext, instances, snapshot)
-    }
 
     /** 读后提交：锁内复核候选快照，过期读取只发布占位状态。 */
     private fun commitWeekRead(
         context: Context,
-        instances: List<Pair<Int, WidgetProviderVariant>>,
         read: TimetableWeekWidgetSnapshot,
     ) = synchronized(calendarPublicationLock) {
+        val appContext = context.applicationContext
         val service = AppGraph.timetableServiceOrNull
         val snapshot = if (!read.isReadResult) {
             read
@@ -585,8 +582,22 @@ object WidgetUpdates {
             cachedWeekSnapshot = null
             service?.weekWidgetPlaceholderNow() ?: unavailableWeekSnapshot()
         }
-        publishWeekWidgets(context.applicationContext, instances, snapshot)
+        publishWeekWidgets(
+            appContext,
+            currentCalendarInstances(appContext, WidgetProviderVariant.TIMETABLE_WEEK),
+            snapshot,
+        )
     }
+
+    /**
+     * 发布锁内重新查询当前实例。读取/等待期间新增的实例可能只收到占位，
+     * 已移除的实例也不应再收到整卡更新；因此不能沿用读取开始时捕获的列表。
+     */
+    private fun currentCalendarInstances(
+        context: Context,
+        variant: WidgetProviderVariant,
+    ): List<Pair<Int, WidgetProviderVariant>> =
+        widgetEntries(context, WidgetKind.TIMETABLE).filter { it.second == variant }
 
     /**
      * 串行读取课表缓存。周版与今明版同时需要刷新时只调用一次服务读取，两个
@@ -607,9 +618,9 @@ object WidgetUpdates {
             if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
             val service = AppGraph.timetableServiceOrNull
             if (service == null) {
-                if (weekInstances.isNotEmpty()) publishImmediateWeek(appContext, weekInstances)
+                if (weekInstances.isNotEmpty()) publishImmediateWeek(appContext)
                 if (todayTomorrowInstances.isNotEmpty()) {
-                    publishImmediateTodayTomorrow(appContext, todayTomorrowInstances)
+                    publishImmediateTodayTomorrow(appContext)
                 }
                 return
             }
@@ -619,7 +630,15 @@ object WidgetUpdates {
             val weekNeedsRead = weekInstances.isNotEmpty() && (forceRead || !weekCurrent)
             val todayTomorrowNeedsRead = todayTomorrowInstances.isNotEmpty() &&
                 (forceRead || !todayTomorrowCurrent)
-            if (!weekNeedsRead && !todayTomorrowNeedsRead) return
+            if (!weekNeedsRead && !todayTomorrowNeedsRead) {
+                // 排队等待期间新增的实例可能只收到占位；缓存已有效时也要按
+                // 当前实例重绘，而不是直接返回把新实例留在读取中。
+                if (weekInstances.isNotEmpty()) publishImmediateWeek(appContext)
+                if (todayTomorrowInstances.isNotEmpty()) {
+                    publishImmediateTodayTomorrow(appContext)
+                }
+                return
+            }
 
             val read = try {
                 service.readCalendarWidgetSnapshots(
@@ -634,14 +653,12 @@ object WidgetUpdates {
             if (weekNeedsRead) {
                 commitWeekRead(
                     appContext,
-                    weekInstances,
                     read?.week ?: service.weekWidgetPlaceholderNow(),
                 )
             }
             if (todayTomorrowNeedsRead) {
                 commitTodayTomorrowRead(
                     appContext,
-                    todayTomorrowInstances,
                     read?.todayTomorrow ?: service.todayTomorrowWidgetPlaceholderNow(),
                 )
             }

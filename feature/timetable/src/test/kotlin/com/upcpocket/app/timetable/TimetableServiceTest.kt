@@ -1608,7 +1608,6 @@ class TimetableServiceTest {
 
         assertEquals(TimetableTodayTomorrowWidgetStatus.OK, snapshot.status)
         assertTrue(snapshot.days.all { it.state == TimetableTodayTomorrowWidgetDayState.EMPTY })
-        assertEquals(now, snapshot.fetchedAtEpochMillis)
         assertEquals(
             listOf(LocalDate.parse("2026-10-28"), LocalDate.parse("2026-10-29")),
             snapshot.days.map { it.date },

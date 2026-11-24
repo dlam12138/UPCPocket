@@ -195,6 +195,11 @@ object TimetableTodayTomorrowWidgetRenderer {
                 R.string.widget_timetable_tt_state_reading_hint,
                 false,
             )
+            TimetableTodayTomorrowWidgetStatus.UNAVAILABLE -> Triple(
+                R.string.widget_timetable_tt_state_unavailable,
+                R.string.widget_timetable_tt_state_unavailable_hint,
+                true,
+            )
             // 数据状态由 render 的两日分支处理；防御性回退为读取失败，不伪造无课。
             TimetableTodayTomorrowWidgetStatus.OK,
             TimetableTodayTomorrowWidgetStatus.READ_ERROR,

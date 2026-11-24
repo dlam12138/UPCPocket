@@ -16,6 +16,9 @@ enum class TimetableTodayTomorrowWidgetStatus {
     NO_ACCOUNT,
     ACCOUNT_LOADING,
     CLEANUP,
+
+    /** 宿主在当前进程拿不到课表能力；不是账号状态，也不能显示成未同步。 */
+    UNAVAILABLE,
 }
 
 enum class TimetableTodayTomorrowWidgetDayState {
@@ -73,7 +76,6 @@ data class TimetableTodayTomorrowWidgetSnapshot(
     val today: LocalDate,
     val tomorrow: LocalDate,
     val days: List<TimetableTodayTomorrowWidgetDay> = emptyList(),
-    val fetchedAtEpochMillis: Long? = null,
 ) {
     init {
         require(tomorrow == today.plusDays(1)) { "次日必须是今天的下一天" }
@@ -162,7 +164,6 @@ data class TimetableTodayTomorrowWidgetLayout(
 internal data class TimetableTodayTomorrowWidgetCourseLines(
     val lines: List<String>,
     val hiddenCount: Int,
-    val truncated: Boolean,
 )
 
 /**
@@ -175,21 +176,17 @@ internal fun todayTomorrowCourseLines(
     maxChars: Int,
     compactPeriod: Boolean,
 ): TimetableTodayTomorrowWidgetCourseLines {
-    if (courses.isEmpty()) return TimetableTodayTomorrowWidgetCourseLines(emptyList(), 0, false)
+    if (courses.isEmpty()) return TimetableTodayTomorrowWidgetCourseLines(emptyList(), 0)
     val cap = maxCourses.coerceIn(1, MAX_TODAY_TOMORROW_COURSE_LINES)
     val visible = courses.take(cap)
     val hidden = courses.size - visible.size
-    var truncated = false
     val lines = visible.map { course ->
         val period = if (compactPeriod) course.compactPeriodLabel else course.periodLabel
-        val fitted = fitTodayTomorrowLine(period, course.name, maxChars)
-        truncated = truncated || fitted.second
-        fitted.first
+        fitTodayTomorrowLine(period, course.name, maxChars)
     }
     return TimetableTodayTomorrowWidgetCourseLines(
         lines = lines,
         hiddenCount = hidden,
-        truncated = truncated,
     )
 }
 
@@ -202,10 +199,10 @@ private fun fitTodayTomorrowLine(
     period: String,
     name: String,
     maxChars: Int,
-): Pair<String, Boolean> {
+): String {
     val budget = maxChars.coerceAtLeast(1).toFloat()
     val nameBudget = budget - glyphUnits(period) - SPACE_UNITS
-    if (nameBudget <= 0f) return period to true
+    if (nameBudget <= 0f) return period
     var taken = 0f
     var end = 0
     while (end < name.length) {
@@ -214,9 +211,9 @@ private fun fitTodayTomorrowLine(
         taken = next
         end += 1
     }
-    if (end == name.length) return "$period $name" to false
-    if (end == 0) return "$period …" to true
-    return "$period ${name.take(end)}…" to true
+    if (end == name.length) return "$period $name"
+    if (end == 0) return "$period …"
+    return "$period ${name.take(end)}…"
 }
 
 private fun glyphUnits(char: Char): Float =

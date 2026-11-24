@@ -53,7 +53,6 @@ class TimetableTodayTomorrowWidgetRendererTest {
             TimetableTodayTomorrowWidgetDay(today, todayState, todayCourses),
             TimetableTodayTomorrowWidgetDay(tomorrow, tomorrowState, tomorrowCourses),
         ),
-        fetchedAtEpochMillis = 1_700_000_000_000,
     )
 
     private fun rendered(
@@ -233,6 +232,29 @@ class TimetableTodayTomorrowWidgetRendererTest {
         assertEquals("读取失败", text(root, R.id.widget_timetable_tt_today_course_1))
         assertEquals("读取失败", text(root, R.id.widget_timetable_tt_tomorrow_course_1))
         assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_tt_state).visibility)
+    }
+
+    @Test
+    fun `missing timetable capability is explicit instead of unsynced`() {
+        val root = applied(
+            rendered(
+                TimetableTodayTomorrowWidgetSnapshot(
+                    status = TimetableTodayTomorrowWidgetStatus.UNAVAILABLE,
+                    today = today,
+                    tomorrow = tomorrow,
+                ),
+            ),
+        )
+
+        assertEquals(View.GONE, root.findViewById<View>(R.id.widget_timetable_tt_content).visibility)
+        assertEquals(View.VISIBLE, root.findViewById<View>(R.id.widget_timetable_tt_state).visibility)
+        assertEquals(
+            "课表功能不可用",
+            text(root, R.id.widget_timetable_tt_state_title),
+        )
+        assertTrue(text(root, R.id.widget_timetable_tt_state_hint).isNotEmpty())
+        // 整卡导航仍指向课表入口，插件不可用时由应用现有路由回退首页。
+        assertTrue(root.hasOnClickListeners())
     }
 
     @Test

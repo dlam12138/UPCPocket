@@ -685,8 +685,7 @@ class TimetableService(
         fun snapshot(
             status: TimetableTodayTomorrowWidgetStatus,
             days: List<TimetableTodayTomorrowWidgetDay> = emptyList(),
-            fetchedAt: Long? = null,
-        ) = TimetableTodayTomorrowWidgetSnapshot(status, today, tomorrow, days, fetchedAt)
+        ) = TimetableTodayTomorrowWidgetSnapshot(status, today, tomorrow, days)
 
         return when (result) {
             TimetableCacheReadResult.Missing -> snapshot(
@@ -708,15 +707,10 @@ class TimetableService(
             )
             is TimetableCacheReadResult.Available -> {
                 val cache = result.cache
-                var newestFetchedAt: Long? = null
                 val days = listOf(today, tomorrow).map { date ->
                     val projection = projectWidgetDay(cache, date)
                     when (val coverage = projection.coverage) {
                         is CachedWeekCoverage.Found -> {
-                            val fetched = coverage.week.fetchedAtEpochMillis
-                            newestFetchedAt = newestFetchedAt
-                                ?.let { maxOf(it, fetched) }
-                                ?: fetched
                             val courses = coverage.week.meetings
                                 .filter { it.date == date }
                                 .sortedWith(meetingComparator())
@@ -750,7 +744,6 @@ class TimetableService(
                 snapshot(
                     status = TimetableTodayTomorrowWidgetStatus.OK,
                     days = days,
-                    fetchedAt = newestFetchedAt,
                 )
             }
         }
