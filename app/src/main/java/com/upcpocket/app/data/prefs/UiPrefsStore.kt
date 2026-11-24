@@ -19,6 +19,7 @@ import com.upcpocket.app.designsystem.UiStyle
 import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.designsystem.normalizeOpaqueSeedArgb
 import com.upcpocket.app.designsystem.sanitizeCustomBackgroundOpacity
+import com.upcpocket.app.timetable.TimetableDisplayMode
 import com.upcpocket.app.timetable.TimetableModuleId
 import java.time.LocalDate
 import kotlinx.coroutines.flow.Flow
@@ -87,6 +88,13 @@ data class UiPrefs(
     /** 课表页模块上下排序偏好；缺键或未知值回退 [TimetableModuleId.DEFAULT_ORDER]。 */
     val timetableModuleOrder: List<TimetableModuleId> = TimetableModuleId.DEFAULT_ORDER,
     /**
+     * 课表页展示范围：全部或仅看课程。
+     *
+     * 只控制课表页本机日程待办、个人日程卡与日期日程入口的显隐，不改变课程数据、
+     * 选周、学校请求或系统入口；缺键与未知值回退 [TimetableDisplayMode.ALL]。
+     */
+    val timetableDisplayMode: TimetableDisplayMode = TimetableDisplayMode.ALL,
+    /**
      * 是否允许长按拖动首页/课表卡片；缺键默认关闭。
      *
      * 关闭只锁定交互，不影响 [homeModuleOrder] / [timetableModuleOrder] 的渲染与保留。
@@ -153,6 +161,9 @@ class UiPrefsStore internal constructor(
             todoHostPlacement = TodoHostPlacement.fromStoredValue(p[KEY_TODO_HOST_PLACEMENT]),
             homeModuleOrder = HomeModuleId.fromStoredValue(p[KEY_HOME_MODULE_ORDER]),
             timetableModuleOrder = TimetableModuleId.fromStoredValue(p[KEY_TIMETABLE_MODULE_ORDER]),
+            timetableDisplayMode = TimetableDisplayMode.fromStoredValue(
+                p[KEY_TIMETABLE_DISPLAY_MODE],
+            ),
             moduleReorderEnabled = p[KEY_MODULE_REORDER_ENABLED] ?: false,
             homeAnniversary = HomeAnniversarySettings(
                 title = p[KEY_HOME_ANNIVERSARY_TITLE].orEmpty(),
@@ -251,6 +262,10 @@ class UiPrefsStore internal constructor(
         p[KEY_TIMETABLE_MODULE_ORDER] = TimetableModuleId.toStoredValue(order)
     }
 
+    /** 只保存课表页展示范围；切换不触发学校请求，也不改变已选教学周。 */
+    suspend fun setTimetableDisplayMode(v: TimetableDisplayMode) =
+        store.edit { p -> p[KEY_TIMETABLE_DISPLAY_MODE] = v.name }
+
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
         widgetAppearanceSnapshot = v
@@ -311,6 +326,9 @@ class UiPrefsStore internal constructor(
 
         /** 课表页模块排序（逗号分隔枚举名）；缺键回退默认顺序。 */
         val KEY_TIMETABLE_MODULE_ORDER = stringPreferencesKey("timetable_module_order")
+
+        /** 课表页展示范围（全部/仅看课程）；缺键回退「全部」。 */
+        val KEY_TIMETABLE_DISPLAY_MODE = stringPreferencesKey("timetable_display_mode")
 
         /** 首页/课表长按拖动开关；缺键默认关闭。 */
         val KEY_MODULE_REORDER_ENABLED = booleanPreferencesKey("module_reorder_enabled")

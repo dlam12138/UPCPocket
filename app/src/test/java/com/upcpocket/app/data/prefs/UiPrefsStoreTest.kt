@@ -13,6 +13,7 @@ import com.upcpocket.app.designsystem.MAX_CUSTOM_BACKGROUND_OPACITY
 import com.upcpocket.app.designsystem.MIN_CUSTOM_BACKGROUND_OPACITY
 import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.designsystem.WidgetAppearance
+import com.upcpocket.app.timetable.TimetableDisplayMode
 import com.upcpocket.app.timetable.TimetableModuleId
 import androidx.datastore.preferences.core.floatPreferencesKey
 import java.io.File
@@ -100,6 +101,30 @@ class UiPrefsStoreTest {
         assertEquals(
             TodoHostPlacement.TIMETABLE,
             UiPrefsStore(dataStore).flow.first().todoHostPlacement,
+        )
+    }
+
+    @Test
+    fun `timetable display mode defaults to all when unset or unknown and persists`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        assertEquals(TimetableDisplayMode.ALL, store.flow.first().timetableDisplayMode)
+
+        dataStore.edit { it[stringPreferencesKey("timetable_display_mode")] = "SYNTHETIC_MODE" }
+        assertEquals(
+            TimetableDisplayMode.ALL,
+            UiPrefsStore(dataStore).flow.first().timetableDisplayMode,
+        )
+
+        store.setTimetableDisplayMode(TimetableDisplayMode.COURSES_ONLY)
+        assertEquals(
+            TimetableDisplayMode.COURSES_ONLY,
+            UiPrefsStore(dataStore).flow.first().timetableDisplayMode,
+        )
+
+        store.setTimetableDisplayMode(TimetableDisplayMode.ALL)
+        assertEquals(
+            TimetableDisplayMode.ALL,
+            UiPrefsStore(dataStore).flow.first().timetableDisplayMode,
         )
     }
 

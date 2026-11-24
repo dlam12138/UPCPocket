@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -20,6 +23,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
@@ -37,6 +41,7 @@ import com.upcpocket.app.upcauth.UpcAuthCookie
 import com.upcpocket.app.upcauth.UpcAuthFailure
 import com.upcpocket.app.upcauth.UpcAuthResult
 import java.io.File
+import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.runBlocking
@@ -154,6 +159,174 @@ class TimetableFirstLoginScreenTest {
         val reorderedTimetableTop = rule.onNodeWithTag("timetable_module_timetable")
             .fetchSemanticsNode().boundsInRoot.top
         assertTrue("拖放后周课表模块应位于日程待办上方", reorderedTimetableTop < reorderedTodoTop)
+    }
+
+    @Test
+    fun coursesOnlyHidesLocalAgendaAndKeepsSelectedWeekAndRequests() {
+        auth.result = UpcAuthResult.Success(
+            listOf(
+                UpcAuthCookie(
+                    name = "eai-sess",
+                    value = "synthetic-session",
+                    domain = "app.upc.edu.cn",
+                    path = "/",
+                    secure = true,
+                    httpOnly = true,
+                    expiresAtEpochSeconds = null,
+                ),
+            ),
+        )
+        var requests = 0
+        val transport = ProgrammedTransport { request ->
+            requests++
+            when {
+                request.method == "GET" ->
+                    json(javaClass.getResource("/timetable_index.json")!!.readText())
+                request.body.orEmpty().contains("week=9") ->
+                    json(javaClass.getResource("/timetable_week_09_empty.json")!!.readText())
+                else ->
+                    json(javaClass.getResource("/timetable_week_08.json")!!.readText())
+            }
+        }
+        val service = service(transport)
+        val viewModel = TimetableViewModel(service)
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        val agenda = FakeAgenda(
+            listOf(
+                agendaEntry("a-today", "今日本机日程", today, 9),
+                agendaEntry("a-week", "周内本机日程", LocalDate.parse("2026-10-28"), 9),
+            ),
+        )
+        var mode by mutableStateOf<TimetableDisplayMode?>(TimetableDisplayMode.ALL)
+        val modeChanges = mutableListOf<TimetableDisplayMode>()
+        rule.setContent {
+            CompositionLocalProvider(
+                LocalTimetableTodoSlot provides { Text("合并日程槽位") },
+                LocalTimetablePersonalAgenda provides agenda,
+                LocalTimetableDisplayPreference provides TimetableDisplayPreference(
+                    mode = mode,
+                    onModeChange = {
+                        modeChanges += it
+                        mode = it
+                    },
+                ),
+            ) {
+                MaterialTheme {
+                    TimetableScreen(viewModel = viewModel, onOpenAccountSettings = {})
+                }
+            }
+        }
+        rule.waitUntil(5_000) {
+            service.state.value.weekState == TimetableWeekState.READY
+        }
+        rule.waitForIdle()
+
+        // 「全部」第 8 周：实际周网格、个人日程卡、待办槽位、日期标记与日期入口都可用。
+        rule.onNode(
+            hasContentDescription("课程详情 示例课程A", substring = true) and
+                hasContentDescription("第6节、第7节", substring = true),
+        ).assertExists()
+        rule.onNodeWithTag("timetable_personal_agenda").assertExists()
+        rule.onNodeWithText("合并日程槽位").assertIsDisplayed()
+        rule.onNodeWithTag("timetable_day_agenda_2026-10-28", useUnmergedTree = true)
+            .assertExists()
+        rule.onNodeWithTag("timetable_day_header_2026-10-28")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        val allModeRequests = requests
+
+        // 同一有课周切到「仅看课程」：待办、日程卡、日期标记和日期点击全部撤下，
+        // 课程、日期表头与选周保留，且切换本身不产生学校请求。
+        // 分段按钮在 Robolectric 下不接收注入触摸（独立最小用例可复现），这里直接
+        // 触发按钮自身暴露的 OnClick 语义动作，回调与真实点按相同。
+        rule.onNodeWithText("仅看课程").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        assertEquals(TimetableDisplayMode.COURSES_ONLY, modeChanges.last())
+        rule.onNodeWithTag("timetable_personal_agenda").assertDoesNotExist()
+        rule.onNodeWithText("合并日程槽位").assertDoesNotExist()
+        rule.onNodeWithTag("timetable_day_agenda_2026-10-28", useUnmergedTree = true)
+            .assertDoesNotExist()
+        rule.onNode(
+            hasContentDescription("课程详情 示例课程A", substring = true) and
+                hasContentDescription("第6节、第7节", substring = true),
+        ).assertExists()
+        rule.onNodeWithText("第 8 周").assertExists()
+        rule.onNodeWithTag("timetable_day_header_2026-10-28")
+            .assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
+        assertEquals(allModeRequests, requests)
+
+        // 切回「全部」：待办回到原位置，日程卡与标记恢复，仍停在第 8 周。
+        rule.onNodeWithText("全部").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        assertEquals(TimetableDisplayMode.ALL, modeChanges.last())
+        rule.onNodeWithText("合并日程槽位").assertExists()
+        rule.onNodeWithTag("timetable_personal_agenda").assertExists()
+        rule.onNodeWithTag("timetable_day_agenda_2026-10-28", useUnmergedTree = true)
+            .assertExists()
+        val todoTop = rule.onNodeWithTag("timetable_module_todo_schedule")
+            .fetchSemanticsNode().boundsInRoot.top
+        val timetableTop = rule.onNodeWithTag("timetable_module_timetable")
+            .fetchSemanticsNode().boundsInRoot.top
+        assertTrue("切回全部后日程待办应回到周课表上方", todoTop < timetableTop)
+        rule.onNodeWithText("第 8 周").assertExists()
+        assertEquals(allModeRequests, requests)
+
+        // 手选第 9 周后再切换：保留选周与课程状态，切换仍不额外请求。选周同样走
+        // 语义点击，避免 Robolectric 的弹层触摸注入差异影响断言。
+        rule.onNodeWithText("第 8 周").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.onNodeWithText("第 9 周")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitUntil(5_000) {
+            service.state.value.selectedWeek == 9 &&
+                service.state.value.weekState == TimetableWeekState.EMPTY
+        }
+        rule.waitForIdle()
+        val week9Requests = requests
+        assertTrue(week9Requests > allModeRequests)
+        rule.onNodeWithText("本周无课程").assertExists()
+
+        rule.onNodeWithText("仅看课程").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        rule.onNodeWithText("第 9 周").assertExists()
+        rule.onNodeWithText("本周无课程").assertExists()
+        assertEquals(week9Requests, requests)
+
+        rule.onNodeWithText("全部").performScrollTo()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        rule.onNodeWithText("第 9 周").assertExists()
+        assertEquals(week9Requests, requests)
+    }
+
+    private fun agendaEntry(
+        id: String,
+        title: String,
+        date: LocalDate,
+        startHour: Int,
+    ): TimetableAgendaEntry = TimetableAgendaEntry(
+        id = id,
+        title = title,
+        startAt = date.atTime(startHour, 0).atZone(TIMETABLE_ZONE).toInstant().toEpochMilli(),
+        endAt = date.atTime(startHour + 1, 0).atZone(TIMETABLE_ZONE).toInstant().toEpochMilli(),
+    )
+
+    private class FakeAgenda(
+        private val entries: List<TimetableAgendaEntry>,
+    ) : TimetablePersonalAgenda {
+        @Composable
+        override fun windowState(window: TimetableAgendaWindow): TimetableAgendaState =
+            TimetableAgendaState.Ready(
+                entries.filter {
+                    it.startAt < window.untilExclusive && it.endAt > window.fromInclusive
+                },
+            )
+
+        override fun openCreate(date: LocalDate) = Unit
+
+        override fun openEdit(id: String) = Unit
     }
 
     @Test

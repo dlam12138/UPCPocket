@@ -83,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
+import com.upcpocket.app.ui.components.CampusSegmentedTabs
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.ReorderableModuleColumn
 import com.upcpocket.app.ui.components.glassHighlight
@@ -129,6 +130,38 @@ data class TimetableModuleLayout(
     val reorderEnabled: Boolean = false,
     val onOrderChange: (List<TimetableModuleId>) -> Unit = {},
 )
+
+/**
+ * 课表页展示范围。
+ *
+ * [ALL] 同时显示课程和本机日程待办/个人日程；[COURSES_ONLY] 只保留课程网格、
+ * 学期/选周与课程详情。切换只改变展示，不触发学校请求，也不改变已选教学周。
+ */
+enum class TimetableDisplayMode(val label: String) {
+    ALL("全部"),
+    COURSES_ONLY("仅看课程");
+
+    companion object {
+        /** DataStore 只保存枚举名；缺键或未知值回退 [ALL]。 */
+        fun fromStoredValue(raw: String?): TimetableDisplayMode =
+            entries.firstOrNull { it.name == raw } ?: ALL
+    }
+}
+
+/**
+ * 宿主注入的课表页展示范围偏好与写回回调。
+ *
+ * 未注入时默认 [TimetableDisplayMode.ALL] 且不提供写回回调，直接挂载待办槽位或
+ * 模块排序的旧调用者保持原有内容与控件；只有宿主显式把 [mode] 传为 null 才表示
+ * 本机偏好尚未读到：页面暂不渲染切换控件，并按“仅看课程”隐藏本机日程内容，
+ * 避免先露出可能应隐藏的卡片后再收起。
+ */
+data class TimetableDisplayPreference(
+    val mode: TimetableDisplayMode? = TimetableDisplayMode.ALL,
+    val onModeChange: ((TimetableDisplayMode) -> Unit)? = null,
+)
+
+val LocalTimetableDisplayPreference = compositionLocalOf { TimetableDisplayPreference() }
 
 /**
  * 宿主装配的课表页顶部槽位。
@@ -238,52 +271,79 @@ internal fun TimetableScreen(
     val scrollState = rememberScrollState()
     val todoSlot = LocalTimetableTodoSlot.current
     val personalAgenda = LocalTimetablePersonalAgenda.current
+    val displayPreference = LocalTimetableDisplayPreference.current
+    val onDisplayModeChange = displayPreference.onModeChange
+    // 没有日程待办或个人日程能力时，切换控件没有可隐藏的内容，直接按课程展示。
+    val hasLocalAgendaContent = todoSlot != null || personalAgenda != null
+    // 未注入偏好时默认「全部」；宿主显式传 null 表示尚未读到，先按“仅看课程”处理。
+    val coursesOnly = hasLocalAgendaContent &&
+        displayPreference.mode != TimetableDisplayMode.ALL
+    // 同一个可见性条件过滤待办槽位与个人日程：仅课程时二者均不进入组合，相关的
+    // 窗口订阅、30 秒计时、日期入口和弹层随之停止或撤下，课程与选周保持不变。
+    val visibleTodoSlot = todoSlot.takeUnless { coursesOnly }
+    val visiblePersonalAgenda = personalAgenda.takeUnless { coursesOnly }
     // 日期与当日列表都是本机状态；保存 epochDay，配置变更后仍停留在同一日期。
     var agendaEpochDay by rememberSaveable {
         mutableLongStateOf(LocalDate.now(TIMETABLE_ZONE).toEpochDay())
     }
     var agendaSheetEpochDay by rememberSaveable { mutableStateOf<Long?>(null) }
     val agendaDate = LocalDate.ofEpochDay(agendaEpochDay)
-    val agendaNowMillis = rememberAgendaNowMillis()
-    val agendaDayState = if (personalAgenda != null) {
-        personalAgenda.windowState(timetableAgendaDayWindow(agendaDate))
-    } else {
-        TimetableAgendaState.Loading
-    }
-    // 周网格标记只读取当前实际周列日期；未查询或日期不完整时不推断。
-    val weekAgendaWindow = remember(state.weekDates) {
-        timetableAgendaWeekWindow(state.weekDates)
-            ?.takeIf { state.weekDates.size == 7 }
-    }
-    val weekAgendaState = if (personalAgenda != null && weekAgendaWindow != null) {
-        personalAgenda.windowState(weekAgendaWindow)
+    val agendaNowMillis = if (visiblePersonalAgenda != null) {
+        rememberAgendaNowMillis()
     } else {
         null
     }
-    val daysWithAgenda = remember(weekAgendaState, state.weekDates) {
-        val entries = (weekAgendaState as? TimetableAgendaState.Ready)?.entries.orEmpty()
-        if (entries.isEmpty() || state.weekDates.size != 7) {
-            emptySet()
-        } else {
-            state.weekDates.filterTo(mutableSetOf()) { date ->
-                entries.any { timetableAgendaCoversDate(it, date) }
+    val agendaDayState = if (visiblePersonalAgenda != null) {
+        visiblePersonalAgenda.windowState(timetableAgendaDayWindow(agendaDate))
+    } else {
+        null
+    }
+    // 周网格标记只读取当前实际周列日期；未查询或日期不完整时不推断。
+    val weekAgendaWindow = if (visiblePersonalAgenda == null) {
+        null
+    } else {
+        remember(state.weekDates) {
+            timetableAgendaWeekWindow(state.weekDates)
+                ?.takeIf { state.weekDates.size == 7 }
+        }
+    }
+    val weekAgendaState = if (visiblePersonalAgenda != null && weekAgendaWindow != null) {
+        visiblePersonalAgenda.windowState(weekAgendaWindow)
+    } else {
+        null
+    }
+    val daysWithAgenda: Set<LocalDate> = if (weekAgendaState == null) {
+        emptySet()
+    } else {
+        remember(weekAgendaState, state.weekDates) {
+            val entries = (weekAgendaState as? TimetableAgendaState.Ready)?.entries.orEmpty()
+            if (entries.isEmpty() || state.weekDates.size != 7) {
+                emptySet()
+            } else {
+                state.weekDates.filterTo(mutableSetOf()) { date ->
+                    entries.any { timetableAgendaCoversDate(it, date) }
+                }
             }
         }
     }
     val sheetEpochDay = agendaSheetEpochDay
     val agendaSheetDate = sheetEpochDay?.let { LocalDate.ofEpochDay(it) }
-    val agendaSheetState = if (personalAgenda != null && agendaSheetDate != null) {
-        personalAgenda.windowState(timetableAgendaDayWindow(agendaSheetDate))
+    val agendaSheetState = if (visiblePersonalAgenda != null && agendaSheetDate != null) {
+        visiblePersonalAgenda.windowState(timetableAgendaDayWindow(agendaSheetDate))
     } else {
         null
+    }
+    // 切到仅课程时撤下已打开的日期日程弹层，切回后不自动重开。
+    LaunchedEffect(coursesOnly) {
+        if (coursesOnly) agendaSheetEpochDay = null
     }
     val moduleLayout = LocalTimetableModuleLayout.current
     val normalizedOrder = remember(moduleLayout.order) {
         normalizeModuleOrder(moduleLayout.order, TimetableModuleId.DEFAULT_ORDER)
     }
-    val visibleModules = remember(normalizedOrder, todoSlot != null) {
+    val visibleModules = remember(normalizedOrder, visibleTodoSlot != null) {
         normalizedOrder.filter { module ->
-            module != TimetableModuleId.TODO_SCHEDULE || todoSlot != null
+            module != TimetableModuleId.TODO_SCHEDULE || visibleTodoSlot != null
         }
     }
     val onReorderFinished = remember(normalizedOrder, moduleLayout.onOrderChange) {
@@ -329,12 +389,32 @@ internal fun TimetableScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (hasLocalAgendaContent && displayPreference.mode != null &&
+                onDisplayModeChange != null
+            ) {
+                CampusSegmentedTabs(
+                    tabs = TimetableDisplayMode.entries.map { it.label },
+                    selectedIndex = if (coursesOnly) {
+                        TimetableDisplayMode.COURSES_ONLY.ordinal
+                    } else {
+                        TimetableDisplayMode.ALL.ordinal
+                    },
+                    onSelect = { index ->
+                        TimetableDisplayMode.entries.getOrNull(index)
+                            ?.let(onDisplayModeChange)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("timetable_display_mode"),
+                )
+            }
             ReorderableModuleColumn(
                 items = visibleModules,
                 key = ::timetableModuleKey,
                 scrollState = scrollState,
                 spacing = 8.dp,
-                enabled = moduleLayout.reorderEnabled,
+                // 仅看课程时只有周课表一项，不需要拖动，也不写回排序。
+                enabled = moduleLayout.reorderEnabled && !coursesOnly,
                 itemLabel = ::timetableModuleLabel,
                 itemTestTag = ::timetableModuleTestTag,
                 itemGrouped = { module ->
@@ -344,25 +424,27 @@ internal fun TimetableScreen(
             ) { module, _ ->
                 when (module) {
                     TimetableModuleId.TODO_SCHEDULE -> {
-                        todoSlot?.invoke()
+                        visibleTodoSlot?.invoke()
                     }
                     TimetableModuleId.TIMETABLE -> {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            // 个人日程只读本机，不依赖学校账号、登录或周查询；始终在
-                            // 课表模块内提供日期入口与新增/编辑。
-                            if (personalAgenda != null) {
+                            // 个人日程只读本机，不依赖学校账号、登录或周查询；在
+                            // 「全部」下提供日期入口与新增/编辑，「仅看课程」时隐藏。
+                            if (visiblePersonalAgenda != null && agendaDayState != null) {
                                 TimetablePersonalAgendaCard(
                                     state = agendaDayState,
                                     selectedDate = agendaDate,
                                     // 只有查看上海实际今天时才标「进行中/已结束」。
-                                    nowMinute = agendaMinuteForDate(agendaNowMillis, agendaDate),
+                                    nowMinute = agendaNowMillis?.let {
+                                        agendaMinuteForDate(it, agendaDate)
+                                    },
                                     showShanghaiTime = timetableAgendaNeedsShanghaiNote(),
                                     onSelectDate = { agendaEpochDay = it.toEpochDay() },
-                                    onCreate = personalAgenda::openCreate,
-                                    onEdit = personalAgenda::openEdit,
+                                    onCreate = visiblePersonalAgenda::openCreate,
+                                    onEdit = visiblePersonalAgenda::openEdit,
                                 )
                             }
                             when {
@@ -411,7 +493,7 @@ internal fun TimetableScreen(
                                                 detail = it.selection(state.accountEpoch)
                                             },
                                             daysWithAgenda = daysWithAgenda,
-                                            onAgendaDateClick = personalAgenda?.let { agenda ->
+                                            onAgendaDateClick = visiblePersonalAgenda?.let { agenda ->
                                                 { date ->
                                                     agendaEpochDay = date.toEpochDay()
                                                     agendaSheetEpochDay = date.toEpochDay()
@@ -469,20 +551,22 @@ internal fun TimetableScreen(
             },
         )
     }
-    if (personalAgenda != null && agendaSheetDate != null && agendaSheetState != null) {
+    if (visiblePersonalAgenda != null && agendaSheetDate != null &&
+        agendaSheetState != null
+    ) {
         TimetableAgendaDaySheet(
             state = agendaSheetState,
             date = agendaSheetDate,
             // 弹窗可能停留在昨天或明天，只有实际今天才显示进行状态。
-            nowMinute = agendaMinuteForDate(agendaNowMillis, agendaSheetDate),
+            nowMinute = agendaNowMillis?.let { agendaMinuteForDate(it, agendaSheetDate) },
             showShanghaiTime = timetableAgendaNeedsShanghaiNote(),
             onEdit = { id ->
                 agendaSheetEpochDay = null
-                personalAgenda.openEdit(id)
+                visiblePersonalAgenda.openEdit(id)
             },
             onCreate = { date ->
                 agendaSheetEpochDay = null
-                personalAgenda.openCreate(date)
+                visiblePersonalAgenda.openCreate(date)
             },
             onDismiss = { agendaSheetEpochDay = null },
         )
