@@ -114,9 +114,11 @@ class CustomBackgroundStore internal constructor(
     }
 
     suspend fun clear(): Boolean = withContext(ioDispatcher) {
-        val tempDeleted = !tempFile.exists() || tempFile.delete()
         val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
-        if (tempDeleted && fileDeleted) {
+        // 临时文件只服务下一次导入，清理失败不应让用户停留在“背景已删除但界面
+        // 仍显示失败”的状态；只要目标文件已不存在就按清除成功处理。
+        tempFile.delete()
+        if (fileDeleted) {
             _revision.update { it + 1L }
             true
         } else {
@@ -135,7 +137,7 @@ class CustomBackgroundStore internal constructor(
         val saved = try {
             FileOutputStream(tmp).use { out ->
                 val compressed = bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-                if (!compressed) return CustomBackgroundImportResult.Failure(CustomBackgroundError.SAVE_FAILED)
+                if (!compressed) throw IOException("JPEG compression failed")
                 out.flush()
                 runCatching { out.fd.sync() }
             }
