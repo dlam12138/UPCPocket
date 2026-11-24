@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
@@ -158,19 +157,16 @@ private fun Modifier.glassPane(
     val view = LocalView.current
     val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
     val glassFill = if (optical && source != null && source.owner === view && shape is RoundedCornerShape) {
-        val shapeProvider = remember(shape) { { shape } }
-        val surfaceColor = color.copy(alpha = color.alpha * if (dark) 0.16f else 0.22f)
-        val drawSurface: DrawScope.() -> Unit = remember(surfaceColor) {
-            { drawRect(surfaceColor) }
-        }
         drawBackdrop(
             backdrop = source.backdrop,
-            shape = shapeProvider,
+            shape = { shape },
             effects = { lens(8.dp.toPx(), 12.dp.toPx(), depthEffect = false) },
             highlight = null,
             shadow = null,
             innerShadow = null,
-            onDrawSurface = drawSurface,
+            onDrawSurface = {
+                drawRect(color.copy(alpha = color.alpha * if (dark) 0.16f else 0.22f))
+            },
         )
     } else {
         background(glassSurfaceColor(color), shape)

@@ -46,6 +46,7 @@ class CustomBackgroundStoreTest {
 
         assertFalse(store.exists())
         assertNull(store.loadBitmap())
+        assertEquals(0L, store.revision.value)
 
         val source = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(26, 115, 232))
@@ -57,9 +58,11 @@ class CustomBackgroundStoreTest {
         assertTrue(store.exists())
         assertNotNull(store.loadBitmap())
         assertTrue(store.extractSeedsFromSaved().isNotEmpty())
+        assertEquals(1L, store.revision.value)
 
         assertTrue(store.clear())
         assertFalse(store.exists())
         assertNull(store.loadBitmap())
+        assertEquals(2L, store.revision.value)
     }
 }

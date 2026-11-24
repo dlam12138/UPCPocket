@@ -181,12 +181,10 @@ class UiPrefsStoreTest {
     }
 
     @Test
-    fun `custom theme seed and custom background preferences default, clamp, and persist`() = runBlocking {
+    fun `custom theme seed and custom background opacity default, clamp, and persist`() = runBlocking {
         val store = UiPrefsStore(dataStore)
         val initial = store.flow.first()
         assertEquals(DEFAULT_CUSTOM_THEME_SEED_ARGB, initial.customThemeSeedArgb)
-        assertEquals(0L, initial.customBackgroundVersion)
-        assertFalse(initial.hasCustomBackground)
         assertEquals(DEFAULT_CUSTOM_BACKGROUND_OPACITY, initial.customBackgroundOpacity, 0.0001f)
 
         store.setCustomThemeSeed(0x00D81B60)
@@ -194,22 +192,13 @@ class UiPrefsStoreTest {
         assertEquals(ThemePreset.CUSTOM, afterSeed.themePreset)
         assertEquals(0xFFD81B60.toInt(), afterSeed.customThemeSeedArgb)
 
-        store.setCustomBackgroundVersion(42L)
         store.setCustomBackgroundOpacity(0.75f)
-        val afterBg = store.flow.first()
-        assertTrue(afterBg.hasCustomBackground)
-        assertEquals(42L, afterBg.customBackgroundVersion)
-        assertEquals(0.75f, afterBg.customBackgroundOpacity, 0.0001f)
+        assertEquals(0.75f, store.flow.first().customBackgroundOpacity, 0.0001f)
 
         dataStore.edit { it[floatPreferencesKey("custom_background_opacity")] = 9.9f }
         assertEquals(MAX_CUSTOM_BACKGROUND_OPACITY, store.flow.first().customBackgroundOpacity, 0.0001f)
 
         store.setCustomBackgroundOpacity(0.01f)
         assertEquals(MIN_CUSTOM_BACKGROUND_OPACITY, store.flow.first().customBackgroundOpacity, 0.0001f)
-
-        store.setCustomBackgroundVersion(0L)
-        val cleared = store.flow.first()
-        assertFalse(cleared.hasCustomBackground)
-        assertEquals(0L, cleared.customBackgroundVersion)
     }
 }

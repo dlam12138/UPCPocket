@@ -185,20 +185,15 @@ fun Modifier.glassPressHighlight(
 fun glassBorder(width: Dp = 1.dp): BorderStroke {
     val scheme = MaterialTheme.colorScheme
     if (LocalUiStyle.current != UiStyle.LIQUID_GLASS) {
-        val outline = scheme.outlineVariant
-        return remember(width, outline) {
-            BorderStroke(width, outline.copy(alpha = 0.55f))
-        }
+        return BorderStroke(width, scheme.outlineVariant.copy(alpha = 0.55f))
     }
 
     val dark = scheme.surface.luminance() < 0.5f
     val upperEdge = Color.White.copy(alpha = if (dark) 0.57f else 0.96f)
     val sideEdge = Color.White.copy(alpha = if (dark) 0.15f else 0.40f)
     val lowerEdge = scheme.primary.copy(alpha = if (dark) 0.44f else 0.34f)
-    return remember(width, upperEdge, sideEdge, lowerEdge) {
-        BorderStroke(
-            width,
-            Brush.verticalGradient(0f to upperEdge, 0.50f to sideEdge, 1f to lowerEdge),
-        )
+    val edgeBrush = remember(upperEdge, sideEdge, lowerEdge) {
+        Brush.verticalGradient(0f to upperEdge, 0.50f to sideEdge, 1f to lowerEdge)
     }
+    return BorderStroke(width, edgeBrush)
 }

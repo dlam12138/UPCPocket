@@ -68,15 +68,15 @@ class MainActivity : ComponentActivity() {
             // 界面风格、配色、自定义背景与深浅色由同一份全局偏好驱动，保存后立即生效。
             val prefs by AppGraph.uiPrefsStore.flow
                 .collectAsStateWithLifecycle(initialValue = UiPrefs())
+            // 私有 JPEG 是背景图唯一事实来源：导入/清除成功由存储层递增
+            // revision 并通知此处重新读盘，页面取消不改变文件与展示的对应关系。
+            val backgroundRevision by AppGraph.customBackgroundStore.revision
+                .collectAsStateWithLifecycle()
             val backgroundImage by produceState<ImageBitmap?>(
                 initialValue = null,
-                key1 = prefs.customBackgroundVersion,
+                key1 = backgroundRevision,
             ) {
-                value = if (prefs.hasCustomBackground) {
-                    AppGraph.customBackgroundStore.loadBitmap()
-                } else {
-                    null
-                }
+                value = AppGraph.customBackgroundStore.loadBitmap()
             }
             CompositionLocalProvider(LocalUiStyle provides prefs.uiStyle) {
                 UpcPocketTheme(

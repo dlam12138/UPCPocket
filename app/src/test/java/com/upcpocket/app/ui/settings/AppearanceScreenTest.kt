@@ -149,11 +149,11 @@ class AppearanceScreenTest {
                         prefs = UiPrefs(
                             themePreset = ThemePreset.BLUE,
                             customThemeSeedArgb = 0xFF1A73E8.toInt(),
-                            customBackgroundVersion = 1L,
                             customBackgroundOpacity = 0.60f,
                         ),
                         backgroundPreview = previewBitmap,
                         extractedBackgroundSeeds = listOf(0xFF2E7D32.toInt()),
+                        hasCustomBackground = true,
                     ),
                 )
             }
@@ -183,9 +183,9 @@ class AppearanceScreenTest {
                     onClearBackground = {
                         clearCount++
                         uiState = uiState.copy(
-                            prefs = uiState.prefs.copy(customBackgroundVersion = 0L),
                             backgroundPreview = null,
                             extractedBackgroundSeeds = emptyList(),
+                            hasCustomBackground = false,
                         )
                     },
                     onBackgroundOpacityChange = {},

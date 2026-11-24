@@ -80,7 +80,6 @@ import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.GlassSurface as Surface
 import com.upcpocket.app.ui.theme.MaterialYouScheme
 import com.upcpocket.app.ui.theme.appScaffoldContainerColor
-import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,6 +115,8 @@ internal data class AppearanceUiState(
     val prefs: UiPrefs = UiPrefs(),
     val backgroundPreview: ImageBitmap? = null,
     val extractedBackgroundSeeds: List<Int> = emptyList(),
+    /** 是否已保存背景文件；以私有 JPEG 是否可读为准，不以 DataStore 版本号推断。 */
+    val hasCustomBackground: Boolean = false,
     val isImportingBackground: Boolean = false,
     val backgroundError: String? = null,
 )
@@ -128,40 +129,35 @@ class AppearanceViewModel : ViewModel() {
     private val _state = MutableStateFlow(AppearanceUiState())
     internal val state: StateFlow<AppearanceUiState> = _state.asStateFlow()
 
-    private var loadedBackgroundVersion: Long = -1L
+    /** 只用于丢弃过期读盘结果；读盘都在同一私有文件上完成。 */
+    private var previewGeneration = 0
 
     init {
         viewModelScope.launch {
             store.flow.collect { prefs ->
                 _state.update { it.copy(prefs = prefs) }
-                if (prefs.customBackgroundVersion != loadedBackgroundVersion) {
-                    loadedBackgroundVersion = prefs.customBackgroundVersion
-                    refreshBackgroundPreview(prefs.customBackgroundVersion)
-                }
+            }
+        }
+        // 背景文件是唯一事实来源；首次收集（0L）也读盘，导入/清除成功后重新读盘。
+        viewModelScope.launch {
+            backgroundStore.revision.collect {
+                refreshBackgroundPreview()
             }
         }
     }
 
-    private fun refreshBackgroundPreview(version: Long) {
+    private fun refreshBackgroundPreview() {
+        val generation = ++previewGeneration
         viewModelScope.launch {
-            if (version <= 0L) {
-                _state.update {
-                    it.copy(
-                        backgroundPreview = null,
-                        extractedBackgroundSeeds = emptyList(),
-                    )
-                }
-                return@launch
-            }
             val bitmap = backgroundStore.loadBitmap()
             val seeds = if (bitmap != null) backgroundStore.extractSeedsFromSaved() else emptyList()
-            if (_state.value.prefs.customBackgroundVersion == version) {
-                _state.update {
-                    it.copy(
-                        backgroundPreview = bitmap,
-                        extractedBackgroundSeeds = seeds,
-                    )
-                }
+            if (generation != previewGeneration) return@launch
+            _state.update {
+                it.copy(
+                    backgroundPreview = bitmap,
+                    extractedBackgroundSeeds = seeds,
+                    hasCustomBackground = bitmap != null,
+                )
             }
         }
     }
@@ -192,17 +188,12 @@ class AppearanceViewModel : ViewModel() {
             _state.update { it.copy(isImportingBackground = true, backgroundError = null) }
             when (val result = backgroundStore.importFromUri(uri)) {
                 is CustomBackgroundImportResult.Success -> {
-                    val nextVersion = max(
-                        System.currentTimeMillis(),
-                        _state.value.prefs.customBackgroundVersion + 1L,
-                    )
-                    loadedBackgroundVersion = nextVersion
                     val preview = backgroundStore.loadBitmap()
-                    store.setCustomBackgroundVersion(nextVersion)
                     _state.update {
                         it.copy(
                             backgroundPreview = preview,
                             extractedBackgroundSeeds = result.extractedSeeds,
+                            hasCustomBackground = preview != null,
                             isImportingBackground = false,
                             backgroundError = null,
                         )
@@ -230,12 +221,11 @@ class AppearanceViewModel : ViewModel() {
             _state.update { it.copy(isImportingBackground = true, backgroundError = null) }
             val cleared = backgroundStore.clear()
             if (cleared) {
-                loadedBackgroundVersion = 0L
-                store.setCustomBackgroundVersion(0L)
                 _state.update {
                     it.copy(
                         backgroundPreview = null,
                         extractedBackgroundSeeds = emptyList(),
+                        hasCustomBackground = false,
                         isImportingBackground = false,
                         backgroundError = null,
                     )
@@ -372,7 +362,7 @@ internal fun AppearanceScreenContent(
                 modifier = Modifier.padding(top = 4.dp),
             )
             CustomBackgroundCard(
-                hasCustomBackground = prefs.hasCustomBackground,
+                hasCustomBackground = uiState.hasCustomBackground,
                 previewBitmap = uiState.backgroundPreview,
                 opacity = prefs.customBackgroundOpacity,
                 isImporting = uiState.isImportingBackground,

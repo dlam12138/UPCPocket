@@ -13,11 +13,18 @@ import com.upcpocket.app.ui.theme.MaterialYouScheme
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 sealed interface CustomBackgroundImportResult {
@@ -51,6 +58,17 @@ class CustomBackgroundStore internal constructor(
 
     private val tempFile: File
         get() = File(directory, TEMP_FILE_NAME)
+
+    private val _revision = MutableStateFlow(0L)
+
+    /**
+     * 背景文件变更信号。
+     *
+     * 私有 JPEG 是背景图的唯一事实来源；导入或清除成功后递增，宿主与设置页据此
+     * 重新读取同一路径，而不是依赖 DataStore 版本号与文件写入的先后顺序。
+     * 进程重启后从 0 开始，使用方首次收集时自行读盘。
+     */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
 
     suspend fun importFromUri(uri: Uri): CustomBackgroundImportResult = withContext(ioDispatcher) {
         val resolver = contentResolver ?: return@withContext CustomBackgroundImportResult.Failure(
@@ -98,7 +116,12 @@ class CustomBackgroundStore internal constructor(
     suspend fun clear(): Boolean = withContext(ioDispatcher) {
         val tempDeleted = !tempFile.exists() || tempFile.delete()
         val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
-        tempDeleted && fileDeleted
+        if (tempDeleted && fileDeleted) {
+            _revision.update { it + 1L }
+            true
+        } else {
+            false
+        }
     }
 
     internal fun exists(): Boolean = backgroundFile.isFile
@@ -116,14 +139,15 @@ class CustomBackgroundStore internal constructor(
                 out.flush()
                 runCatching { out.fd.sync() }
             }
-            if (target.exists()) {
-                target.delete()
-            }
-            if (!tmp.renameTo(target)) {
-                tmp.copyTo(target, overwrite = true)
+            // 同目录临时文件 + 原子替换：先确认临时文件完整，替换失败时
+            // 保留上一张可读背景，不先删除目标文件。
+            val tmpReady = tmp.isFile && tmp.length() > 0L
+            if (tmpReady) {
+                replaceAtomically(tmp, target)
+            } else {
                 tmp.delete()
             }
-            target.isFile && target.length() > 0L
+            tmpReady && target.isFile && target.length() > 0L
         } catch (_: IOException) {
             tmp.delete()
             false
@@ -134,8 +158,26 @@ class CustomBackgroundStore internal constructor(
         if (!saved) {
             return CustomBackgroundImportResult.Failure(CustomBackgroundError.SAVE_FAILED)
         }
+        _revision.update { it + 1L }
         val seeds = extractSeedsFromBitmap(bitmap, maxColors = 4)
         return CustomBackgroundImportResult.Success(extractedSeeds = seeds)
+    }
+
+    private fun replaceAtomically(source: File, target: File) {
+        try {
+            Files.move(
+                source.toPath(),
+                target.toPath(),
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(
+                source.toPath(),
+                target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+            )
+        }
     }
 
     private fun decodeUriBounded(resolver: ContentResolver, uri: Uri): Bitmap? {
@@ -159,9 +201,12 @@ class CustomBackgroundStore internal constructor(
     private fun decodeUriWithBitmapFactory(resolver: ContentResolver, uri: Uri): Bitmap? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            resolver.openInputStream(uri)?.use { stream ->
+            // inJustDecodeBounds 模式即使成功解码也返回 null，这里只用流是否
+            // 打开和 outWidth/outHeight 判断可读性与尺寸。
+            val boundsStream = resolver.openInputStream(uri) ?: return null
+            boundsStream.use { stream ->
                 BitmapFactory.decodeStream(stream, null, bounds)
-            } ?: return null
+            }
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
             val options = BitmapFactory.Options().apply {
                 inSampleSize = computeSampleSize(bounds.outWidth, bounds.outHeight, MAX_EDGE_PX)
