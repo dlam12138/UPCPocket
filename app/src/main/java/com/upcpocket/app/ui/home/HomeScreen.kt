@@ -74,6 +74,10 @@ private val HOME_DATE_FORMATTER: DateTimeFormatter =
 private fun homeModuleKey(module: HomeModuleId): Any = module.name
 private fun homeModuleLabel(module: HomeModuleId): String = module.label
 private fun homeModuleTestTag(module: HomeModuleId): String = "home_module_${module.name.lowercase()}"
+private fun isHomeModuleGrouped(module: HomeModuleId): Boolean = when (module) {
+    HomeModuleId.TIMETABLE, HomeModuleId.TODO -> false
+    HomeModuleId.SERVICES, HomeModuleId.CARD -> true
+}
 
 private data class QuickAction(
     val title: String,
@@ -256,6 +260,7 @@ fun HomeScreen(
                     enabled = reorderEnabled,
                     itemLabel = ::homeModuleLabel,
                     itemTestTag = ::homeModuleTestTag,
+                    itemGrouped = ::isHomeModuleGrouped,
                     onReorderFinished = onReorderFinished,
                 ) { module, _ ->
                     when (module) {
