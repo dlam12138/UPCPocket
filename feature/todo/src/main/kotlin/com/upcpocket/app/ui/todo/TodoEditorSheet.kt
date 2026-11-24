@@ -59,8 +59,10 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private val IMPORTANCE_LABELS = listOf("高", "普通", "低")
 
@@ -69,7 +71,8 @@ private val IMPORTANCE_LABELS = listOf("高", "普通", "低")
  *
  * 新增模式回车保存后保留面板并清空输入，便于连续添加；编辑模式回车保存并关闭。
  * 截止与一次性提醒分别编辑，时间均按设备本地日期和时分保存；空白标题不可保存。
- * 编辑时等待真实重要程度到达后才允许保存，内容与重要程度同次写入；仅改程度走轻量路径。
+ * 编辑时等待真实重要程度到达后才允许保存；内容改动整体保存，表单内容相对打开时未变则只提交重要程度，
+ * 避免旧表单把通知稍后提醒等外部更新写回。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,6 +94,14 @@ fun TodoEditorSheet(
     var title by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.title.orEmpty()) }
     var dueAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.dueAt) }
     var reminderAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.reminderAt) }
+    // 打开或还原表单时的基准字段；initialTask 会随外部更新变化，不能拿最新任务反推用户改过什么。
+    val baselineTitle by rememberSaveable(initialTask?.id) {
+        mutableStateOf(initialTask?.title.orEmpty())
+    }
+    val baselineDueAt by rememberSaveable(initialTask?.id) { mutableStateOf(initialTask?.dueAt) }
+    val baselineReminderAt by rememberSaveable(initialTask?.id) {
+        mutableStateOf(initialTask?.reminderAt)
+    }
     var importance by rememberSaveable(initialTask?.id) {
         mutableStateOf<TodoImportance?>(
             if (initialTask == null || !supportsOrdering) TodoImportance.NORMAL else null,
@@ -146,7 +157,12 @@ fun TodoEditorSheet(
         errorText = null
         scope.launch {
             try {
-                // 纯改重要程度由服务在锁内识别；旧 Store 没有排序表时走原有保存路径。
+                // 表单内容相对打开时未改，只提交重要程度，保留任务上更新的提醒、发送状态与 revision。
+                // 旧 Store 没有排序表，仍走原有整体保存路径。
+                val contentUnchanged = initialTask != null &&
+                    trimmed == baselineTitle &&
+                    reminderAt == baselineReminderAt &&
+                    dueAt == baselineDueAt
                 val saved = when {
                     initialTask == null && supportsOrdering -> {
                         store.add(trimmed, reminderAt, dueAt, selectedImportance)
@@ -156,6 +172,8 @@ fun TodoEditorSheet(
                         store.add(trimmed, reminderAt, dueAt)
                         true
                     }
+                    supportsOrdering && contentUnchanged ->
+                        store.setImportance(initialTask.id, selectedImportance)
                     supportsOrdering -> store.edit(
                         initialTask.id,
                         trimmed,
@@ -408,21 +426,27 @@ fun TodoEditorSheet(
                             saving = true
                             errorText = null
                             scope.launch {
-                                try {
-                                    val deleted = store.deleteWithOrder(initialTask.id)
-                                    saving = false
-                                    if (deleted == null) {
-                                        errorText = "待办已不存在"
-                                    } else {
-                                        onDeleted(deleted)
-                                        onDismiss()
+                                // Room 回流可能先移除任务并让编辑器离开组合，从而取消本面板的作用域。
+                                // 删除与撤销快照回传必须完成，否则任务已删却收不到恢复入口。
+                                withContext(NonCancellable) {
+                                    try {
+                                        val deleted = store.deleteWithOrder(initialTask.id)
+                                        if (deleted == null) {
+                                            saving = false
+                                            errorText = "待办已不存在"
+                                        } else {
+                                            // 删除回流会让宿主按任务消失关闭本面板；这里不再调用 onDismiss，
+                                            // 否则迟到的收尾会关闭用户随后打开的新编辑/新增面板。
+                                            // 保持 saving 锁住本面板，直到回流将其移除。
+                                            onDeleted(deleted)
+                                        }
+                                    } catch (cancelled: CancellationException) {
+                                        saving = false
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        saving = false
+                                        errorText = "删除失败，请重试"
                                     }
-                                } catch (cancelled: CancellationException) {
-                                    saving = false
-                                    throw cancelled
-                                } catch (_: Exception) {
-                                    saving = false
-                                    errorText = "删除失败，请重试"
                                 }
                             }
                         },

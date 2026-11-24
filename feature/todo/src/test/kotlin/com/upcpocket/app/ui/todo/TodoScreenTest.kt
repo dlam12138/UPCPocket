@@ -31,6 +31,7 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.todo.TodoStore
+import com.upcpocket.app.todo.data.TodoDeletedTask
 import com.upcpocket.app.todo.data.TodoFormat
 import com.upcpocket.app.todo.data.TodoImportance
 import com.upcpocket.app.todo.data.TodoMoveDirection
@@ -348,9 +349,122 @@ class TodoScreenTest {
         rule.waitForIdle()
         performClickSemantics("todo_save")
 
-        rule.waitUntil(5_000) { store.lastEditImportance == TodoImportance.HIGH }
+        rule.waitUntil(5_000) { store.lastSetImportance == TodoImportance.HIGH }
         assertEquals(original.revision, store.current.single().revision)
+        assertEquals(0, store.contentEdits)
         assertEquals(TodoImportance.HIGH, store.orderingSnapshot.importanceOf(original.id))
+    }
+
+    @Test
+    fun `stale editor saves only importance after an external reminder update`() {
+        val reminderAt = System.currentTimeMillis() + 86_400_000
+        val original = task("旧表单", createdAt = 10, reminderAt = reminderAt)
+        val store = FakeTodoStore(
+            listOf(original),
+            orderingEnabled = true,
+            initialOrdering = TodoOrderingSnapshot(
+                orders = mapOf(
+                    original.id to TodoTaskOrder(original.id, TodoImportance.NORMAL),
+                ),
+            ),
+        )
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("旧表单").performClick()
+        waitForTag("todo_importance")
+        // 通知里的“稍后提醒”在表单打开后写入新提醒与 revision。
+        val snoozedAt = reminderAt + 3_600_000
+        store.applyExternalReminder(original.id, snoozedAt)
+        rule.waitForIdle()
+
+        rule.onNodeWithText("高").performSemanticsAction(SemanticsActions.OnClick)
+        rule.waitForIdle()
+        performClickSemantics("todo_save")
+
+        rule.waitUntil(5_000) { store.lastSetImportance == TodoImportance.HIGH }
+        assertEquals(0, store.contentEdits)
+        val saved = store.current.single()
+        assertEquals(snoozedAt, saved.reminderAt)
+        assertEquals(2, saved.revision)
+        assertEquals(TodoImportance.HIGH, store.orderingSnapshot.importanceOf(original.id))
+    }
+
+    @Test
+    fun `delete keeps undo delivery when the task leaves the list before returning`() {
+        val original = task("删除后撤销", createdAt = 10)
+        val store = FakeTodoStore(
+            listOf(original),
+            orderingEnabled = true,
+            initialOrdering = TodoOrderingSnapshot(
+                mode = TodoSortMode.MANUAL,
+                orders = mapOf(
+                    original.id to TodoTaskOrder(
+                        original.id,
+                        TodoImportance.HIGH,
+                        manualRank = 3,
+                    ),
+                ),
+            ),
+        )
+        val gate = CompletableDeferred<Unit>()
+        store.deleteReturnGate = gate
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("删除后撤销").performClick()
+        rule.onNodeWithText("编辑待办").assertIsDisplayed()
+        rule.onNodeWithTag("todo_editor_delete").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_editor_delete")
+
+        // Room 回流先移除任务，编辑器已经离场；删除快照此时还在服务中。
+        rule.waitUntil(5_000) { store.current.isEmpty() }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        rule.onNodeWithText("编辑待办").assertDoesNotExist()
+        assertNull(store.lastDeleted)
+
+        gate.complete(Unit)
+        rule.waitUntil(5_000) { store.lastDeleted != null }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("已删除").fetchSemanticsNodes().isNotEmpty()
+        }
+        rule.onNodeWithText("撤销").performClick()
+
+        rule.waitUntil(5_000) { store.current.size == 1 }
+        assertEquals(original.id, store.lastRestored?.task?.id)
+        assertEquals(TodoImportance.HIGH, store.lastRestored?.importance)
+        assertEquals(3, store.lastRestored?.manualRank)
+        assertEquals(2, store.current.single().revision)
+        assertEquals(TodoImportance.HIGH, store.orderingSnapshot.importanceOf(original.id))
+        assertEquals(3, store.orderingSnapshot.manualRankOf(original.id))
+    }
+
+    @Test
+    fun `late delete delivery does not close a newly opened editor`() {
+        val original = task("先删除", createdAt = 10)
+        val store = FakeTodoStore(listOf(original))
+        val gate = CompletableDeferred<Unit>()
+        store.deleteReturnGate = gate
+        rule.setContent { MaterialTheme { TodoScreen(store = store) } }
+
+        rule.onNodeWithText("先删除").performClick()
+        rule.onNodeWithTag("todo_editor_delete").performScrollTo().assertIsDisplayed()
+        performClickSemantics("todo_editor_delete")
+        rule.waitUntil(5_000) { store.current.isEmpty() }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        rule.onNodeWithText("编辑待办").assertDoesNotExist()
+
+        // 删除快照尚未回传时，用户已经开始新增下一条。
+        rule.onNodeWithTag("todo_add").performClick()
+        rule.onNodeWithText("新增待办").assertIsDisplayed()
+
+        gate.complete(Unit)
+        rule.waitUntil(5_000) { store.lastDeleted != null }
+        rule.waitUntil(5_000) {
+            rule.onAllNodesWithText("已删除").fetchSemanticsNodes().isNotEmpty()
+        }
+        // 迟到的删除收尾不得清掉新面板。
+        rule.onNodeWithText("新增待办").assertIsDisplayed()
     }
 
     @Test
@@ -623,6 +737,9 @@ class TodoScreenTest {
     @Test
     fun `schedule editor delete offers inline restore`() {
         val store = FakeTodoStore(listOf(task("可删除", createdAt = 10)))
+        // 流先移除任务、服务后返回快照时，日程宿主仍应收到撤销数据。
+        val gate = CompletableDeferred<Unit>()
+        store.deleteReturnGate = gate
         rule.setContent {
             MaterialTheme { TodoScheduleSection(store = store, onOpenAll = {}) }
         }
@@ -636,6 +753,9 @@ class TodoScreenTest {
         rule.mainClock.advanceTimeBy(1_000)
         rule.waitForIdle()
         rule.onNodeWithText("编辑待办").assertDoesNotExist()
+        assertNull(store.lastDeleted)
+        gate.complete(Unit)
+        rule.waitUntil(5_000) { store.lastDeleted != null }
         rule.onNodeWithTag("todo_schedule_undo").assertIsDisplayed()
         rule.onNodeWithText("已删除").assertIsDisplayed()
 
@@ -768,9 +888,29 @@ class TodoScreenTest {
         override val pendingCreateRequest = MutableStateFlow<String?>(null)
         val current: List<TodoTask> get() = state.value
         val orderingSnapshot: TodoOrderingSnapshot get() = ordering.value
+
+        /** 模拟通知“稍后提醒”等编辑器之外的任务更新。 */
+        fun applyExternalReminder(id: String, reminderAt: Long) {
+            state.value = state.value.map {
+                if (it.id == id) {
+                    it.copy(
+                        reminderAt = reminderAt,
+                        reminderFiredAt = null,
+                        revision = it.revision + 1,
+                    )
+                } else {
+                    it
+                }
+            }
+        }
         var lastEditImportance: TodoImportance? = null
         var lastAddedImportance: TodoImportance? = null
+        var lastSetImportance: TodoImportance? = null
         var lastMove: Triple<String, TodoMoveDirection, String>? = null
+        var lastDeleted: TodoDeletedTask? = null
+        var lastRestored: TodoDeletedTask? = null
+        var contentEdits = 0
+        var deleteReturnGate: CompletableDeferred<Unit>? = null
         private var access = TodoReminderAccess(
             notificationsEnabled = true,
             exactAlarmsAllowed = true,
@@ -832,6 +972,7 @@ class TodoScreenTest {
 
         override suspend fun edit(id: String, title: String, reminderAt: Long?, dueAt: Long?): Boolean {
             val task = state.value.firstOrNull { it.id == id } ?: return false
+            contentEdits++
             state.value = state.value.map {
                 if (it.id == id) {
                     it.copy(
@@ -876,6 +1017,7 @@ class TodoScreenTest {
 
         override suspend fun setImportance(id: String, importance: TodoImportance): Boolean {
             if (!orderingEnabled || state.value.none { it.id == id }) return false
+            lastSetImportance = importance
             ordering.value = ordering.value.copy(
                 orders = ordering.value.orders + (
                     id to TodoTaskOrder(id, importance, ordering.value.orders[id]?.manualRank)
@@ -990,6 +1132,42 @@ class TodoScreenTest {
 
         override suspend fun restore(task: TodoTask): Boolean {
             state.value = state.value + task.copy(revision = task.revision + 1)
+            return true
+        }
+
+        override suspend fun deleteWithOrder(id: String): TodoDeletedTask? {
+            val task = state.value.firstOrNull { it.id == id } ?: return null
+            val order = ordering.value.orders[id]
+            // 与 Room 回流一致：任务与排序先随 Flow 消失，删除快照随后才返回。
+            state.value = state.value.filterNot { it.id == id }
+            ordering.value = ordering.value.copy(orders = ordering.value.orders - id)
+            deleteReturnGate?.also { deleteReturnGate = null }?.await()
+            return TodoDeletedTask(
+                task = task,
+                importance = if (orderingEnabled) {
+                    order?.importance ?: TodoImportance.NORMAL
+                } else {
+                    TodoImportance.NORMAL
+                },
+                manualRank = if (orderingEnabled) order?.manualRank else null,
+            ).also { lastDeleted = it }
+        }
+
+        override suspend fun restoreWithOrder(deleted: TodoDeletedTask): Boolean {
+            lastRestored = deleted
+            val restored = deleted.task.copy(revision = deleted.task.revision + 1)
+            state.value = state.value + restored
+            if (orderingEnabled) {
+                ordering.value = ordering.value.copy(
+                    orders = ordering.value.orders + (
+                        restored.id to TodoTaskOrder(
+                            restored.id,
+                            deleted.importance,
+                            deleted.manualRank,
+                        )
+                    ),
+                )
+            }
             return true
         }
 
