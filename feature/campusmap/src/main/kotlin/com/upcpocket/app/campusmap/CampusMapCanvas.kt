@@ -37,6 +37,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -100,7 +101,19 @@ private class Viewport(
 
 private data class MapLayer(val kind: String, val paths: List<Path>)
 private data class ProjectedPlace(val place: CampusPlace, val point: Offset)
-private data class ProjectedRoute(val route: CampusRoute, val points: List<Offset>, val path: Path)
+private data class ProjectedRoute(
+    val route: CampusRoute,
+    val points: List<Offset>,
+    val path: Path,
+    val cyclingPath: Path?,
+    val walkingPath: Path?,
+    val dismountPoint: Offset?,
+)
+
+private data class RemainingPaths(
+    val cycling: Path?,
+    val walking: Path?,
+)
 
 private fun mapPath(points: List<Offset>, closed: Boolean = false) = Path().apply {
     points.firstOrNull()?.let { moveTo(it.x, it.y) }
@@ -108,14 +121,43 @@ private fun mapPath(points: List<Offset>, closed: Boolean = false) = Path().appl
     if (closed && points.isNotEmpty()) close()
 }
 
-private fun ProjectedRoute.remainingPath(alongMeters: Double): Path? {
+private fun mapSubPath(points: List<Offset>, startIndex: Int, endIndex: Int): Path? {
+    if (startIndex >= endIndex || startIndex < 0 || endIndex >= points.size) return null
+    return Path().apply {
+        moveTo(points[startIndex].x, points[startIndex].y)
+        for (index in startIndex + 1..endIndex) lineTo(points[index].x, points[index].y)
+    }
+}
+
+private fun ProjectedRoute.remainingPaths(alongMeters: Double, bikeModeSelected: Boolean): RemainingPaths? {
     val position = route.positionAt(alongMeters) ?: return null
     val a = points[position.segmentIndex]
     val b = points[position.segmentIndex + 1]
     val first = a + (b - a) * position.fraction.toFloat()
-    return Path().apply {
+    val walkFrom = route.walkFromIndex?.takeIf { it in 1 until points.lastIndex }
+    if (walkFrom != null) {
+        return if (position.segmentIndex < walkFrom) {
+            val cycling = Path().apply {
+                moveTo(first.x, first.y)
+                for (index in position.segmentIndex + 1..walkFrom) lineTo(points[index].x, points[index].y)
+            }
+            RemainingPaths(cycling = cycling, walking = walkingPath)
+        } else {
+            val walking = Path().apply {
+                moveTo(first.x, first.y)
+                for (index in position.segmentIndex + 1 until points.size) lineTo(points[index].x, points[index].y)
+            }
+            RemainingPaths(cycling = null, walking = walking)
+        }
+    }
+    val tail = Path().apply {
         moveTo(first.x, first.y)
         for (index in position.segmentIndex + 1 until points.size) lineTo(points[index].x, points[index].y)
+    }
+    return if (bikeModeSelected && route.mode == TravelMode.WALK) {
+        RemainingPaths(cycling = null, walking = tail)
+    } else {
+        RemainingPaths(cycling = tail, walking = null)
     }
 }
 
@@ -162,15 +204,33 @@ internal fun CampusMapCanvas(
                 ?.let { ProjectedPlace(place, projection.project(it)) }
         }
     }
-    val routes = remember(state.routes, projection) {
+    val routes = remember(state.routes, state.mode, projection) {
         state.routes.map { route ->
             val points = route.points.map(projection::project)
-            ProjectedRoute(route, points, mapPath(points))
+            val fullPath = mapPath(points)
+            val walkFrom = route.walkFromIndex?.takeIf { it in 1 until points.lastIndex }
+            val pureWalkingFallback = state.mode == TravelMode.BIKE && route.mode == TravelMode.WALK
+            ProjectedRoute(
+                route = route,
+                points = points,
+                path = fullPath,
+                cyclingPath = when {
+                    walkFrom != null -> mapSubPath(points, 0, walkFrom)
+                    pureWalkingFallback -> null
+                    else -> fullPath
+                },
+                walkingPath = when {
+                    walkFrom != null -> mapSubPath(points, walkFrom, points.lastIndex)
+                    pureWalkingFallback -> fullPath
+                    else -> null
+                },
+                dismountPoint = walkFrom?.let { points[it] },
+            )
         }
     }
     val selectedRoute = routes.find { it.route.id == state.selectedRouteId }
-    val remainingPath = remember(selectedRoute, state.routeProgressMeters) {
-        state.routeProgressMeters?.let { selectedRoute?.remainingPath(it) }
+    val remainingPaths = remember(selectedRoute, state.routeProgressMeters, state.mode) {
+        state.routeProgressMeters?.let { selectedRoute?.remainingPaths(it, state.mode == TravelMode.BIKE) }
     }
     val navigates = isGuidanceVisible(state)
     val destination = state.destination?.takeUnless(CampusPlace::isEntrance)
@@ -278,6 +338,21 @@ internal fun CampusMapCanvas(
             val altRouteStroke = Stroke(4.0.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
             val routeStroke = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
             val routeOutlineStroke = Stroke(9.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val walkDash = PathEffect.dashPathEffect(
+                floatArrayOf(9.dp.toPx() / view.scale, 6.dp.toPx() / view.scale),
+            )
+            val walkStroke = Stroke(
+                width = 5.5.dp.toPx() / view.scale,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+                pathEffect = walkDash,
+            )
+            val walkOutlineStroke = Stroke(
+                width = 8.5.dp.toPx() / view.scale,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+                pathEffect = walkDash,
+            )
             withTransform({
                 translate(view.origin.x, view.origin.y)
                 scale(view.scale, view.scale, Offset.Zero)
@@ -289,12 +364,19 @@ internal fun CampusMapCanvas(
                     }
                 }
                 selectedRoute?.let { line ->
-                    if (remainingPath != null) {
+                    if (remainingPaths != null) {
                         drawPath(line.path, palette.traveled, style = routeStroke)
                     }
-                    val highlighted = remainingPath ?: line.path
-                    drawPath(highlighted, palette.routeOutline, style = routeOutlineStroke)
-                    drawPath(highlighted, palette.route, style = routeStroke)
+                    val activeCycling = if (remainingPaths != null) remainingPaths.cycling else line.cyclingPath
+                    val activeWalking = if (remainingPaths != null) remainingPaths.walking else line.walkingPath
+                    activeCycling?.let { cycling ->
+                        drawPath(cycling, palette.routeOutline, style = routeOutlineStroke)
+                        drawPath(cycling, palette.route, style = routeStroke)
+                    }
+                    activeWalking?.let { walking ->
+                        drawPath(walking, palette.walkOutline, style = walkOutlineStroke)
+                        drawPath(walking, palette.walkRoute, style = walkStroke)
+                    }
                 }
             }
 
@@ -353,7 +435,14 @@ internal fun CampusMapCanvas(
                     drawPlaceLabel(destination.name, end, emphasized = true)
                 }
             }
-            val routeStart = if (remainingPath == null) {
+            if (remainingPaths == null || remainingPaths.cycling != null) {
+                selectedRoute?.dismountPoint?.let(view::screen)?.takeIf(bounds::contains)?.let { handoff ->
+                    drawCircle(palette.label, 8.5.dp.toPx(), handoff)
+                    drawCircle(palette.walkRoute, 5.dp.toPx(), handoff)
+                    drawPlaceLabel("下车", handoff, emphasized = false)
+                }
+            }
+            val routeStart = if (remainingPaths == null) {
                 selectedRoute?.points?.firstOrNull() ?: manualStart?.point?.let(projection::project)
             } else null
             routeStart?.let(view::screen)?.takeIf(bounds::contains)?.let { start ->
@@ -506,6 +595,8 @@ private class CampusMapColors(dark: Boolean, val label: Color, val text: Color) 
     val alternative = if (dark) Color(0xFF829BC6) else Color(0xFF86A2CA)
     val routeOutline = if (dark) Color(0xFF243C6A) else Color(0xFFDAE8FF)
     val route = if (dark) Color(0xFF7EABFF) else Color(0xFF2464D4)
+    val walkOutline = if (dark) Color(0xFF5C3414) else Color(0xFFFFE5CC)
+    val walkRoute = if (dark) Color(0xFFFFB26B) else Color(0xFFE06D1F)
     val traveled = route.copy(alpha = 0.28f)
     val position = if (dark) Color(0xFF74B8FF) else Color(0xFF096DE3)
     val start = if (dark) Color(0xFF85D7A8) else Color(0xFF1B8752)

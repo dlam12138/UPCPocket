@@ -18,6 +18,10 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 sealed interface CustomBackgroundImportResult {
@@ -56,11 +60,17 @@ class CustomBackgroundStore internal constructor(
         val path: String,
         val lastModified: Long,
         val length: Long,
+        val revision: Long,
         val image: ImageBitmap,
     )
 
     private val cacheLock = Any()
     private var cachedBackground: CachedBackground? = null
+
+    private val _revision = MutableStateFlow(0L)
+
+    /** 每次成功保存或清除自定义背景后递增，通知宿主与外观页重读私有背景文件。 */
+    val revision: StateFlow<Long> = _revision.asStateFlow()
 
     suspend fun importFromUri(uri: Uri): CustomBackgroundImportResult = withContext(ioDispatcher) {
         val resolver = contentResolver ?: return@withContext CustomBackgroundImportResult.Failure(
@@ -96,20 +106,25 @@ class CustomBackgroundStore internal constructor(
         val path = file.absolutePath
         val lastModified = file.lastModified()
         val length = file.length()
-        synchronized(cacheLock) {
+        val rev = synchronized(cacheLock) {
+            val currentRev = _revision.value
             val cached = cachedBackground
             if (cached != null &&
                 cached.path == path &&
                 cached.lastModified == lastModified &&
-                cached.length == length
+                cached.length == length &&
+                cached.revision == currentRev
             ) {
                 return@withContext cached.image
             }
+            currentRev
         }
         val bitmap = decodeFileBounded(file, MAX_EDGE_PX) ?: return@withContext null
         val image = bitmap.asImageBitmap()
         synchronized(cacheLock) {
-            cachedBackground = CachedBackground(path, lastModified, length, image)
+            if (_revision.value == rev) {
+                cachedBackground = CachedBackground(path, lastModified, length, rev, image)
+            }
         }
         image
     }
@@ -129,7 +144,14 @@ class CustomBackgroundStore internal constructor(
         synchronized(cacheLock) { cachedBackground = null }
         val tempDeleted = !tempFile.exists() || tempFile.delete()
         val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
-        tempDeleted && fileDeleted
+        val cleared = tempDeleted && fileDeleted
+        if (cleared) {
+            synchronized(cacheLock) {
+                cachedBackground = null
+                _revision.update { it + 1L }
+            }
+        }
+        cleared
     }
 
     internal fun exists(): Boolean = backgroundFile.isFile
@@ -165,7 +187,10 @@ class CustomBackgroundStore internal constructor(
         if (!saved) {
             return CustomBackgroundImportResult.Failure(CustomBackgroundError.SAVE_FAILED)
         }
-        synchronized(cacheLock) { cachedBackground = null }
+        synchronized(cacheLock) {
+            cachedBackground = null
+            _revision.update { it + 1L }
+        }
         val seeds = extractSeedsFromBitmap(bitmap, maxColors = 4)
         return CustomBackgroundImportResult.Success(extractedSeeds = seeds)
     }
