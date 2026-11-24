@@ -8,7 +8,7 @@
 
 ```mermaid
 flowchart TD
-    A[app：Application / AppGraph / 导航] --> F[11 个 feature：业务与 UI]
+    A[app：Application / AppGraph / 导航] --> F[13 个 feature：业务与 UI]
     A --> R[plugin-runtime]
     A --> C[account：本机账号]
     A --> U[upc-auth：认证适配]
@@ -28,7 +28,7 @@ flowchart TD
 
 ## 模块与依赖
 
-[settings.gradle.kts](settings.gradle.kts) 当前包含 21 个模块，包括 app、8 个 core 和 12 个 feature。表中依赖只列仓库内部直接 project 依赖。
+[settings.gradle.kts](settings.gradle.kts) 当前包含 22 个模块，包括 app、8 个 core 和 13 个 feature。表中依赖只列仓库内部直接 project 依赖。
 
 | 模块 | 职责 | 内部直接依赖 |
 | --- | --- | --- |
@@ -52,6 +52,7 @@ flowchart TD
 | `feature:shiguang` | 活动、详情、五模块学分学时与本人记录，只读 | account-api、upc-auth、designsystem、platform、plugin-api、plugin-ui |
 | `feature:service-portal` | 事项指南、待处理与在办，只读 | account-api、upc-auth、designsystem、plugin-api、plugin-ui |
 | `feature:campusmap` | 两校区地图、地点搜索、步骑算路与前台引导 | plugin-api、plugin-ui |
+| `feature:floorplan` | 卓越教学楼 A、B 区的原生离线平面图与房号搜索 | designsystem、plugin-api、plugin-ui |
 | `feature:directory` | 校园通讯录、校区筛选、办事搜索、公开电话及地址 | designsystem、plugin-api、plugin-ui |
 
 feature 之间不相互依赖，core 不依赖 app/feature，业务 feature 不依赖账号实现。card 的认证适配由宿主注入，表中的五个 feature 通过 `upc-auth` 使用相应认证契约。`platform` 不承载课程、余额或图书馆业务实体。[checkModuleBoundaries](build.gradle.kts) 检查 Gradle 依赖方向和指定核心白名单。
@@ -84,6 +85,8 @@ feature 之间不相互依赖，core 不依赖 app/feature，业务 feature 不�
 透明底部表单打开期间，宿主收起浮动导航，待办页收起浮动添加按钮，避免下方的操作控件与表单内容视觉重叠。
 
 2.1.0 开发版的校园地图是二级插件页，通过服务目录及首页固定进入。AppGraph 注入常用校区和课表到地图的地点选择动作。课表详情通过宿主查找已激活的地图能力，仅把选中的地点文字交给地图内存中的一次请求。地图插件独立读取随应用分发的 OSM 数据与地点清单，在本机算路并消费前台定位，具体数据与验收边界见 [ADR 007](docs/adr/007-offline-campus-navigation.md)。
+
+2.1.1 的卓越楼平面图由独立插件提供。「服务 → 学习与空间」和服务搜索共用 `floorplan.home`，打开后按需读取随包提供的结构化图形。楼层切换、图面变换与房号查找在本机完成，独立于校园地图、前台定位和学校账号。 [平面图插件](feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)
 
 校园通讯录从随应用分发的资料加载单位和办事信息。宿主注入常用校区及可用的地图能力。对于关联了可信地图地点的办公地址，宿主将校区和地点 ID 交给地图选中对应楼栋。
 
@@ -151,6 +154,7 @@ sequenceDiagram
 | 充值待查 | card；独立 Keystore 密文 | 可靠同步/读回后才请求；未知防重；同号改密保留用于查单 |
 | 课表会话/周缓存 | timetable；会话密文、账号绑定私有 JSON | 会话与缓存分离；同号可保留历史，换号清理 |
 | 成绩会话与学期快照 | grades 的内存会话与独立 Keystore 加密文件 | 同账号改密保留快照，换号或删号清理，包括插件未激活时 |
+| 卓越楼平面图 | floorplan 的随包矢量数据、图面房号和来源页 | 搜索与选层使用页面状态，图形随应用升级更新 |
 | 图书馆会话/隐藏偏好 | library；会话密文/内存、独立 DataStore 偏好 | 会话绑定账号；个人隐藏按系统/馆区/房间/座位隔离且换号保留 |
 | 专注数据 | focus；Room `upcpocket.db` v1 | 保留停用课表表结构及实体兼容，不清库、不擅自删表 |
 | 待办、截止、排序与提醒 revision | todo 的 Room `upcpocket-todo.db` | 2.1.0 使用 v2，v1 → v2 添加可空截止。2.1.1 开发版 v3 新增任务排序和模式记录，保留原任务表及提醒状态。Alarm 和通知可从任务重建，旧动作按 taskId 与 revision 拒绝。 |

@@ -3,7 +3,10 @@ package com.upcpocket.app.core
 import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.data.prefs.TodoHostPlacement
+import com.upcpocket.app.floorplan.FloorPlanPlugin
 import com.upcpocket.app.focus.FOCUS_MAIN_ROUTE
+import com.upcpocket.app.plugin.api.PluginId
+import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
 import com.upcpocket.app.todo.TODO_ROUTE
@@ -246,6 +249,7 @@ class HostPluginUiTest {
                 "serviceportal.home",
                 "campusmap.home",
                 "directory.home",
+                "floorplan.home",
             ),
             AppGraph.ui.pages.map { it.routeId.value }.toSet(),
         )
@@ -253,9 +257,32 @@ class HostPluginUiTest {
             AppGraph.ui.pages.all {
                 it.pluginId.value in setOf(
                     "card", "power", "classroom", "library", "focus", "timetable", "grades", "todo",
-                    "shiguang", "serviceportal", "campusmap", "directory",
+                    "shiguang", "serviceportal", "campusmap", "directory", "floorplan",
                 )
             },
         )
+    }
+
+    @Test
+    fun `floor plan is an offline study service without a campus map dependency`() {
+        val entry = AppGraph.ui.entriesFor(UiSurface.SERVICE_DIRECTORY)
+            .single { it.title == "卓越楼平面图" }
+
+        assertEquals("floorplan.home", entry.entryId.value)
+        assertEquals(FloorPlanPlugin.ROUTE, entry.route)
+        assertEquals("floorplan", entry.pluginId.value)
+        assertEquals(UiCategory.STUDY, entry.category)
+        assertTrue(entry.keywords.contains("卓越教学楼"))
+        assertTrue(entry.keywords.contains("古镇口"))
+        assertTrue(entry.keywords.contains("平面图"))
+        assertTrue(entry.keywords.contains("楼层"))
+        assertTrue(entry.keywords.contains("房号"))
+        assertNotNull(AppGraph.ui.page(FloorPlanPlugin.ROUTE))
+
+        val plugin = AppGraph.activePlugins.plugin(PluginId.parse("floorplan"))
+        assertNotNull(plugin)
+        val active = requireNotNull(plugin) { "floorplan 插件应已激活" }
+        assertTrue(active.descriptor.dependencies.isEmpty())
+        assertTrue(active.descriptor.capabilities.isEmpty())
     }
 }

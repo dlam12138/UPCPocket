@@ -25,3 +25,5 @@
 ## 证据与验证
 
 [settings](../../settings.gradle.kts)、[边界任务](../../build.gradle.kts)、[PluginDescriptor](../../core/plugin-api/src/main/kotlin/com/upcpocket/app/plugin/api/PluginDescriptor.kt)、[PluginRuntime](../../core/plugin-runtime/src/main/kotlin/com/upcpocket/app/plugin/runtime/PluginRuntime.kt)、[HostUiAssembly](../../app/src/main/java/com/upcpocket/app/core/HostUiAssembly.kt)、[AppGraph](../../app/src/main/java/com/upcpocket/app/core/AppGraph.kt)。变更按影响运行 `checkModuleBoundaries` 及 runtime/UI/宿主定向测试；本记录本身不宣称本轮测试通过。
+
+2.1.1 的卓越楼平面图沿用此装配方式。`feature:floorplan` 自行提供楼层数据、原生画布和服务目录入口，独立于校园地图的地点、算路和定位能力。 [平面图插件](../../feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)

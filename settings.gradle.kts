@@ -53,4 +53,5 @@ include(
     ":feature:service-portal",
     ":feature:campusmap",
     ":feature:directory",
+    ":feature:floorplan",
 )
