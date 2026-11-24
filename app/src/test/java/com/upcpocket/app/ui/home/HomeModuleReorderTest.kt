@@ -99,6 +99,7 @@ class HomeModuleReorderTest {
                         onOpenOfficialWeb = {},
                         pinnedServiceIds = setOf("classroom.free"),
                         moduleOrder = order,
+                        reorderEnabled = true,
                         onModuleOrderChange = { order = it },
                     )
                 }

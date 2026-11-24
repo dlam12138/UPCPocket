@@ -117,9 +117,11 @@ enum class TimetableModuleId(val label: String) {
     }
 }
 
-/** 宿主注入的课表页模块排序偏好与写回回调。 */
+/** 宿主注入的课表页模块排序偏好、拖动开关与写回回调。 */
 data class TimetableModuleLayout(
     val order: List<TimetableModuleId> = TimetableModuleId.DEFAULT_ORDER,
+    /** 是否允许长按拖动；关闭时仍按 [order] 渲染并锁定顺序。 */
+    val reorderEnabled: Boolean = false,
     val onOrderChange: (List<TimetableModuleId>) -> Unit = {},
 )
 
@@ -287,6 +289,7 @@ internal fun TimetableScreen(
                 key = ::timetableModuleKey,
                 scrollState = scrollState,
                 spacing = 8.dp,
+                enabled = moduleLayout.reorderEnabled,
                 itemLabel = ::timetableModuleLabel,
                 itemTestTag = ::timetableModuleTestTag,
                 itemGrouped = { module ->
