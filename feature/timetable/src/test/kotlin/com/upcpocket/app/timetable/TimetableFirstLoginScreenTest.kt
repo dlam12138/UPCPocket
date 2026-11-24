@@ -118,6 +118,7 @@ class TimetableFirstLoginScreenTest {
                 },
                 LocalTimetableModuleLayout provides TimetableModuleLayout(
                     order = order,
+                    reorderEnabled = true,
                     onOrderChange = { order = it },
                 ),
             ) {

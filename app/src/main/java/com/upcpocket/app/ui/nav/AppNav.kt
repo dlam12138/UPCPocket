@@ -570,6 +570,7 @@ fun AppNav(
                                     onOpenServices = onOpenServices,
                                     onOpenLearningPlatforms = onOpenLearningPlatforms,
                                     moduleOrder = prefs.homeModuleOrder,
+                                    reorderEnabled = prefs.moduleReorderEnabled,
                                     onModuleOrderChange = onHomeModuleOrderChange,
                                 )
                                 AppRoutes.SERVICES -> ServicesScreen(
@@ -590,10 +591,12 @@ fun AppNav(
                                         destination.route == TIMETABLE_ROUTE.value -> {
                                             val timetableLayout = remember(
                                                 prefs.timetableModuleOrder,
+                                                prefs.moduleReorderEnabled,
                                                 onTimetableModuleOrderChange,
                                             ) {
                                                 TimetableModuleLayout(
                                                     order = prefs.timetableModuleOrder,
+                                                    reorderEnabled = prefs.moduleReorderEnabled,
                                                     onOrderChange = onTimetableModuleOrderChange,
                                                 )
                                             }
@@ -711,6 +714,12 @@ fun AppNav(
                             scope.launch {
                                 AppGraph.uiPrefsStore.setTodoHostPlacement(placement)
                             }
+                        }
+                    },
+                    moduleReorderEnabled = storedPrefs?.moduleReorderEnabled,
+                    onModuleReorderEnabledChange = remember(scope) {
+                        { enabled ->
+                            scope.launch { AppGraph.uiPrefsStore.setModuleReorderEnabled(enabled) }
                         }
                     },
                     onBack = remember(navController) { { navController.popBackStack() } },

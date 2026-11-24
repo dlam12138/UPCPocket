@@ -24,6 +24,8 @@
 
 2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。首页与课表页模块支持长按拖动排序：通用容器 `ReorderableModuleColumn` 归 `core:designsystem`，课表页通过 `LocalTimetableModuleLayout`（`TimetableModuleLayout`、`TimetableModuleId`）接收宿主 `UiPrefsStore` 中的排序偏好与更新回调，缺省回退 `[TODO_SCHEDULE, TIMETABLE]`；顺序变更只影响页面展示，不改变业务数据或触发校园请求。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt) · [可排序模块容器](core/designsystem/src/main/kotlin/com/upcpocket/app/ui/components/ReorderableModuleColumn.kt)
 
+2.1.0 后开发改动（未发布）：新增「设置 → 应用 → 允许拖动卡片」开关，默认关闭；开关以 `module_reorder_enabled` 保存在宿主 `UiPrefsStore`。`ReorderableModuleColumn.enabled` 控制是否挂载拖动监听和无障碍「上移 / 下移」；关闭时首页和课表页仍按已保存的 `home_module_order` / `timetable_module_order` 渲染并锁定顺序，重新开启后继续使用同一顺序。取消拖动或关闭开关会丢弃未提交草稿；排序写回在对应的同一 edit 内复核开关，迟到的回调不改变顺序。
+
 2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
 
 校园通讯录的服务入口和首页固定共用 `directory.home`。宿主注入常用校区，「全部」对应空校区筛选。通讯录通过 `DirectoryCampusMap` 向宿主提供选定的校区和地点 ID。宿主将其交给已激活的 `CampusMapPlaceRequests`，由地图在指定校区精确选点。课表继续使用原有的地点文字请求。

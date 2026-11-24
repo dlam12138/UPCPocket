@@ -31,7 +31,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
@@ -166,7 +166,9 @@ private class ReorderLayoutTracker {
  * - 普通点击、上下滚动和外层 HorizontalPager 横滑在长按触发前不被拦截且按下瞬间零列表分配；
  * - 长按激活后在 [PointerEventPass.Initial] 消费拖动与抬起事件，避免松手误触发子项点击；
  * - 拖动位移、让位动画与抬起缩放全部延后到 Draw 阶段（`graphicsLayer`）；
- * - 提供无障碍「上移 / 下移」自定义操作，松手时回调 [onReorderFinished] 持久化。
+ * - 提供无障碍「上移 / 下移」自定义操作，松手时回调 [onReorderFinished] 持久化；
+ * - [enabled] 为 false 时不挂载拖动监听和无障碍排序动作，只按传入顺序渲染；
+ * - 仅在实际松手、仍可拖动且可见模块集合未变化时提交；取消或关闭开关丢弃草稿。
  */
 @Composable
 fun <T> ReorderableModuleColumn(
@@ -204,14 +206,27 @@ fun <T> ReorderableModuleColumn(
     val dragOffsetY = remember { mutableFloatStateOf(0f) }
     val settlingOffsetY = remember { Animatable(0f) }
 
-    val displayedItems = localOrder ?: items
+    // 关闭开关时立即忽略拖动草稿，即使 pointerInput 取消回调尚未执行，也先回到持久顺序。
+    val displayedItems = if (enabled) localOrder ?: items else items
     val canDrag = enabled && displayedItems.size > 1
 
+    val latestEnabled by rememberUpdatedState(enabled)
     val latestItems by rememberUpdatedState(items)
     val latestDisplayedItems by rememberUpdatedState(displayedItems)
     val latestKey by rememberUpdatedState(key)
     val latestOnReorderFinished by rememberUpdatedState(onReorderFinished)
     val latestScrollState by rememberUpdatedState(scrollState)
+
+    // 开关关闭或可见模块不足时丢弃未提交草稿并停止拖动状态，视图回到持久顺序。
+    LaunchedEffect(canDrag) {
+        if (!canDrag) {
+            draggingKey = null
+            liftKey = null
+            settlingKey = null
+            localOrder = null
+            dragOffsetY.floatValue = 0f
+        }
+    }
 
     // 外部顺序与本地提交一致，或模块集合发生变化（例如插件启停/槽位显隐）时，回归外部真相源。
     LaunchedEffect(items, draggingKey) {
@@ -246,6 +261,7 @@ fun <T> ReorderableModuleColumn(
     }
 
     fun moveItemByAccessibility(fromIndex: Int, toIndex: Int) {
+        if (!latestEnabled) return
         val current = latestDisplayedItems
         if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) {
             return
@@ -336,6 +352,7 @@ fun <T> ReorderableModuleColumn(
                             var pointerYInParent = downPosition.y
                             var workingList = initialList
                             var reordered = false
+                            var released = false
                             var lastSwapDirection = 0
                             var lastSwapPointerY = downPosition.y
 
@@ -470,14 +487,17 @@ fun <T> ReorderableModuleColumn(
                                     val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                                     val change = event.changes.firstOrNull { it.id == pointerId }
                                     if (change == null) break
+                                    // 系统 ACTION_CANCEL 会在 Initial 阶段合成已消费的
+                                    // pressed=false 事件；先按取消结束，避免误写顺序。
+                                    if (change.isConsumed) break
+                                    // 正常松手必须是未消费的 down→up，须在 consume 前判断。
+                                    val isUp = change.changedToUp()
                                     // 在 Initial 阶段消费事件，阻断子组件误触点击和外层滚动抢手势。
                                     change.consume()
                                     pointerYInParent = change.position.y
                                     updatePositionAndSwap(pointerYInParent)
-                                    if (!change.pressed ||
-                                        event.type == PointerEventType.Release ||
-                                        event.changes.all { !it.pressed }
-                                    ) {
+                                    if (isUp) {
+                                        released = true
                                         break
                                     }
                                 }
@@ -487,9 +507,22 @@ fun <T> ReorderableModuleColumn(
                                 draggingKey = null
                                 dragOffsetY.floatValue = 0f
 
-                                val liftToken = ++layoutTracker.liftGeneration
-                                scope.launch {
-                                    try {
+                                // 关闭开关会移除 pointerInput 并取消本协程；可见模块集合在
+                                // 拖动期间变化（插件启停/槽位显隐）时，草稿也不再对应当前页面。
+                                val visibleItemsUnchanged = workingList
+                                    .mapTo(HashSet()) { latestKey(it) } ==
+                                    latestItems.mapTo(HashSet()) { latestKey(it) }
+                                val endedNormally = released &&
+                                    latestEnabled &&
+                                    visibleItemsUnchanged
+
+                                if (!endedNormally) {
+                                    // 取消或禁用：丢弃草稿，不写偏好，也不播放回弹。
+                                    layoutTracker.liftGeneration++
+                                    liftKey = null
+                                    settlingKey = null
+                                    localOrder = null
+                                    scope.launch {
                                         dragProgress.animateTo(
                                             targetValue = 0f,
                                             animationSpec = tween(
@@ -497,43 +530,56 @@ fun <T> ReorderableModuleColumn(
                                                 easing = FastOutSlowInEasing,
                                             ),
                                         )
-                                    } finally {
-                                        if (layoutTracker.liftGeneration == liftToken &&
-                                            draggingKey != activeKey
-                                        ) {
-                                            liftKey = null
-                                        }
                                     }
-                                }
-
-                                if (abs(finalOffset) > 0.5f) {
-                                    val settleToken = ++layoutTracker.settleGeneration
-                                    settlingKey = activeKey
+                                } else {
+                                    val liftToken = ++layoutTracker.liftGeneration
                                     scope.launch {
                                         try {
-                                            settlingOffsetY.snapTo(finalOffset)
-                                            settlingOffsetY.animateTo(
+                                            dragProgress.animateTo(
                                                 targetValue = 0f,
                                                 animationSpec = tween(
-                                                    durationMillis = 180,
+                                                    durationMillis = 160,
                                                     easing = FastOutSlowInEasing,
                                                 ),
                                             )
                                         } finally {
-                                            if (layoutTracker.settleGeneration == settleToken &&
-                                                settlingKey == activeKey
+                                            if (layoutTracker.liftGeneration == liftToken &&
+                                                draggingKey != activeKey
                                             ) {
-                                                settlingKey = null
+                                                liftKey = null
                                             }
                                         }
                                     }
-                                }
 
-                                if (reordered && workingList != latestItems) {
-                                    localOrder = workingList
-                                    latestOnReorderFinished(workingList)
-                                } else {
-                                    localOrder = null
+                                    if (abs(finalOffset) > 0.5f) {
+                                        val settleToken = ++layoutTracker.settleGeneration
+                                        settlingKey = activeKey
+                                        scope.launch {
+                                            try {
+                                                settlingOffsetY.snapTo(finalOffset)
+                                                settlingOffsetY.animateTo(
+                                                    targetValue = 0f,
+                                                    animationSpec = tween(
+                                                        durationMillis = 180,
+                                                        easing = FastOutSlowInEasing,
+                                                    ),
+                                                )
+                                            } finally {
+                                                if (layoutTracker.settleGeneration == settleToken &&
+                                                    settlingKey == activeKey
+                                                ) {
+                                                    settlingKey = null
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (reordered && workingList != latestItems) {
+                                        localOrder = workingList
+                                        latestOnReorderFinished(workingList)
+                                    } else {
+                                        localOrder = null
+                                    }
                                 }
                             }
                         }

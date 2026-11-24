@@ -90,6 +90,12 @@ data class UiPrefs(
     val homeModuleOrder: List<HomeModuleId> = HomeModuleId.DEFAULT_ORDER,
     /** 课表页模块上下排序偏好；缺键或未知值回退 [TimetableModuleId.DEFAULT_ORDER]。 */
     val timetableModuleOrder: List<TimetableModuleId> = TimetableModuleId.DEFAULT_ORDER,
+    /**
+     * 是否允许长按拖动首页/课表卡片；缺键默认关闭。
+     *
+     * 关闭只锁定交互，不影响 [homeModuleOrder] / [timetableModuleOrder] 的渲染与保留。
+     */
+    val moduleReorderEnabled: Boolean = false,
 ) {
     val hasCustomBackground: Boolean
         get() = customBackgroundVersion > 0L
@@ -150,6 +156,7 @@ class UiPrefsStore internal constructor(
             todoHostPlacement = TodoHostPlacement.fromStoredValue(p[KEY_TODO_HOST_PLACEMENT]),
             homeModuleOrder = HomeModuleId.fromStoredValue(p[KEY_HOME_MODULE_ORDER]),
             timetableModuleOrder = TimetableModuleId.fromStoredValue(p[KEY_TIMETABLE_MODULE_ORDER]),
+            moduleReorderEnabled = p[KEY_MODULE_REORDER_ENABLED] ?: false,
         )
     }
 
@@ -224,13 +231,29 @@ class UiPrefsStore internal constructor(
     suspend fun setTodoHostPlacement(v: TodoHostPlacement) =
         store.edit { p -> p[KEY_TODO_HOST_PLACEMENT] = v.name }
 
-    /** 只保存首页模块排序偏好；不触发校园请求或影响其他业务数据。 */
-    suspend fun setHomeModuleOrder(order: List<HomeModuleId>) =
-        store.edit { p -> p[KEY_HOME_MODULE_ORDER] = HomeModuleId.toStoredValue(order) }
+    /** 只保存拖动开关；关闭后保留既有 [UiPrefs.homeModuleOrder] / [UiPrefs.timetableModuleOrder]。 */
+    suspend fun setModuleReorderEnabled(v: Boolean) =
+        store.edit { p -> p[KEY_MODULE_REORDER_ENABLED] = v }
 
-    /** 只保存课表页模块排序偏好；不触发校园请求或影响待办/课表数据。 */
-    suspend fun setTimetableModuleOrder(order: List<TimetableModuleId>) =
-        store.edit { p -> p[KEY_TIMETABLE_MODULE_ORDER] = TimetableModuleId.toStoredValue(order) }
+    /**
+     * 只保存首页模块排序偏好；不触发校园请求或影响其他业务数据。
+     *
+     * 在同一个 edit 内复核开关，丢弃关闭开关后才到达的拖动回调。
+     */
+    suspend fun setHomeModuleOrder(order: List<HomeModuleId>) = store.edit { p ->
+        if (p[KEY_MODULE_REORDER_ENABLED] != true) return@edit
+        p[KEY_HOME_MODULE_ORDER] = HomeModuleId.toStoredValue(order)
+    }
+
+    /**
+     * 只保存课表页模块排序偏好；不触发校园请求或影响待办/课表数据。
+     *
+     * 与首页相同，关闭开关后迟到的回调不写回。
+     */
+    suspend fun setTimetableModuleOrder(order: List<TimetableModuleId>) = store.edit { p ->
+        if (p[KEY_MODULE_REORDER_ENABLED] != true) return@edit
+        p[KEY_TIMETABLE_MODULE_ORDER] = TimetableModuleId.toStoredValue(order)
+    }
 
     suspend fun setWidgetAppearance(v: WidgetAppearance) {
         store.edit { p -> p[KEY_WIDGET_APPEARANCE] = v.name }
@@ -277,5 +300,8 @@ class UiPrefsStore internal constructor(
 
         /** 课表页模块排序（逗号分隔枚举名）；缺键回退默认顺序。 */
         val KEY_TIMETABLE_MODULE_ORDER = stringPreferencesKey("timetable_module_order")
+
+        /** 首页/课表长按拖动开关；缺键默认关闭。 */
+        val KEY_MODULE_REORDER_ENABLED = booleanPreferencesKey("module_reorder_enabled")
     }
 }

@@ -125,6 +125,7 @@ fun HomeScreen(
     onOpenServices: (() -> Unit)? = null,
     onOpenLearningPlatforms: () -> Unit = {},
     moduleOrder: List<HomeModuleId> = HomeModuleId.DEFAULT_ORDER,
+    reorderEnabled: Boolean = false,
     onModuleOrderChange: (List<HomeModuleId>) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -252,6 +253,7 @@ fun HomeScreen(
                     key = ::homeModuleKey,
                     scrollState = scrollState,
                     spacing = 14.dp,
+                    enabled = reorderEnabled,
                     itemLabel = ::homeModuleLabel,
                     itemTestTag = ::homeModuleTestTag,
                     onReorderFinished = onReorderFinished,

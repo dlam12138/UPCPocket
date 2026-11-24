@@ -153,7 +153,7 @@ sequenceDiagram
 | 自定义配色与自定义背景 | app 的 `UiPrefsStore`（`custom_theme_seed_argb`、`custom_background_version`、`custom_background_opacity`）与私有 `noBackupFilesDir/appearance/custom_background.jpg` | 缺键回退默认种子色与无背景图，不透明度限制在 0.15–0.90；通过系统照片选择器无权限读取并下采样保存在本机，不随学校账号清理 |
 | 常用校区 | app 的 `UiPrefsStore` | 缺有效偏好默认全部校区。教室在全部校区模式下沿用原有上次校区记录 |
 | 日程待办位置 | app 的 `UiPrefsStore`（`todo_host_placement`） | 缺键或未知值回退课表页；只决定槽位页面，不改待办数据、提醒或系统入口；不随学校账号清理 |
-| 首页与课表页模块排序 | app 的 `UiPrefsStore`（`home_module_order`、`timetable_module_order`） | 逗号分隔稳定枚举名；缺键或未知项归一化回退默认顺序，重排可见子集时保留隐藏模块相对位置；不随学校账号清理 |
+| 首页与课表页模块排序与拖动开关 | app 的 `UiPrefsStore`（`home_module_order`、`timetable_module_order`、`module_reorder_enabled`） | 逗号分隔稳定枚举名；缺键或未知项归一化回退默认顺序，重排可见子集时保留隐藏模块相对位置；拖动开关（开发改动，未发布）缺键默认关闭，关闭时仍渲染已保存顺序并锁定，排序写回在同一 edit 内复核开关；不随学校账号清理 |
 | 应用内界面风格 | app 的 `UiPrefsStore`（`app_ui_style`） | 缺键或未知值保持 Material 3；不读取或清除旧候选的 `ui_style` 键；不随学校账号清理，也不改变桌面组件 |
 | 诊断/更新缓存 | app；有界专用目录 | 诊断主动导出；更新仅校验后安装，provider 互相独立 |
 

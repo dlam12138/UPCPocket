@@ -17,6 +17,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,6 +60,7 @@ class ReorderableModuleColumnTest {
                     items = order,
                     key = { it },
                     spacing = 8.dp,
+                    enabled = true,
                     itemLabel = { "模块$it" },
                     itemTestTag = { "mod_$it" },
                     onReorderFinished = {
@@ -93,5 +96,89 @@ class ReorderableModuleColumnTest {
 
         assertEquals(listOf("B", "A", "C"), committed)
         assertEquals("长按拖动松手不应误触发子项点击", 1, clicks)
+    }
+
+    @Test
+    fun disabledColumnKeepsOrderAndLeavesClicksAlone() {
+        var committed: List<String>? = null
+        var clicks = 0
+
+        rule.setContent {
+            MaterialTheme {
+                ReorderableModuleColumn(
+                    items = listOf("A", "B", "C"),
+                    key = { it },
+                    spacing = 8.dp,
+                    enabled = false,
+                    itemLabel = { "模块$it" },
+                    itemTestTag = { "mod_$it" },
+                    onReorderFinished = { committed = it },
+                ) { item, _ ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(80.dp)
+                            .clickable { clicks++ },
+                    ) {
+                        Text("模块$item")
+                    }
+                }
+            }
+        }
+
+        rule.onNodeWithTag("mod_A").performClick()
+        rule.waitForIdle()
+        assertEquals(1, clicks)
+
+        rule.onNodeWithTag("mod_A").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100L)
+            moveBy(Offset(0f, height * 1.4f), delayMillis = 120L)
+            up()
+        }
+        rule.waitForIdle()
+
+        assertNull("关闭拖动后不应提交排序", committed)
+        assertEquals("关闭拖动不影响普通点击", 1, clicks)
+        val topA = rule.onNodeWithTag("mod_A").fetchSemanticsNode().boundsInRoot.top
+        val topB = rule.onNodeWithTag("mod_B").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("关闭拖动后仍按持久顺序渲染", topA < topB)
+    }
+
+    @Test
+    fun cancelledDragDiscardsTheDraftAndKeepsOrder() {
+        var committed: List<String>? = null
+
+        rule.setContent {
+            MaterialTheme {
+                ReorderableModuleColumn(
+                    items = listOf("A", "B", "C"),
+                    key = { it },
+                    spacing = 8.dp,
+                    enabled = true,
+                    itemLabel = { "模块$it" },
+                    itemTestTag = { "mod_$it" },
+                    onReorderFinished = { committed = it },
+                ) { item, _ ->
+                    Box(Modifier.fillMaxWidth().height(80.dp)) {
+                        Text("模块$item")
+                    }
+                }
+            }
+        }
+
+        // 长按后拖过 B，再由系统取消（ACTION_CANCEL），不应提交草稿。
+        rule.onNodeWithTag("mod_A").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100L)
+            moveBy(Offset(0f, height * 1.4f), delayMillis = 120L)
+            cancel()
+        }
+        rule.waitForIdle()
+
+        assertNull("系统取消拖动时不应提交草稿", committed)
+        val topA = rule.onNodeWithTag("mod_A").fetchSemanticsNode().boundsInRoot.top
+        val topB = rule.onNodeWithTag("mod_B").fetchSemanticsNode().boundsInRoot.top
+        assertTrue("取消后应回到持久顺序", topA < topB)
     }
 }
