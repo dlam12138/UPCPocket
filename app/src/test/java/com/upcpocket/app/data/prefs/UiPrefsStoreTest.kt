@@ -5,7 +5,14 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_BACKGROUND_OPACITY
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_THEME_SEED_ARGB
+import com.upcpocket.app.designsystem.MAX_CUSTOM_BACKGROUND_OPACITY
+import com.upcpocket.app.designsystem.MIN_CUSTOM_BACKGROUND_OPACITY
+import com.upcpocket.app.designsystem.ThemePreset
 import com.upcpocket.app.designsystem.WidgetAppearance
+import com.upcpocket.app.timetable.TimetableModuleId
+import androidx.datastore.preferences.core.floatPreferencesKey
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +22,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -99,5 +108,97 @@ class UiPrefsStoreTest {
 
         assertEquals(WidgetAppearance.GLASS, store.widgetAppearanceNow())
         assertEquals(WidgetAppearance.GLASS, UiPrefsStore(dataStore).flow.first().widgetAppearance)
+    }
+
+    @Test
+    fun `module orders default cleanly, normalize unknown entries, and persist`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        assertEquals(HomeModuleId.DEFAULT_ORDER, store.flow.first().homeModuleOrder)
+        assertEquals(TimetableModuleId.DEFAULT_ORDER, store.flow.first().timetableModuleOrder)
+
+        dataStore.edit {
+            it[stringPreferencesKey("home_module_order")] = "CARD,UNKNOWN,CARD,SERVICES"
+            it[stringPreferencesKey("timetable_module_order")] = "UNKNOWN,TIMETABLE"
+        }
+        assertEquals(
+            listOf(HomeModuleId.CARD, HomeModuleId.SERVICES, HomeModuleId.TIMETABLE, HomeModuleId.TODO),
+            UiPrefsStore(dataStore).flow.first().homeModuleOrder,
+        )
+        assertEquals(
+            listOf(TimetableModuleId.TIMETABLE, TimetableModuleId.TODO_SCHEDULE),
+            UiPrefsStore(dataStore).flow.first().timetableModuleOrder,
+        )
+
+        val customHome = listOf(HomeModuleId.TODO, HomeModuleId.CARD, HomeModuleId.TIMETABLE, HomeModuleId.SERVICES)
+        val customTimetable = listOf(TimetableModuleId.TIMETABLE, TimetableModuleId.TODO_SCHEDULE)
+        // 排序写回只在拖动开关开启时生效。
+        store.setModuleReorderEnabled(true)
+        store.setHomeModuleOrder(customHome)
+        store.setTimetableModuleOrder(customTimetable)
+
+        val reloaded = UiPrefsStore(dataStore).flow.first()
+        assertEquals(customHome, reloaded.homeModuleOrder)
+        assertEquals(customTimetable, reloaded.timetableModuleOrder)
+    }
+
+    @Test
+    fun `module reorder defaults off, gates order writes, and keeps saved orders when disabled`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        assertFalse(store.flow.first().moduleReorderEnabled)
+
+        val customHome = listOf(
+            HomeModuleId.CARD,
+            HomeModuleId.TODO,
+            HomeModuleId.SERVICES,
+            HomeModuleId.TIMETABLE,
+        )
+        val customTimetable = listOf(
+            TimetableModuleId.TIMETABLE,
+            TimetableModuleId.TODO_SCHEDULE,
+        )
+
+        // 缺键即关闭：迟到的拖动回调不写顺序，两页继续使用默认顺序。
+        store.setHomeModuleOrder(customHome)
+        store.setTimetableModuleOrder(customTimetable)
+        val disabled = store.flow.first()
+        assertEquals(HomeModuleId.DEFAULT_ORDER, disabled.homeModuleOrder)
+        assertEquals(TimetableModuleId.DEFAULT_ORDER, disabled.timetableModuleOrder)
+
+        store.setModuleReorderEnabled(true)
+        assertTrue(store.flow.first().moduleReorderEnabled)
+        store.setHomeModuleOrder(customHome)
+        store.setTimetableModuleOrder(customTimetable)
+        val enabled = store.flow.first()
+        assertEquals(customHome, enabled.homeModuleOrder)
+        assertEquals(customTimetable, enabled.timetableModuleOrder)
+
+        // 关闭后保留已保存顺序，重新开启可继续使用。
+        store.setModuleReorderEnabled(false)
+        val off = store.flow.first()
+        assertFalse(off.moduleReorderEnabled)
+        assertEquals(customHome, off.homeModuleOrder)
+        assertEquals(customTimetable, off.timetableModuleOrder)
+    }
+
+    @Test
+    fun `custom theme seed and custom background opacity default, clamp, and persist`() = runBlocking {
+        val store = UiPrefsStore(dataStore)
+        val initial = store.flow.first()
+        assertEquals(DEFAULT_CUSTOM_THEME_SEED_ARGB, initial.customThemeSeedArgb)
+        assertEquals(DEFAULT_CUSTOM_BACKGROUND_OPACITY, initial.customBackgroundOpacity, 0.0001f)
+
+        store.setCustomThemeSeed(0x00D81B60)
+        val afterSeed = store.flow.first()
+        assertEquals(ThemePreset.CUSTOM, afterSeed.themePreset)
+        assertEquals(0xFFD81B60.toInt(), afterSeed.customThemeSeedArgb)
+
+        store.setCustomBackgroundOpacity(0.75f)
+        assertEquals(0.75f, store.flow.first().customBackgroundOpacity, 0.0001f)
+
+        dataStore.edit { it[floatPreferencesKey("custom_background_opacity")] = 9.9f }
+        assertEquals(MAX_CUSTOM_BACKGROUND_OPACITY, store.flow.first().customBackgroundOpacity, 0.0001f)
+
+        store.setCustomBackgroundOpacity(0.01f)
+        assertEquals(MIN_CUSTOM_BACKGROUND_OPACITY, store.flow.first().customBackgroundOpacity, 0.0001f)
     }
 }

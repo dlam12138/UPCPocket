@@ -66,4 +66,31 @@ class MaterialYouSchemeTest {
         assertNotEquals(scheme.surface, scheme.onSurface)
         assertNotEquals(scheme.error, scheme.onError)
     }
+
+    @Test
+    fun `可从图像像素提取不透明主题种子色并安全处理空输入`() {
+        assertTrue(MaterialYouScheme.extractSeedColors(IntArray(0)).isEmpty())
+        val pixels = IntArray(64) { index ->
+            if (index % 2 == 0) blue else green
+        }
+        val seeds = MaterialYouScheme.extractSeedColors(pixels, maxColors = 4)
+        assertTrue("应提取出至少一个推荐色", seeds.isNotEmpty())
+        assertTrue("提取色应均为不透明 ARGB", seeds.all { (it ushr 24) == 0xFF })
+    }
+
+    @Test
+    fun `previewSwatches 与完整 fromSeed 的三项代表色一致且支持深浅档缓存`() {
+        listOf(false, true).forEach { dark ->
+            val swatches = MaterialYouScheme.previewSwatches(blue, dark = dark)
+            val full = MaterialYouScheme.fromSeed(blue, dark = dark)
+            org.junit.Assert.assertEquals(
+                listOf(full.primary, full.primaryContainer, full.tertiary),
+                swatches,
+            )
+            org.junit.Assert.assertEquals(
+                swatches,
+                MaterialYouScheme.previewSwatches(blue, dark = dark),
+            )
+        }
+    }
 }

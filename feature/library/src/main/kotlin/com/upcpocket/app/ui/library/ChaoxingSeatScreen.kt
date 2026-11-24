@@ -154,7 +154,7 @@ fun ChaoxingSeatScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = {
@@ -521,7 +521,7 @@ internal fun ChaoxingSeatDetailContent(
     LaunchedEffect(state.kind, state.detail, state.selectedDate, state.seatMode,
         state.queryGeneration, state.selectedSeat, state.hiddenBusy, state.canConfirm()) { confirmKey = null }
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         snackbarHost = { SnackbarHost(snack) },
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(

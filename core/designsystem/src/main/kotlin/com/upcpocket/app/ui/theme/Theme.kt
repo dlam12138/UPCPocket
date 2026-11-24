@@ -20,8 +20,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_THEME_SEED_ARGB
 import com.upcpocket.app.designsystem.DarkMode
 import com.upcpocket.app.designsystem.ThemePreset
+import com.upcpocket.app.designsystem.normalizeOpaqueSeedArgb
 
 private val AppTypography = Typography(
     displaySmall = TextStyle(
@@ -87,13 +89,14 @@ private val AppShapes = Shapes(
 /**
  * 全应用主题。
  *
- * 配色仍由用户的动态取色/预设决定；M5 统一的是排版层级与形状，而不是把
+ * 配色仍由用户的动态取色/预设/取色卡决定；M5 统一的是排版层级与形状，而不是把
  * 校园工具做成固定一套品牌皮肤。这样浅色、深色和用户换色后都能保持一致。
  */
 @Composable
 fun UpcPocketTheme(
     darkMode: DarkMode = DarkMode.SYSTEM,
     preset: ThemePreset = ThemePreset.DYNAMIC,
+    customSeedArgb: Int? = null,
     content: @Composable () -> Unit,
 ) {
     val dark = when (darkMode) {
@@ -101,7 +104,11 @@ fun UpcPocketTheme(
         DarkMode.LIGHT -> false
         DarkMode.DARK -> true
     }
-    val colorScheme = rememberAppColorScheme(preset = preset, dark = dark)
+    val colorScheme = rememberAppColorScheme(
+        preset = preset,
+        dark = dark,
+        customSeedArgb = customSeedArgb,
+    )
     MaterialTheme(
         colorScheme = colorScheme,
         typography = AppTypography,
@@ -129,10 +136,15 @@ fun rememberAppColorScheme(
     preset: ThemePreset,
     dark: Boolean,
     variant: SchemeVariant = SchemeVariant.TONAL_SPOT,
+    customSeedArgb: Int? = null,
 ): ColorScheme {
     val context = LocalContext.current
-    return remember(preset, dark, variant) {
-        val seed = preset.seedArgb
+    val resolvedCustomSeed = normalizeOpaqueSeedArgb(customSeedArgb ?: DEFAULT_CUSTOM_THEME_SEED_ARGB)
+    return remember(preset, dark, variant, resolvedCustomSeed) {
+        val seed = when (preset) {
+            ThemePreset.CUSTOM -> resolvedCustomSeed
+            else -> preset.seedArgb
+        }
         if (seed == null) {
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         } else {

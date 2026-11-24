@@ -5,11 +5,15 @@ import androidx.compose.ui.graphics.Color
 import com.materialkolor.dynamiccolor.DynamicColor
 import com.materialkolor.dynamiccolor.MaterialDynamicColors
 import com.materialkolor.hct.Hct
+import com.materialkolor.quantize.QuantizerCelebi
+import com.materialkolor.score.Score
 import com.materialkolor.scheme.DynamicScheme
 import com.materialkolor.scheme.SchemeContent
 import com.materialkolor.scheme.SchemeExpressive
 import com.materialkolor.scheme.SchemeTonalSpot
 import com.materialkolor.scheme.SchemeVibrant
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_THEME_SEED_ARGB
+import com.upcpocket.app.designsystem.normalizeOpaqueSeedArgb
 
 /**
  * 配色风格变体（对标 Android 14+ 的"主题色"风格）。
@@ -34,16 +38,89 @@ object MaterialYouScheme {
     /** 默认对比度（系统默认档） */
     const val DEFAULT_CONTRAST = 0.0
 
+    private const val CACHE_LIMIT = 32
+
+    private data class SchemeCacheKey(
+        val seedArgb: Int,
+        val dark: Boolean,
+        val variant: SchemeVariant,
+        val contrastLevel: Double,
+    )
+
+    private data class SwatchCacheKey(
+        val seedArgb: Int,
+        val dark: Boolean,
+    )
+
+    private val cacheLock = Any()
+    private val schemeCache = object : LinkedHashMap<SchemeCacheKey, ColorScheme>(
+        CACHE_LIMIT,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<SchemeCacheKey, ColorScheme>?,
+        ): Boolean = size > CACHE_LIMIT
+    }
+    private val swatchCache = object : LinkedHashMap<SwatchCacheKey, List<Color>>(
+        CACHE_LIMIT,
+        0.75f,
+        true,
+    ) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<SwatchCacheKey, List<Color>>?,
+        ): Boolean = size > CACHE_LIMIT
+    }
+
+    /**
+     * 仅计算外观设置预览所需的三个代表色（primary / primaryContainer / tertiary），
+     * 避免进入外观页时在主线程同步生成多套完整 36 角色 M3 配色表。
+     */
+    fun previewSwatches(
+        seedArgb: Int,
+        dark: Boolean,
+    ): List<Color> {
+        val key = SwatchCacheKey(seedArgb, dark)
+        synchronized(cacheLock) {
+            swatchCache[key]?.let { return it }
+            schemeCache[SchemeCacheKey(seedArgb, dark, SchemeVariant.TONAL_SPOT, DEFAULT_CONTRAST)]
+                ?.let { cachedScheme ->
+                    val swatches = listOf(
+                        cachedScheme.primary,
+                        cachedScheme.primaryContainer,
+                        cachedScheme.tertiary,
+                    )
+                    swatchCache[key] = swatches
+                    return swatches
+                }
+        }
+        val scheme = dynamicScheme(seedArgb, dark, SchemeVariant.TONAL_SPOT, DEFAULT_CONTRAST)
+        val colors = MaterialDynamicColors()
+        val swatches = listOf(
+            Color(colors.primary().getArgb(scheme)),
+            Color(colors.primaryContainer().getArgb(scheme)),
+            Color(colors.tertiary().getArgb(scheme)),
+        )
+        synchronized(cacheLock) {
+            swatchCache[key] = swatches
+        }
+        return swatches
+    }
+
     fun fromSeed(
         seedArgb: Int,
         dark: Boolean,
         variant: SchemeVariant = SchemeVariant.TONAL_SPOT,
         contrastLevel: Double = DEFAULT_CONTRAST,
     ): ColorScheme {
+        val key = SchemeCacheKey(seedArgb, dark, variant, contrastLevel)
+        synchronized(cacheLock) {
+            schemeCache[key]?.let { return it }
+        }
         val scheme = dynamicScheme(seedArgb, dark, variant, contrastLevel)
         val colors = MaterialDynamicColors()
         fun role(color: DynamicColor): Color = Color(color.getArgb(scheme))
-        return ColorScheme(
+        val computed = ColorScheme(
             primary = role(colors.primary()),
             onPrimary = role(colors.onPrimary()),
             primaryContainer = role(colors.primaryContainer()),
@@ -89,6 +166,35 @@ object MaterialYouScheme {
             // 注：primaryFixed / secondaryFixed / tertiaryFixed 那一组角色
             // 在当前的 Compose Material3 版本里还不是构造参数，本 App 也没用到，故不映射。
         )
+        synchronized(cacheLock) {
+            schemeCache[key] = computed
+            if (variant == SchemeVariant.TONAL_SPOT && contrastLevel == DEFAULT_CONTRAST) {
+                swatchCache[SwatchCacheKey(seedArgb, dark)] =
+                    listOf(computed.primary, computed.primaryContainer, computed.tertiary)
+            }
+        }
+        return computed
+    }
+
+    /**
+     * 从一组采样像素中提取适合作为 Material You 主题种子的推荐色列表。
+     *
+     * 使用 `material-color-utilities` 的 QuantizerCelebi + Score 过滤过灰或相近色，
+     * 仅在后台线程对小尺寸缩略图调用。
+     */
+    fun extractSeedColors(
+        pixels: IntArray,
+        maxColors: Int = 4,
+    ): List<Int> {
+        if (pixels.isEmpty() || maxColors <= 0) return emptyList()
+        val quantized = QuantizerCelebi.quantize(pixels, 128)
+        if (quantized.isEmpty()) return emptyList()
+        return Score.score(
+            colorsToPopulation = quantized,
+            desired = maxColors,
+            fallbackColorArgb = DEFAULT_CUSTOM_THEME_SEED_ARGB,
+            filter = true,
+        ).map(::normalizeOpaqueSeedArgb).distinct().take(maxColors)
     }
 
     internal fun dynamicScheme(

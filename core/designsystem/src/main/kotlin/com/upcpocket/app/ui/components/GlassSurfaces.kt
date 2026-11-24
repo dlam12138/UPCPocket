@@ -3,6 +3,7 @@ package com.upcpocket.app.ui.components
 import android.os.Build
 import android.view.View
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -25,9 +26,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -37,26 +41,48 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.lens
+import com.upcpocket.app.designsystem.DEFAULT_CUSTOM_BACKGROUND_OPACITY
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.designsystem.sanitizeCustomBackgroundOpacity
+import com.upcpocket.app.ui.theme.LocalHasCustomBackground
 import com.upcpocket.app.ui.theme.LocalUiStyle
 
 private class GlassSource(val backdrop: LayerBackdrop, val owner: View)
 
 private val LocalGlassSource = compositionLocalOf<GlassSource?> { null }
 
-/** The shared surface source contains only theme colors. It never records a control or a page. */
+/**
+ * 宿主共享背景与玻璃采样层。
+ *
+ * 采样层只包含主题光源与可选自定义背景图，不录制页面内容或交互控件。
+ */
 @Composable
-fun GlassEnvironment(content: @Composable () -> Unit) {
+fun GlassEnvironment(
+    backgroundImage: ImageBitmap? = null,
+    backgroundOpacity: Float = DEFAULT_CUSTOM_BACKGROUND_OPACITY,
+    content: @Composable () -> Unit,
+) {
     val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
+    val hasCustomBackground = backgroundImage != null
     val sheets = remember { GlassSheetVisibility() }
     val source = if (glass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         val scheme = MaterialTheme.colorScheme
         val dark = scheme.surface.luminance() < 0.5f
-        val brush = remember(scheme, dark) {
+        val brush = remember(scheme, dark, hasCustomBackground) {
+            val primaryAlpha = if (hasCustomBackground) {
+                if (dark) 0.08f else 0.12f
+            } else {
+                if (dark) 0.17f else 0.26f
+            }
+            val tertiaryAlpha = if (hasCustomBackground) {
+                if (dark) 0.06f else 0.09f
+            } else {
+                if (dark) 0.13f else 0.20f
+            }
             Brush.linearGradient(
-                0f to scheme.primary.copy(alpha = if (dark) 0.17f else 0.26f),
+                0f to scheme.primary.copy(alpha = primaryAlpha),
                 0.54f to Color.Transparent,
-                1f to scheme.tertiary.copy(alpha = if (dark) 0.13f else 0.20f),
+                1f to scheme.tertiary.copy(alpha = tertiaryAlpha),
             )
         }
         val backdrop = rememberLayerBackdrop(onDraw = remember(brush) { { drawRect(brush) } })
@@ -65,14 +91,27 @@ fun GlassEnvironment(content: @Composable () -> Unit) {
     } else null
 
     val backdrop = source?.backdrop
+    val clampedOpacity = sanitizeCustomBackgroundOpacity(backgroundOpacity)
     Box(Modifier.fillMaxSize()) {
         // Keep this slot mounted across appearance changes so navigation and page state survive.
         Box(
             Modifier.matchParentSize().then(
                 if (backdrop != null) Modifier.layerBackdrop(backdrop) else Modifier,
             ),
-        )
+        ) {
+            if (backgroundImage != null) {
+                Image(
+                    bitmap = backgroundImage,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { alpha = clampedOpacity },
+                )
+            }
+        }
         CompositionLocalProvider(
+            LocalHasCustomBackground provides hasCustomBackground,
             LocalGlassSource provides source,
             LocalGlassSheetVisibility provides if (glass) sheets else null,
             content = content,

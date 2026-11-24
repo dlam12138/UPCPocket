@@ -103,7 +103,7 @@ internal fun ShiguangScreenContent(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text(if (state.selected != null) "活动详情" else "石光") },

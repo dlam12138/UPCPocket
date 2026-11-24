@@ -175,7 +175,9 @@ internal fun CardHistoryScreenContent(
         if (rows.isEmpty()) null else CardHistoryAnalytics.fromRows(rows)
     }
     fun money(fen: Long) = BigDecimal.valueOf(fen, 2).toPlainString()
-    Scaffold(topBar = {
+    Scaffold(
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
+        topBar = {
         TopAppBar(
             title = { Text("交易流水") },
             navigationIcon = {

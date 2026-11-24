@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -208,6 +209,70 @@ class SettingsScreenTest {
         rule.onNodeWithText("日程待办位置").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("课表页").assertIsNotEnabled()
         rule.onNodeWithText("专注页").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `module reorder switch shows saved value and reports changes`() {
+        var changed: Boolean? = null
+        rule.setContent {
+            UpcPocketTheme {
+                SettingsScreen(
+                    accountState = SchoolAccountState(
+                        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                        generation = AccountGeneration(9),
+                    ),
+                    schoolSections = emptyList(),
+                    sectionHost = FakeSectionHost(),
+                    moduleReorderEnabled = true,
+                    onModuleReorderEnabledChange = { changed = it },
+                    onBack = {},
+                    onOpenAccount = {},
+                    onOpenAppearance = {},
+                    onOpenWidgets = {},
+                    onOpenOfficialWeb = {},
+                    onOpenAbout = {},
+                )
+            }
+        }
+
+        val row = rule.onNodeWithText("允许拖动卡片").performScrollTo()
+        row.assertIsDisplayed().assertIsOn()
+        rule.onNodeWithText("长按拖动首页和课表的卡片。关闭后锁定当前顺序。")
+            .performScrollTo()
+            .assertIsDisplayed()
+        row.performClick()
+        rule.waitForIdle()
+
+        assertEquals(false, changed)
+    }
+
+    @Test
+    fun `module reorder switch stays disabled before the preference is read`() {
+        rule.setContent {
+            UpcPocketTheme {
+                SettingsScreen(
+                    accountState = SchoolAccountState(
+                        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                        generation = AccountGeneration(10),
+                    ),
+                    schoolSections = emptyList(),
+                    sectionHost = FakeSectionHost(),
+                    moduleReorderEnabled = null,
+                    onBack = {},
+                    onOpenAccount = {},
+                    onOpenAppearance = {},
+                    onOpenWidgets = {},
+                    onOpenOfficialWeb = {},
+                    onOpenAbout = {},
+                )
+            }
+        }
+
+        // DataStore 尚未读完时不用默认的关闭状态冒充真实偏好。
+        rule.onNodeWithText("允许拖动卡片")
+            .performScrollTo()
+            .assertIsDisplayed()
+            .assertIsNotEnabled()
     }
 
     private class FakeSectionHost : PluginSectionHost {

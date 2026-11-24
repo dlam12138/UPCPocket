@@ -231,7 +231,7 @@ fun LibrarySeatScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = {
@@ -654,7 +654,7 @@ internal fun LibrarySeatDetailPage(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
@@ -1896,7 +1896,7 @@ private fun LibraryLoginGate(
     val canAutoLogin = accountState.isCredentialSaved && service.hasSavedAccount()
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("图书馆座位") },

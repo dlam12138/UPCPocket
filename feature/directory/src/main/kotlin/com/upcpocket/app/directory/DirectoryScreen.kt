@@ -220,7 +220,7 @@ private fun DirectoryScaffold(
     content: @Composable (Modifier) -> Unit,
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             CampusTopAppBar(
                 title = title,

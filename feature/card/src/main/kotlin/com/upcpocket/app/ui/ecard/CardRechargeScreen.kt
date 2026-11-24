@@ -96,7 +96,7 @@ internal fun CardRechargeScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("校园卡充值") },

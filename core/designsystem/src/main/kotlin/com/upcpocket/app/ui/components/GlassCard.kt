@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.ui.theme.LocalHasCustomBackground
 import com.upcpocket.app.ui.theme.LocalUiStyle
 
 /** Shared card surface; Material 3 semantics and the upstream nullable-click API are retained. */
@@ -18,14 +19,21 @@ fun GlassCard(
     content: @Composable () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.large
-    val border = if (LocalUiStyle.current == UiStyle.LIQUID_GLASS) null else
+    val isGlass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
+    val border = if (isGlass) null else
         BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    val baseColor = MaterialTheme.colorScheme.surfaceContainerLow
+    val containerColor = if (!isGlass && LocalHasCustomBackground.current) {
+        baseColor.copy(alpha = 0.86f)
+    } else {
+        baseColor
+    }
     if (onClick != null) {
         GlassSurface(
             onClick = onClick,
             enabled = enabled,
             shape = shape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            color = containerColor,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
@@ -38,7 +46,7 @@ fun GlassCard(
     } else {
         GlassSurface(
             shape = shape,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            color = containerColor,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,

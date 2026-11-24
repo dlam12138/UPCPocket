@@ -41,7 +41,7 @@ fun OfficialWebScreen(onBack: () -> Unit) {
     var weChatHandoffLink by remember { mutableStateOf<OfficialLink?>(null) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             CampusTopAppBar(
                 title = { Text("校园官方网页") },

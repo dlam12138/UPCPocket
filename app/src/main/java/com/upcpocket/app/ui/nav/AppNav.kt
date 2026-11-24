@@ -83,6 +83,7 @@ import androidx.navigation.compose.rememberNavController
 import com.kyant.backdrop.Backdrop
 import com.upcpocket.app.account.SchoolAccountScreen
 import com.upcpocket.app.core.AppGraph
+import com.upcpocket.app.data.prefs.HomeModuleId
 import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.data.prefs.UiPrefs
 import com.upcpocket.app.designsystem.DarkMode
@@ -97,8 +98,11 @@ import com.upcpocket.app.plugin.ui.PluginRouteId
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.plugin.ui.UiSurface
 import com.upcpocket.app.power.POWER_TANGDAOWAN_ROUTE
+import com.upcpocket.app.timetable.LocalTimetableModuleLayout
 import com.upcpocket.app.timetable.LocalTimetableTodoSlot
 import com.upcpocket.app.timetable.TIMETABLE_ROUTE
+import com.upcpocket.app.timetable.TimetableModuleId
+import com.upcpocket.app.timetable.TimetableModuleLayout
 import com.upcpocket.app.todo.TODO_ROUTE
 import com.upcpocket.app.ui.todo.LocalTodoListBack
 import com.upcpocket.app.ui.todo.TodoScheduleSection
@@ -118,6 +122,7 @@ import com.upcpocket.app.ui.settings.AppearanceScreen
 import com.upcpocket.app.ui.settings.SettingsScreen
 import com.upcpocket.app.ui.settings.WidgetSettingsScreen
 import com.upcpocket.app.ui.theme.LocalUiStyle
+import com.upcpocket.app.ui.theme.appScaffoldContainerColor
 import com.upcpocket.app.widget.WidgetLaunchTarget
 import kotlin.math.abs
 import kotlinx.coroutines.Job
@@ -204,7 +209,7 @@ fun AppNav(
     // 后重建并丢失深链或 Pager 选择。两个宿主都可用时无需等待，偏好未读到时
     // 设置卡片仍显示但选项禁用，槽位暂不渲染。
     if (todoHost.awaitingPreference) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
+        Box(Modifier.fillMaxSize().background(appScaffoldContainerColor()))
         return
     }
     val pluginDestinations = visiblePluginTabs(pluginUi.bottomNav, todoHost.embedTodo)
@@ -408,6 +413,19 @@ fun AppNav(
         }
     }
 
+    // 长按拖动完成后只写回顺序；是否允许拖动以 UiPrefsStore 内的开关为准，
+    // 关闭时界面仍按保存顺序渲染。
+    val onHomeModuleOrderChange: (List<HomeModuleId>) -> Unit = remember(scope) {
+        { newOrder ->
+            scope.launch { AppGraph.uiPrefsStore.setHomeModuleOrder(newOrder) }
+        }
+    }
+    val onTimetableModuleOrderChange: (List<TimetableModuleId>) -> Unit = remember(scope) {
+        { newOrder ->
+            scope.launch { AppGraph.uiPrefsStore.setTimetableModuleOrder(newOrder) }
+        }
+    }
+
     val dockDark = when (prefs.darkMode) {
         DarkMode.DARK -> true
         DarkMode.LIGHT -> false
@@ -418,13 +436,13 @@ fun AppNav(
     val opticalDock = glass && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val drawDock = dockVisible && !isGlassSheetVisible()
     val dockBackdrop = if (drawDock && opticalDock) glassThemeBackdrop() else null
-    val surface = MaterialTheme.colorScheme.surface
+    val rootContainerColor = appScaffoldContainerColor()
 
     CompositionLocalProvider(LocalDockClearance provides dockClearance) {
         Box(
             Modifier
                 .fillMaxSize()
-                .background(surface),
+                .background(rootContainerColor),
         ) {
             NavHost(
                 navController = navController,
@@ -471,6 +489,9 @@ fun AppNav(
                                                 launchSingleTop = true
                                             }
                                         },
+                                        moduleOrder = prefs.homeModuleOrder,
+                                        reorderEnabled = prefs.moduleReorderEnabled,
+                                        onModuleOrderChange = onHomeModuleOrderChange,
                                     )
                                     AppRoutes.SERVICES -> ServicesScreen(
                                         entries = allServiceEntries,
@@ -494,13 +515,32 @@ fun AppNav(
                                         val slot = todoScheduleSlot
                                         when {
                                             destination == null || pageContent == null -> Unit
-                                            // 同一纵向滚动内先渲染本机日程槽位，再继续
-                                            // 课表原有账号/学期/周网格正文。
-                                            slot != null &&
-                                                destination.route == TIMETABLE_ROUTE.value &&
-                                                todoHost.host == TodoHostPlacement.TIMETABLE -> {
+                                            // 课表页始终注入本机排序偏好；日程槽位仅在
+                                            // 待办确实合入课表页时提供，避免把无槽位的
+                                            // 日程模块渲染成空白。
+                                            destination.route == TIMETABLE_ROUTE.value -> {
+                                                val timetableLayout = remember(
+                                                    prefs.timetableModuleOrder,
+                                                    prefs.moduleReorderEnabled,
+                                                    onTimetableModuleOrderChange,
+                                                ) {
+                                                    TimetableModuleLayout(
+                                                        order = prefs.timetableModuleOrder,
+                                                        reorderEnabled = prefs.moduleReorderEnabled,
+                                                        onOrderChange = onTimetableModuleOrderChange,
+                                                    )
+                                                }
+                                                val activeSlot = if (
+                                                    slot != null &&
+                                                    todoHost.host == TodoHostPlacement.TIMETABLE
+                                                ) {
+                                                    slot
+                                                } else {
+                                                    null
+                                                }
                                                 CompositionLocalProvider(
-                                                    LocalTimetableTodoSlot provides slot,
+                                                    LocalTimetableTodoSlot provides activeSlot,
+                                                    LocalTimetableModuleLayout provides timetableLayout,
                                                 ) {
                                                     pageContent.content(pageHost)
                                                 }
@@ -559,6 +599,10 @@ fun AppNav(
                             scope.launch {
                                 AppGraph.uiPrefsStore.setTodoHostPlacement(placement)
                             }
+                        },
+                        moduleReorderEnabled = storedPrefs?.moduleReorderEnabled,
+                        onModuleReorderEnabledChange = { enabled ->
+                            scope.launch { AppGraph.uiPrefsStore.setModuleReorderEnabled(enabled) }
                         },
                         onBack = { navController.popBackStack() },
                         onOpenAccount = { navController.navigate(AppRoutes.ACCOUNT) },

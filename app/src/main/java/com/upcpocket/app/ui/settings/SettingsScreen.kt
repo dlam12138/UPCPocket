@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -33,6 +34,7 @@ import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.account.api.SchoolAccountState
@@ -42,6 +44,7 @@ import com.upcpocket.app.data.prefs.TodoHostPlacement
 import com.upcpocket.app.plugin.ui.PluginSection
 import com.upcpocket.app.plugin.ui.PluginSectionHost
 import com.upcpocket.app.ui.components.CampusFilterChip
+import com.upcpocket.app.ui.components.CampusSwitch
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.SectionHeader
@@ -63,6 +66,8 @@ fun SettingsScreen(
     todoHostPlacement: TodoHostPlacement? = null,
     showTodoHostPlacement: Boolean = false,
     onTodoHostPlacementChange: (TodoHostPlacement) -> Unit = {},
+    moduleReorderEnabled: Boolean? = null,
+    onModuleReorderEnabledChange: (Boolean) -> Unit = {},
     onBack: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenAppearance: () -> Unit,
@@ -71,7 +76,7 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit,
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("设置") },
@@ -137,6 +142,10 @@ fun SettingsScreen(
                     onChange = onTodoHostPlacementChange,
                 )
             }
+            ModuleReorderCard(
+                moduleReorderEnabled = moduleReorderEnabled,
+                onChange = onModuleReorderEnabledChange,
+            )
             GlassCard(Modifier.fillMaxWidth()) {
                 Column {
                     SettingsNavigationRow(
@@ -227,6 +236,52 @@ private fun TodoHostPlacementCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * 首页与课表卡片的长按拖动开关。
+ *
+ * [moduleReorderEnabled] 为 null 表示 DataStore 尚未读完：此时禁用开关，不用默认的
+ * 关闭状态冒充真实偏好。整行是一个开关语义节点，内层 [CampusSwitch] 只做展示。
+ */
+@Composable
+private fun ModuleReorderCard(
+    moduleReorderEnabled: Boolean?,
+    onChange: (Boolean) -> Unit,
+) {
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = moduleReorderEnabled == true,
+                    enabled = moduleReorderEnabled != null,
+                    role = Role.Switch,
+                    onValueChange = onChange,
+                )
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text("允许拖动卡片", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = "长按拖动首页和课表的卡片。关闭后锁定当前顺序。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            CampusSwitch(
+                checked = moduleReorderEnabled == true,
+                onCheckedChange = null,
+                enabled = moduleReorderEnabled != null,
+            )
         }
     }
 }

@@ -24,6 +24,10 @@
 
 2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
+2.1.0 后开发改动（未发布）：首页与课表页模块支持长按拖动排序。通用容器 `ReorderableModuleColumn` 归 `core:designsystem`，由宿主传入稳定 key、可见项、`scrollState`、`enabled` 与写回回调；课表页通过 `LocalTimetableModuleLayout`（`TimetableModuleLayout`、`TimetableModuleId`）接收宿主顺序、开关与回调，缺省回退 `[TODO_SCHEDULE, TIMETABLE]`。顺序只保存在宿主 `UiPrefsStore`，不改变业务数据或触发校园请求；开关关闭时仍按已保存顺序渲染并锁定，写回前在同一 edit 内复核开关。
+
+2.1.0 后开发改动（未发布）：外观新增自定义背景与取色卡。`CustomBackgroundStore` 把用户主动选择的图片下采样后保存到私有 `noBackupFilesDir/appearance/custom_background.jpg`，以该 JPEG 为唯一事实来源；导入与清除由存储层互斥串行，成功后 `revision` 变更流通知宿主和设置页重新读盘，`UiPrefsStore` 只保存可见度 `custom_background_opacity` 与取色卡种子色 `custom_theme_seed_argb`。`GlassEnvironment(backgroundImage, backgroundOpacity)` 接收解码后的背景图；`LocalHasCustomBackground` 与 `appScaffoldContainerColor()` 让页面容器在存在背景图时透明，`ThemePreset.CUSTOM` 与 `MaterialYouScheme.extractSeedColors` 提供取色卡配色。
+
 2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
 
 校园通讯录的服务入口和首页固定共用 `directory.home`。宿主注入常用校区，「全部」对应空校区筛选。通讯录通过 `DirectoryCampusMap` 向宿主提供选定的校区和地点 ID。宿主将其交给已激活的 `CampusMapPlaceRequests`，由地图在指定校区精确选点。课表继续使用原有的地点文字请求。

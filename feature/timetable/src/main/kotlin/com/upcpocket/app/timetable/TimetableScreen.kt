@@ -80,10 +80,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.upcpocket.app.plugin.ui.LocalDockClearance
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
 import com.upcpocket.app.ui.components.GlassCard
+import com.upcpocket.app.ui.components.ReorderableModuleColumn
 import com.upcpocket.app.ui.components.glassHighlight
 import com.upcpocket.app.ui.components.glassPane
 import com.upcpocket.app.ui.components.IconBadge
 import com.upcpocket.app.ui.components.StatusPill
+import com.upcpocket.app.ui.components.mergeReorderedSubset
+import com.upcpocket.app.ui.components.normalizeModuleOrder
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -92,12 +95,47 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 
 /**
+ * 课表页可长按拖动排序的功能模块标识。
+ *
+ * 仅控制展示顺序；日程待办是否合入课表页仍由宿主 [LocalTimetableTodoSlot] 决定。
+ */
+enum class TimetableModuleId(val label: String) {
+    TODO_SCHEDULE("日程待办"),
+    TIMETABLE("周课表");
+
+    companion object {
+        val DEFAULT_ORDER: List<TimetableModuleId> = listOf(TODO_SCHEDULE, TIMETABLE)
+
+        fun fromStoredValue(raw: String?): List<TimetableModuleId> {
+            if (raw.isNullOrBlank()) return DEFAULT_ORDER
+            val parsed = raw.split(',')
+                .mapNotNull { token -> entries.firstOrNull { it.name == token.trim() } }
+            return normalizeModuleOrder(parsed, DEFAULT_ORDER)
+        }
+
+        fun toStoredValue(order: List<TimetableModuleId>): String =
+            normalizeModuleOrder(order, DEFAULT_ORDER).joinToString(",") { it.name }
+    }
+}
+
+/** 宿主注入的课表页模块排序偏好、拖动开关与写回回调。 */
+data class TimetableModuleLayout(
+    val order: List<TimetableModuleId> = TimetableModuleId.DEFAULT_ORDER,
+    /** 是否允许长按拖动；关闭时仍按 [order] 渲染并锁定顺序。 */
+    val reorderEnabled: Boolean = false,
+    val onOrderChange: (List<TimetableModuleId>) -> Unit = {},
+)
+
+/**
  * 宿主装配的课表页顶部槽位。
  *
- * 只承载本机日程待办等宿主注入内容；不参与课表账号、登录或周查询状态。槽位在
- * 账号阻断/首次使用分支之前渲染，因此本机内容不依赖学校能力是否可用。
+ * 只承载本机日程待办等宿主注入内容；不参与课表账号、登录或周查询状态。槽位与课表
+ * 主体彼此独立，即使账号未保存或受阻也会完整渲染。
  */
 val LocalTimetableTodoSlot = compositionLocalOf<(@Composable () -> Unit)?> { null }
+
+/** 课表页模块排序偏好；未提供时回退为 [TimetableModuleId.DEFAULT_ORDER]。 */
+val LocalTimetableModuleLayout = compositionLocalOf { TimetableModuleLayout() }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -120,6 +158,32 @@ fun TimetableScreen(
     )
 }
 
+private fun timetableModuleKey(module: TimetableModuleId): Any = module.name
+private fun timetableModuleLabel(module: TimetableModuleId): String = module.label
+private fun timetableModuleTestTag(module: TimetableModuleId): String =
+    "timetable_module_${module.name.lowercase()}"
+
+@Composable
+private fun TimetableActiveEffect(viewModel: TimetableViewModel) {
+    val active = LocalPluginPageActive.current
+    LaunchedEffect(active, viewModel) {
+        if (active) viewModel.start()
+    }
+}
+
+@Composable
+private fun TimetableHomeActiveEffect(
+    service: TimetableService,
+    accountEpoch: Long,
+) {
+    val active = LocalPluginPageActive.current
+    // 首页激活或账号代次变化时恢复一次本机缓存；时钟只由 TodayPanel 在 UI 本地更新。
+    LaunchedEffect(active, accountEpoch, service) {
+        if (!active) return@LaunchedEffect
+        service.restoreTodayFromCache()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TimetableScreen(
@@ -127,12 +191,9 @@ internal fun TimetableScreen(
     onOpenAccountSettings: () -> Unit,
     onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
+    TimetableActiveEffect(viewModel)
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val active = LocalPluginPageActive.current
     val dockClearance = LocalDockClearance.current
-    LaunchedEffect(active) {
-        if (active) viewModel.start()
-    }
     var detail by remember { mutableStateOf<TimetableMeetingSelection?>(null) }
     var loginVisible by remember { mutableStateOf(false) }
     var loginUrl by remember { mutableStateOf<String?>(null) }
@@ -170,8 +231,25 @@ internal fun TimetableScreen(
         }
     }
 
+    val scrollState = rememberScrollState()
+    val todoSlot = LocalTimetableTodoSlot.current
+    val moduleLayout = LocalTimetableModuleLayout.current
+    val normalizedOrder = remember(moduleLayout.order) {
+        normalizeModuleOrder(moduleLayout.order, TimetableModuleId.DEFAULT_ORDER)
+    }
+    val visibleModules = remember(normalizedOrder, todoSlot != null) {
+        normalizedOrder.filter { module ->
+            module != TimetableModuleId.TODO_SCHEDULE || todoSlot != null
+        }
+    }
+    val onReorderFinished = remember(normalizedOrder, moduleLayout.onOrderChange) {
+        { reordered: List<TimetableModuleId> ->
+            moduleLayout.onOrderChange(mergeReorderedSubset(normalizedOrder, reordered))
+        }
+    }
+
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         contentWindowInsets = WindowInsets.safeDrawing.only(
             WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
         ),
@@ -202,57 +280,81 @@ internal fun TimetableScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
+                .verticalScroll(scrollState)
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            LocalTimetableTodoSlot.current?.invoke()
+            ReorderableModuleColumn(
+                items = visibleModules,
+                key = ::timetableModuleKey,
+                scrollState = scrollState,
+                spacing = 8.dp,
+                enabled = moduleLayout.reorderEnabled,
+                itemLabel = ::timetableModuleLabel,
+                itemTestTag = ::timetableModuleTestTag,
+                onReorderFinished = onReorderFinished,
+            ) { module, _ ->
+                when (module) {
+                    TimetableModuleId.TODO_SCHEDULE -> {
+                        todoSlot?.invoke()
+                    }
+                    TimetableModuleId.TIMETABLE -> {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            when {
+                                state.accountBlocked -> {
+                                    AccountBlockedCard(
+                                        message = state.message ?: "学校账号暂不可用。",
+                                        onOpenAccountSettings = onOpenAccountSettings,
+                                    )
+                                }
+                                !state.accountSavedUnverified -> {
+                                    FirstRunCard(
+                                        isLoading = state.connection == TimetableConnection.LOADING,
+                                        onOpenAccountSettings = onOpenAccountSettings,
+                                    )
+                                }
+                                else -> {
+                                    if (state.connection != TimetableConnection.CONNECTED ||
+                                        state.message != null ||
+                                        (!state.isBusy && state.terms.isEmpty())
+                                    ) {
+                                        ConnectionBanner(
+                                            state = state,
+                                            onRetry = viewModel::refresh,
+                                            onOpenAccountSettings = onOpenAccountSettings,
+                                            onOpenLogin = ::beginWebLogin,
+                                            onOpenWebLogin = ::beginWebLogin,
+                                        )
+                                    }
 
-            if (state.accountBlocked) {
-                AccountBlockedCard(
-                    message = state.message ?: "学校账号暂不可用。",
-                    onOpenAccountSettings = onOpenAccountSettings,
-                )
-                return@Column
-            }
-
-            if (!state.accountSavedUnverified) {
-                FirstRunCard(
-                    isLoading = state.connection == TimetableConnection.LOADING,
-                    onOpenAccountSettings = onOpenAccountSettings,
-                )
-                return@Column
-            }
-
-            if (state.connection != TimetableConnection.CONNECTED || state.message != null ||
-                (!state.isBusy && state.terms.isEmpty())
-            ) {
-                ConnectionBanner(
-                    state = state,
-                    onRetry = viewModel::refresh,
-                    onOpenAccountSettings = onOpenAccountSettings,
-                    onOpenLogin = ::beginWebLogin,
-                    onOpenWebLogin = ::beginWebLogin,
-                )
-            }
-
-            if (state.terms.isEmpty()) {
-                if (state.isBusy) {
-                    ReadingCard()
-                } else {
-                    NoTermsCard()
+                                    if (state.terms.isEmpty()) {
+                                        if (state.isBusy) {
+                                            ReadingCard()
+                                        } else {
+                                            NoTermsCard()
+                                        }
+                                    } else {
+                                        // 页面以学期/周选择和周网格为主；今日课程由插件贡献到首页。
+                                        TermAndWeekHeader(
+                                            state = state,
+                                            onSelectTerm = viewModel::selectTerm,
+                                            onSelectWeek = viewModel::selectWeek,
+                                        )
+                                        WeekPanel(
+                                            state,
+                                            onCourseClick = {
+                                                detail = it.selection(state.accountEpoch)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-            } else {
-                // 页面以学期/周选择和周网格为主；今日课程由插件贡献到首页。
-                TermAndWeekHeader(
-                    state = state,
-                    onSelectTerm = viewModel::selectTerm,
-                    onSelectWeek = viewModel::selectWeek,
-                )
-                WeekPanel(
-                    state,
-                    onCourseClick = { detail = it.selection(state.accountEpoch) },
-                )
             }
             Spacer(Modifier.height(2.dp))
         }
@@ -309,7 +411,7 @@ internal fun TimetableHomeSection(
     onOpenCampusLocation: ((String) -> Unit)? = null,
 ) {
     val state by service.todayState.collectAsStateWithLifecycle()
-    val active = LocalPluginPageActive.current
+    TimetableHomeActiveEffect(service = service, accountEpoch = state.accountEpoch)
     var detail by remember { mutableStateOf<TimetableMeetingSelection?>(null) }
     var actualToday by remember { mutableStateOf(LocalDate.now(TIMETABLE_ZONE)) }
 
@@ -320,15 +422,6 @@ internal fun TimetableHomeSection(
             delay(Duration.between(now, nextDate).toMillis().coerceAtLeast(1L))
             actualToday = LocalDate.now(TIMETABLE_ZONE)
         }
-    }
-
-    // 首页激活或账号代次变化时恢复一次本机缓存；时钟只由 TodayPanel 在 UI 本地更新。
-    LaunchedEffect(
-        active,
-        state.accountEpoch,
-    ) {
-        if (!active) return@LaunchedEffect
-        service.restoreTodayFromCache()
     }
 
     val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked &&

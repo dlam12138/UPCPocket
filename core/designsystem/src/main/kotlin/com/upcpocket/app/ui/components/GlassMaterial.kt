@@ -29,14 +29,15 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.designsystem.UiStyle
+import com.upcpocket.app.ui.theme.LocalHasCustomBackground
 import com.upcpocket.app.ui.theme.LocalUiStyle
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.filterIsInstance
 
-/** 按当前视口和主题缓存渐变，供透明页面共用。 */
+/** 按当前视口和主题缓存渐变，供透明页面共用；启用自定义背景图时跳过不透明底色渐变。 */
 @Composable
 fun Modifier.glassBackground(): Modifier {
-    if (LocalUiStyle.current != UiStyle.LIQUID_GLASS) return this
+    if (LocalUiStyle.current != UiStyle.LIQUID_GLASS || LocalHasCustomBackground.current) return this
 
     val scheme = MaterialTheme.colorScheme
     val dark = scheme.surface.luminance() < 0.5f

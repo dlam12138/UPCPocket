@@ -77,7 +77,7 @@ fun FocusStatsScreen(
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("学习统计") },

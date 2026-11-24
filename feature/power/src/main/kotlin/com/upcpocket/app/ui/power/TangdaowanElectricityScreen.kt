@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 fun TangdaowanElectricityScreen(service: PowerService, onBack: () -> Unit) {
     val pageScope = rememberCoroutineScope()
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
         topBar = {
             com.upcpocket.app.ui.components.CampusTopAppBar(
                 title = { Text("唐岛湾电费") },
