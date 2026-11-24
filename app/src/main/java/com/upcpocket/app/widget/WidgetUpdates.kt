@@ -16,6 +16,13 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
 import com.upcpocket.app.timetable.TIMETABLE_ZONE
+import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetDay
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetDayState
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetLayout
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetRenderer
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetSnapshot
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetStatus
 import com.upcpocket.app.timetable.TimetableWeekWidgetLayout
 import com.upcpocket.app.timetable.TimetableWeekWidgetRenderer
 import com.upcpocket.app.timetable.TimetableWeekWidgetSnapshot
@@ -69,14 +76,17 @@ object WidgetUpdates {
     /** 只在内存保留最近一次提交锁内复核过的周快照；不新增持久化。 */
     @Volatile
     private var cachedWeekSnapshot: TimetableWeekWidgetSnapshot? = null
-    /** 串行磁盘读取与等待；读取期间不持有发布锁。 */
-    private val weekSnapshotReadLock = Mutex()
+    /** 今明版同样只保留提交锁内复核过的快照，与周版共享读取与发布锁。 */
+    @Volatile
+    private var cachedTodayTomorrowSnapshot: TimetableTodayTomorrowWidgetSnapshot? = null
+    /** 串行课表磁盘读取与等待；周版和今明版同时存在时只读一次。读取期间不持有发布锁。 */
+    private val calendarSnapshotReadLock = Mutex()
     /**
-     * 周版唯一发布短锁。撤下旧内容与读后发布都必须在锁内复核绑定/凭据代次/
-     * 业务代次/周起点再提交 RemoteViews，避免旧读取在清理画空之后又画回旧课名。
-     * 锁内只做内存复核和 RemoteViews 构建，不做磁盘 I/O。
+     * 周版与今明版共用的发布短锁。撤下旧内容与读后发布都必须在锁内复核绑定/
+     * 凭据代次/业务代次/日期/缓存写入代次再提交 RemoteViews，避免旧读取在清理
+     * 画空之后又画回旧课名。锁内只做内存复核和 RemoteViews 构建，不做磁盘 I/O。
      */
-    private val weekPublicationLock = Any()
+    private val calendarPublicationLock = Any()
 
     private val unavailableCardRevision = CardWidgetRevision(
         availability = CardBindingAvailability.NO_ACCOUNT,
@@ -97,7 +107,11 @@ object WidgetUpdates {
 
     fun requestTimetable(context: Context) {
         val appContext = context.applicationContext
-        scope.launch { runCatching { updateKind(appContext, WidgetKind.TIMETABLE) } }
+        scope.launch {
+            runCatching {
+                updateKind(appContext, WidgetKind.TIMETABLE, forceTimetableCalendarRead = true)
+            }
+        }
     }
 
     fun requestTodo(context: Context) {
@@ -178,6 +192,7 @@ object WidgetUpdates {
         context: Context,
         kind: WidgetKind,
         scheduleTicker: Boolean = true,
+        forceTimetableCalendarRead: Boolean = false,
     ) {
         val appContext = context.applicationContext
         val ids = widgetIds(appContext, kind)
@@ -202,7 +217,10 @@ object WidgetUpdates {
                     )
                 }
             }
-            WidgetKind.TIMETABLE -> publishTimetable(appContext)
+            WidgetKind.TIMETABLE -> publishTimetable(
+                appContext,
+                forceCalendarRead = forceTimetableCalendarRead,
+            )
             WidgetKind.TODO -> updateTodoSnapshot(appContext, scheduleTicker = scheduleTicker)
         }
         if (kind == WidgetKind.TIMETABLE && scheduleTicker) {
@@ -289,42 +307,52 @@ object WidgetUpdates {
         appearance = appearanceFor(variant),
     )
 
-    /** 挂起刷新：今日与周版都完成本地读取后再安排下一次边界。 */
-    private suspend fun publishTimetable(context: Context) {
+    /** 挂起刷新：今日、今明与周版都完成本地读取后再安排下一次边界。 */
+    private suspend fun publishTimetable(context: Context, forceCalendarRead: Boolean) {
         val instances = widgetEntries(context, WidgetKind.TIMETABLE)
         if (instances.isEmpty()) return
-        val todayInstances = instances.filterNot {
-            it.second == WidgetProviderVariant.TIMETABLE_WEEK
-        }
+        val todayInstances = instances.filter { it.second.isTimetableTodayVariant }
         if (todayInstances.isNotEmpty()) publishTodayWidgets(context, todayInstances)
         val weekInstances = instances.filter {
             it.second == WidgetProviderVariant.TIMETABLE_WEEK
         }
-        if (weekInstances.isEmpty()) return
-        // 先撤下不再可信的旧周内容，再等待本次缓存读取；读取不在 Receiver 线程。
-        publishImmediateWeek(context, weekInstances)
-        readAndPublishWeek(context)
+        val todayTomorrowInstances = instances.filter {
+            it.second == WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW
+        }
+        if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
+
+        // 先撤下不再可信的旧内容，再等待本次缓存读取；读取不在 Receiver 线程。
+        if (weekInstances.isNotEmpty()) publishImmediateWeek(context, weekInstances)
+        if (todayTomorrowInstances.isNotEmpty()) {
+            publishImmediateTodayTomorrow(context, todayTomorrowInstances)
+        }
+        refreshCalendarWidgets(context, forceRead = forceCalendarRead)
     }
 
     /**
-     * Receiver 同步路径：今日快照沿用原有同步读取；周版只立即发布内存中仍有效的
-     * 快照或占位状态，把缓存重读放到后台协程，避免阻塞主线程。
+     * Receiver 同步路径：今日快照沿用原有同步读取；今明与周版只立即发布内存中
+     * 仍有效的快照或占位状态，把缓存重读放到后台协程，避免阻塞主线程。两种扩展
+     * 组件同时存在时后台只读一次缓存。
      */
     private fun publishTimetableNow(context: Context) {
         val instances = widgetEntries(context, WidgetKind.TIMETABLE)
         if (instances.isEmpty()) return
-        val todayInstances = instances.filterNot {
-            it.second == WidgetProviderVariant.TIMETABLE_WEEK
-        }
+        val todayInstances = instances.filter { it.second.isTimetableTodayVariant }
         if (todayInstances.isNotEmpty()) publishTodayWidgets(context, todayInstances)
         val weekInstances = instances.filter {
             it.second == WidgetProviderVariant.TIMETABLE_WEEK
         }
-        if (weekInstances.isEmpty()) return
-        publishImmediateWeek(context, weekInstances)
+        val todayTomorrowInstances = instances.filter {
+            it.second == WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW
+        }
+        if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
+        if (weekInstances.isNotEmpty()) publishImmediateWeek(context, weekInstances)
+        if (todayTomorrowInstances.isNotEmpty()) {
+            publishImmediateTodayTomorrow(context, todayTomorrowInstances)
+        }
         val appContext = context.applicationContext
         scope.launch {
-            runCatching { readAndPublishWeek(appContext) }
+            runCatching { refreshCalendarWidgets(appContext, forceRead = false) }
         }
     }
 
@@ -388,7 +416,7 @@ object WidgetUpdates {
         val manager = AppWidgetManager.getInstance(context)
         val fontScale = context.resources.configuration.fontScale
         instances.forEach { (id, variant) ->
-            val size = weekWidgetSize(manager, id)
+            val size = calendarWidgetSize(manager, id)
             val layout = TimetableWeekWidgetLayout.forSize(
                 widthDp = size.widthDp,
                 heightDp = size.heightDp,
@@ -412,6 +440,102 @@ object WidgetUpdates {
         }
     }
 
+    private fun publishTodayTomorrowWidgets(
+        context: Context,
+        instances: List<Pair<Int, WidgetProviderVariant>>,
+        snapshot: TimetableTodayTomorrowWidgetSnapshot,
+    ) {
+        val manager = AppWidgetManager.getInstance(context)
+        val fontScale = context.resources.configuration.fontScale
+        instances.forEach { (id, variant) ->
+            val size = calendarWidgetSize(manager, id)
+            val layout = TimetableTodayTomorrowWidgetLayout.forSize(
+                widthDp = size.widthDp,
+                heightDp = size.heightDp,
+                fontScale = fontScale,
+            )
+            Log.d("UPCWidgetSize", "todayTomorrow layout=$layout size=$size")
+            manager.updateAppWidget(
+                id,
+                TimetableTodayTomorrowWidgetRenderer.render(
+                    context = context,
+                    snapshot = snapshot,
+                    layout = layout,
+                    openIntent = WidgetIntents.openApp(
+                        context,
+                        WidgetLaunchTarget.TIMETABLE,
+                        id,
+                    ),
+                    appearance = appearanceFor(variant),
+                ),
+            )
+        }
+    }
+
+    /**
+     * 宿主拿不到服务时的今明占位：两个日期都是真实上海今天/次日，内容明确为
+     * 未同步，不能显示成两天无课，也不能沿用旧账号课名。
+     */
+    private fun unavailableTodayTomorrowSnapshot(): TimetableTodayTomorrowWidgetSnapshot {
+        val today = LocalDate.now(TIMETABLE_ZONE)
+        val tomorrow = today.plusDays(1)
+        return TimetableTodayTomorrowWidgetSnapshot(
+            status = TimetableTodayTomorrowWidgetStatus.OK,
+            today = today,
+            tomorrow = tomorrow,
+            days = listOf(
+                TimetableTodayTomorrowWidgetDay(
+                    date = today,
+                    state = TimetableTodayTomorrowWidgetDayState.UNSYNCED,
+                ),
+                TimetableTodayTomorrowWidgetDay(
+                    date = tomorrow,
+                    state = TimetableTodayTomorrowWidgetDayState.UNSYNCED,
+                ),
+            ),
+        )
+    }
+
+    /** 今明版立即发布：与周版共用发布锁，失效快照必须换成日期真实的状态。 */
+    private fun publishImmediateTodayTomorrow(
+        context: Context,
+        instances: List<Pair<Int, WidgetProviderVariant>>,
+    ) = synchronized(calendarPublicationLock) {
+        val service = AppGraph.timetableServiceOrNull
+        val cached = cachedTodayTomorrowSnapshot
+        val snapshot = when {
+            service == null -> {
+                cachedTodayTomorrowSnapshot = null
+                unavailableTodayTomorrowSnapshot()
+            }
+            cached != null && service.isTodayTomorrowWidgetSnapshotCurrent(cached) -> cached
+            else -> {
+                cachedTodayTomorrowSnapshot = null
+                service.todayTomorrowWidgetPlaceholderNow()
+            }
+        }
+        publishTodayTomorrowWidgets(context.applicationContext, instances, snapshot)
+    }
+
+    /** 今明版读后提交：锁内复核候选快照，过期读取只发布占位状态。 */
+    private fun commitTodayTomorrowRead(
+        context: Context,
+        instances: List<Pair<Int, WidgetProviderVariant>>,
+        read: TimetableTodayTomorrowWidgetSnapshot,
+    ) = synchronized(calendarPublicationLock) {
+        val service = AppGraph.timetableServiceOrNull
+        val snapshot = if (!read.isReadResult) {
+            read
+        } else if (service != null && service.isTodayTomorrowWidgetSnapshotCurrent(read)) {
+            cachedTodayTomorrowSnapshot = read
+            read
+        } else {
+            cachedTodayTomorrowSnapshot = null
+            service?.todayTomorrowWidgetPlaceholderNow() ?: unavailableTodayTomorrowSnapshot()
+        }
+        publishTodayTomorrowWidgets(context.applicationContext, instances, snapshot)
+    }
+
     private fun unavailableWeekSnapshot(): TimetableWeekWidgetSnapshot {
         val today = LocalDate.now(TIMETABLE_ZONE)
         return TimetableWeekWidgetSnapshot(
@@ -428,7 +552,7 @@ object WidgetUpdates {
     private fun publishImmediateWeek(
         context: Context,
         instances: List<Pair<Int, WidgetProviderVariant>>,
-    ) = synchronized(weekPublicationLock) {
+    ) = synchronized(calendarPublicationLock) {
         val service = AppGraph.timetableServiceOrNull
         val cached = cachedWeekSnapshot
         val snapshot = when {
@@ -450,7 +574,7 @@ object WidgetUpdates {
         context: Context,
         instances: List<Pair<Int, WidgetProviderVariant>>,
         read: TimetableWeekWidgetSnapshot,
-    ) = synchronized(weekPublicationLock) {
+    ) = synchronized(calendarPublicationLock) {
         val service = AppGraph.timetableServiceOrNull
         val snapshot = if (!read.isReadResult) {
             read
@@ -465,30 +589,75 @@ object WidgetUpdates {
     }
 
     /**
-     * 串行读取周缓存。磁盘读取和等待都在发布锁之外；读后提交时再复核绑定、
-     * 凭据代次、业务代次和周起点，被撤下的读取不能把旧课程画回去。
+     * 串行读取课表缓存。周版与今明版同时需要刷新时只调用一次服务读取，两个
+     * 快照来自同一份磁盘结果；磁盘读取和等待都在发布锁之外。读后分别提交，
+     * 再复核绑定、凭据代次、业务代次、日期与缓存写入代次，被撤下或已被新
+     * 缓存取代的读取不能把旧课程画回去。
      */
-    private suspend fun readAndPublishWeek(context: Context) {
+    private suspend fun refreshCalendarWidgets(context: Context, forceRead: Boolean) {
         val appContext = context.applicationContext
-        weekSnapshotReadLock.withLock {
-            val instances = widgetEntries(appContext, WidgetKind.TIMETABLE).filter {
+        calendarSnapshotReadLock.withLock {
+            val instances = widgetEntries(appContext, WidgetKind.TIMETABLE)
+            val weekInstances = instances.filter {
                 it.second == WidgetProviderVariant.TIMETABLE_WEEK
             }
-            if (instances.isEmpty()) return
+            val todayTomorrowInstances = instances.filter {
+                it.second == WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW
+            }
+            if (weekInstances.isEmpty() && todayTomorrowInstances.isEmpty()) return
             val service = AppGraph.timetableServiceOrNull
             if (service == null) {
-                publishImmediateWeek(appContext, instances)
+                if (weekInstances.isNotEmpty()) publishImmediateWeek(appContext, weekInstances)
+                if (todayTomorrowInstances.isNotEmpty()) {
+                    publishImmediateTodayTomorrow(appContext, todayTomorrowInstances)
+                }
                 return
             }
+            val weekCurrent = weekInstances.isNotEmpty() && hasCurrentWeekSnapshot(service)
+            val todayTomorrowCurrent = todayTomorrowInstances.isNotEmpty() &&
+                hasCurrentTodayTomorrowSnapshot(service)
+            val weekNeedsRead = weekInstances.isNotEmpty() && (forceRead || !weekCurrent)
+            val todayTomorrowNeedsRead = todayTomorrowInstances.isNotEmpty() &&
+                (forceRead || !todayTomorrowCurrent)
+            if (!weekNeedsRead && !todayTomorrowNeedsRead) return
+
             val read = try {
-                service.readWeekWidgetSnapshot()
+                service.readCalendarWidgetSnapshots(
+                    includeWeek = weekNeedsRead,
+                    includeTodayTomorrow = todayTomorrowNeedsRead,
+                )
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                service.weekWidgetPlaceholderNow()
+                null
             }
-            commitWeekRead(appContext, instances, read)
+            if (weekNeedsRead) {
+                commitWeekRead(
+                    appContext,
+                    weekInstances,
+                    read?.week ?: service.weekWidgetPlaceholderNow(),
+                )
+            }
+            if (todayTomorrowNeedsRead) {
+                commitTodayTomorrowRead(
+                    appContext,
+                    todayTomorrowInstances,
+                    read?.todayTomorrow ?: service.todayTomorrowWidgetPlaceholderNow(),
+                )
+            }
         }
+    }
+
+    private fun hasCurrentWeekSnapshot(
+        service: TimetableService,
+    ): Boolean = synchronized(calendarPublicationLock) {
+        cachedWeekSnapshot?.let(service::isWeekWidgetSnapshotCurrent) == true
+    }
+
+    private fun hasCurrentTodayTomorrowSnapshot(
+        service: TimetableService,
+    ): Boolean = synchronized(calendarPublicationLock) {
+        cachedTodayTomorrowSnapshot?.let(service::isTodayTomorrowWidgetSnapshotCurrent) == true
     }
 
     /** Read the active Todo capability off the receiver thread, retain the snapshot in memory, and redraw every live instance. */
@@ -623,11 +792,12 @@ object WidgetUpdates {
     }
 
     /**
-     * 本周课表取组件当前可用的最小尺寸。部分 Launcher 对横竖屏给出不同的
-     * 上下界；沿用今日组件“高度取上限”的读法会在横屏较矮时高估高度，把
-     * 七日行裁掉。这里宽高都取较小正值，合法最小尺寸下仍保证七天可见。
+     * 今明/本周课表取组件当前可用的最小尺寸。部分 Launcher 对横竖屏给出不同的
+     * 上下界；沿用今日组件“高度取上限”的读法会在横屏较矮时高估高度，把周版
+     * 七日行或今明两日的课程裁掉。这里宽高都取较小正值，合法最小尺寸下仍保留
+     * 两日/七日与各自的状态。
      */
-    private fun weekWidgetSize(
+    private fun calendarWidgetSize(
         manager: AppWidgetManager,
         widgetId: Int,
     ): WidgetSize {

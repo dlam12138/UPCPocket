@@ -1554,6 +1554,292 @@ class TimetableServiceTest {
         assertFalse(service.isWeekWidgetSnapshotCurrent(snapshot))
     }
 
+    @Test
+    fun todayTomorrowWidgetSaturdayReadsNextWeekIndependently() = runTest {
+        today = LocalDate.parse("2026-10-31")
+        val term = index().terms.first { it.term == "1" }
+        val nextWeekDates = (0..6).map { LocalDate.parse("2026-11-01").plusDays(it.toLong()) }
+        val nextWeek = TimetableWeek(
+            term = term,
+            week = 9,
+            dates = nextWeekDates,
+            meetings = listOf(
+                weekWidgetMeeting("次日跨周课程", 9, LocalDate.parse("2026-11-01"), 3, 4),
+            ),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), nextWeek, now))
+        val service = service(ProgrammedTransport { error("today/tomorrow widget must stay cache-only") })
+
+        val snapshot = service.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, snapshot.status)
+        assertEquals(LocalDate.parse("2026-10-31"), snapshot.today)
+        assertEquals(LocalDate.parse("2026-11-01"), snapshot.tomorrow)
+        assertEquals(
+            listOf(
+                TimetableTodayTomorrowWidgetDayState.UNSYNCED,
+                TimetableTodayTomorrowWidgetDayState.COURSES,
+            ),
+            snapshot.days.map { it.state },
+        )
+        // 只有次日所在的下一教学周被缓存，今天仍如实显示未同步，不能借次日冒充已同步。
+        assertEquals(
+            listOf("次日跨周课程"),
+            snapshot.days[1].courses.map { it.name },
+        )
+        assertTrue(service.isTodayTomorrowWidgetSnapshotCurrent(snapshot))
+    }
+
+    @Test
+    fun todayTomorrowWidgetCompleteEmptyDaysAreSyncedEmpty() = runTest {
+        val term = index().terms.first { it.term == "1" }
+        val emptyWeek = TimetableWeek(
+            term = term,
+            week = 8,
+            dates = (0..6).map { LocalDate.parse("2026-10-25").plusDays(it.toLong()) },
+            meetings = emptyList(),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), emptyWeek, now))
+        val service = service(ProgrammedTransport { error("today/tomorrow widget must stay cache-only") })
+
+        val snapshot = service.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, snapshot.status)
+        assertTrue(snapshot.days.all { it.state == TimetableTodayTomorrowWidgetDayState.EMPTY })
+        assertEquals(now, snapshot.fetchedAtEpochMillis)
+        assertEquals(
+            listOf(LocalDate.parse("2026-10-28"), LocalDate.parse("2026-10-29")),
+            snapshot.days.map { it.date },
+        )
+    }
+
+    @Test
+    fun todayTomorrowWidgetMissingCacheIsUnsyncedNotEmpty() = runTest {
+        val service = service(ProgrammedTransport { error("today/tomorrow widget must stay cache-only") })
+
+        val snapshot = service.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, snapshot.status)
+        assertTrue(snapshot.days.all { it.state == TimetableTodayTomorrowWidgetDayState.UNSYNCED })
+        assertTrue(snapshot.days.all { it.courses.isEmpty() })
+    }
+
+    @Test
+    fun todayTomorrowWidgetTrustedIndexDistinguishesOutsideTerm() = runTest {
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), null, now))
+        today = LocalDate.parse("2027-01-20")
+        val service = service(ProgrammedTransport { error("today/tomorrow widget must stay cache-only") })
+
+        val snapshot = service.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, snapshot.status)
+        assertEquals(
+            listOf(
+                TimetableTodayTomorrowWidgetDayState.OUTSIDE_TERM,
+                TimetableTodayTomorrowWidgetDayState.OUTSIDE_TERM,
+            ),
+            snapshot.days.map { it.state },
+        )
+    }
+
+    @Test
+    fun todayTomorrowWidgetPerDayConflictAndReadErrorStayExplicit() = runTest {
+        val term = index().terms.first { it.term == "1" }
+        val dates = (0..6).map { LocalDate.parse("2026-10-25").plusDays(it.toLong()) }
+        val first = TimetableWeek(
+            term = term,
+            week = 8,
+            dates = dates,
+            meetings = listOf(weekWidgetMeeting("冲突课程甲", 8, today, 1, 2)),
+            fetchedAtEpochMillis = now,
+        )
+        val second = TimetableWeek(
+            term = term,
+            week = 9,
+            dates = dates,
+            meetings = listOf(weekWidgetMeeting("冲突课程乙", 9, today, 3, 4)),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), first, now))
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), second, now))
+        val conflictService = service(ProgrammedTransport { error("widget must stay cache-only") })
+
+        val conflict = conflictService.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, conflict.status)
+        assertEquals(
+            listOf(
+                TimetableTodayTomorrowWidgetDayState.CONFLICT,
+                TimetableTodayTomorrowWidgetDayState.CONFLICT,
+            ),
+            conflict.days.map { it.state },
+        )
+
+        File(directory, TimetableStorage.CACHE_FILE).writeText("{broken")
+        val failedService = service(ProgrammedTransport { error("widget must stay cache-only") })
+
+        val failed = failedService.readTodayTomorrowWidgetSnapshot()
+
+        assertEquals(TimetableTodayTomorrowWidgetStatus.READ_ERROR, failed.status)
+        // 整份缓存不可读仍保留两个真实日期，各自标注读取失败。
+        assertEquals(
+            listOf(today, today.plusDays(1)),
+            failed.days.map { it.date },
+        )
+        assertTrue(
+            failed.days.all { it.state == TimetableTodayTomorrowWidgetDayState.READ_ERROR },
+        )
+    }
+
+    @Test
+    fun todayTomorrowWidgetSharesOneCacheReadWithWeekAndBothStayCurrent() = runTest {
+        val term = index().terms.first { it.term == "1" }
+        val week = TimetableWeek(
+            term = term,
+            week = 8,
+            dates = (0..6).map { LocalDate.parse("2026-10-25").plusDays(it.toLong()) },
+            meetings = listOf(weekWidgetMeeting("共享读取课程", 8, today, 5, 6)),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), week, now))
+        var barriers = 0
+        val service = service(
+            transport = ProgrammedTransport { error("calendar widgets must stay cache-only") },
+            commitBarrier = { label ->
+                if (label == "calendar-widget-cache") barriers += 1
+            },
+        )
+
+        val snapshots = service.readCalendarWidgetSnapshots(
+            includeWeek = true,
+            includeTodayTomorrow = true,
+        )
+
+        assertEquals(1, barriers)
+        val weekSnapshot = requireNotNull(snapshots.week)
+        val todayTomorrowSnapshot = requireNotNull(snapshots.todayTomorrow)
+        assertEquals(TimetableWeekWidgetStatus.OK, weekSnapshot.status)
+        assertEquals(TimetableTodayTomorrowWidgetStatus.OK, todayTomorrowSnapshot.status)
+        assertTrue(service.isWeekWidgetSnapshotCurrent(weekSnapshot))
+        assertTrue(service.isTodayTomorrowWidgetSnapshotCurrent(todayTomorrowSnapshot))
+    }
+
+    @Test
+    fun todayTomorrowWidgetSuccessfulCacheWriteInvalidatesPreviousSnapshot() = runTest {
+        seedCacheAndSession()
+        val service = service(ProgrammedTransport(indexAndWeekHandler()))
+        val snapshot = service.readTodayTomorrowWidgetSnapshot()
+        assertTrue(service.isTodayTomorrowWidgetSnapshotCurrent(snapshot))
+
+        service.open()
+        assertFalse(service.isTodayTomorrowWidgetSnapshotCurrent(snapshot))
+    }
+
+    @Test
+    fun todayTomorrowWidgetStaleReadCannotPublishAfterInvalidationOrDateChange() = runTest {
+        val term = index().terms.first { it.term == "1" }
+        val cached = TimetableWeek(
+            term = term,
+            week = 8,
+            dates = (0..6).map { LocalDate.parse("2026-10-25").plusDays(it.toLong()) },
+            meetings = listOf(weekWidgetMeeting("清理前课程", 8, today, 1, 2)),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), cached, now))
+
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport { error("widget must stay cache-only") },
+            commitBarrier = { label ->
+                if (label == "today-tomorrow-widget-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        var result: TimetableTodayTomorrowWidgetSnapshot? = null
+        val reading = launch { result = service.readTodayTomorrowWidgetSnapshot() }
+        withTimeout(5_000) { entered.await() }
+        today = LocalDate.parse("2026-10-29")
+        release.complete(Unit)
+        reading.join()
+
+        val snapshot = requireNotNull(result)
+        assertFalse(snapshot.isReadResult)
+        assertEquals(TimetableTodayTomorrowWidgetStatus.READING, snapshot.status)
+        assertEquals(LocalDate.parse("2026-10-29"), snapshot.today)
+        assertTrue(snapshot.days.isEmpty())
+        assertFalse(service.isTodayTomorrowWidgetSnapshotCurrent(snapshot))
+
+        val invalidationEntered = CompletableDeferred<Unit>()
+        val invalidationRelease = CompletableDeferred<Unit>()
+        today = LocalDate.parse("2026-10-28")
+        val invalidationService = service(
+            transport = ProgrammedTransport { error("widget must stay cache-only") },
+            commitBarrier = { label ->
+                if (label == "today-tomorrow-widget-cache") {
+                    invalidationEntered.complete(Unit)
+                    invalidationRelease.await()
+                }
+            },
+        )
+        var invalidated: TimetableTodayTomorrowWidgetSnapshot? = null
+        val invalidatingRead = launch {
+            invalidated = invalidationService.readTodayTomorrowWidgetSnapshot()
+        }
+        withTimeout(5_000) { invalidationEntered.await() }
+        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
+            invalidationService.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
+        }
+        yield()
+        invalidationRelease.complete(Unit)
+        invalidatingRead.join()
+        invalidation.await()
+
+        val stale = requireNotNull(invalidated)
+        assertFalse(stale.isReadResult)
+        assertTrue(stale.days.isEmpty())
+        assertFalse(invalidationService.isTodayTomorrowWidgetSnapshotCurrent(stale))
+    }
+
+    @Test
+    fun todayTomorrowWidgetReadBoundToAccountGenerationCannotPublishAfterSwitch() = runTest {
+        val term = index().terms.first { it.term == "1" }
+        val cached = TimetableWeek(
+            term = term,
+            week = 8,
+            dates = (0..6).map { LocalDate.parse("2026-10-25").plusDays(it.toLong()) },
+            meetings = listOf(weekWidgetMeeting("旧账号课程", 8, today, 1, 2)),
+            fetchedAtEpochMillis = now,
+        )
+        assertTrue(cacheStore.save(ACCOUNT_ID, index(), cached, now))
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val service = service(
+            transport = ProgrammedTransport { error("widget must stay cache-only") },
+            commitBarrier = { label ->
+                if (label == "today-tomorrow-widget-cache") {
+                    entered.complete(Unit)
+                    release.await()
+                }
+            },
+        )
+        var result: TimetableTodayTomorrowWidgetSnapshot? = null
+        val reading = launch { result = service.readTodayTomorrowWidgetSnapshot() }
+        withTimeout(5_000) { entered.await() }
+        account.publish(OTHER_REFERENCE)
+        release.complete(Unit)
+        reading.join()
+
+        val snapshot = requireNotNull(result)
+        assertFalse(snapshot.isReadResult)
+        assertTrue(snapshot.days.isEmpty())
+        assertFalse(service.isTodayTomorrowWidgetSnapshotCurrent(snapshot))
+    }
+
     private fun weekWidgetMeeting(
         name: String,
         weekNumber: Int,

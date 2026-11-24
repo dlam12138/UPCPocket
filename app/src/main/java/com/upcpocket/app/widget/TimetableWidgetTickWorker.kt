@@ -54,10 +54,14 @@ class TimetableWidgetTickWorker(
             durationMs = (System.currentTimeMillis() - restoreStarted).coerceAtLeast(0),
         )
         val deferTodayRefreshUntil = inputData.getLong(TimetableWidgetTicker.KEY_DEFER_TODAY_REFRESH_UNTIL, 0L)
-        if (System.currentTimeMillis() >= deferTodayRefreshUntil) {
+        // 只有已放置今日课表时才需要刷新今日缓存；仅今明/本周版时直接重绘本地快照，
+        // 不为它们额外读取今日课程。混合放置仍沿用原课时边界与 30 分钟兜底。
+        if (TimetableWidgetTicker.hasTodayWidgets(applicationContext) &&
+            System.currentTimeMillis() >= deferTodayRefreshUntil
+        ) {
             AppGraph.timetableServiceOrNull?.refreshToday()
         }
-        // 挂起刷新：周版缓存读取在后台完成后再由 finish 安排下一次午夜边界。
+        // 挂起刷新：今明/本周缓存读取在后台完成后再由 finish 安排下一次午夜边界。
         WidgetUpdates.updateKind(
             applicationContext,
             WidgetKind.TIMETABLE,

@@ -76,9 +76,16 @@ class TimetableService(
     private val selectionEpoch = AtomicLong(0)
     private val todayReadGeneration = AtomicLong(0)
     private val weekReadGeneration = AtomicLong(0)
+    private val todayTomorrowReadGeneration = AtomicLong(0)
     private val weekSnapshotRevision = AtomicLong(0)
+    private val todayTomorrowSnapshotRevision = AtomicLong(0)
+
+    /** 每次成功写入本地课表缓存后递增；读取期间发生写入时旧快照不得再发布。 */
+    private val widgetCacheEpoch = AtomicLong(0)
     @Volatile
     private var latestWeekWidgetVersion: WeekWidgetVersion? = null
+    @Volatile
+    private var latestTodayTomorrowWidgetVersion: TodayTomorrowWidgetVersion? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val adopting = AtomicLong(0)
     private var currentBinding: SchoolAccountReference? = null
@@ -122,20 +129,31 @@ class TimetableService(
         val date: LocalDate,
     )
 
-    private data class WeekReadVersion(
-        val binding: SchoolAccountReference,
-        val businessEpoch: Long,
-        val token: Long,
-        val today: LocalDate,
-        val weekStart: LocalDate,
-    )
-
     private data class WeekWidgetVersion(
         val binding: SchoolAccountReference,
         val businessEpoch: Long,
         val today: LocalDate,
         val weekStart: LocalDate,
         val revision: Long,
+        val cacheEpoch: Long,
+    )
+
+    private data class TodayTomorrowWidgetVersion(
+        val binding: SchoolAccountReference,
+        val businessEpoch: Long,
+        val today: LocalDate,
+        val revision: Long,
+        val cacheEpoch: Long,
+    )
+
+    private data class CalendarReadVersion(
+        val binding: SchoolAccountReference,
+        val businessEpoch: Long,
+        val weekToken: Long?,
+        val todayTomorrowToken: Long?,
+        val today: LocalDate,
+        val weekStart: LocalDate,
+        val cacheEpoch: Long,
     )
 
     private class ServiceFailure(
@@ -386,6 +404,24 @@ class TimetableService(
     }
 
     /**
+     * 「今明课表」的立即占位：与周版共用账号/清理/恢复判断，但携带今天与次日，
+     * 让 Receiver 在后台读取前就能撤下旧课程而不虚构无课。
+     */
+    fun todayTomorrowWidgetPlaceholderNow(): TimetableTodayTomorrowWidgetSnapshot {
+        val accountState = account.state.value
+        val today = todayProvider()
+        val status = when {
+            accountState.blocksPersonalSessions -> TimetableTodayTomorrowWidgetStatus.CLEANUP
+            accountState.status == SchoolAccountStatus.LOADING ->
+                TimetableTodayTomorrowWidgetStatus.ACCOUNT_LOADING
+            !accountState.isCredentialSaved -> TimetableTodayTomorrowWidgetStatus.NO_ACCOUNT
+            bindingOrNull() == null -> TimetableTodayTomorrowWidgetStatus.NO_ACCOUNT
+            else -> TimetableTodayTomorrowWidgetStatus.READING
+        }
+        return TimetableTodayTomorrowWidgetSnapshot(status, today, today.plusDays(1))
+    }
+
+    /**
      * 读取上海时区实际今天所在周日至周六的缓存周。一次读取当前受控账号的
      * [TimetableCacheStore.loadResult]，逐日复用 [findCachedWeekCoveringDate]
      * 选择成功周，允许相邻缓存周拼接覆盖；只有七日全覆盖且无课才返回
@@ -394,52 +430,122 @@ class TimetableService(
      * 读取完成后在提交锁内复核绑定、凭据代次、业务代次、读取代次和日期/周起点；
      * 任一变化都返回占位状态，旧读取不能把已撤下的内容画回去。
      */
-    suspend fun readWeekWidgetSnapshot(): TimetableWeekWidgetSnapshot {
+    suspend fun readWeekWidgetSnapshot(): TimetableWeekWidgetSnapshot =
+        readCalendarWidgetSnapshots(includeWeek = true, includeTodayTomorrow = false).week
+            ?: weekWidgetPlaceholderNow()
+
+    /** 今明版单独读取；与周版同时存在时由宿主调用 [readCalendarWidgetSnapshots] 共用一次缓存读取。 */
+    suspend fun readTodayTomorrowWidgetSnapshot(): TimetableTodayTomorrowWidgetSnapshot =
+        readCalendarWidgetSnapshots(includeWeek = false, includeTodayTomorrow = true).todayTomorrow
+            ?: todayTomorrowWidgetPlaceholderNow()
+
+    /**
+     * 一次读取当前受控账号的缓存，按需产出周版和/或今明版。
+     *
+     * 周版保持原有七日与修订语义；今明版只用同一份读取结果分别投影今天和次日，
+     * 周六的明天可以落在另一教学周，不要求与周版整体状态一致。读取完成后在同一
+     * 提交锁内分别复核绑定、业务代次、读取代次、实际日期和缓存写入代次；未通过
+     * 的一组退回占位，另一组不影响。
+     */
+    suspend fun readCalendarWidgetSnapshots(
+        includeWeek: Boolean,
+        includeTodayTomorrow: Boolean,
+    ): TimetableCalendarWidgetSnapshots {
+        require(includeWeek || includeTodayTomorrow) { "至少请求一种课表组件快照" }
         if (account.state.value.status == SchoolAccountStatus.LOADING) {
             withTimeoutOrNull(ACCOUNT_RESTORE_BUDGET_MS) {
                 account.state.first { it.status != SchoolAccountStatus.LOADING }
             }
         }
-        val placeholder = weekWidgetPlaceholderNow()
-        if (placeholder.status != TimetableWeekWidgetStatus.READING) return placeholder
-        val binding = bindingOrNull() ?: return placeholder
+        fun placeholders() = TimetableCalendarWidgetSnapshots(
+            week = if (includeWeek) weekWidgetPlaceholderNow() else null,
+            todayTomorrow = if (includeTodayTomorrow) todayTomorrowWidgetPlaceholderNow() else null,
+        )
+
+        val initial = placeholders()
+        val weekNeedsRead = includeWeek &&
+            initial.week?.status == TimetableWeekWidgetStatus.READING
+        val todayTomorrowNeedsRead = includeTodayTomorrow &&
+            initial.todayTomorrow?.status == TimetableTodayTomorrowWidgetStatus.READING
+        if (!weekNeedsRead && !todayTomorrowNeedsRead) return initial
+        val binding = bindingOrNull() ?: return placeholders()
         val version = commitMutex.withLock {
             if (!isBindingCurrent(binding)) return@withLock null
-            WeekReadVersion(
+            CalendarReadVersion(
                 binding = binding,
                 businessEpoch = businessEpoch.get(),
-                token = weekReadGeneration.incrementAndGet(),
-                today = placeholder.today,
-                weekStart = placeholder.weekStart,
+                weekToken = if (weekNeedsRead) weekReadGeneration.incrementAndGet() else null,
+                todayTomorrowToken = if (todayTomorrowNeedsRead) {
+                    todayTomorrowReadGeneration.incrementAndGet()
+                } else {
+                    null
+                },
+                today = initial.week?.today ?: requireNotNull(initial.todayTomorrow).today,
+                weekStart = initial.week?.weekStart ?: TimetableWeekWidgetSnapshot.weekStartOf(
+                    requireNotNull(initial.todayTomorrow).today,
+                ),
+                cacheEpoch = widgetCacheEpoch.get(),
             )
-        } ?: return weekWidgetPlaceholderNow()
+        } ?: return placeholders()
 
         val result = withContext(ioDispatcher) {
             cacheStore.loadResult(version.binding.accountId.value)
         }
-        commitBarrier("week-widget-cache")
-        val snapshot = buildWeekWidgetSnapshot(result, version.today, version.weekStart)
+        commitBarrier(
+            when {
+                weekNeedsRead && todayTomorrowNeedsRead -> "calendar-widget-cache"
+                weekNeedsRead -> "week-widget-cache"
+                else -> "today-tomorrow-widget-cache"
+            },
+        )
         return commitMutex.withLock {
             val finalToday = todayProvider()
-            if (!isBindingCurrent(version.binding) ||
-                businessEpoch.get() != version.businessEpoch ||
-                weekReadGeneration.get() != version.token ||
-                finalToday != version.today ||
-                TimetableWeekWidgetSnapshot.weekStartOf(finalToday) != version.weekStart
-            ) {
-                weekWidgetPlaceholderNow()
-            } else {
-                val revision = weekSnapshotRevision.incrementAndGet()
-                snapshot.assignRevision(revision)
-                latestWeekWidgetVersion = WeekWidgetVersion(
-                    binding = version.binding,
-                    businessEpoch = version.businessEpoch,
-                    today = version.today,
-                    weekStart = version.weekStart,
-                    revision = revision,
-                )
-                snapshot
+            val current = isBindingCurrent(version.binding) &&
+                businessEpoch.get() == version.businessEpoch &&
+                finalToday == version.today &&
+                widgetCacheEpoch.get() == version.cacheEpoch
+            val weekSnapshot = when {
+                !includeWeek -> null
+                !weekNeedsRead -> weekWidgetPlaceholderNow()
+                !current ||
+                    weekReadGeneration.get() != version.weekToken ||
+                    TimetableWeekWidgetSnapshot.weekStartOf(finalToday) != version.weekStart ->
+                    weekWidgetPlaceholderNow()
+                else -> {
+                    val snapshot = buildWeekWidgetSnapshot(result, version.today, version.weekStart)
+                    val revision = weekSnapshotRevision.incrementAndGet()
+                    snapshot.assignRevision(revision)
+                    latestWeekWidgetVersion = WeekWidgetVersion(
+                        binding = version.binding,
+                        businessEpoch = version.businessEpoch,
+                        today = version.today,
+                        weekStart = version.weekStart,
+                        revision = revision,
+                        cacheEpoch = version.cacheEpoch,
+                    )
+                    snapshot
+                }
             }
+            val todayTomorrowSnapshot = when {
+                !includeTodayTomorrow -> null
+                !todayTomorrowNeedsRead -> todayTomorrowWidgetPlaceholderNow()
+                !current || todayTomorrowReadGeneration.get() != version.todayTomorrowToken ->
+                    todayTomorrowWidgetPlaceholderNow()
+                else -> {
+                    val snapshot = buildTodayTomorrowWidgetSnapshot(result, version.today)
+                    val revision = todayTomorrowSnapshotRevision.incrementAndGet()
+                    snapshot.assignRevision(revision)
+                    latestTodayTomorrowWidgetVersion = TodayTomorrowWidgetVersion(
+                        binding = version.binding,
+                        businessEpoch = version.businessEpoch,
+                        today = version.today,
+                        revision = revision,
+                        cacheEpoch = version.cacheEpoch,
+                    )
+                    snapshot
+                }
+            }
+            TimetableCalendarWidgetSnapshots(weekSnapshot, todayTomorrowSnapshot)
         }
     }
 
@@ -454,6 +560,25 @@ class TimetableService(
         }
         if (latest.today != snapshot.today || latest.weekStart != snapshot.weekStart) return false
         if (businessEpoch.get() != latest.businessEpoch) return false
+        if (widgetCacheEpoch.get() != latest.cacheEpoch) return false
+        return isBindingCurrent(latest.binding)
+    }
+
+    /**
+     * 发布前复核今明版：读取后被成功写缓存、账号/代次变化或上海日期跨日，
+     * 都拒绝旧快照。日期比较同时保证周六 → 周日只显示读取当时的两天。
+     */
+    fun isTodayTomorrowWidgetSnapshotCurrent(
+        snapshot: TimetableTodayTomorrowWidgetSnapshot,
+    ): Boolean {
+        if (!snapshot.isReadResult) return false
+        val latest = latestTodayTomorrowWidgetVersion ?: return false
+        if (latest.revision != snapshot.revision) return false
+        val today = todayProvider()
+        if (today != snapshot.today || snapshot.tomorrow != today.plusDays(1)) return false
+        if (latest.today != snapshot.today) return false
+        if (businessEpoch.get() != latest.businessEpoch) return false
+        if (widgetCacheEpoch.get() != latest.cacheEpoch) return false
         return isBindingCurrent(latest.binding)
     }
 
@@ -482,7 +607,8 @@ class TimetableService(
                 var newestFetchedAt: Long? = null
                 val days = (0L..6L).map { offset ->
                     val date = weekStart.plusDays(offset)
-                    when (val coverage = findCachedWeekCoveringDate(cache, date)) {
+                    val projection = projectWidgetDay(cache, date)
+                    when (val coverage = projection.coverage) {
                         is CachedWeekCoverage.Found -> {
                             coveredDays += 1
                             val fetched = coverage.week.fetchedAtEpochMillis
@@ -514,8 +640,7 @@ class TimetableService(
                             TimetableWeekWidgetDay(date, TimetableWeekWidgetDayState.CONFLICT)
                         }
                         CachedWeekCoverage.Missing -> {
-                            val inTerm = cache.index?.terms?.any { it.contains(date) } == true
-                            if (cache.index != null && !inTerm) {
+                            if (cache.index != null && !projection.inTerm) {
                                 outsideDays += 1
                                 TimetableWeekWidgetDay(date, TimetableWeekWidgetDayState.OUTSIDE_TERM)
                             } else {
@@ -537,6 +662,110 @@ class TimetableService(
             }
         }
     }
+
+    /**
+     * 今明版按同一上海日期分别投影，互不借用周版的整体状态：
+     * - 缓存完全缺失：两天都是未同步；
+     * - 缓存损坏/不可读/账号不匹配：保留两天日期，各显示读取失败；
+     * - 某天有成功周覆盖：按真实课程列出，空列表才是已同步无课；
+     * - 某天无覆盖但索引存在且不在任何学期：学期外；
+     * - 其余无覆盖：该日未同步；同一天多个不同的最新周：冲突。
+     */
+    private fun buildTodayTomorrowWidgetSnapshot(
+        result: TimetableCacheReadResult,
+        today: LocalDate,
+    ): TimetableTodayTomorrowWidgetSnapshot {
+        val tomorrow = today.plusDays(1)
+        fun day(
+            date: LocalDate,
+            state: TimetableTodayTomorrowWidgetDayState,
+            courses: List<TimetableTodayTomorrowWidgetCourse> = emptyList(),
+        ) = TimetableTodayTomorrowWidgetDay(date, state, courses)
+
+        fun snapshot(
+            status: TimetableTodayTomorrowWidgetStatus,
+            days: List<TimetableTodayTomorrowWidgetDay> = emptyList(),
+            fetchedAt: Long? = null,
+        ) = TimetableTodayTomorrowWidgetSnapshot(status, today, tomorrow, days, fetchedAt)
+
+        return when (result) {
+            TimetableCacheReadResult.Missing -> snapshot(
+                TimetableTodayTomorrowWidgetStatus.OK,
+                listOf(
+                    day(today, TimetableTodayTomorrowWidgetDayState.UNSYNCED),
+                    day(tomorrow, TimetableTodayTomorrowWidgetDayState.UNSYNCED),
+                ),
+            )
+            TimetableCacheReadResult.Corrupted,
+            TimetableCacheReadResult.Unreadable,
+            TimetableCacheReadResult.WrongAccount,
+            -> snapshot(
+                TimetableTodayTomorrowWidgetStatus.READ_ERROR,
+                listOf(
+                    day(today, TimetableTodayTomorrowWidgetDayState.READ_ERROR),
+                    day(tomorrow, TimetableTodayTomorrowWidgetDayState.READ_ERROR),
+                ),
+            )
+            is TimetableCacheReadResult.Available -> {
+                val cache = result.cache
+                var newestFetchedAt: Long? = null
+                val days = listOf(today, tomorrow).map { date ->
+                    val projection = projectWidgetDay(cache, date)
+                    when (val coverage = projection.coverage) {
+                        is CachedWeekCoverage.Found -> {
+                            val fetched = coverage.week.fetchedAtEpochMillis
+                            newestFetchedAt = newestFetchedAt
+                                ?.let { maxOf(it, fetched) }
+                                ?: fetched
+                            val courses = coverage.week.meetings
+                                .filter { it.date == date }
+                                .sortedWith(meetingComparator())
+                                .map { meeting ->
+                                    TimetableTodayTomorrowWidgetCourse(
+                                        name = meeting.courseName,
+                                        startPeriod = meeting.startPeriod,
+                                        endPeriod = meeting.endPeriod,
+                                    )
+                                }
+                            day(
+                                date = date,
+                                state = if (courses.isEmpty()) {
+                                    TimetableTodayTomorrowWidgetDayState.EMPTY
+                                } else {
+                                    TimetableTodayTomorrowWidgetDayState.COURSES
+                                },
+                                courses = courses,
+                            )
+                        }
+                        CachedWeekCoverage.Conflict ->
+                            day(date, TimetableTodayTomorrowWidgetDayState.CONFLICT)
+                        CachedWeekCoverage.Missing ->
+                            if (cache.index != null && !projection.inTerm) {
+                                day(date, TimetableTodayTomorrowWidgetDayState.OUTSIDE_TERM)
+                            } else {
+                                day(date, TimetableTodayTomorrowWidgetDayState.UNSYNCED)
+                            }
+                    }
+                }
+                snapshot(
+                    status = TimetableTodayTomorrowWidgetStatus.OK,
+                    days = days,
+                    fetchedAt = newestFetchedAt,
+                )
+            }
+        }
+    }
+
+    private data class WidgetDayProjection(
+        val coverage: CachedWeekCoverage,
+        val inTerm: Boolean,
+    )
+
+    private fun projectWidgetDay(cache: TimetableCache, date: LocalDate): WidgetDayProjection =
+        WidgetDayProjection(
+            coverage = findCachedWeekCoveringDate(cache, date),
+            inTerm = cache.index?.terms?.any { it.contains(date) } == true,
+        )
 
     private data class TodayCacheResolution(
         val state: TimetableTodayState,
@@ -963,6 +1192,7 @@ class TimetableService(
                         )
                     }
                     if (cached) {
+                        widgetCacheEpoch.incrementAndGet()
                         recordQueryComplete(
                             phase = DiagnosticPhase.CACHE,
                             detail = DiagnosticDetail.CACHE_SAVED,
@@ -1035,7 +1265,7 @@ class TimetableService(
             businessEpoch.incrementAndGet()
             selectionEpoch.incrementAndGet()
             todayReadGeneration.incrementAndGet()
-            invalidateWeekSnapshotLocked()
+            invalidateCalendarWidgetSnapshotsLocked()
             accountEpochValue += 1
             explicitSelection = false
             interactiveContext = null
@@ -1161,6 +1391,7 @@ class TimetableService(
                     cacheStore.save(binding.accountId.value, index, null, clock())
                 }
                 if (cached) {
+                    widgetCacheEpoch.incrementAndGet()
                     recordQueryComplete(
                         phase = DiagnosticPhase.CACHE,
                         detail = DiagnosticDetail.CACHE_SAVED,
@@ -1308,6 +1539,7 @@ class TimetableService(
                     cacheStore.save(binding.accountId.value, lastIndex, stamped, clock())
                 }
                 if (cached) {
+                    widgetCacheEpoch.incrementAndGet()
                     recordQueryComplete(
                         phase = DiagnosticPhase.CACHE,
                         detail = DiagnosticDetail.CACHE_SAVED,
@@ -2142,9 +2374,11 @@ class TimetableService(
             reference.credentialGeneration == binding.credentialGeneration
     }
 
-    private fun invalidateWeekSnapshotLocked() {
+    private fun invalidateCalendarWidgetSnapshotsLocked() {
         weekReadGeneration.incrementAndGet()
+        todayTomorrowReadGeneration.incrementAndGet()
         latestWeekWidgetVersion = null
+        latestTodayTomorrowWidgetVersion = null
     }
 
     private fun applyAccountStateLocked(state: SchoolAccountState) {
@@ -2163,7 +2397,7 @@ class TimetableService(
         }
         val previous = currentBinding
         if (reference == null) {
-            invalidateWeekSnapshotLocked()
+            invalidateCalendarWidgetSnapshotsLocked()
             if (previous != null) {
                 businessEpoch.incrementAndGet()
                 selectionEpoch.incrementAndGet()
@@ -2222,7 +2456,7 @@ class TimetableService(
             businessEpoch.incrementAndGet()
             selectionEpoch.incrementAndGet()
             todayReadGeneration.incrementAndGet()
-            invalidateWeekSnapshotLocked()
+            invalidateCalendarWidgetSnapshotsLocked()
             accountEpochValue += 1
             explicitSelection = false
             lastIndex = null

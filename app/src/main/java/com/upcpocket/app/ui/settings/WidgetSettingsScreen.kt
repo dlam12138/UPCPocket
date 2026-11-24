@@ -56,6 +56,7 @@ import com.upcpocket.app.widget.PowerWidgetProvider
 import com.upcpocket.app.widget.PowerGlassWidgetProvider
 import com.upcpocket.app.widget.TimetableWidgetProvider
 import com.upcpocket.app.widget.TimetableGlassWidgetProvider
+import com.upcpocket.app.widget.TimetableTodayTomorrowWidgetProvider
 import com.upcpocket.app.widget.TimetableWeekWidgetProvider
 import com.upcpocket.app.widget.TodoWidgetProvider
 import com.upcpocket.app.widget.TodoGlassWidgetProvider
@@ -194,6 +195,18 @@ fun WidgetSettingsScreen(onBack: () -> Unit) {
                     )
                 },
                 onPinGlass = { pin(ComponentName(context, TimetableGlassWidgetProvider::class.java)) },
+            )
+            WidgetCard(
+                title = "今明课表",
+                description = "两列显示今天与明天已同步课程的节次和名称；缺日、冲突与学期外分别标注。",
+                icon = Icons.Outlined.CalendarMonth,
+                supported = supported,
+                sizeLabel = "4×2 · 可缩放",
+                onPin = {
+                    pin(
+                        ComponentName(context, TimetableTodayTomorrowWidgetProvider::class.java),
+                    )
+                },
             )
             WidgetCard(
                 title = "本周课表",

@@ -148,6 +148,7 @@ class WidgetIntentsTest {
                 WidgetProviderVariant.TIMETABLE,
                 WidgetProviderVariant.TIMETABLE_GLASS,
                 WidgetProviderVariant.TIMETABLE_WEEK,
+                WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW,
             ),
             WidgetProviderVariant.forKind(WidgetKind.TIMETABLE),
         )
@@ -166,6 +167,55 @@ class WidgetIntentsTest {
     }
 
     @Test
+    fun `today tomorrow timetable is its own provider variant and opens the timetable`() {
+        assertEquals(WidgetKind.TIMETABLE, WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW.kind)
+        assertNull(WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW.fixedAppearance)
+        assertEquals(
+            WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW,
+            WidgetProviderVariant.fromProvider(
+                ComponentName(context, TimetableTodayTomorrowWidgetProvider::class.java),
+            ),
+        )
+        assertEquals(
+            WidgetAppearance.TRANSLUCENT,
+            WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW.resolveAppearance(
+                WidgetAppearance.TRANSLUCENT,
+            ),
+        )
+        // 今明版不是带倒计时的“今日”变体，不能被宿主当成今日组件调度。
+        assertTrue(WidgetProviderVariant.TIMETABLE.isTimetableTodayVariant)
+        assertTrue(WidgetProviderVariant.TIMETABLE_GLASS.isTimetableTodayVariant)
+        assertFalse(WidgetProviderVariant.TIMETABLE_WEEK.isTimetableTodayVariant)
+        assertFalse(WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW.isTimetableTodayVariant)
+        assertFalse(
+            WidgetIntents.isOwnedBy(
+                context,
+                WidgetProviderVariant.TIMETABLE_TODAY_TOMORROW,
+                44,
+            ),
+        )
+
+        val intent = WidgetIntents.activityIntent(context, WidgetLaunchTarget.TIMETABLE, 44)
+        assertEquals(
+            WidgetLaunchTarget.TIMETABLE,
+            WidgetLaunchTarget.fromIntent(intent),
+        )
+    }
+
+    @Test
+    fun `today tomorrow provider is not exported and reuses the timetable refresh route`() {
+        val info = context.packageManager.getReceiverInfo(
+            ComponentName(context, TimetableTodayTomorrowWidgetProvider::class.java),
+            0,
+        )
+        assertFalse(info.exported)
+
+        // 旧刷新广播仍只发给原“今日课表”提供者；今明版不进入倒计时刷新路径。
+        val refresh = WidgetIntents.refreshIntent(context, WidgetKind.TIMETABLE, 44)
+        assertEquals(TimetableWidgetProvider::class.java.name, refresh.component?.className)
+    }
+
+    @Test
     fun `week timetable open intent stays immutable and points at the timetable target`() {
         val pending = WidgetIntents.openApp(context, WidgetLaunchTarget.TIMETABLE, 43)
         assertTrue(pending.isImmutable)
@@ -173,6 +223,37 @@ class WidgetIntentsTest {
             WidgetLaunchTarget.TIMETABLE,
             WidgetLaunchTarget.fromIntent(Shadows.shadowOf(pending).savedIntent),
         )
+    }
+
+    @Test
+    fun `ticker recognizes only the original today providers as timed`() {
+        val manager = AppWidgetManager.getInstance(context)
+        val shadow = Shadows.shadowOf(manager)
+        shadow.addBoundWidget(
+            51,
+            AppWidgetProviderInfo().apply {
+                provider = ComponentName(context, TimetableWeekWidgetProvider::class.java)
+            },
+        )
+        shadow.addBoundWidget(
+            52,
+            AppWidgetProviderInfo().apply {
+                provider = ComponentName(
+                    context,
+                    TimetableTodayTomorrowWidgetProvider::class.java,
+                )
+            },
+        )
+
+        assertFalse(TimetableWidgetTicker.hasTodayWidgets(context))
+
+        shadow.addBoundWidget(
+            53,
+            AppWidgetProviderInfo().apply {
+                provider = ComponentName(context, TimetableWidgetProvider::class.java)
+            },
+        )
+        assertTrue(TimetableWidgetTicker.hasTodayWidgets(context))
     }
 
     @Test

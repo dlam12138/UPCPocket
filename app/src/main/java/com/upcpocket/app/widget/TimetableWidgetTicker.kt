@@ -81,13 +81,14 @@ object TimetableWidgetTicker {
         hasWidgetInstances(context, WidgetKind.TIMETABLE)
 
     /**
-     * 今日组件需要逐分钟/上下课边界重绘；只有周版时只需上海午夜换周，
-     * 因此不为周版读取今日快照，也不安排逐分钟任务。
+     * 只有原今日课表两版有课时/分钟/倒计时语义；今明版和本周版都只随上海午夜
+     * 换日，不应触发今日快照读取或 refreshToday。显式白名单避免新增课表变体后
+     * 被“非周版即今日版”的旧过滤误判。
      */
-    private fun hasTodayWidgets(context: Context): Boolean {
+    internal fun hasTodayWidgets(context: Context): Boolean {
         val manager = AppWidgetManager.getInstance(context.applicationContext)
         return WidgetProviderVariant.forKind(WidgetKind.TIMETABLE)
-            .filter { it != WidgetProviderVariant.TIMETABLE_WEEK }
+            .filter { it.isTimetableTodayVariant }
             .any { variant ->
                 manager.getAppWidgetIds(
                     ComponentName(context.applicationContext, variant.providerClass),
