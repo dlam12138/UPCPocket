@@ -893,17 +893,26 @@ private fun PersistentMainLayer(
             }
     }
 
+    val mainTransitioningOrHidden = !onMain || mainAlphaState.value < 0.999f
+
     CompositionLocalProvider(LocalDockClearance provides mainDockClearance) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .then(hiddenLayerGuard)
-                .graphicsLayer { alpha = mainAlphaState.value }
-                .drawWithContent {
-                    if (mainAlphaState.value > 0.001f) {
-                        drawContent()
-                    }
-                },
+                .then(
+                    if (mainTransitioningOrHidden) {
+                        Modifier
+                            .graphicsLayer { alpha = mainAlphaState.value }
+                            .drawWithContent {
+                                if (mainAlphaState.value > 0.001f) {
+                                    drawContent()
+                                }
+                            }
+                    } else {
+                        Modifier
+                    },
+                ),
         ) {
             content(onMainState, mainImeVisibleState)
         }
@@ -920,8 +929,11 @@ private fun KyantDock(
     modifier: Modifier = Modifier,
 ) {
     val targetPage = remember(pagerState) { { pagerState.targetPage } }
-    val selectTab: (Int) -> Unit = { index ->
-        if (index != pagerState.targetPage) onSelect(index)
+    val selectedIndex by remember(pagerState) { derivedStateOf { pagerState.targetPage } }
+    val selectTab = remember(pagerState, onSelect) {
+        { index: Int ->
+            if (index != pagerState.targetPage) onSelect(index)
+        }
     }
     LiquidBottomTabs(
         selectedIndex = targetPage,
@@ -936,7 +948,7 @@ private fun KyantDock(
             .testTag("floating_dock"),
     ) {
         destinations.forEachIndexed { index, destination ->
-            val selected = pagerState.targetPage == index
+            val selected = selectedIndex == index
             LiquidBottomTab(
                 selected = selected,
                 onClick = { selectTab(index) },
@@ -1048,7 +1060,7 @@ private fun FloatingDock(
     val glass = LocalUiStyle.current == UiStyle.LIQUID_GLASS &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     val scheme = MaterialTheme.colorScheme
-    val dockShape = RoundedCornerShape(28.dp)
+    val dockShape = remember { RoundedCornerShape(28.dp) }
     val dockColor = when {
         glass -> Color.White.copy(alpha = if (dockDark) 0.05f else 0.15f)
         dockDark -> scheme.surface
@@ -1071,22 +1083,30 @@ private fun FloatingDock(
     } else Modifier
     val tabIndication = if (glass) null else LocalIndication.current
     val lastIndex = destinations.lastIndex
+    val dockBorder = if (glass) {
+        glassBorder(1.2.dp)
+    } else {
+        val outlineVariant = scheme.outlineVariant
+        remember(outlineVariant) {
+            BorderStroke(
+                0.5.dp,
+                Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.25f),
+                        outlineVariant.copy(alpha = 0.6f),
+                        outlineVariant.copy(alpha = 0.6f),
+                    ),
+                ),
+            )
+        }
+    }
 
     Surface(
         shape = dockShape,
         color = dockColor,
         tonalElevation = dockElevation,
         shadowElevation = 0.dp,
-        border = if (glass) glassBorder(1.2.dp) else BorderStroke(
-            0.5.dp,
-            Brush.verticalGradient(
-                listOf(
-                    Color.White.copy(alpha = 0.25f),
-                    scheme.outlineVariant.copy(alpha = 0.6f),
-                    scheme.outlineVariant.copy(alpha = 0.6f),
-                ),
-            ),
-        ),
+        border = dockBorder,
         modifier = modifier
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 8.dp)

@@ -14,11 +14,14 @@ import com.upcpocket.app.domain.Phase
 import com.upcpocket.app.focus.FocusService
 import com.upcpocket.app.focus.PomodoroEngine
 import com.upcpocket.app.focus.TimerUi
+import java.time.LocalDate
+import java.time.ZoneId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -51,24 +54,58 @@ class FocusViewModel(service: FocusService) : ViewModel() {
     )
 
     private val records = repo.observeRecords(recordsSince)
+    private val activeTags = repo.observeTags().map { list -> list.filter { !it.archived } }
+
+    private class CachedRecordDigest(
+        val records: List<FocusRecord>,
+        val zone: ZoneId,
+        val dayKey: LocalDate,
+        val summary: FocusSummary,
+        val todayRecords: List<FocusRecord>,
+    )
+
+    @Volatile
+    private var cachedDigest: CachedRecordDigest? = null
+
+    private fun digestFor(allRecords: List<FocusRecord>, now: Long): CachedRecordDigest {
+        val zone = FocusStats.zone()
+        val today = FocusStats.dayKey(now, zone)
+        val existing = cachedDigest
+        if (existing != null &&
+            existing.records === allRecords &&
+            existing.zone == zone &&
+            existing.dayKey == today
+        ) {
+            return existing
+        }
+        val computed = CachedRecordDigest(
+            records = allRecords,
+            zone = zone,
+            dayKey = today,
+            summary = FocusStats.summarize(allRecords, now, zone),
+            todayRecords = FocusStats.inRange(
+                allRecords,
+                FocusStats.dayStart(today, zone),
+                FocusStats.dayEnd(today, zone),
+            ),
+        )
+        cachedDigest = computed
+        return computed
+    }
 
     val state: StateFlow<FocusUiState> = combine(
         engine.state,
         prefsStore.flow,
-        repo.observeTags(),
+        activeTags,
         records,
     ) { timer, prefs, tags, allRecords ->
-        val now = System.currentTimeMillis()
+        val digest = digestFor(allRecords, System.currentTimeMillis())
         FocusUiState(
             timer = timer,
             prefs = prefs,
-            tags = tags.filter { !it.archived },
-            summary = FocusStats.summarize(allRecords, now),
-            todayRecords = FocusStats.inRange(
-                allRecords,
-                FocusStats.dayStart(FocusStats.dayKey(now)),
-                FocusStats.dayEnd(FocusStats.dayKey(now)),
-            ),
+            tags = tags,
+            summary = digest.summary,
+            todayRecords = digest.todayRecords,
         )
     }.combine(selectedTag) { ui, selected -> ui.copy(tagName = selected) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), FocusUiState())

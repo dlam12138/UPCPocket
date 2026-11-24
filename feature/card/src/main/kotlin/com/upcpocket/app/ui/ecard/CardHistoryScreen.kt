@@ -156,19 +156,22 @@ internal fun CardHistoryScreenContent(
     val directionFilter = CardHistoryDirectionFilter.entries
         .firstOrNull { it.name == directionFilterName }
         ?: CardHistoryDirectionFilter.ALL
-    val shown = if (visible == null) {
-        emptyList()
-    } else {
-        rows.filter { row ->
-            val matchesSearch = search.isBlank() ||
-                row.title.contains(search.trim(), true) ||
-                row.time.contains(search.trim())
-            val matchesDirection = when (directionFilter) {
-                CardHistoryDirectionFilter.ALL -> true
-                CardHistoryDirectionFilter.EXPENSE -> row.amountFen < 0L
-                CardHistoryDirectionFilter.INCOME -> row.amountFen > 0L
+    val shown = remember(visible, rows, search, directionFilter) {
+        if (visible == null) {
+            emptyList()
+        } else {
+            val trimmedSearch = search.trim()
+            rows.filter { row ->
+                val matchesSearch = trimmedSearch.isEmpty() ||
+                    row.title.contains(trimmedSearch, true) ||
+                    row.time.contains(trimmedSearch)
+                val matchesDirection = when (directionFilter) {
+                    CardHistoryDirectionFilter.ALL -> true
+                    CardHistoryDirectionFilter.EXPENSE -> row.amountFen < 0L
+                    CardHistoryDirectionFilter.INCOME -> row.amountFen > 0L
+                }
+                matchesSearch && matchesDirection
             }
-            matchesSearch && matchesDirection
         }
     }
     val analytics = remember(rows) {
@@ -459,14 +462,17 @@ private fun CardHistoryAnalyticsCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    DailyBarChart(
-                        bars = analytics.dailyExpenses.map { day ->
+                    val chartBars = remember(analytics.dailyExpenses) {
+                        analytics.dailyExpenses.map { day ->
                             ChartBarItem(
                                 label = day.shortLabel,
                                 value = day.expenseFen.toFloat(),
                                 valueLabel = "¥${CardHistoryAnalytics.formatYuan(day.expenseFen)}",
                             )
-                        },
+                        }
+                    }
+                    DailyBarChart(
+                        bars = chartBars,
                         selectedIndex = selectedDayIndex,
                         onSelect = onSelectDay,
                     )

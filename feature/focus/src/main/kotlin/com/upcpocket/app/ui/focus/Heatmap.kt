@@ -20,13 +20,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.upcpocket.app.domain.FocusHeatmap
 import com.upcpocket.app.domain.FocusStats
 import com.upcpocket.app.ui.components.glassHighlight
 import java.time.LocalDate
+
+private val WEEKDAY_AXIS_LABELS = listOf("一", "", "三", "", "五", "", "日")
 
 /**
  * 打卡热力图：一列一周、周一在上，横滑 53 周。
@@ -47,11 +49,24 @@ fun FocusHeatmap(
     val cell = with(LocalDensity.current) { labelStyle.fontSize.toDp() * 1.5f }
     val gap = cell / 6
     val headerHeight = cell * 1.2f
-    val shape = RoundedCornerShape(cell / 5)
-    val baseColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-    val overlayColor = MaterialTheme.colorScheme.primary
-    val todayRing = MaterialTheme.colorScheme.outline
-    val selectedRing = MaterialTheme.colorScheme.primary
+    val shape = remember(cell) { RoundedCornerShape(cell / 5) }
+    val scheme = MaterialTheme.colorScheme
+    val baseColor = scheme.secondaryContainer.copy(alpha = 0.5f)
+    val overlayColor = scheme.primary
+    val todayRing = scheme.outline
+    val selectedRing = scheme.primary
+    val labelColor = scheme.onSurfaceVariant
+    val tierColors = remember(baseColor, overlayColor) {
+        Array(5) { tier ->
+            if (tier <= 0) {
+                baseColor
+            } else {
+                overlayColor
+                    .copy(alpha = (FocusHeatmap.intensity(tier) + 0.2f).coerceAtMost(1f))
+                    .compositeOver(baseColor)
+            }
+        }
+    }
 
     val grid = remember(today, weeks) { FocusHeatmap.build(today, weeks) }
     // 打开时直接停在最近的几周，不用手动滑半天
@@ -64,12 +79,12 @@ fun FocusHeatmap(
             modifier = Modifier.padding(top = headerHeight),
             verticalArrangement = Arrangement.spacedBy(gap),
         ) {
-            listOf("一", "", "三", "", "五", "", "日").forEach { label ->
+            WEEKDAY_AXIS_LABELS.forEach { label ->
                 Box(Modifier.height(cell), contentAlignment = Alignment.Center) {
                     Text(
                         text = label,
                         style = labelStyle,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = labelColor,
                     )
                 }
             }
@@ -79,14 +94,20 @@ fun FocusHeatmap(
             state = listState,
             horizontalArrangement = Arrangement.spacedBy(gap),
         ) {
-            itemsIndexed(grid) { _, week ->
+            itemsIndexed(
+                items = grid,
+                key = { index, week ->
+                    week.days.firstNotNullOfOrNull { it?.toEpochDay() } ?: -index.toLong()
+                },
+                contentType = { _, _ -> "heatmap_week" },
+            ) { _, week ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(Modifier.height(headerHeight), contentAlignment = Alignment.Center) {
                         FocusHeatmap.monthLabel(week)?.let { label ->
                             Text(
                                 text = label,
                                 style = labelStyle,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = labelColor,
                             )
                         }
                     }
@@ -96,7 +117,7 @@ fun FocusHeatmap(
                                 // 未来的日子：同样大的透明占位，不然最后一列会矮一截
                                 Box(Modifier.size(cell))
                             } else {
-                                val tier = FocusStats.heatTier(secondsByDay[day] ?: 0)
+                                val tier = FocusStats.heatTier(secondsByDay[day] ?: 0).coerceIn(0, 4)
                                 val ring = when {
                                     day == selectedDay -> selectedRing
                                     day == today -> todayRing
@@ -105,20 +126,7 @@ fun FocusHeatmap(
                                 Box(
                                     Modifier
                                         .size(cell)
-                                        .clip(shape)
-                                        .background(baseColor)
-                                        .then(
-                                            if (tier > 0) {
-                                                Modifier.background(
-                                                    overlayColor.copy(
-                                                        alpha = (FocusHeatmap.intensity(tier) + 0.2f)
-                                                            .coerceAtMost(1f),
-                                                    ),
-                                                )
-                                            } else {
-                                                Modifier
-                                            },
-                                        )
+                                        .background(tierColors[tier], shape)
                                         .glassHighlight(shape)
                                         .then(
                                             if (ring != null) {
@@ -154,40 +162,38 @@ fun HeatmapLegend(modifier: Modifier = Modifier) {
     val labelStyle = MaterialTheme.typography.labelSmall
     val cell = with(LocalDensity.current) { labelStyle.fontSize.toDp() * 1.5f }
     val gap = cell / 6
-    val shape = RoundedCornerShape(cell / 5)
+    val shape = remember(cell) { RoundedCornerShape(cell / 5) }
+    val scheme = MaterialTheme.colorScheme
+    val baseColor = scheme.secondaryContainer.copy(alpha = 0.5f)
+    val overlayColor = scheme.primary
 
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(gap),
     ) {
-        Text("少", style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("少", style = labelStyle, color = scheme.onSurfaceVariant)
         (0..4).forEach { tier ->
+            val cellColor = if (tier > 0) {
+                overlayColor
+                    .copy(alpha = (FocusHeatmap.intensity(tier) + 0.2f).coerceAtMost(1f))
+                    .compositeOver(baseColor)
+            } else {
+                baseColor
+            }
             Box(
                 Modifier
                     .size(cell)
-                    .clip(shape)
-                    .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
-                    .then(
-                        if (tier > 0) {
-                            Modifier.background(
-                                MaterialTheme.colorScheme.primary.copy(
-                                    alpha = (FocusHeatmap.intensity(tier) + 0.2f).coerceAtMost(1f),
-                                ),
-                            )
-                        } else {
-                            Modifier
-                        },
-                    )
+                    .background(cellColor, shape)
                     .glassHighlight(shape),
             )
         }
-        Text("多", style = labelStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("多", style = labelStyle, color = scheme.onSurfaceVariant)
         Box(Modifier.size(cell))
         Text(
             text = "1 格 ≈ 半小时",
             style = labelStyle,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = scheme.onSurfaceVariant,
         )
     }
 }

@@ -66,6 +66,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -713,7 +714,9 @@ internal fun ChaoxingSeatDetailContent(
 internal fun ChaoxingTimeResults(state: ChaoxingSeatUiState, onSelect: (String) -> Unit,
     onHide: (String) -> Unit, onRetry: () -> Unit) {
     val candidates = state.candidates
-    val visible = candidates.filter { it.seatNum !in state.hiddenIds }
+    val visible = remember(candidates, state.hiddenIds) {
+        candidates.filter { it.seatNum !in state.hiddenIds }
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
             state.timeUnavailableReason != null -> CompactNotice("暂无可选时段", state.timeUnavailableReason)
@@ -873,16 +876,13 @@ internal fun ChaoxingSeatMap(
     var fallbackZoom by rememberSaveable("chaoxing", mapScopeKey, "zoom") { mutableStateOf(1f) }
     var fallbackCenterX by rememberSaveable("chaoxing", mapScopeKey, "center-x") { mutableStateOf(0.5f) }
     var fallbackCenterY by rememberSaveable("chaoxing", mapScopeKey, "center-y") { mutableStateOf(0.5f) }
-    val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
-    val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
-    val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         BoxWithConstraints(
             Modifier.fillMaxWidth()
                 .height(368.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow),
+                .clip(CHAOXING_MAP_SHAPE)
+                .glassPane(CHAOXING_MAP_SHAPE, MaterialTheme.colorScheme.surfaceContainerLow),
         ) {
             val controlsHeightPx = with(density) { 48.dp.toPx() }
             val viewportSize = SeatMapSize(
@@ -897,11 +897,23 @@ internal fun ChaoxingSeatMap(
             } else {
                 val maxZoom = max(4f, targetSeatPx / (smallestSeatDimension * overview.scale))
                     .coerceAtMost(64f)
-                val pose = SeatMapViewportPose(zoom, centerX, centerY)
-                val transform = remember(bounds, viewportSize, pose, maxZoom) {
-                    pose.toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                val transformState = remember(bounds, viewportSize, paddingPx, maxZoom, overview, viewportState) {
+                    derivedStateOf {
+                        val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
+                        val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
+                        val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
+                        SeatMapViewportPose(zoom, centerX, centerY)
+                            .toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                    }
                 }
-                val currentTransform = rememberUpdatedState(transform)
+                val currentScale by remember(transformState) {
+                    derivedStateOf { transformState.value.scale }
+                }
+                val showLabels by remember(density, smallestSeatDimension, transformState) {
+                    derivedStateOf {
+                        with(density) { (smallestSeatDimension * transformState.value.scale).toDp() >= 24.dp }
+                    }
+                }
                 val currentPlaces = rememberUpdatedState(places)
                 val currentHiddenIds = rememberUpdatedState(hiddenIds)
                 val currentUsedSeats = rememberUpdatedState(usedSeats)
@@ -925,18 +937,18 @@ internal fun ChaoxingSeatMap(
                 }
 
                 val gestureModifier = Modifier
-                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom) {
+                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom, transformState) {
                         detectTransformGestures { centroid, pan, zoomChange, _ ->
-                            val next = currentTransform.value
+                            val next = transformState.value
                                 .zoomAt(SeatMapPoint(centroid.x, centroid.y), zoomChange)
                                 .panBy(SeatMapPoint(pan.x, pan.y))
                             saveTransform(next)
                         }
                     }
-                    .pointerInput(mapScopeKey, bounds, viewportSize) {
+                    .pointerInput(mapScopeKey, bounds, viewportSize, transformState) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val contentPoint = currentTransform.value.displayToContent(
+                                val contentPoint = transformState.value.displayToContent(
                                     SeatMapPoint(offset.x, offset.y),
                                 )
                                 val target = currentPlaces.value.asReversed().firstOrNull { place ->
@@ -952,7 +964,7 @@ internal fun ChaoxingSeatMap(
                                 }
                             },
                             onLongPress = { offset ->
-                                val contentPoint = currentTransform.value.displayToContent(
+                                val contentPoint = transformState.value.displayToContent(
                                     SeatMapPoint(offset.x, offset.y),
                                 )
                                 val target = currentPlaces.value.asReversed().firstOrNull { place ->
@@ -970,29 +982,31 @@ internal fun ChaoxingSeatMap(
                     SeatMapZoomControls(
                         onZoomOut = {
                             val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
-                            saveTransform(transform.zoomAt(center, 1f / 1.6f))
+                            saveTransform(transformState.value.zoomAt(center, 1f / 1.6f))
                         },
                         onZoomIn = {
                             val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
-                            saveTransform(transform.zoomAt(center, 1.6f))
+                            saveTransform(transformState.value.zoomAt(center, 1.6f))
                         },
-                        onReset = { transform.reset()?.let(::saveTransform) },
+                        onReset = { transformState.value.reset()?.let(::saveTransform) },
                     )
                     Box(Modifier.fillMaxWidth().weight(1f).then(gestureModifier)) {
-                        val showLabels = with(density) {
-                            (smallestSeatDimension * transform.scale).toDp() >= 24.dp
+                        val seatFontSize = if (showLabels) {
+                            with(density) { (12.dp.toPx() / currentScale).sp }
+                        } else {
+                            12.sp
                         }
                         Box(
                             Modifier
                                 .offset {
-                                    val current = currentTransform.value
+                                    val current = transformState.value
                                     IntOffset(
                                         x = (current.translationX + current.contentBounds.left * current.scale).roundToInt(),
                                         y = (current.translationY + current.contentBounds.top * current.scale).roundToInt(),
                                     )
                                 }
                                 .graphicsLayer {
-                                    val current = currentTransform.value
+                                    val current = transformState.value
                                     val densityScale = current.scale / density.density
                                     scaleX = densityScale
                                     scaleY = densityScale
@@ -1038,8 +1052,7 @@ internal fun ChaoxingSeatMap(
                                         .size(place.width.dp, place.height.dp)
                                         .graphicsLayer(rotationZ = place.rotate)
                                         .padding(1.dp)
-                                        .clip(RoundedCornerShape(5.dp))
-                                        .background(color)
+                                        .background(color, SEAT_CELL_SHAPE)
                                         .then(if (hidden) Modifier.drawBehind {
                                             drawLine(
                                                 color = Color.Gray,
@@ -1055,14 +1068,18 @@ internal fun ChaoxingSeatMap(
                                         Text(
                                             place.seatNum,
                                             color = textColor,
-                                            fontSize = with(density) { (12.dp.toPx() / transform.scale).sp },
+                                            fontSize = seatFontSize,
                                             maxLines = 1,
                                             softWrap = false,
                                             overflow = TextOverflow.Clip,
                                         )
                                     } else if (showLabels) {
-                                        Text("·", color = textColor,
-                                            fontSize = with(density) { (12.dp.toPx() / transform.scale).sp }, maxLines = 1)
+                                        Text(
+                                            "·",
+                                            color = textColor,
+                                            fontSize = seatFontSize,
+                                            maxLines = 1,
+                                        )
                                     }
                                 }
                             }
@@ -1089,10 +1106,14 @@ internal fun formatDuration(minutes: Int): String = when {
     else -> "${minutes / 60} 小时 ${minutes % 60} 分钟"
 }
 
+private val CHAOXING_MAP_SHAPE = RoundedCornerShape(18.dp)
+private val SEAT_CELL_SHAPE = RoundedCornerShape(5.dp)
+private val CHAOXING_CAMPUS_ZONE: java.time.ZoneId = java.time.ZoneId.of("Asia/Shanghai")
+
 private fun chaoxingAvailability(room: ChaoxingSeatRoom, selectedDate: String): String? {
-    val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString()
+    val today = java.time.LocalDate.now(CHAOXING_CAMPUS_ZONE).toString()
     if (selectedDate != today) return null
-    val now = java.time.LocalTime.now(java.time.ZoneId.of("Asia/Shanghai"))
+    val now = java.time.LocalTime.now(CHAOXING_CAMPUS_ZONE)
     val minute = now.hour * 60 + now.minute
     return when {
         minute < room.startMinute -> "未到开放时间"

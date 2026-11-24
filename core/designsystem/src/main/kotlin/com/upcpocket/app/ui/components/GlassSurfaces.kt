@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.BackdropEffectScope
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
@@ -163,10 +164,13 @@ private fun Modifier.glassPane(
         val drawSurface: DrawScope.() -> Unit = remember(surfaceColor) {
             { drawRect(surfaceColor) }
         }
+        val lensEffects: BackdropEffectScope.() -> Unit = remember {
+            { lens(8.dp.toPx(), 12.dp.toPx(), depthEffect = false) }
+        }
         drawBackdrop(
             backdrop = source.backdrop,
             shape = shapeProvider,
-            effects = { lens(8.dp.toPx(), 12.dp.toPx(), depthEffect = false) },
+            effects = lensEffects,
             highlight = null,
             shadow = null,
             innerShadow = null,

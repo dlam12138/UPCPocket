@@ -74,6 +74,10 @@ private val HOME_DATE_FORMATTER: DateTimeFormatter =
 private fun homeModuleKey(module: HomeModuleId): Any = module.name
 private fun homeModuleLabel(module: HomeModuleId): String = module.label
 private fun homeModuleTestTag(module: HomeModuleId): String = "home_module_${module.name.lowercase()}"
+private fun isHomeModuleGrouped(module: HomeModuleId): Boolean = when (module) {
+    HomeModuleId.TIMETABLE, HomeModuleId.TODO -> false
+    HomeModuleId.SERVICES, HomeModuleId.CARD -> true
+}
 
 private data class QuickAction(
     val title: String,
@@ -192,6 +196,7 @@ fun HomeScreen(
             }
         }
     }
+    val actionRows = remember(actions) { actions.chunked(2) }
     val normalizedOrder = remember(moduleOrder) {
         normalizeModuleOrder(moduleOrder, HomeModuleId.DEFAULT_ORDER)
     }
@@ -254,6 +259,7 @@ fun HomeScreen(
                     spacing = 14.dp,
                     itemLabel = ::homeModuleLabel,
                     itemTestTag = ::homeModuleTestTag,
+                    itemGrouped = ::isHomeModuleGrouped,
                     onReorderFinished = onReorderFinished,
                 ) { module, _ ->
                     when (module) {
@@ -284,7 +290,7 @@ fun HomeScreen(
                                     modifier = Modifier.padding(bottom = 2.dp),
                                 )
                                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    actions.chunked(2).forEach { row ->
+                                    actionRows.forEach { row ->
                                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                             row.forEach { action ->
                                                 ServiceTile(
@@ -306,11 +312,12 @@ fun HomeScreen(
                                     title = "校园卡",
                                     modifier = Modifier.padding(bottom = 8.dp),
                                 )
-                                cardSections.forEach { section ->
-                                    androidx.compose.runtime.key(section.entryId) {
-                                        section.content(sectionHost)
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    cardSections.forEach { section ->
+                                        androidx.compose.runtime.key(section.entryId) {
+                                            section.content(sectionHost)
+                                        }
                                     }
-                                    Spacer(Modifier.height(4.dp))
                                 }
                             }
                         }
@@ -389,6 +396,7 @@ private fun ServiceTile(
     GlassCard(
         modifier = modifier.heightIn(min = 56.dp),
         onClick = action.onClick,
+        optical = false,
     ) {
         Row(
             modifier = Modifier

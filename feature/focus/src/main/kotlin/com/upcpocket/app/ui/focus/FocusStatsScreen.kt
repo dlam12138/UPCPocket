@@ -52,6 +52,9 @@ import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
 
+private val SELECTED_DAY_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("M月d日")
+private val TREND_LABEL_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("M/d")
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FocusStatsScreen(
@@ -187,9 +190,8 @@ private fun SelectedDayLine(day: LocalDate?, secondsByDay: Map<LocalDate, Int>) 
         "点格子查看当天。"
     } else {
         val weekday = day.dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.CHINA)
-        val fmt = DateTimeFormatter.ofPattern("M月d日")
         val seconds = secondsByDay[day] ?: 0
-        "${day.format(fmt)} $weekday · ${FocusStats.humanDuration(seconds)}"
+        "${day.format(SELECTED_DAY_FORMATTER)} $weekday · ${FocusStats.humanDuration(seconds)}"
     }
     Text(
         text = text,
@@ -305,7 +307,24 @@ private fun WeeklyTrendCard(
 ) {
     val days = remember(today) { (6L downTo 0L).map { today.minusDays(it) } }
     val selectedIdx = selectedDay?.let { days.indexOf(it).takeIf { idx -> idx >= 0 } }
-    val labelFmt = remember { DateTimeFormatter.ofPattern("M/d") }
+    val weekSeconds = remember(days, secondsByDay) { days.sumOf { secondsByDay[it] ?: 0 } }
+    val bars = remember(days, secondsByDay, today) {
+        days.map { day ->
+            val secs = secondsByDay[day] ?: 0
+            val mins = secs / 60
+            val valueLabel = when {
+                secs <= 0 -> "0"
+                mins >= 60 -> "${mins / 60}h"
+                else -> "${mins}m"
+            }
+            ChartBarItem(
+                label = if (day == today) "今天" else day.format(TREND_LABEL_FORMATTER),
+                value = secs.toFloat(),
+                valueLabel = valueLabel,
+                highlighted = day == today,
+            )
+        }
+    }
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -315,7 +334,6 @@ private fun WeeklyTrendCard(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.weight(1f),
                 )
-                val weekSeconds = days.sumOf { secondsByDay[it] ?: 0 }
                 Text(
                     text = "7 日共 ${FocusStats.humanDuration(weekSeconds)}",
                     style = MaterialTheme.typography.labelSmall,
@@ -323,21 +341,7 @@ private fun WeeklyTrendCard(
                 )
             }
             DailyBarChart(
-                bars = days.map { day ->
-                    val secs = secondsByDay[day] ?: 0
-                    val mins = secs / 60
-                    val valueLabel = when {
-                        secs <= 0 -> "0"
-                        mins >= 60 -> "${mins / 60}h"
-                        else -> "${mins}m"
-                    }
-                    ChartBarItem(
-                        label = if (day == today) "今天" else day.format(labelFmt),
-                        value = secs.toFloat(),
-                        valueLabel = valueLabel,
-                        highlighted = day == today,
-                    )
-                },
+                bars = bars,
                 selectedIndex = selectedIdx,
                 onSelect = { idx -> days.getOrNull(idx)?.let(onSelectDay) },
             )

@@ -58,6 +58,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+private val SERVICE_PORTAL_TAB_LABELS: List<String> =
+    ServicePortalTab.entries.map { it.label }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServicePortalScreen(
@@ -123,7 +126,7 @@ fun ServicePortalScreen(
             Column(Modifier.widthIn(max = 900.dp).fillMaxSize()) {
                 if (state.selected == null) {
                     com.upcpocket.app.ui.components.CampusSegmentedTabs(
-                        tabs = ServicePortalTab.entries.map { it.label },
+                        tabs = SERVICE_PORTAL_TAB_LABELS,
                         selectedIndex = state.tab.ordinal,
                         onSelect = { index -> service.selectTab(ServicePortalTab.entries[index]) },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -301,7 +304,7 @@ private fun ServiceListContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                item(key = "scope") {
+                item(key = "scope", contentType = "header") {
                     Text(
                         buildString {
                             append(if (page.scope == ServicePortalScope.ACCOUNT) "当前账号可见目录" else "公开目录")
@@ -317,6 +320,7 @@ private fun ServiceListContent(
                     com.upcpocket.app.ui.components.GlassCard(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = { onOpen(item) },
+                        optical = false,
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(item.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
@@ -325,7 +329,7 @@ private fun ServiceListContent(
                         }
                     }
                 }
-                item(key = "pagination") {
+                item(key = "pagination", contentType = "pagination") {
                     PageControls(
                         page = page.page,
                         pageSize = page.pageSize,
@@ -388,13 +392,16 @@ private fun TodoListContent(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "todo-summary") {
+            item(key = "todo-summary", contentType = "header") {
                 Text("本人待处理 ${page.total} 项 · 第 ${page.page} 页", style = MaterialTheme.typography.labelMedium)
                 if (!page.completeForPage) Text("本页结果可能不完整。", style = MaterialTheme.typography.bodySmall)
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
             items(page.items, key = ServicePortalTodo::rowKey, contentType = { "todo" }) { item ->
-                com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+                com.upcpocket.app.ui.components.GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    optical = false,
+                ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名事项" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         item.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -404,7 +411,7 @@ private fun TodoListContent(
                     }
                 }
             }
-            item(key = "todo-pages") {
+            item(key = "todo-pages", contentType = "pagination") {
                 PageControls(page.page, page.pageSize, page.total, page.page > 1, page.hasMore && page.page < MAX_PAGE, onPrevious, onNext)
                 if (page.hasMore && page.page == MAX_PAGE) Text("最多查看 50 页，后续事项未加载。", style = MaterialTheme.typography.bodySmall)
                 com.upcpocket.app.ui.components.CampusTextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }
@@ -442,13 +449,16 @@ private fun ApplicationListContent(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            item(key = "application-summary") {
+            item(key = "application-summary", contentType = "header") {
                 Text("本人在办 ${page.total} 项 · 第 ${page.page} 页", style = MaterialTheme.typography.labelMedium)
                 if (!page.completeForPage) Text("本页结果可能不完整。", style = MaterialTheme.typography.bodySmall)
                 if (!page.completeForScope) Text("仅显示当前页；其他页未加载。", style = MaterialTheme.typography.bodySmall)
             }
             items(page.items, key = ServicePortalApplication::rowKey, contentType = { "application" }) { item ->
-                com.upcpocket.app.ui.components.GlassCard(Modifier.fillMaxWidth()) {
+                com.upcpocket.app.ui.components.GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    optical = false,
+                ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title.ifBlank { "未命名申请" }, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         item.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -464,7 +474,7 @@ private fun ApplicationListContent(
                     }
                 }
             }
-            item(key = "application-pages") {
+            item(key = "application-pages", contentType = "pagination") {
                 PageControls(page.page, page.pageSize, page.total, page.page > 1, page.hasMore && page.page < MAX_PAGE, onPrevious, onNext)
                 if (page.hasMore && page.page == MAX_PAGE) Text("最多查看 50 页，后续申请未加载。", style = MaterialTheme.typography.bodySmall)
                 com.upcpocket.app.ui.components.CampusTextButton(onClick = onRefresh, enabled = !state.busy) { Text("刷新") }

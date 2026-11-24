@@ -52,6 +52,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
+private val READING_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MM-dd HH:mm")
+
 /**
  * 唐岛湾宿舍剩余电量（原生只读）。
  *
@@ -273,30 +276,34 @@ internal fun TangdaowanElectricityContent(
                             Text("没有返回楼号列表。")
                             com.upcpocket.app.ui.components.CampusTextButton(onClick = ::loadBuildings) { Text("重试") }
                         }
-                        else -> LazyColumn {
-                            items(
-                                items = buildings,
-                                key = { it },
-                                contentType = { "building" },
-                            ) { option ->
-                                val optionInteractions = remember(option) { MutableInteractionSource() }
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .glassPressHighlight(MaterialTheme.shapes.medium, optionInteractions)
-                                        .clickable(
+                        else -> {
+                            val rowShape = MaterialTheme.shapes.medium
+                            val rowIndication = LocalIndication.current
+                            LazyColumn {
+                                items(
+                                    items = buildings,
+                                    key = { it },
+                                    contentType = { "building" },
+                                ) { option ->
+                                    val optionInteractions = remember(option) { MutableInteractionSource() }
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .glassPressHighlight(rowShape, optionInteractions)
+                                            .clickable(
+                                                interactionSource = optionInteractions,
+                                                indication = rowIndication,
+                                            ) { selectBuilding(option) }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        RadioButton(
+                                            selected = building == option,
+                                            onClick = { selectBuilding(option) },
                                             interactionSource = optionInteractions,
-                                            indication = LocalIndication.current,
-                                        ) { selectBuilding(option) }
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    RadioButton(
-                                        selected = building == option,
-                                        onClick = { selectBuilding(option) },
-                                        interactionSource = optionInteractions,
-                                    )
-                                    Text(option)
+                                        )
+                                        Text(option)
+                                    }
                                 }
                             }
                         }
@@ -415,14 +422,16 @@ internal fun TangdaowanElectricityContent(
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
             ) {
                 val resultContent = MaterialTheme.colorScheme.onPrimaryContainer
+                val fetchedTimeText = remember(value.fetchedAt) {
+                    READING_TIME_FORMATTER.withZone(ZoneId.systemDefault())
+                        .format(Instant.ofEpochMilli(value.fetchedAt))
+                }
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         when {
                             loading -> "更新中 · 保留上次结果"
                             error != null -> "更新失败 · 上次读取"
-                            else -> "读取于 " + DateTimeFormatter.ofPattern("MM-dd HH:mm")
-                                .withZone(ZoneId.systemDefault())
-                                .format(Instant.ofEpochMilli(value.fetchedAt))
+                            else -> "读取于 $fetchedTimeText"
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = resultContent.copy(alpha = 0.8f),

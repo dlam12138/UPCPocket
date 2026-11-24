@@ -53,6 +53,9 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private val SNAPSHOT_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
 /**
  * 校园卡余额功能区（主页上的紧凑卡片）。
  *
@@ -383,10 +386,12 @@ private fun BalanceSnapshot(
                     barHeight = 6.dp,
                 )
             }
-            val time = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
-                .withZone(ZoneId.systemDefault())
+            val formattedTime = remember(data.fetchedAt) {
+                SNAPSHOT_TIME_FORMATTER.withZone(ZoneId.systemDefault())
+                    .format(Instant.ofEpochMilli(data.fetchedAt))
+            }
             Text(
-                text = time.format(Instant.ofEpochMilli(data.fetchedAt)),
+                text = formattedTime,
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )

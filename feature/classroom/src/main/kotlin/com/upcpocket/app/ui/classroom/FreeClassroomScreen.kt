@@ -102,6 +102,7 @@ import com.upcpocket.app.ui.components.RatioSegment
 import com.upcpocket.app.ui.components.SegmentedRatioBar
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -110,6 +111,15 @@ private val PeriodSetSaver = listSaver<Set<Int>, Int>(
     save = { value -> value.sorted() },
     restore = { value -> value.toSet() },
 )
+
+private val CLASSROOM_DATE_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA)
+
+private val RESULT_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MM-dd HH:mm:ss", Locale.CHINA)
+        .withZone(ZoneId.of("Asia/Shanghai"))
+
+private val ROOM_CELL_SHAPE = RoundedCornerShape(12.dp)
 
 /** Native, read-only room availability. No WebView, reservation action or background polling. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -281,6 +291,18 @@ fun FreeClassroomScreen(
             )
         },
     ) { padding ->
+        val groups = remember(displayResult, onlyAvailable) {
+            displayResult?.displayGroups(onlyAvailable).orEmpty()
+        }
+        val freeCount = remember(displayResult) {
+            displayResult?.rooms?.count { it.available } ?: 0
+        }
+        val availableRoomColors = roomColors(available = true)
+        val occupiedRoomColors = roomColors(available = false)
+        val outlineVariant = MaterialTheme.colorScheme.outlineVariant
+        val roomBorder = remember(outlineVariant) {
+            BorderStroke(0.5.dp, outlineVariant.copy(alpha = 0.42f))
+        }
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = 96.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)),
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
@@ -332,8 +354,6 @@ fun FreeClassroomScreen(
                         )
                     }
                 } else {
-                    val groups = displayResult.displayGroups(onlyAvailable)
-                    val freeCount = displayResult.rooms.count { it.available }
                     if (freeCount == 0 && !onlyAvailable) {
                         item(span = { GridItemSpan(maxLineSpan) }, key = "all-occupied", contentType = "notice") {
                             NoticeCard("所选节次无空闲，以下房间均为占用。")
@@ -363,6 +383,8 @@ fun FreeClassroomScreen(
                         ) { room ->
                             RoomCell(
                                 room = room,
+                                colors = if (room.available) availableRoomColors else occupiedRoomColors,
+                                border = roomBorder,
                                 onClick = {
                                     detail = RoomDetail(room, displayResult.query)
                                 },
@@ -402,7 +424,7 @@ private fun ClassroomFilterPanel(
 ) {
     val filtersEnabled = !model.restoringCampus
     val dateLabel = remember(model.date) {
-        model.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA))
+        model.date.format(CLASSROOM_DATE_FORMATTER)
     }
 
     GlassCard(Modifier.fillMaxWidth()) {
@@ -695,7 +717,7 @@ private fun ResultSummaryCard(
     loading: Boolean,
     error: Boolean,
 ) {
-    val freeCount = result.rooms.count { it.available }
+    val freeCount = remember(result) { result.rooms.count { it.available } }
     val total = result.rooms.size
     val status = when {
         loading -> "更新中 · 保留上次结果"
@@ -707,9 +729,9 @@ private fun ResultSummaryCard(
     } else {
         MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val time = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss", Locale.CHINA)
-        .withZone(java.time.ZoneId.of("Asia/Shanghai"))
-        .format(result.fetchedAt)
+    val time = remember(result.fetchedAt) {
+        RESULT_TIME_FORMATTER.format(result.fetchedAt)
+    }
 
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -796,9 +818,6 @@ private fun ResultSummaryCard(
 
 @Composable
 private fun BuildingHeader(group: BuildingRoomGroup) {
-    val freeRatio = if (group.totalCount > 0) {
-        group.freeCount.toFloat() / group.totalCount.toFloat()
-    } else 0f
     Column(
         Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 2.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -833,9 +852,10 @@ private fun BuildingHeader(group: BuildingRoomGroup) {
 @Composable
 private fun RoomCell(
     room: FreeClassroomRoom,
+    colors: RoomColors,
+    border: BorderStroke,
     onClick: () -> Unit,
 ) {
-    val colors = roomColors(room.available)
     val status = if (room.available) "空闲" else "占用"
     Surface(
         onClick = onClick,
@@ -846,10 +866,10 @@ private fun RoomCell(
                 contentDescription = "${room.name}，${room.building}，$status"
                 role = Role.Button
             },
-        shape = RoundedCornerShape(12.dp),
+        shape = ROOM_CELL_SHAPE,
         color = colors.container,
         contentColor = colors.content,
-        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
+        border = border,
     ) {
         Column(
             Modifier.padding(horizontal = 8.dp, vertical = 8.dp),

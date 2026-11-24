@@ -1,6 +1,5 @@
 package com.upcpocket.app.ui.components
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -16,17 +15,24 @@ fun GlassCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     enabled: Boolean = true,
+    optical: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val shape = MaterialTheme.shapes.large
     val isGlass = LocalUiStyle.current == UiStyle.LIQUID_GLASS
-    val border = if (isGlass) null else
-        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+    val border = if (isGlass) null else glassBorder()
     val baseColor = MaterialTheme.colorScheme.surfaceContainerLow
     val containerColor = if (!isGlass && LocalHasCustomBackground.current) {
         baseColor.copy(alpha = 0.86f)
     } else {
         baseColor
+    }
+    val body: @Composable () -> Unit = {
+        if (isGlass && !optical) {
+            GlassNestedSurface { Box(content = { content() }) }
+        } else {
+            Box(content = { content() })
+        }
     }
     if (onClick != null) {
         GlassSurface(
@@ -39,10 +45,9 @@ fun GlassCard(
             shadowElevation = 0.dp,
             border = border,
             modifier = modifier,
-            optical = true,
-        ) {
-            Box(content = { content() })
-        }
+            optical = optical,
+            content = body,
+        )
     } else {
         GlassSurface(
             shape = shape,
@@ -52,9 +57,8 @@ fun GlassCard(
             shadowElevation = 0.dp,
             border = border,
             modifier = modifier,
-            optical = true,
-        ) {
-            Box(content = { content() })
-        }
+            optical = optical,
+            content = body,
+        )
     }
 }

@@ -275,6 +275,9 @@ internal fun CampusMapCanvas(
         ) {
             if (canvasSize == IntSize.Zero) return@Canvas
             val view = Viewport(canvasSize, extent, camera)
+            val altRouteStroke = Stroke(4.0.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val routeStroke = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            val routeOutlineStroke = Stroke(9.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
             withTransform({
                 translate(view.origin.x, view.origin.y)
                 scale(view.scale, view.scale, Offset.Zero)
@@ -282,55 +285,65 @@ internal fun CampusMapCanvas(
                 if (!navigates) {
                     for (line in routes) {
                         if (line.route.id == state.selectedRouteId) continue
-                        drawPath(line.path, palette.alternative, style = Stroke(4.0.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        drawPath(line.path, palette.alternative, style = altRouteStroke)
                     }
                 }
                 selectedRoute?.let { line ->
                     if (remainingPath != null) {
-                        drawPath(line.path, palette.traveled, style = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                        drawPath(line.path, palette.traveled, style = routeStroke)
                     }
                     val highlighted = remainingPath ?: line.path
-                    drawPath(highlighted, palette.routeOutline, style = Stroke(9.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                    drawPath(highlighted, palette.route, style = Stroke(6.dp.toPx() / view.scale, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                    drawPath(highlighted, palette.routeOutline, style = routeOutlineStroke)
+                    drawPath(highlighted, palette.route, style = routeStroke)
                 }
             }
 
             val bounds = Rect(Offset.Zero, size)
             val occupied = mutableListOf<Rect>()
             val visiblePlaces = if (navigates) emptyList() else places
+            val pinRadius = if (camera.zoom >= 2.5f) 4.2.dp.toPx() else 3.2.dp.toPx()
+            val pinStroke = Stroke(1.0.dp.toPx())
             for (item in visiblePlaces) {
                 if (item.place.id == selectedMarker) continue
                 val point = view.screen(item.point)
                 if (!bounds.contains(point)) continue
-                val radius = if (camera.zoom >= 2.5f) 4.2.dp.toPx() else 3.2.dp.toPx()
                 val verified = item.place.hasMappedPosition || item.place.confidence == "surveyed"
                 val pin = if (verified) palette.poi else palette.estimated
-                drawCircle(if (verified) pin else palette.ground, radius, point)
-                drawCircle(pin, radius, point, style = Stroke(1.0.dp.toPx()))
+                drawCircle(if (verified) pin else palette.ground, pinRadius, point)
+                drawCircle(pin, pinRadius, point, style = pinStroke)
             }
+            val emphasizedLabelStyle = TextStyle(
+                color = palette.text,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            val normalLabelStyle = TextStyle(
+                color = palette.text,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            val labelSpace = 3.dp.toPx()
+            val labelVerticalOffset = 12.dp.toPx()
+            val labelTopThreshold = 16.dp.toPx()
+            val labelCorner = CornerRadius(5.dp.toPx())
             fun drawPlaceLabel(value: String, centerPoint: Offset, emphasized: Boolean) {
                 val layout = textMeasure.measure(
                     value,
-                    TextStyle(
-                        color = palette.text,
-                        fontSize = if (emphasized) 12.sp else 10.sp,
-                        fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Medium,
-                    ),
+                    if (emphasized) emphasizedLabelStyle else normalLabelStyle,
                     maxLines = 1,
                 )
                 val label = Size(layout.size.width.toFloat(), layout.size.height.toFloat())
-                val space = 3.dp.toPx()
-                if (label.width + 2 * space > size.width) return
-                val x = (centerPoint.x - label.width / 2).coerceIn(space, size.width - label.width - space)
-                val y = if (centerPoint.y > label.height + 16.dp.toPx()) {
-                    centerPoint.y - label.height - 12.dp.toPx()
+                if (label.width + 2 * labelSpace > size.width) return
+                val x = (centerPoint.x - label.width / 2).coerceIn(labelSpace, size.width - label.width - labelSpace)
+                val y = if (centerPoint.y > label.height + labelTopThreshold) {
+                    centerPoint.y - label.height - labelVerticalOffset
                 } else {
-                    centerPoint.y + 12.dp.toPx()
+                    centerPoint.y + labelVerticalOffset
                 }
-                val rect = Rect(x - space, y - space, x + label.width + space, y + label.height + space)
+                val rect = Rect(x - labelSpace, y - labelSpace, x + label.width + labelSpace, y + label.height + labelSpace)
                 if (rect.bottom > size.height || occupied.any { it.overlaps(rect) }) return
                 occupied += rect
-                drawRoundRect(palette.label, rect.topLeft, rect.size, CornerRadius(5.dp.toPx()))
+                drawRoundRect(palette.label, rect.topLeft, rect.size, labelCorner)
                 drawText(layout, topLeft = Offset(x, y))
             }
             if (destination != null) {
@@ -430,6 +443,10 @@ internal fun CampusMapCanvas(
 }
 
 private fun DrawScope.drawBasemap(layers: List<MapLayer>, view: Viewport, palette: CampusMapColors) {
+    val roadEdgeStroke = Stroke(4.5.dp.toPx() / view.scale, cap = StrokeCap.Round)
+    val roadStroke = Stroke(3.dp.toPx() / view.scale, cap = StrokeCap.Round)
+    val pathStroke = Stroke(1.35.dp.toPx() / view.scale, cap = StrokeCap.Round)
+    val buildingEdgeStroke = Stroke(0.55.dp.toPx() / view.scale)
     withTransform({
         translate(view.origin.x, view.origin.y)
         scale(view.scale, view.scale, Offset.Zero)
@@ -438,13 +455,13 @@ private fun DrawScope.drawBasemap(layers: List<MapLayer>, view: Viewport, palett
             for (path in layer.paths) {
                 when (layer.kind) {
                     "road" -> {
-                        drawPath(path, palette.roadEdge, style = Stroke(4.5.dp.toPx() / view.scale, cap = StrokeCap.Round))
-                        drawPath(path, palette.road, style = Stroke(3.dp.toPx() / view.scale, cap = StrokeCap.Round))
+                        drawPath(path, palette.roadEdge, style = roadEdgeStroke)
+                        drawPath(path, palette.road, style = roadStroke)
                     }
-                    "path" -> drawPath(path, palette.path, style = Stroke(1.35.dp.toPx() / view.scale, cap = StrokeCap.Round))
+                    "path" -> drawPath(path, palette.path, style = pathStroke)
                     "building" -> {
                         drawPath(path, palette.building)
-                        drawPath(path, palette.buildingEdge, style = Stroke(0.55.dp.toPx() / view.scale))
+                        drawPath(path, palette.buildingEdge, style = buildingEdgeStroke)
                     }
                     "water" -> drawPath(path, palette.water)
                     "field" -> drawPath(path, palette.field)

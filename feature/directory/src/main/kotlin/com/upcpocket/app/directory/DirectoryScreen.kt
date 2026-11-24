@@ -310,18 +310,22 @@ private fun DirectoryHome(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (browsing) {
-                item(COLLEGES) { DirectoryRow("学院", onClick = onColleges) }
-                items(units, key = { UNIT_PREFIX + it.id }) { unit ->
+                item(COLLEGES, contentType = "directory_row") { DirectoryRow("学院", onClick = onColleges) }
+                items(units, key = { UNIT_PREFIX + it.id }, contentType = { "directory_row" }) { unit ->
                     DirectoryRow(unit.name, onClick = { onUnit(unit.id) })
                 }
             } else if (results.isEmpty()) {
-                item("empty") {
+                item("empty", contentType = "empty") {
                     Text("没有找到相关结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                items(results, key = { result ->
-                    result.office?.let { OFFICE_PREFIX + it.id } ?: (UNIT_PREFIX + result.unit.id)
-                }) { result ->
+                items(
+                    results,
+                    key = { result ->
+                        result.office?.let { OFFICE_PREFIX + it.id } ?: (UNIT_PREFIX + result.unit.id)
+                    },
+                    contentType = { "directory_row" },
+                ) { result ->
                     val office = result.office
                     if (office == null) {
                         DirectoryRow(result.unit.name, onClick = { onUnit(result.unit.id) })
@@ -340,7 +344,7 @@ private fun DirectoryHome(
 @Composable
 private fun DirectoryUnits(units: List<DirectoryUnit>, onUnit: (String) -> Unit, modifier: Modifier) {
     LazyColumn(modifier, contentPadding = DirectoryListPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(units, key = { it.id }) { unit ->
+        items(units, key = { it.id }, contentType = { "directory_row" }) { unit ->
             DirectoryRow(unit.name, onClick = { onUnit(unit.id) })
         }
     }
@@ -355,7 +359,7 @@ private fun DirectoryUnitDetails(
 ) {
     LazyColumn(modifier, contentPadding = DirectoryListPadding, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (unit.introduction.isNotBlank()) {
-            item("introduction") {
+            item("introduction", contentType = "info_card") {
                 DirectoryInfoCard {
                     DirectoryHeading("单位介绍")
                     Text(unit.introduction, style = MaterialTheme.typography.bodyMedium)
@@ -363,11 +367,11 @@ private fun DirectoryUnitDetails(
             }
         }
         if (offices.isNotEmpty()) {
-            item("windows") {
+            item("windows", contentType = "heading") {
                 DirectoryHeading("办事窗口", modifier = Modifier.padding(top = 4.dp))
             }
         }
-        items(offices, key = { OFFICE_PREFIX + it.id }) { office ->
+        items(offices, key = { OFFICE_PREFIX + it.id }, contentType = { "directory_row" }) { office ->
             DirectoryRow(office.name, officeLocation(office), onClick = { onOffice(office.id) })
         }
     }
@@ -469,7 +473,7 @@ private fun DirectoryInfoCard(content: @Composable () -> Unit) {
 
 @Composable
 private fun DirectoryRow(title: String, subtitle: String = "", onClick: () -> Unit) {
-    GlassCard(Modifier.fillMaxWidth(), onClick = onClick) {
+    GlassCard(Modifier.fillMaxWidth(), onClick = onClick, optical = false) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,

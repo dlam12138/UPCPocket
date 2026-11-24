@@ -86,9 +86,11 @@ import com.upcpocket.app.data.db.FocusTagEntity
 import com.upcpocket.app.data.prefs.TimerPreset
 import com.upcpocket.app.domain.FocusRecord
 import com.upcpocket.app.domain.FocusStats
+import com.upcpocket.app.domain.FocusTotals
 import com.upcpocket.app.domain.Phase
 import com.upcpocket.app.domain.PomodoroClock
 import com.upcpocket.app.focus.FocusService
+import com.upcpocket.app.focus.TimerUi
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -176,21 +178,32 @@ fun FocusScreen(
         ) {
             Spacer(Modifier.height(2.dp))
 
-            TimerDial(ui)
+            TimerDial(
+                timer = ui.timer,
+                displayTotalSeconds = ui.displayTotalSeconds,
+                tagName = ui.tagName,
+                longBreakEvery = ui.prefs.longBreakEvery,
+            )
 
-            Controls(ui, vm)
+            Controls(timer = ui.timer, vm = vm)
 
             // 宿主可在设置中把日程待办放到这里；槽位为空时保持原专注页布局。
             LocalFocusTodoSlot.current?.invoke()
 
             TagSection(
-                ui = ui,
+                tags = ui.tags,
+                selectedTagName = ui.tagName,
                 onToggle = vm::toggleTag,
                 onNew = { showNewTag = true },
                 onManage = { showManageTags = true },
             )
 
-            TodayCard(ui, onManual = { showManual = true }, onOpenStats = onOpenStats)
+            TodayCard(
+                todayTotals = ui.summary.today,
+                weekTotals = ui.summary.week,
+                onManual = { showManual = true },
+                onOpenStats = onOpenStats,
+            )
 
             TodayRecords(ui.todayRecords, onDelete = vm::deleteRecord)
 
@@ -247,11 +260,16 @@ fun FocusScreen(
 // ── 计时圆盘 ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun TimerDial(ui: FocusUiState) {
-    val phase = ui.timer.phase
-    val total = ui.displayTotalSeconds.coerceAtLeast(1)
-    val remaining = if (ui.timer.idle) total else ui.timer.remainingSeconds
-    val progress = if (ui.timer.idle) 0f else ui.timer.progress
+private fun TimerDial(
+    timer: TimerUi,
+    displayTotalSeconds: Int,
+    tagName: String,
+    longBreakEvery: Int,
+) {
+    val phase = timer.phase
+    val total = displayTotalSeconds.coerceAtLeast(1)
+    val remaining = if (timer.idle) total else timer.remainingSeconds
+    val progress = if (timer.idle) 0f else timer.progress
 
     val ringColor = when (phase) {
         Phase.FOCUS -> MaterialTheme.colorScheme.primary
@@ -265,6 +283,7 @@ private fun TimerDial(ui: FocusUiState) {
             val strokeWidth = 14.dp.toPx()
             val inset = strokeWidth / 2f
             val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+            val arcStroke = Stroke(width = strokeWidth, cap = StrokeCap.Round)
             drawArc(
                 color = trackColor,
                 startAngle = -90f,
@@ -272,7 +291,7 @@ private fun TimerDial(ui: FocusUiState) {
                 useCenter = false,
                 topLeft = Offset(inset, inset),
                 size = arcSize,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                style = arcStroke,
             )
             if (progress > 0f) {
                 drawArc(
@@ -282,15 +301,15 @@ private fun TimerDial(ui: FocusUiState) {
                     useCenter = false,
                     topLeft = Offset(inset, inset),
                     size = arcSize,
-                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                    style = arcStroke,
                 )
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = when {
-                    ui.timer.idle -> "下一个：${phase.label}"
-                    ui.timer.paused -> "${phase.label} · 已暂停"
+                    timer.idle -> "下一个：${phase.label}"
+                    timer.paused -> "${phase.label} · 已暂停"
                     else -> phase.label
                 },
                 style = MaterialTheme.typography.titleSmall,
@@ -304,15 +323,15 @@ private fun TimerDial(ui: FocusUiState) {
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = ui.tagName.ifBlank { "未分类" },
+                text = tagName.ifBlank { "未分类" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (ui.timer.snapshot.focusRound > 0 && ui.prefs.longBreakEvery > 0) {
+            if (timer.snapshot.focusRound > 0 && longBreakEvery > 0) {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "本轮 ${ui.timer.snapshot.focusRound % ui.prefs.longBreakEvery}" +
-                        "/${ui.prefs.longBreakEvery}",
+                    text = "本轮 ${timer.snapshot.focusRound % longBreakEvery}" +
+                        "/$longBreakEvery",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -324,12 +343,12 @@ private fun TimerDial(ui: FocusUiState) {
 // ── 控制按钮 ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
-    val idle = ui.timer.idle
+private fun Controls(timer: TimerUi, vm: FocusViewModel) {
+    val idle = timer.idle
     val label = when {
-        idle && ui.timer.phase == Phase.FOCUS -> "开始专注"
-        idle -> "开始${ui.timer.phase.label}"
-        ui.timer.paused -> "继续"
+        idle && timer.phase == Phase.FOCUS -> "开始专注"
+        idle -> "开始${timer.phase.label}"
+        timer.paused -> "继续"
         else -> "暂停"
     }
 
@@ -338,14 +357,14 @@ private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
             onClick = {
                 when {
                     idle -> vm.start()
-                    ui.timer.paused -> vm.resume()
+                    timer.paused -> vm.resume()
                     else -> vm.pause()
                 }
             },
             modifier = Modifier.fillMaxWidth().height(52.dp),
         ) {
             Icon(
-                if (ui.timer.running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                if (timer.running) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = null,
             )
             Spacer(Modifier.width(8.dp))
@@ -385,12 +404,13 @@ private fun Controls(ui: FocusUiState, vm: FocusViewModel) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TagSection(
-    ui: FocusUiState,
+    tags: List<FocusTagEntity>,
+    selectedTagName: String,
     onToggle: (String) -> Unit,
     onNew: () -> Unit,
     onManage: () -> Unit,
 ) {
-    val tags = ui.tags.map { it.name }
+    val tagNames = remember(tags) { tags.map { it.name } }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -406,19 +426,19 @@ private fun TagSection(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            tags.forEach { name ->
+            tagNames.forEach { name ->
                 com.upcpocket.app.ui.components.CampusFilterChip(
-                    selected = ui.tagName == name,
+                    selected = selectedTagName == name,
                     onClick = { onToggle(name) },
                     label = { Text(name) },
                 )
             }
             // 选中的是课名（不在标签表里）时也画出来，否则看不出自己选了什么
-            if (ui.tagName.isNotBlank() && ui.tagName !in tags) {
+            if (selectedTagName.isNotBlank() && selectedTagName !in tagNames) {
                 com.upcpocket.app.ui.components.CampusFilterChip(
                     selected = true,
-                    onClick = { onToggle(ui.tagName) },
-                    label = { Text(ui.tagName) },
+                    onClick = { onToggle(selectedTagName) },
+                    label = { Text(selectedTagName) },
                 )
             }
             com.upcpocket.app.ui.components.CampusFilterChip(
@@ -430,9 +450,9 @@ private fun TagSection(
                 },
             )
         }
-        if (ui.tagName.isNotBlank()) {
+        if (selectedTagName.isNotBlank()) {
             Text(
-                text = "记到「${ui.tagName}」",
+                text = "记到「$selectedTagName」",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -534,7 +554,12 @@ private fun TagManageDialog(
 // ── 今日统计 ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun TodayCard(ui: FocusUiState, onManual: () -> Unit, onOpenStats: () -> Unit) {
+private fun TodayCard(
+    todayTotals: FocusTotals,
+    weekTotals: FocusTotals,
+    onManual: () -> Unit,
+    onOpenStats: () -> Unit,
+) {
     GlassCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -551,9 +576,9 @@ private fun TodayCard(ui: FocusUiState, onManual: () -> Unit, onOpenStats: () ->
                 }
             }
             Row(Modifier.fillMaxWidth()) {
-                StatCell("专注时长", FocusStats.humanDuration(ui.summary.today.seconds), Modifier.weight(1f))
-                StatCell("番茄", "${ui.summary.today.sessions} 个", Modifier.weight(1f))
-                StatCell("本周", FocusStats.humanDuration(ui.summary.week.seconds), Modifier.weight(1f))
+                StatCell("专注时长", FocusStats.humanDuration(todayTotals.seconds), Modifier.weight(1f))
+                StatCell("番茄", "${todayTotals.sessions} 个", Modifier.weight(1f))
+                StatCell("本周", FocusStats.humanDuration(weekTotals.seconds), Modifier.weight(1f))
             }
         }
     }
@@ -575,7 +600,9 @@ private fun StatCell(label: String, value: String, modifier: Modifier = Modifier
 
 @Composable
 private fun TodayRecords(records: List<FocusRecord>, onDelete: (Long) -> Unit) {
-    val focusRecords = records.filter { it.phase == Phase.FOCUS }
+    val focusRecords = remember(records) {
+        records.filter { it.phase == Phase.FOCUS }.sortedByDescending { it.startedAt }
+    }
     if (focusRecords.isEmpty()) {
         Text(
             text = "今天还没有记录。",
@@ -594,7 +621,7 @@ private fun TodayRecords(records: List<FocusRecord>, onDelete: (Long) -> Unit) {
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
         )
-        focusRecords.sortedByDescending { it.startedAt }.forEach { r ->
+        focusRecords.forEach { r ->
             Row(
                 Modifier.fillMaxWidth().padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,

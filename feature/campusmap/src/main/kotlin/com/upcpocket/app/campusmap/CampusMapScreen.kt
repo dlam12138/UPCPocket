@@ -426,7 +426,7 @@ private fun MapSearchResults(
             Text("当前校区未找到匹配地点", Modifier.padding(15.dp))
         } else {
             LazyColumn {
-                items(results, key = CampusPlace::id) { place ->
+                items(results, key = CampusPlace::id, contentType = { "place" }) { place ->
                     Column(Modifier.fillMaxWidth().clickable { onPlace(place) }.padding(horizontal = 14.dp, vertical = 10.dp)) {
                         Text(place.name, style = MaterialTheme.typography.titleSmall)
                         Text(place.subtitle(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -478,7 +478,7 @@ private fun RoutePlanningPanel(
         state.status == NavigationStatus.NO_ROUTE
     if (related.size > 1 && canChooseRelated) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(related, key = CampusPlace::id) { place ->
+            items(related, key = CampusPlace::id, contentType = { "related_place" }) { place ->
                 FilterChip(selected = place.id == destination.id, onClick = { onPlace(place) }, label = { Text(place.name) })
             }
         }
@@ -501,7 +501,7 @@ private fun RoutePlanningPanel(
     }
     if (state.status == NavigationStatus.READY) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            itemsIndexed(state.routes, key = { _, route -> route.id }) { index, route ->
+            itemsIndexed(state.routes, key = { _, route -> route.id }, contentType = { _, _ -> "route_option" }) { index, route ->
                 val current = state.selectedRouteId == route.id
                 Surface(
                     onClick = { onRoute(route.id) },

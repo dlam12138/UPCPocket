@@ -49,6 +49,20 @@ import com.upcpocket.app.ui.components.GlassTabRow as TabRow
 import com.upcpocket.app.ui.components.GlassOutlinedTextField as OutlinedTextField
 import com.upcpocket.app.ui.components.GlassTopAppBar as TopAppBar
 
+private val SHIGUANG_TABS = listOf("活动", "我的")
+private val DETAIL_TIME_PLACE_KEYS = setOf("活动时间", "结束时间", "活动地点", "地点")
+private val DETAIL_SIGNUP_KEYS = setOf("报名时间", "报名截止时间")
+private val DETAIL_ORGANIZATION_KEYS = setOf(
+    "归属组织",
+    "活动院系",
+    "活动年级",
+    "组织形式",
+    "培养目标",
+    "能力指标",
+    "活动标签",
+    "活动分类",
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ShiguangScreen(service: ShiguangService, onBack: () -> Unit, onOpenAccountSettings: () -> Unit) =
@@ -179,7 +193,9 @@ private fun BrowseContent(
 ) {
     val isMine = state.tab == ShiguangTab.MINE
     val page = if (isMine) state.participations else state.activities
-    val visibleActivities = if (!isMine && page != null) page.visibleActivities(activityFilter, hideEnded) else emptyList()
+    val visibleActivities = remember(isMine, page, activityFilter, hideEnded) {
+        if (!isMine && page != null) page.visibleActivities(activityFilter, hideEnded) else emptyList()
+    }
     val hasPreviousResults = if (isMine) state.participations != null || state.summary != null else state.activities != null
     val scroll = if (isMine) mineScroll else activitiesScroll
     val inputEnabled = !state.busy && state.interactiveAttempt == null
@@ -198,7 +214,7 @@ private fun BrowseContent(
         contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "header") {
+        item(key = "header", contentType = "header") {
             PageHeader(
                 title = if (isMine) "我的第二课堂" else "校园活动",
                 state = state,
@@ -206,9 +222,9 @@ private fun BrowseContent(
                 onInteractiveLogin = service::openInteractiveLogin,
             )
         }
-        item(key = "tabs") {
+        item(key = "tabs", contentType = "tabs") {
             com.upcpocket.app.ui.components.CampusSegmentedTabs(
-                tabs = listOf("活动", "我的"),
+                tabs = SHIGUANG_TABS,
                 selectedIndex = state.tab.ordinal,
                 onSelect = { index ->
                     val target = if (index == 0) ShiguangTab.ACTIVITIES else ShiguangTab.MINE
@@ -218,15 +234,15 @@ private fun BrowseContent(
                 tabStyle = true,
             )
         }
-        if (state.busy) item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        if (state.busy) item(key = "loading", contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
         state.error?.let { reason ->
-            item(key = "error") {
+            item(key = "error", contentType = "error") {
                 FailureCard(reason, hasPreviousResults, onOpenAccountSettings)
             }
         }
 
         if (!isMine) {
-            item(key = "search") {
+            item(key = "search", contentType = "search") {
                 OutlinedTextField(
                     value = keyword,
                     onValueChange = { if (it.length <= 40) onKeywordChange(it) },
@@ -246,7 +262,7 @@ private fun BrowseContent(
                     keyboardActions = KeyboardActions(onSearch = { submitSearch() }),
                 )
             }
-            item(key = "filters") {
+            item(key = "filters", contentType = "filters") {
                 ActivityFilters(
                     selected = activityFilter,
                     onSelected = onActivityFilterChange,
@@ -257,10 +273,10 @@ private fun BrowseContent(
             }
         } else {
             state.summary?.let { summary ->
-                item(key = "hours-summary") { TotalHoursCard(summary) }
-                item(key = "modules-summary") { ModuleSummaryCard(summary) }
+                item(key = "hours-summary", contentType = "summary") { TotalHoursCard(summary) }
+                item(key = "modules-summary", contentType = "modules") { ModuleSummaryCard(summary) }
             }
-            item(key = "participations-heading") {
+            item(key = "participations-heading", contentType = "heading") {
                 Text("参与记录", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
         }
@@ -300,7 +316,7 @@ private fun BrowseContent(
                     onClick = { scope.launch { service.detail(activity) } },
                 )
             }
-            item(key = "pagination") {
+            item(key = "pagination", contentType = "pagination") {
                 Pagination(
                     page = page,
                     busy = !inputEnabled,
@@ -319,7 +335,7 @@ private fun BrowseContent(
                 )
             }
         } else if (!state.busy && state.error == null) {
-            item(key = "not-loaded") {
+            item(key = "not-loaded", contentType = "empty") {
                 EmptyState(if (isMine) "点击刷新查看" else "点击刷新查看活动")
             }
         }
@@ -435,6 +451,7 @@ private fun ActivityCard(activity: ShiguangActivity, enabled: Boolean, onClick: 
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
         enabled = enabled,
+        optical = false,
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -571,13 +588,25 @@ internal fun DetailContent(
     modifier: Modifier = Modifier,
 ) {
     val fields = state.detail?.fields ?: state.selected?.fields.orEmpty()
-    val timePlaceKeys = setOf("活动时间", "结束时间", "活动地点", "地点")
-    val signupKeys = setOf("报名时间", "报名截止时间")
-    val organizationKeys = setOf("归属组织", "活动院系", "活动年级", "组织形式", "培养目标", "能力指标", "活动标签", "活动分类")
-    val timePlace = fields.filterKeys { it in timePlaceKeys }
-    val signup = fields.filterKeys { it in signupKeys }
-    val organization = fields.filterKeys { it in organizationKeys }
-    val other = fields.filterKeys { it !in timePlaceKeys && it !in signupKeys && it !in organizationKeys }
+    val groupedFields = remember(fields) {
+        val timePlace = LinkedHashMap<String, String>()
+        val signup = LinkedHashMap<String, String>()
+        val organization = LinkedHashMap<String, String>()
+        val other = LinkedHashMap<String, String>()
+        for ((k, v) in fields) {
+            when (k) {
+                in DETAIL_TIME_PLACE_KEYS -> timePlace[k] = v
+                in DETAIL_SIGNUP_KEYS -> signup[k] = v
+                in DETAIL_ORGANIZATION_KEYS -> organization[k] = v
+                else -> other[k] = v
+            }
+        }
+        arrayOf(timePlace, signup, organization, other)
+    }
+    val timePlace = groupedFields[0]
+    val signup = groupedFields[1]
+    val organization = groupedFields[2]
+    val other = groupedFields[3]
 
     LazyColumn(
         state = scroll,
@@ -585,27 +614,27 @@ internal fun DetailContent(
         contentPadding = PaddingValues(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item(key = "title") {
+        item(key = "title", contentType = "title") {
             Text(state.detail?.title ?: state.selected?.title.orEmpty(), style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold)
         }
         if (supportsInteractiveLogin) {
-            item(key = "interactive-login") {
+            item(key = "interactive-login", contentType = "action") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     ShiguangInteractiveLoginAction(state, onInteractiveLogin)
                 }
             }
         }
-        if (state.busy) item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
-        state.error?.let { reason -> item(key = "error") { FailureCard(reason, state.detail != null, onOpenAccountSettings) } }
-        if (timePlace.isNotEmpty()) item(key = "time-place") { DetailGroup("时间与地点", timePlace) }
-        if (signup.isNotEmpty()) item(key = "signup") { DetailGroup("报名时间", signup) }
-        if (organization.isNotEmpty()) item(key = "organization") { DetailGroup("组织与对象", organization) }
-        if (other.isNotEmpty()) item(key = "other") { DetailGroup("活动信息", other) }
+        if (state.busy) item(key = "loading", contentType = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+        state.error?.let { reason -> item(key = "error", contentType = "error") { FailureCard(reason, state.detail != null, onOpenAccountSettings) } }
+        if (timePlace.isNotEmpty()) item(key = "time-place", contentType = "group") { DetailGroup("时间与地点", timePlace) }
+        if (signup.isNotEmpty()) item(key = "signup", contentType = "group") { DetailGroup("报名时间", signup) }
+        if (organization.isNotEmpty()) item(key = "organization", contentType = "group") { DetailGroup("组织与对象", organization) }
+        if (other.isNotEmpty()) item(key = "other", contentType = "group") { DetailGroup("活动信息", other) }
         state.detail?.description?.takeIf(String::isNotBlank)?.let { description ->
-            item(key = "description") { DetailDescription(description) }
+            item(key = "description", contentType = "description") { DetailDescription(description) }
         }
-        if (fields.isEmpty() && !state.busy && state.error == null) item(key = "empty") { EmptyState("暂无活动详情") }
+        if (fields.isEmpty() && !state.busy && state.error == null) item(key = "empty", contentType = "empty") { EmptyState("暂无活动详情") }
     }
 }
 

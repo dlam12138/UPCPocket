@@ -46,7 +46,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import com.upcpocket.app.ui.components.GlassModalBottomSheet as ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import com.upcpocket.app.ui.components.GlassSurface as Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -282,6 +281,7 @@ internal fun TimetableScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 24.dp + dockClearance),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            val timetableIsGrouped = !state.accountBlocked && state.accountSavedUnverified
             ReorderableModuleColumn(
                 items = visibleModules,
                 key = ::timetableModuleKey,
@@ -289,6 +289,9 @@ internal fun TimetableScreen(
                 spacing = 8.dp,
                 itemLabel = ::timetableModuleLabel,
                 itemTestTag = ::timetableModuleTestTag,
+                itemGrouped = { module ->
+                    module == TimetableModuleId.TIMETABLE && timetableIsGrouped
+                },
                 onReorderFinished = onReorderFinished,
             ) { module, _ ->
                 when (module) {
@@ -554,8 +557,8 @@ internal fun TermAndWeekHeader(
     onSelectWeek: (Int) -> Unit,
 ) {
     val term = state.selectedTermOrNull ?: return
-    val rangeStart = state.weekDates.minOrNull()
-    val rangeEnd = state.weekDates.maxOrNull()
+    val rangeStart = remember(state.weekDates) { state.weekDates.minOrNull() }
+    val rangeEnd = remember(state.weekDates) { state.weekDates.maxOrNull() }
     val selectedWeek = state.selectedWeek
     val fontScale = LocalDensity.current.fontScale
 
@@ -937,7 +940,7 @@ private fun WeekGrid(
     val view = remember(state.weekDates, state.meetings) {
         runCatching { buildTimetableWeekView(state.weekDates, state.meetings) }.getOrNull()
     } ?: return
-    val byDate = view.meetings.groupBy { it.date }
+    val byDate = remember(view) { view.meetings.groupBy { it.date } }
     val density = LocalDensity.current
     val fontScale = density.fontScale
     val standardSlotHeight = if (fontScale > 1.15f) {
@@ -1043,6 +1046,7 @@ private fun DayColumn(
     onCourseClick: (TimetableMeeting) -> Unit,
 ) {
     val laneInfo = remember(meetings) { assignLanes(meetings) }
+    val contentWidth = (width - 1.dp).coerceAtLeast(0.dp)
     Column(
         Modifier
             .width(width)
@@ -1053,9 +1057,9 @@ private fun DayColumn(
                 .fillMaxWidth()
                 .height(dayHeaderHeight)
                 .testTag("timetable_day_header_$date")
-                .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
+                .clip(DAY_HEADER_SHAPE)
                 .glassPane(
-                    shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
+                    shape = DAY_HEADER_SHAPE,
                     color = if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                     } else {
@@ -1096,14 +1100,14 @@ private fun DayColumn(
                 )
             }
         }
-        BoxWithConstraints(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .height(slotHeight * PERIODS)
                 .testTag("timetable_day_slots_$date")
-                .clip(RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp))
+                .clip(DAY_SLOTS_SHAPE)
                 .glassPane(
-                    shape = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp),
+                    shape = DAY_SLOTS_SHAPE,
                     color = if (isToday) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
                     } else {
@@ -1129,8 +1133,8 @@ private fun DayColumn(
                     }
                     .border(
                         0.5.dp,
-                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
-                        RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp),
+                         gridLine,
+                        DAY_SLOTS_SHAPE,
                     ),
             )
             if (!known) {
@@ -1146,7 +1150,7 @@ private fun DayColumn(
 
             meetings.forEachIndexed { index, meeting ->
                 val dayLane = laneInfo.getOrElse(index) { DayLane(lane = 0, laneCount = 1) }
-                val laneWidth = maxWidth / dayLane.laneCount.coerceAtLeast(1)
+                val laneWidth = contentWidth / dayLane.laneCount.coerceAtLeast(1)
                 val cardWidth = (laneWidth - 2.dp).coerceAtLeast(1.dp)
                 val periodCount = meeting.endPeriod - meeting.startPeriod + 1
                 val top = slotHeight * (meeting.startPeriod - 1)
@@ -1158,16 +1162,16 @@ private fun DayColumn(
                 } ?: "时间待确认"
                 val location = meeting.location?.takeIf(String::isNotBlank) ?: "地点未提供"
                 val courseTag = "timetable_course_${meeting.date}_${meeting.startPeriod}_$index"
-                Surface(
+                Box(
                     modifier = Modifier
                         .offset(x = laneWidth * dayLane.lane + 1.dp, y = top + 1.dp)
                         .width(cardWidth)
                         .height(height)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(tone.container, RoundedCornerShape(6.dp))
-                        .glassHighlight(RoundedCornerShape(6.dp))
+                        .clip(COURSE_CARD_SHAPE)
+                        .background(tone.container, COURSE_CARD_SHAPE)
+                        .glassHighlight(COURSE_CARD_SHAPE)
                         .clickable { onCourseClick(meeting) }
-                        .semantics {
+                        .semantics(mergeDescendants = true) {
                             contentDescription = listOfNotNull(
                                 "课程详情 ${meeting.courseName}",
                                 meeting.sourcePeriodsLabel(),
@@ -1175,10 +1179,6 @@ private fun DayColumn(
                                 meeting.location?.takeIf(String::isNotBlank)?.let { "地点 $it" },
                             ).joinToString("，")
                         },
-                    shape = RoundedCornerShape(6.dp),
-                    color = Color.Transparent,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp,
                 ) {
                     if (periodCount >= 2 && cardWidth >= CARD_DETAIL_MIN_WIDTH) {
                         Column(
@@ -1753,7 +1753,12 @@ private fun connectionLabel(connection: TimetableConnection): String = when (con
     TimetableConnection.DEGRADED_CACHE -> "缓存"
 }
 
+private val DAY_HEADER_SHAPE = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)
+private val DAY_SLOTS_SHAPE = RoundedCornerShape(bottomStart = 6.dp, bottomEnd = 6.dp)
+private val COURSE_CARD_SHAPE = RoundedCornerShape(6.dp)
+private val FETCHED_AT_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+
 private fun formatFetchedAt(epochMillis: Long): String =
     Instant.ofEpochMilli(epochMillis)
         .atZone(TIMETABLE_ZONE)
-        .format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+        .format(FETCHED_AT_FORMATTER)

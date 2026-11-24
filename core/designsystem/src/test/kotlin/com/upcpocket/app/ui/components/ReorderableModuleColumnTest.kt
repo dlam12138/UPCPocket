@@ -94,4 +94,81 @@ class ReorderableModuleColumnTest {
         assertEquals(listOf("B", "A", "C"), committed)
         assertEquals("长按拖动松手不应误触发子项点击", 1, clicks)
     }
+
+    @Test
+    fun dragVisualSpecSeparatesMaterial3FromLiquidGlass() {
+        val scheme = androidx.compose.material3.lightColorScheme()
+        val m3Spec = resolveReorderDragVisualSpec(
+            uiStyle = com.upcpocket.app.designsystem.UiStyle.MATERIAL3,
+            scheme = scheme,
+        )
+        val glassSpec = resolveReorderDragVisualSpec(
+            uiStyle = com.upcpocket.app.designsystem.UiStyle.LIQUID_GLASS,
+            scheme = scheme,
+        )
+
+        org.junit.Assert.assertFalse(m3Spec.isGlass)
+        assertEquals(1f, m3Spec.layerAlpha, 0.0001f)
+        assertEquals(8.dp, m3Spec.maxShadowElevationDp)
+        assertEquals(1f, m3Spec.m3TrayColor.alpha, 0.0001f)
+        assertEquals(1f, m3Spec.m3CardColor.alpha, 0.0001f)
+
+        org.junit.Assert.assertTrue(glassSpec.isGlass)
+        assertEquals(1f, glassSpec.layerAlpha, 0.0001f)
+        assertEquals(0.dp, glassSpec.maxShadowElevationDp)
+        org.junit.Assert.assertTrue(glassSpec.glassCarrierColor.alpha in 0.2f..0.6f)
+    }
+
+    @Test
+    fun longPressAndDragWorksAcrossMaterial3AndLiquidGlassStyles() {
+        var style by mutableStateOf(com.upcpocket.app.designsystem.UiStyle.MATERIAL3)
+        var order by mutableStateOf(listOf("A", "B"))
+
+        rule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.upcpocket.app.ui.theme.LocalUiStyle provides style,
+            ) {
+                MaterialTheme {
+                    ReorderableModuleColumn(
+                        items = order,
+                        key = { it },
+                        spacing = 8.dp,
+                        itemLabel = { "模块$it" },
+                        itemTestTag = { "styled_$it" },
+                        itemGrouped = { it == "B" },
+                        onReorderFinished = { order = it },
+                    ) { item, _ ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(80.dp),
+                        ) {
+                            Text("模块$item")
+                        }
+                    }
+                }
+            }
+        }
+
+        rule.onNodeWithTag("styled_A").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100L)
+            moveBy(Offset(0f, height * 1.4f), delayMillis = 120L)
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals(listOf("B", "A"), order)
+
+        style = com.upcpocket.app.designsystem.UiStyle.LIQUID_GLASS
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("styled_B").performTouchInput {
+            down(center)
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100L)
+            moveBy(Offset(0f, height * 1.4f), delayMillis = 120L)
+            up()
+        }
+        rule.waitForIdle()
+        assertEquals(listOf("A", "B"), order)
+    }
 }

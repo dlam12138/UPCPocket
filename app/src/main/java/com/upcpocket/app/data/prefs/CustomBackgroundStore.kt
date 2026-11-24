@@ -52,6 +52,16 @@ class CustomBackgroundStore internal constructor(
     private val tempFile: File
         get() = File(directory, TEMP_FILE_NAME)
 
+    private data class CachedBackground(
+        val path: String,
+        val lastModified: Long,
+        val length: Long,
+        val image: ImageBitmap,
+    )
+
+    private val cacheLock = Any()
+    private var cachedBackground: CachedBackground? = null
+
     suspend fun importFromUri(uri: Uri): CustomBackgroundImportResult = withContext(ioDispatcher) {
         val resolver = contentResolver ?: return@withContext CustomBackgroundImportResult.Failure(
             CustomBackgroundError.UNREADABLE_IMAGE,
@@ -79,9 +89,29 @@ class CustomBackgroundStore internal constructor(
 
     suspend fun loadBitmap(): ImageBitmap? = withContext(ioDispatcher) {
         val file = backgroundFile
-        if (!file.isFile) return@withContext null
+        if (!file.isFile) {
+            synchronized(cacheLock) { cachedBackground = null }
+            return@withContext null
+        }
+        val path = file.absolutePath
+        val lastModified = file.lastModified()
+        val length = file.length()
+        synchronized(cacheLock) {
+            val cached = cachedBackground
+            if (cached != null &&
+                cached.path == path &&
+                cached.lastModified == lastModified &&
+                cached.length == length
+            ) {
+                return@withContext cached.image
+            }
+        }
         val bitmap = decodeFileBounded(file, MAX_EDGE_PX) ?: return@withContext null
-        bitmap.asImageBitmap()
+        val image = bitmap.asImageBitmap()
+        synchronized(cacheLock) {
+            cachedBackground = CachedBackground(path, lastModified, length, image)
+        }
+        image
     }
 
     suspend fun extractSeedsFromSaved(maxColors: Int = 4): List<Int> = withContext(ioDispatcher) {
@@ -96,6 +126,7 @@ class CustomBackgroundStore internal constructor(
     }
 
     suspend fun clear(): Boolean = withContext(ioDispatcher) {
+        synchronized(cacheLock) { cachedBackground = null }
         val tempDeleted = !tempFile.exists() || tempFile.delete()
         val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
         tempDeleted && fileDeleted
@@ -134,6 +165,7 @@ class CustomBackgroundStore internal constructor(
         if (!saved) {
             return CustomBackgroundImportResult.Failure(CustomBackgroundError.SAVE_FAILED)
         }
+        synchronized(cacheLock) { cachedBackground = null }
         val seeds = extractSeedsFromBitmap(bitmap, maxColors = 4)
         return CustomBackgroundImportResult.Success(extractedSeeds = seeds)
     }

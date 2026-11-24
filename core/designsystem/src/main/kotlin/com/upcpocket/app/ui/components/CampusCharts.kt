@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,9 +21,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -67,35 +68,45 @@ fun SegmentedRatioBar(
     barHeight: Dp = 8.dp,
     showLegend: Boolean = true,
 ) {
-    val positive = segments.filter { it.value > 0f }
-    val total = positive.sumOf { it.value.toDouble() }.toFloat()
+    val positive = remember(segments) { segments.filter { it.value > 0f } }
+    val total = remember(positive) { positive.sumOf { it.value.toDouble() }.toFloat() }
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant
 
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
+        Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(barHeight)
-                .clip(RoundedCornerShape(999.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .height(barHeight),
         ) {
-            if (total > 0f) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    positive.forEach { segment ->
-                        val weight = (segment.value / total).coerceAtLeast(0.02f)
-                        Box(
-                            modifier = Modifier
-                                .weight(weight)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(999.dp))
-                                .background(segment.color),
+            val radius = CornerRadius(size.height / 2f, size.height / 2f)
+            drawRoundRect(
+                color = trackColor,
+                size = size,
+                cornerRadius = radius,
+            )
+            if (total > 0f && positive.isNotEmpty()) {
+                val gapPx = if (positive.size > 1) 2.dp.toPx() else 0f
+                val totalGaps = gapPx * (positive.size - 1)
+                val availableWidth = (size.width - totalGaps).coerceAtLeast(0f)
+                val weights = FloatArray(positive.size) { idx ->
+                    (positive[idx].value / total).coerceAtLeast(0.02f)
+                }
+                val weightSum = weights.sum().coerceAtLeast(0.0001f)
+                var x = 0f
+                for (index in positive.indices) {
+                    val segWidth = availableWidth * (weights[index] / weightSum)
+                    if (segWidth > 0f) {
+                        drawRoundRect(
+                            color = positive[index].color,
+                            topLeft = Offset(x, 0f),
+                            size = Size(segWidth, size.height),
+                            cornerRadius = radius,
                         )
                     }
+                    x += segWidth + gapPx
                 }
             }
         }

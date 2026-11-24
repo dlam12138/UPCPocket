@@ -70,6 +70,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -533,6 +534,7 @@ internal fun SeatRoomRow(room: LibraryRoom, onClick: () -> Unit) {
     com.upcpocket.app.ui.components.GlassCard(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick,
+        optical = false,
     ) {
         Row(
             Modifier.padding(14.dp),
@@ -1371,7 +1373,9 @@ internal fun TimeSearchResults(
     onLoadMore: () -> Unit,
 ) {
     val result = state.timeResult
-    val visible = result?.visibleCandidates(state.hiddenSeatIds).orEmpty()
+    val visible = remember(result, state.hiddenSeatIds) {
+        result?.visibleCandidates(state.hiddenSeatIds).orEmpty()
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
             result == null -> CompactNotice("按时段找", "选择时段，查找可约座位")
@@ -1996,7 +2000,10 @@ private fun ReservationCard(
     pending: Boolean,
     onCancel: () -> Unit,
 ) {
-    GlassCard(Modifier.fillMaxWidth()) {
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        optical = false,
+    ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(reservation.location.ifBlank { "座位" }, fontWeight = FontWeight.SemiBold)
@@ -2065,16 +2072,13 @@ internal fun SeatMap(
     var fallbackZoom by rememberSaveable("libseat", mapScopeKey, "zoom") { mutableStateOf(1f) }
     var fallbackCenterX by rememberSaveable("libseat", mapScopeKey, "center-x") { mutableStateOf(0.5f) }
     var fallbackCenterY by rememberSaveable("libseat", mapScopeKey, "center-y") { mutableStateOf(0.5f) }
-    val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
-    val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
-    val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
 
     Column {
         BoxWithConstraints(
             Modifier.fillMaxWidth()
                 .height(368.dp)
-                .clip(RoundedCornerShape(18.dp))
-                .glassPane(RoundedCornerShape(18.dp), MaterialTheme.colorScheme.surfaceContainerLow)
+                .clip(LIBRARY_MAP_SHAPE)
+                .glassPane(LIBRARY_MAP_SHAPE, MaterialTheme.colorScheme.surfaceContainerLow)
                 .testTag("seat_map_viewport"),
         ) {
             val controlsHeightPx = with(density) { 48.dp.roundToPx() }
@@ -2089,11 +2093,20 @@ internal fun SeatMap(
                 CompactNotice("无法显示布局", "当前窗口空间不足，请调整窗口后重试。")
             } else {
                 val maxZoom = max(4f, targetSeatPx / overview.scale).coerceAtMost(64f)
-                val pose = SeatMapViewportPose(zoom, centerX, centerY)
-                val transform = remember(bounds, viewportSize, pose, maxZoom) {
-                    pose.toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                val transformState = remember(bounds, viewportSize, paddingPx, maxZoom, overview, viewportState) {
+                    derivedStateOf {
+                        val zoom = viewportState?.zoomMultiplier?.value ?: fallbackZoom
+                        val centerX = viewportState?.centerXFraction?.value ?: fallbackCenterX
+                        val centerY = viewportState?.centerYFraction?.value ?: fallbackCenterY
+                        SeatMapViewportPose(zoom, centerX, centerY)
+                            .toTransform(bounds, viewportSize, paddingPx, maxZoom) ?: overview
+                    }
                 }
-                val currentTransform = rememberUpdatedState(transform)
+                val showLabels by remember(density, transformState) {
+                    derivedStateOf {
+                        with(density) { transformState.value.scale.toDp() >= 16.dp }
+                    }
+                }
                 val currentByPosition = rememberUpdatedState(byPosition)
                 val currentHiddenIds = rememberUpdatedState(hiddenIds)
                 val currentSelectionEnabled = rememberUpdatedState(selectionEnabled)
@@ -2115,7 +2128,7 @@ internal fun SeatMap(
 
                 fun seatAt(offset: Offset): LibrarySeat? {
                     val position = roundedSeatMapGridPosition(
-                        transform = currentTransform.value,
+                        transform = transformState.value,
                         point = SeatMapPoint(offset.x, offset.y),
                         rows = layout.rows,
                         cols = layout.cols,
@@ -2124,16 +2137,16 @@ internal fun SeatMap(
                 }
 
                 val gestureModifier = Modifier
-                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom) {
+                    .pointerInput(mapScopeKey, bounds, viewportSize, maxZoom, transformState) {
                         detectTransformGestures { centroid, pan, zoomChange, _ ->
-                            val current = currentTransform.value
+                            val current = transformState.value
                             val next = current
                                 .zoomAt(SeatMapPoint(centroid.x, centroid.y), zoomChange)
                                 .panBy(SeatMapPoint(pan.x, pan.y))
                             saveTransform(next)
                         }
                     }
-                    .pointerInput(mapScopeKey, bounds, viewportSize, layout.rows, layout.cols) {
+                    .pointerInput(mapScopeKey, bounds, viewportSize, layout.rows, layout.cols, transformState) {
                         detectTapGestures(
                             onTap = { offset ->
                                 val target = seatAt(offset) ?: return@detectTapGestures
@@ -2158,13 +2171,13 @@ internal fun SeatMap(
                     SeatMapZoomControls(
                         onZoomOut = {
                             val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
-                            saveTransform(transform.zoomAt(center, 1f / 1.6f))
+                            saveTransform(transformState.value.zoomAt(center, 1f / 1.6f))
                         },
                         onZoomIn = {
                             val center = SeatMapPoint(viewportSize.width / 2f, viewportSize.height / 2f)
-                            saveTransform(transform.zoomAt(center, 1.6f))
+                            saveTransform(transformState.value.zoomAt(center, 1.6f))
                         },
-                        onReset = { transform.reset()?.let(::saveTransform) },
+                        onReset = { transformState.value.reset()?.let(::saveTransform) },
                         modifier = Modifier.height(48.dp),
                     )
                     Box(
@@ -2179,8 +2192,8 @@ internal fun SeatMap(
                             cells = cellSeats,
                             selectedId = selectedId,
                             hiddenIds = hiddenIds,
-                            showLabels = with(density) { transform.scale.toDp() } >= 16.dp,
-                            transform = transform,
+                            showLabels = showLabels,
+                            transformProvider = { transformState.value },
                         )
                     }
                 }
@@ -2236,13 +2249,15 @@ private fun roundedSeatMapGridPosition(
  * 按 [SeatMapViewportTransform] 的最终像素位置排布与视口相交的座位格；
  * 相邻格共享取整后的边，文字完整放得下才居中显示。
  */
+private val LIBRARY_MAP_SHAPE = RoundedCornerShape(18.dp)
+
 @Composable
 private fun SeatMapCells(
     cells: List<LibrarySeat>,
     selectedId: String?,
     hiddenIds: Set<String>,
     showLabels: Boolean,
-    transform: SeatMapViewportTransform,
+    transformProvider: () -> SeatMapViewportTransform,
 ) {
     Layout(
         content = {
@@ -2292,6 +2307,7 @@ private fun SeatMapCells(
         },
         modifier = Modifier.fillMaxSize(),
     ) { measurables, constraints ->
+        val transform = transformProvider()
         val scale = transform.scale
         val translationX = transform.translationX
         val translationY = transform.translationY

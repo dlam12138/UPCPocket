@@ -57,6 +57,8 @@ import com.upcpocket.app.ui.components.isGlassSheetVisible
 import com.upcpocket.app.ui.components.rememberGlassSnackbarBackdrop
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.Indication
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -133,7 +135,7 @@ fun TodoScreen(store: TodoStore) {
 
     val incomplete = remember(tasks, now) { TodoOrdering.incomplete(tasks, now) }
     val completed = remember(tasks) { TodoOrdering.completed(tasks) }
-    val hasReminders = tasks.any { !it.completed && it.reminderAt != null }
+    val hasReminders = remember(tasks) { tasks.any { !it.completed && it.reminderAt != null } }
 
     fun toggleCompletion(task: TodoTask) {
         if (task.id in completionOverrides) return
@@ -303,6 +305,8 @@ fun TodoScreen(store: TodoStore) {
         ),
     ) { padding ->
         val background = MaterialTheme.colorScheme.surface
+        val rowShape = MaterialTheme.shapes.medium
+        val rowIndication = LocalIndication.current
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding)
                 .then(snackbarBackdrop?.recordContent(background) ?: Modifier),
@@ -340,6 +344,8 @@ fun TodoScreen(store: TodoStore) {
                     TodoRow(
                         task = task,
                         now = now,
+                        rowShape = rowShape,
+                        rowIndication = rowIndication,
                         completionOverride = { completionOverrides[task.id]?.completed },
                         modifier = Modifier.animateItem(),
                         onToggle = { toggleCompletion(task) },
@@ -354,10 +360,10 @@ fun TodoScreen(store: TodoStore) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .glassPressHighlight(MaterialTheme.shapes.medium, completedHeaderInteractions)
+                            .glassPressHighlight(rowShape, completedHeaderInteractions)
                             .clickable(
                                 interactionSource = completedHeaderInteractions,
-                                indication = LocalIndication.current,
+                                indication = rowIndication,
                             ) { showCompleted = !showCompleted }
                             .padding(top = 14.dp, bottom = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -384,6 +390,8 @@ fun TodoScreen(store: TodoStore) {
                         TodoRow(
                             task = task,
                             now = now,
+                            rowShape = rowShape,
+                            rowIndication = rowIndication,
                             completionOverride = { completionOverrides[task.id]?.completed },
                             modifier = Modifier.animateItem(),
                             onToggle = { toggleCompletion(task) },
@@ -431,6 +439,8 @@ private fun EmptyTodoState(onAdd: () -> Unit) {
 private fun TodoRow(
     task: TodoTask,
     now: Long,
+    rowShape: Shape,
+    rowIndication: Indication?,
     completionOverride: () -> Boolean?,
     onToggle: () -> Unit,
     onEdit: () -> Unit,
@@ -463,10 +473,10 @@ private fun TodoRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .glassPressHighlight(MaterialTheme.shapes.medium, editInteractions)
+                .glassPressHighlight(rowShape, editInteractions)
                 .clickable(
                     interactionSource = editInteractions,
-                    indication = LocalIndication.current,
+                    indication = rowIndication,
                     onClick = onEdit,
                 )
                 .padding(vertical = 8.dp),
