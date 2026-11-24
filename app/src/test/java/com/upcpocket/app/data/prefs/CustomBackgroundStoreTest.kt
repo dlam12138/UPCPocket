@@ -60,9 +60,25 @@ class CustomBackgroundStoreTest {
         assertTrue(store.extractSeedsFromSaved().isNotEmpty())
         assertEquals(1L, store.revision.value)
 
+        // 普通换图：新图提交成功后才替换旧图，完成后不残留临时文件。
+        val replacement = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(Color.rgb(46, 125, 50))
+        }
+        val replaced = store.importFromBitmap(replacement)
+        replacement.recycle()
+
+        assertTrue("Expected replacement success", replaced is CustomBackgroundImportResult.Success)
+        assertTrue(store.exists())
+        assertNotNull(store.loadBitmap())
+        assertEquals(2L, store.revision.value)
+        assertTrue(
+            "换图完成后不应残留临时文件",
+            dir.listFiles().orEmpty().none { it.name.endsWith(".tmp") },
+        )
+
         assertTrue(store.clear())
         assertFalse(store.exists())
         assertNull(store.loadBitmap())
-        assertEquals(2L, store.revision.value)
+        assertEquals(3L, store.revision.value)
     }
 }

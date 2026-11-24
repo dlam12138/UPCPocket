@@ -26,7 +26,7 @@
 
 2.1.0 后开发改动（未发布）：首页与课表页模块支持长按拖动排序。通用容器 `ReorderableModuleColumn` 归 `core:designsystem`，由宿主传入稳定 key、可见项、`scrollState`、`enabled` 与写回回调；课表页通过 `LocalTimetableModuleLayout`（`TimetableModuleLayout`、`TimetableModuleId`）接收宿主顺序、开关与回调，缺省回退 `[TODO_SCHEDULE, TIMETABLE]`。顺序只保存在宿主 `UiPrefsStore`，不改变业务数据或触发校园请求；开关关闭时仍按已保存顺序渲染并锁定，写回前在同一 edit 内复核开关。
 
-2.1.0 后开发改动（未发布）：外观新增自定义背景与取色卡。`CustomBackgroundStore` 把用户主动选择的图片下采样后保存到私有 `noBackupFilesDir/appearance/custom_background.jpg`，以该 JPEG 为唯一事实来源；导入或清除成功后 `revision` 变更流通知宿主和设置页重新读盘，`UiPrefsStore` 只保存可见度 `custom_background_opacity` 与取色卡种子色 `custom_theme_seed_argb`。`GlassEnvironment(backgroundImage, backgroundOpacity)` 接收解码后的背景图；`LocalHasCustomBackground` 与 `appScaffoldContainerColor()` 让页面容器在存在背景图时透明，`ThemePreset.CUSTOM` 与 `MaterialYouScheme.extractSeedColors` 提供取色卡配色。
+2.1.0 后开发改动（未发布）：外观新增自定义背景与取色卡。`CustomBackgroundStore` 把用户主动选择的图片下采样后保存到私有 `noBackupFilesDir/appearance/custom_background.jpg`，以该 JPEG 为唯一事实来源；导入与清除由存储层互斥串行，成功后 `revision` 变更流通知宿主和设置页重新读盘，`UiPrefsStore` 只保存可见度 `custom_background_opacity` 与取色卡种子色 `custom_theme_seed_argb`。`GlassEnvironment(backgroundImage, backgroundOpacity)` 接收解码后的背景图；`LocalHasCustomBackground` 与 `appScaffoldContainerColor()` 让页面容器在存在背景图时透明，`ThemePreset.CUSTOM` 与 `MaterialYouScheme.extractSeedColors` 提供取色卡配色。
 
 2.1.0 开发版校园地图贡献一个服务目录入口，服务页和首页固定共用 `CampusMapPlugin.ROUTE`。宿主用 `initialCampus: suspend () -> CampusId` 注入常用校区。常用校区为「全部」时，打开地图默认展示唐岛湾，页面内切换仅作用于本次浏览。
 

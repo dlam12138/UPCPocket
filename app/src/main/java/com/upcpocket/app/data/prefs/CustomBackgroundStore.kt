@@ -13,7 +13,6 @@ import com.upcpocket.app.ui.theme.MaterialYouScheme
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import kotlin.math.max
@@ -25,6 +24,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 sealed interface CustomBackgroundImportResult {
@@ -59,6 +60,15 @@ class CustomBackgroundStore internal constructor(
     private val tempFile: File
         get() = File(directory, TEMP_FILE_NAME)
 
+    /**
+     * 串行化所有会改写私有背景文件的操作。
+     *
+     * 宿主使用单例 store，但页面销毁/重建后旧请求仍可能存活；导入与清除共用同一个
+     * 临时文件，必须由存储层保证等待可取消、已开始的提交完成后才轮到下一个，避免
+     * 清除被旧写入覆盖或两个导入互相破坏暂存。
+     */
+    private val operationMutex = Mutex()
+
     private val _revision = MutableStateFlow(0L)
 
     /**
@@ -70,28 +80,33 @@ class CustomBackgroundStore internal constructor(
      */
     val revision: StateFlow<Long> = _revision.asStateFlow()
 
-    suspend fun importFromUri(uri: Uri): CustomBackgroundImportResult = withContext(ioDispatcher) {
-        val resolver = contentResolver ?: return@withContext CustomBackgroundImportResult.Failure(
-            CustomBackgroundError.UNREADABLE_IMAGE,
-        )
-        val bitmap = decodeUriBounded(resolver, uri)
-            ?: return@withContext CustomBackgroundImportResult.Failure(
-                CustomBackgroundError.UNREADABLE_IMAGE,
-            )
-        try {
-            saveAndExtract(bitmap)
-        } finally {
-            bitmap.recycle()
+    suspend fun importFromUri(uri: Uri): CustomBackgroundImportResult =
+        operationMutex.withLock {
+            withContext(ioDispatcher) {
+                val resolver = contentResolver ?: return@withContext CustomBackgroundImportResult.Failure(
+                    CustomBackgroundError.UNREADABLE_IMAGE,
+                )
+                val bitmap = decodeUriBounded(resolver, uri)
+                    ?: return@withContext CustomBackgroundImportResult.Failure(
+                        CustomBackgroundError.UNREADABLE_IMAGE,
+                    )
+                try {
+                    saveAndExtract(bitmap)
+                } finally {
+                    bitmap.recycle()
+                }
+            }
         }
-    }
 
     internal suspend fun importFromBitmap(bitmap: Bitmap): CustomBackgroundImportResult =
-        withContext(ioDispatcher) {
-            val bounded = downscaleIfNeeded(bitmap, MAX_EDGE_PX)
-            try {
-                saveAndExtract(bounded)
-            } finally {
-                if (bounded !== bitmap) bounded.recycle()
+        operationMutex.withLock {
+            withContext(ioDispatcher) {
+                val bounded = downscaleIfNeeded(bitmap, MAX_EDGE_PX)
+                try {
+                    saveAndExtract(bounded)
+                } finally {
+                    if (bounded !== bitmap) bounded.recycle()
+                }
             }
         }
 
@@ -113,16 +128,18 @@ class CustomBackgroundStore internal constructor(
         }
     }
 
-    suspend fun clear(): Boolean = withContext(ioDispatcher) {
-        val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
-        // 临时文件只服务下一次导入，清理失败不应让用户停留在“背景已删除但界面
-        // 仍显示失败”的状态；只要目标文件已不存在就按清除成功处理。
-        tempFile.delete()
-        if (fileDeleted) {
-            _revision.update { it + 1L }
-            true
-        } else {
-            false
+    suspend fun clear(): Boolean = operationMutex.withLock {
+        withContext(ioDispatcher) {
+            val fileDeleted = !backgroundFile.exists() || backgroundFile.delete()
+            // 临时文件只服务下一次导入，清理失败不应让用户停留在“背景已删除但界面
+            // 仍显示失败”的状态；只要目标文件已不存在就按清除成功处理。
+            tempFile.delete()
+            if (fileDeleted) {
+                _revision.update { it + 1L }
+                true
+            } else {
+                false
+            }
         }
     }
 
@@ -139,7 +156,7 @@ class CustomBackgroundStore internal constructor(
                 val compressed = bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
                 if (!compressed) throw IOException("JPEG compression failed")
                 out.flush()
-                runCatching { out.fd.sync() }
+                out.fd.sync()
             }
             // 同目录临时文件 + 原子替换：先确认临时文件完整，替换失败时
             // 保留上一张可读背景，不先删除目标文件。
@@ -165,21 +182,19 @@ class CustomBackgroundStore internal constructor(
         return CustomBackgroundImportResult.Success(extractedSeeds = seeds)
     }
 
+    /**
+     * 同目录原子替换。
+     *
+     * 只接受 ATOMIC_MOVE：成功时目标要么是旧图要么是新图，失败则旧图保持不变。
+     * 不支持原子移动时由调用方按保存失败处理，不用非原子覆盖兜底。
+     */
     private fun replaceAtomically(source: File, target: File) {
-        try {
-            Files.move(
-                source.toPath(),
-                target.toPath(),
-                StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        } catch (_: AtomicMoveNotSupportedException) {
-            Files.move(
-                source.toPath(),
-                target.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        }
+        Files.move(
+            source.toPath(),
+            target.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
     }
 
     private fun decodeUriBounded(resolver: ContentResolver, uri: Uri): Bitmap? {
