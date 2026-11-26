@@ -37,6 +37,10 @@
 
 2.0.3 旧版可与新版并存。从旧版转用新版时需重新设置账号、提醒和小组件。 [下载旧版 2.0.3](https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk) · [旧版国内加速](https://gh-proxy.org/https://github.com/dlam12138/UPCPocket/releases/download/v2.0.3/UPC-Pocket-2.0.3.apk)
 
+## iOS 网页版
+
+Safari 可将静态 PWA 添加到主屏幕。网页版支持本机课表导入、个人日程、待办和专注，以及校园地图、通讯录、校历和学校官方入口。 [安装、使用与本地预览](docs/web.md)
+
 ## 开发
 
 Android 版使用 Kotlin、Jetpack Compose、Room 和 WorkManager。 [构建指南](docs/BUILD.md) · [贡献流程](CONTRIBUTING.md) · [项目文档](docs/README.md) · [更新记录](docs/CHANGELOG.md)

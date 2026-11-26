@@ -1,0 +1,94 @@
+.calendar-heading h2 {
+  margin-top: 0;
+}
+
+.calendar-heading p {
+  margin-top: 4px;
+}
+
+.calendar-links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 18px;
+}
+
+.calendar-semesters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.calendar-semester {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--surface);
+}
+
+.calendar-semester figcaption,
+.calendar-dialog-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 14px;
+}
+
+.calendar-semester h3,
+.calendar-dialog-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.calendar-semester img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.calendar-feedback,
+.calendar-zoom-view p {
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.calendar-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(52rem, calc(100% - 24px));
+  max-width: none;
+  max-height: calc(100% - 36px);
+  padding: 0;
+  overflow: hidden;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.calendar-dialog::backdrop {
+  background: rgb(10 24 17 / 55%);
+}
+
+.calendar-zoom-view {
+  max-height: 74vh;
+  max-height: 74dvh;
+  overflow: auto;
+}
+
+.calendar-zoom-view img {
+  display: block;
+  width: max-content;
+  max-width: none;
+  height: auto;
+}
+
+@media (max-width: 650px) {
+  .calendar-semesters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

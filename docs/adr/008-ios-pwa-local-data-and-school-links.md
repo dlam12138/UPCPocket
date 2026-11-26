@@ -1,6 +1,6 @@
 # ADR 008 · iOS PWA 静态部署与数据归属
 
-- 状态为 Accepted
+- 状态为 Accepted。校园静态数据、校历显示与本机日程的扩展见 [ADR 010](010-safari-static-campus.md)。
 - 记录于 2026-11-19；2026-11-23 按独立静态版整合，移除站内登录、站内预约与服务端接口。
 - 依据为桌面《UPC Pocket · iOS 网页版开发计划与设计指南》、[官方入口](../upc/官方入口.md)、[ADR 002](002-account-generation-and-business-sessions.md)与 [ADR 003](003-data-ownership-and-schema-compatibility.md)
 

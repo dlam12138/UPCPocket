@@ -1,4 +1,4 @@
-const VERSION = "v23";
+const VERSION = "v24";
 const scope = new URL(self.registration.scope);
 const CACHE_PREFIX = `upc-pocket-static:${encodeURIComponent(scope.href)}:`;
 const CACHE_NAME = CACHE_PREFIX + VERSION;
@@ -6,15 +6,30 @@ const INDEX = new URL("./index.html", scope).href;
 const APP_ENTRIES = new Set([scope.href, INDEX]);
 const STATIC_URLS = new Set([
   "./index.html",
-  "./styles.css?v=19",
-  "./app.js?v=23",
-  "./db.js",
-  "./todo.js",
-  "./focus.js",
-  "./timetable.js",
+  "./styles.css?v=24",
+  "./app.js?v=24",
+  "./db.js?v=24",
+  "./todo.js?v=24",
+  "./focus.js?v=24",
+  "./timetable.js?v=24",
   "./timetable-import.js",
-  "./timetable-store.js",
+  "./timetable-store.js?v=24",
   "./timetable.css",
+  "./agenda.js?v=24",
+  "./agenda.css",
+  "./campus-services.js",
+  "./campus-services.css",
+  "./calendar.js",
+  "./calendar.css",
+  "./campus-map.js",
+  "./campus-map-routing.js",
+  "./campus-map.css",
+  "./floorplan.js",
+  "./floorplan.css",
+  "./data/campus_map.json",
+  "./data/campus_directory.json",
+  "./data/zhuoyue-floor-plans/a.json",
+  "./data/zhuoyue-floor-plans/b.json",
   "./manifest.webmanifest",
   "./app-icon.svg",
   "./campus.webp",

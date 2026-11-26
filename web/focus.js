@@ -1,6 +1,17 @@
-import { transact } from "./db.js";
+import { transact } from "./db.js?v=24";
 
-const DURATION_MS = 25 * 60_000;
+const DEFAULT_DURATION_MS = 25 * 60_000;
+const durationChoice = document.querySelector("#focus-duration-choice");
+const durationSelect = document.querySelector("#focus-duration");
+const durationPreference = "upc-pocket:focus-duration";
+try {
+  const savedDuration = localStorage.getItem(durationPreference);
+  if (Array.from(durationSelect.options).some(option => option.value === savedDuration)) {
+    durationSelect.value = savedDuration;
+  }
+} catch {
+  // The default is also usable when browser storage for preferences is unavailable.
+}
 const stateLabel = document.querySelector("#focus-state");
 const timer = document.querySelector("#focus-time");
 const error = document.querySelector("#focus-error");
@@ -29,13 +40,22 @@ let pending = false;
 let failed = false;
 let nextRefresh;
 
-function remaining(session, now) {
-  if (!session) return DURATION_MS;
-  if (session.phase === "paused") return session.remainingMs;
-  return Math.max(0, Math.min(DURATION_MS, session.endsAt - now));
+function plannedDuration(session) {
+  const stored = session?.plannedDurationMs;
+  return Number.isFinite(stored) && stored > 0 ? stored : DEFAULT_DURATION_MS;
 }
 
-function sessionChange(current, action, expectedId, now) {
+function selectedDuration() {
+  return Number(durationSelect.value) * 60_000;
+}
+
+function remaining(session, now) {
+  if (!session) return selectedDuration();
+  if (session.phase === "paused") return session.remainingMs;
+  return Math.max(0, Math.min(plannedDuration(session), session.endsAt - now));
+}
+
+function sessionChange(current, action, expectedId, now, duration) {
   const expired = current?.phase === "running" && current.endsAt <= now;
   if (expired || (action === "finish" && current && current.sessionId === expectedId)) {
     const endedAt = expired ? current.endsAt : now;
@@ -43,14 +63,20 @@ function sessionChange(current, action, expectedId, now) {
       sessionId: current.sessionId,
       startedAt: current.startedAt,
       endedAt,
-      durationMs: DURATION_MS - remaining(current, now),
+      durationMs: plannedDuration(current) - remaining(current, now),
       completed: expired,
     };
     return { active: null, record };
   }
   if (action === "start" && !current && expectedId === null) {
     return {
-      active: { sessionId: crypto.randomUUID(), startedAt: now, endsAt: now + DURATION_MS, phase: "running" },
+      active: {
+        sessionId: crypto.randomUUID(),
+        startedAt: now,
+        endsAt: now + duration,
+        phase: "running",
+        plannedDurationMs: duration,
+      },
     };
   }
   if (!current || current.sessionId !== expectedId) return { active: current };
@@ -68,6 +94,7 @@ function sessionChange(current, action, expectedId, now) {
 }
 
 function snapshot(action, expectedId) {
+  const duration = selectedDuration();
   // Read current state under the write lock, then settle history and clear the
   // active slot together. Another tab will see either both changes or neither.
   return transact(["focusState", "focusHistory"], "readwrite", (tx, setResult) => {
@@ -76,7 +103,7 @@ function snapshot(action, expectedId) {
     const request = state.get("active");
     request.onsuccess = () => {
       const current = request.result ?? null;
-      const { active, record } = sessionChange(current, action, expectedId, Date.now());
+      const { active, record } = sessionChange(current, action, expectedId, Date.now(), duration);
       if (record) {
         history.put(record);
         state.delete("active");
@@ -176,6 +203,7 @@ function renderHistory(entries) {
 function renderControls() {
   if (!ready) return;
   const phase = activeSession?.phase;
+  durationChoice.hidden = Boolean(phase);
   const primary = phase === "running" ? "pause" : phase === "paused" ? "resume" : "start";
   const previousFocus = controls.find(button => button === document.activeElement);
   stateLabel.textContent = phase === "running" ? "专注中" : phase === "paused" ? "已暂停" : "准备开始";
@@ -225,3 +253,12 @@ for (const button of controls) {
   button.addEventListener("click", () => synchronize(button.dataset.focusAction));
 }
 retry.addEventListener("click", refreshFocus);
+
+durationSelect.addEventListener("change", () => {
+  try {
+    localStorage.setItem(durationPreference, durationSelect.value);
+  } catch {
+    // The selection still applies to the next session on this page.
+  }
+  tick();
+});

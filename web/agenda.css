@@ -1,0 +1,56 @@
+#campus-agenda { margin-top: 20px; }
+.agenda-heading { flex-wrap: wrap; margin-bottom: 12px; }
+.agenda-heading h2 { margin: 0; }
+.agenda-date-field { max-width: 16rem; font-weight: 600; }
+.agenda-date-field span { font-size: .875rem; }
+.agenda-status { margin-block: 8px; }
+.agenda-status p { margin-top: 0; }
+.agenda-status p:empty { display: none; }
+.agenda-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 10px 16px;
+}
+.agenda-form { display: grid; gap: 14px; }
+.agenda-form .section-heading, .agenda-form .operation-error { margin: 0; }
+.agenda-time-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.agenda-card input[type="date"], .agenda-dialog input:is([type="date"], [type="time"]) {
+  display: block;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.agenda-card input::-webkit-date-and-time-value, .agenda-dialog input::-webkit-date-and-time-value {
+  min-width: 0;
+  text-align: start;
+}
+.agenda-hero-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: .875rem;
+}
+.agenda-hero-list li { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 4px; }
+.agenda-hero-time { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.agenda-hero-link { font-size: .875rem; min-height: 36px; }
+.agenda-hero-list .record-title { overflow-wrap: anywhere; }
+
+#todo-form.todo-form { grid-template-columns: minmax(0, 1fr) minmax(0, 13rem) minmax(0, 8rem) auto; }
+.todo-priority-field { font-weight: 600; }
+.todo-priority-field select, .todo-sort-field select {
+  min-height: 44px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+}
+.todo-priority-marker { color: var(--green); }
+.todo-sort-field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: .875rem; }
+@media (max-width: 620px) {
+  #todo-form.todo-form { grid-template-columns: minmax(0, 1fr); }
+  .todo-priority-field select { width: 100%; }
+}

@@ -421,3 +421,47 @@ html[data-transparency="reduced"] .dock {
   .todo-form { grid-template-columns: minmax(0, 1fr); }
   .todo-form .button { justify-self: start; }
 }
+
+.hero-subtitle {
+  margin: 0;
+  font-size: .85rem;
+  font-weight: 600;
+}
+
+.settings-campus {
+  margin-block: .6rem 1rem;
+}
+
+.settings-campus select {
+  width: 100%;
+  min-height: 44px;
+  padding-inline: .75rem;
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.settings-campus .operation-error:empty {
+  display: none;
+}
+
+.focus-duration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: .45rem .65rem;
+  margin: .65rem auto;
+}
+
+.focus-duration select {
+  min-height: 44px;
+  padding-inline: .6rem;
+  border: 1px solid var(--control-line);
+  border-radius: .6rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}

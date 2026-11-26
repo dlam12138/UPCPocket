@@ -134,7 +134,7 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 ## Web 本机导入契约
 
-[`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、待办、专注与外观偏好只使用浏览器本机能力；图书馆、空闲教室、学校校历和 e站通是固定官方链接，点击后由浏览器或学校页面处理认证与业务。
+[`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、日程、待办、专注和偏好使用浏览器本机能力。通讯录、地图和卓越楼图层是随站资源。校历显示固定官方原图，其他学校业务由官方页处理。
 
 来源：[V3 解析器](web/timetable-import.js)、[本机存储](web/timetable-store.js)、[IndexedDB 封装](web/db.js)、[课表页面](web/timetable.js)。
 
@@ -144,7 +144,9 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 | 文件读取 | `readSemesterFile(file)`、`readSemesterText(text)` 返回同一 `Semester` 结构 | 严格 UTF-8；损坏字符、空文件、非 JSON 或版本不符抛出 `TimetableImportError`；不把缺失周当成成功空周 |
 | 本机保存 | `saveTimetableSemester(semester)` 以学年和学期为键写入 IndexedDB `timetableSemesters` | 在事务提交成功后才返回；同一学期整体替换；`deleteTimetableSemester(key)` 只删除选中学期 |
 | `todos` / `focusState` / `focusHistory` | IndexedDB 数据库 `upc-pocket` 的对象仓库 | 待办与专注独立于学校账号；专注到点或提前结束时在同一事务内生成历史并清除活动状态 |
-| 外观偏好 | `localStorage` 键 `upc-pocket:reduce-transparency` | 读取失败时只影响本次显示，不阻断页面 |
+| 个人日程 | IndexedDB v3 新增日程仓库，保存日期、起止时刻、标题、可选地点 | 沿用 `upc-pocket`。新旧仓库分离。日程按上海校园日期显示，事务提交后才更新界面 |
+| 校园入口 | `#directory`、`#learning`、`#official`、`#map?place=…`、`#floorplan?room=…`、`#calendar` | 链接都支持直接打开。地图地点可以是公开点位 ID 或搜索词，房号筛选只匹配图中印出的编号 |
+| 校园与外观偏好 | 浏览器 `localStorage`。常用校区为 `all`、`tdw` 或 `gzk`，服务固定按稳定 ID 保存 | 旧数据缺字段时读取默认值。主动取消所有固定项时保留空集合 |
 | `.ics` 预览 | [ical.js 2.2.1](web/vendor/ical.js) 按需导入，解析结果只留在页面内存 | 离线且此前未加载解析器时提示先联网；关闭页面不保留预览。许可证见 [`ical-LICENSE`](web/vendor/ical-LICENSE) |
 
 静态资源的离线缓存由 [`web/sw.js`](web/sw.js) 按部署范围和版本维护；`.ics` 解析器与 Safari 书签脚本按需缓存，不随安装预下载。修改静态资源需同步缓存版本。见 [ADR 008](docs/adr/008-ios-pwa-local-data-and-school-links.md)与 [ADR 009](docs/adr/009-web-semester-timetable-import.md)。
