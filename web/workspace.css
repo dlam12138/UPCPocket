@@ -1,0 +1,314 @@
+.todo-layout,
+.focus-layout {
+  --workspace-wash: rgb(204 0 48 / 5%);
+  --workspace-low: #16626f;
+  --workspace-low-wash: rgb(0 117 136 / 9%);
+  --workspace-rule: rgb(204 0 48 / 22%);
+  --workspace-rail: rgb(50 25 43 / 12%);
+  display: grid;
+  gap: clamp(16px, 3vw, 28px);
+  align-items: start;
+}
+
+[data-theme="dark"] :is(.todo-layout, .focus-layout) {
+  --workspace-wash: rgb(255 0 60 / 7%);
+  --workspace-low: #86dce8;
+  --workspace-low-wash: rgb(0 229 255 / 10%);
+  --workspace-rule: rgb(255 70 109 / 25%);
+  --workspace-rail: rgb(220 198 230 / 12%);
+}
+
+.todo-layout > *,
+.focus-layout > * {
+  min-width: 0;
+}
+
+.todo-workspace,
+.focus-layout > .workspace-section {
+  margin-top: 0;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.todo-composer,
+.focus-card {
+  border-top-color: var(--workspace-rule);
+  background:
+    radial-gradient(ellipse at top right, var(--workspace-wash), transparent 66%),
+    var(--surface);
+}
+
+#todo-form.todo-form {
+  grid-template-columns: minmax(0, 1fr) minmax(95px, .68fr);
+  gap: 12px;
+}
+
+#todo-form > :first-child,
+#todo-form > .button {
+  grid-column: 1 / -1;
+}
+
+#todo-form .button {
+  justify-self: stretch;
+}
+
+.todo-priority-field select,
+.todo-sort-field select,
+.focus-duration select {
+  width: 100%;
+  min-height: 46px;
+  padding: 7px 29px 7px 10px;
+  border: 1px solid var(--control-line);
+  border-radius: 9px;
+  color: var(--ink);
+  background:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%) right 14px center / 5px 5px no-repeat,
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%) right 9px center / 5px 5px no-repeat,
+    var(--paper);
+  font: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.todo-edit-form .todo-priority-field select {
+  max-width: 100%;
+}
+
+.todo-workspace .section-heading {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.todo-sort-field select {
+  width: auto;
+}
+
+.todo-summary {
+  margin-block: 12px 16px;
+  display: grid;
+  gap: 9px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--workspace-wash);
+}
+
+.todo-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 0;
+}
+
+.todo-counts > div {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.todo-counts dt {
+  color: var(--muted);
+  font-size: .8125rem;
+}
+
+.todo-counts dd {
+  margin: 0;
+  color: var(--ink);
+  font: 650 1rem ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.todo-counts > div:last-child dd {
+  color: var(--workspace-low);
+}
+
+.todo-progress {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--workspace-rail);
+  accent-color: var(--green);
+}
+
+.todo-progress::-webkit-progress-bar {
+  background: var(--workspace-rail);
+}
+
+.todo-progress::-webkit-progress-value {
+  border-radius: 8px;
+  background: linear-gradient(to right, #c4003b, #ae226c, #147985);
+}
+
+.todo-progress::-moz-progress-bar {
+  border-radius: 8px;
+  background: linear-gradient(to right, #c4003b, #ae226c, #147985);
+}
+
+.todo-workspace .record-list,
+.focus-layout .record-list {
+  background: var(--paper);
+  border-radius: 13px;
+}
+
+.todo-workspace .record-list > li + li,
+.focus-layout .record-list > li + li {
+  border-color: var(--line);
+}
+
+.todo-row[data-completed="true"] {
+  background: var(--workspace-low-wash);
+}
+
+.todo-row .check-row {
+  min-height: 58px;
+}
+
+.todo-row[data-completed="true"] input {
+  accent-color: var(--workspace-low);
+}
+
+.todo-priority-marker {
+  display: inline-flex;
+  margin-top: 5px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: var(--workspace-low-wash);
+  color: var(--workspace-low);
+  font-size: .75rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.todo-priority-marker[data-priority="high"] {
+  background: var(--workspace-wash);
+  color: var(--green);
+}
+
+.todo-undo:not([hidden]) {
+  margin-block: 10px;
+  padding-inline: 12px 4px;
+  border: 1px solid var(--workspace-rule);
+  border-radius: 10px;
+  background: var(--workspace-wash);
+}
+
+.todo-workspace .todo-empty,
+.focus-layout #focus-history-status:not(:empty) {
+  width: 100%;
+  margin-top: 8px;
+  padding: 20px 12px;
+  border: 1px dashed var(--control-line);
+  border-radius: 12px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.focus-dial {
+  --dial-color: var(--green);
+  --focus-progress: 360deg;
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 238px);
+  aspect-ratio: 1;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  margin: 18px auto;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--surface) 66%, transparent 67%),
+    conic-gradient(var(--dial-color) var(--focus-progress), var(--workspace-rail) 0);
+}
+
+.focus-dial::before {
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed var(--workspace-rule);
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+}
+
+.focus-dial[data-phase="idle"] {
+  --dial-color: var(--workspace-rule);
+}
+
+.focus-dial[data-phase="paused"] {
+  --dial-color: var(--workspace-low);
+}
+
+.focus-card .focus-dial .focus-time {
+  margin: 0;
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: clamp(2.5rem, 8.5vw, 3.5rem);
+  letter-spacing: -.055em;
+}
+
+.focus-card .focus-dial #focus-state {
+  margin: 8px 12px 0;
+  color: var(--muted);
+  font-size: .8125rem;
+}
+
+.focus-dial[data-phase="running"] #focus-state {
+  color: var(--green);
+}
+
+.focus-dial[data-phase="paused"] #focus-state {
+  color: var(--workspace-low);
+}
+
+.focus-duration select {
+  width: auto;
+}
+
+.focus-layout .focus-stats > div {
+  border-radius: 11px;
+  border-color: var(--line);
+  background: var(--paper);
+}
+
+.focus-layout .focus-stats dd {
+  color: var(--green);
+  font-weight: 700;
+}
+
+.focus-layout .history-item[data-completed="true"] {
+  border-inline-start: 2px solid var(--workspace-low);
+}
+
+@media (min-width: 760px) {
+  .todo-layout,
+  .focus-layout {
+    grid-template-columns: minmax(270px, .95fr) minmax(0, 1.25fr);
+  }
+
+  .focus-layout {
+    grid-template-rows: auto 1fr;
+  }
+
+  .focus-layout > .focus-card {
+    grid-row: span 2;
+  }
+}
+
+@media (max-width: 360px) {
+  #todo-form.todo-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .focus-layout .focus-stats {
+    gap: 5px;
+  }
+
+  .focus-layout .focus-stats > div {
+    padding-inline: 6px;
+  }
+}

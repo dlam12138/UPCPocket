@@ -3,7 +3,7 @@ let database;
 function openDatabase() {
   if (database) return database;
   database = new Promise((resolve, reject) => {
-    const request = indexedDB.open("upc-pocket", 2);
+    const request = indexedDB.open("upc-pocket", 3);
     request.onupgradeneeded = event => {
       const db = request.result;
       if (event.oldVersion < 1) {
@@ -12,6 +12,10 @@ function openDatabase() {
         db.createObjectStore("focusHistory", { keyPath: "sessionId" });
       }
       if (event.oldVersion < 2) db.createObjectStore("timetableSemesters", { keyPath: "key" });
+      if (event.oldVersion < 3) {
+        const agenda = db.createObjectStore("agenda", { keyPath: "id", autoIncrement: true });
+        agenda.createIndex("date", "date");
+      }
     };
     request.onerror = () => reject(request.error);
     request.onblocked = () => reject(new Error("Database upgrade blocked"));

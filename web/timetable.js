@@ -1,5 +1,6 @@
 import { periodClock, readSemesterFile, readSemesterText, TimetableImportError } from "./timetable-import.js";
-import { deleteTimetableSemester, listTimetableSemesters, saveTimetableSemester } from "./timetable-store.js";
+import { deleteTimetableSemester, listTimetableSemesters, saveTimetableSemester } from "./timetable-store.js?v=24";
+import { selectAgendaDate } from "./agenda.js?v=24";
 
 const DAY = 86_400_000;
 const SHANGHAI_OFFSET = 8 * 3_600_000;
@@ -459,6 +460,18 @@ export function initializeTimetable() {
     detailWeeks.hidden = !course.weekLabel;
     detailWeeks.textContent = course.weekLabel ? `${course.weekLabel} 周` : "";
     detailBody.replaceChildren(list);
+    const place = course.location?.trim();
+    if (place) {
+      const map = element("a", "text-link", "在校园地图查看");
+      map.href = `#map?place=${encodeURIComponent(place)}`;
+      detailBody.append(map);
+      const room = place.normalize("NFKC").toUpperCase().match(/卓越.*?([AB])\s*区?\s*[-－]?\s*(\d{3})(?!\d)/);
+      if (room) {
+        const floorPlan = element("a", "text-link", "查看卓越楼平面图");
+        floorPlan.href = `#floorplan?room=${room[1]}${room[2]}`;
+        detailBody.append(floorPlan);
+      }
+    }
     if (!dialog.open) dialog.showModal();
     else dialog.querySelector("form button").focus();
   }
@@ -524,6 +537,7 @@ export function initializeTimetable() {
         daily = true;
         selected = date;
         renderCourses();
+        selectAgendaDate(dateId(selected));
         days.querySelector(`[data-day="${date}"]`)?.focus({ preventScroll: true });
       });
       days.append(dayButton);
@@ -826,6 +840,7 @@ export function initializeTimetable() {
   weekNumbers.addEventListener("change", () => {
     jumpTo(Number(weekNumbers.value));
     renderWeek();
+    selectAgendaDate(dateId(selected));
   });
   viewAction.addEventListener("click", () => {
     daily = !daily;
@@ -835,7 +850,7 @@ export function initializeTimetable() {
     scroll.scrollLeft = 0;
   });
   window.addEventListener("hashchange", () => {
-    if (window.location.hash !== "#timetable") {
+    if (window.location.hash.split("?")[0] !== "#timetable") {
       if (dialog.open) dialog.close();
       if (deleteDialog.open) deleteDialog.close("cancel");
       if (pasteDialog.open) pasteDialog.close();
@@ -857,6 +872,7 @@ export function initializeTimetable() {
       try {
         jumpTo(nextWeek);
         renderWeek();
+        selectAgendaDate(dateId(selected));
         renderSummary();
       } catch {
         selected = priorDay;

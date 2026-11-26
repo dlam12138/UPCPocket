@@ -1,37 +1,9 @@
-import { refreshFocus } from "./focus.js";
-import { refreshTodos } from "./todo.js";
-import { initializeTimetable, refreshTimetableDate } from "./timetable.js";
-
-const services = [
-  { name: "空闲教室", source: "学校官方查询入口", icon: "room", color: "sage", route: "classroom", common: true },
-  { name: "图书馆", source: "三个馆区的官方入口", icon: "book", color: "honey", route: "library", common: true },
-  { name: "学校校历", source: "教务处校历栏目", icon: "calendar", color: "blue", route: "calendar", common: true },
-  { name: "我的课表", source: "本机导入与离线查看", icon: "calendar", color: "sage", route: "timetable", common: true },
-  { name: "e站通", source: "学校官方服务大厅", icon: "layers", color: "lavender", route: "service-catalog" },
-  { name: "石光", icon: "book", color: "honey" },
-  { name: "校园卡", icon: "card", color: "sage" },
-  { name: "宿舍电量", icon: "bolt", color: "blue" },
-];
-
-function renderServices() {
-  for (const list of document.querySelectorAll("[data-service-list]")) {
-    const cards = list.dataset.serviceList === "common"
-      ? services.filter(service => service.common)
-      : services;
-    list.innerHTML = cards.map(service => {
-      const contents = `
-        <span class="tile-icon ${service.color}">
-          <svg class="icon" aria-hidden="true"><use href="#i-${service.icon}"/></svg>
-        </span>
-        <span class="service-title">${service.name}</span>
-        <span class="service-origin">${service.source ?? "网页版暂未接入"}</span>`;
-      return service.route
-        ? `<a class="service-card" href="#${service.route}">
-            <svg class="icon service-arrow" aria-hidden="true"><use href="#i-arrow"/></svg>${contents}</a>`
-        : `<div class="service-card service-card-unavailable">${contents}</div>`;
-    }).join("");
-  }
-}
+import { initializeAgenda, refreshAgenda, selectAgendaDate } from "./agenda.js?v=24";
+import { showCampusCalendar } from "./calendar.js";
+import { getPreferredCampus, initializeCampusServices, showCampusServices } from "./campus-services.js?v=26";
+import { refreshFocus } from "./focus.js?v=26";
+import { refreshTodos } from "./todo.js?v=26";
+import { initializeTimetable, refreshTimetableDate } from "./timetable.js?v=24";
 
 const campusDateOptions = { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric" };
 const campusDate = new Intl.DateTimeFormat("zh-CN", campusDateOptions);
@@ -82,15 +54,50 @@ transparency.addEventListener("change", () => {
 
 // 地址末尾的 #home、#timetable 等标记当前页面，浏览器的前进和后退也能使用。
 const pages = Array.from(document.querySelectorAll(".page"));
-const navigation = document.querySelectorAll(".dock a");
+const dock = document.querySelector(".dock");
+const navigation = Array.from(dock.querySelectorAll("a"));
 // 旧版图书馆分馆地址仍指向同一页，三个馆区都在该页给出官方入口。
 const legacyLibraryRoutes = new Set(["library-east", "library-qiushi"]);
 
+let activePage;
+let mapModule;
+
+function openStaticFeature(load, page, containerId, show) {
+  load().then(module => {
+    if (activePage === page && location.hash === page.hash) return show(module);
+  }).catch(() => {
+    if (activePage !== page || location.hash !== page.hash) return;
+    const container = document.getElementById(containerId);
+    container.replaceChildren();
+    const message = document.createElement("p");
+    message.textContent = "暂时无法打开，请重新加载页面后再试。";
+    message.setAttribute("role", "status");
+    container.append(message);
+  });
+}
+
 function showPage(moveFocus) {
-  const id = window.location.hash.slice(1);
+  const [id, query] = window.location.hash.slice(1).split("?", 2);
   const route = legacyLibraryRoutes.has(id) ? "library" : id;
   const active = pages.find(page => page.dataset.route === route) || pages[0];
-  const dockRoute = active.dataset.parent ?? active.dataset.route;
+  const activeRoute = active.dataset.route;
+  const params = new URLSearchParams(query);
+  const agendaDate = activeRoute === "timetable" ? params.get("agenda") : null;
+  const dockRoute = active.dataset.parent ?? activeRoute;
+  const dockIndex = navigation.findIndex(link => link.hash === "#" + dockRoute);
+  const previous = activePage;
+  dock.style.setProperty("--dock-index", dockIndex);
+  if (previous && previous.element !== active) {
+    delete previous.element.dataset.enter;
+    const backward = dockIndex < previous.dockIndex ||
+      (dockIndex === previous.dockIndex && previous.element.dataset.parent === activeRoute);
+    active.dataset.enter = backward ? "backward" : "forward";
+  }
+  if (activePage?.route === "map" && (activeRoute !== "map" || activePage.hash !== location.hash)) {
+    mapModule?.hideCampusMap();
+  }
+  const page = { route: activeRoute, hash: location.hash, element: active, dockIndex };
+  activePage = page;
   for (const page of pages) {
     page.hidden = page !== active;
   }
@@ -105,22 +112,57 @@ function showPage(moveFocus) {
   }
   settingsButton.hidden = active.dataset.route !== "home";
   if (settingsButton.hidden && settings.open) settings.close();
-  if (active.dataset.route === "todo") refreshTodos();
-  if (active.dataset.route === "focus") refreshFocus();
+  showCampusServices(activeRoute);
+  if (activeRoute === "todo") refreshTodos();
+  if (activeRoute === "focus") refreshFocus();
+  if (agendaDate && /^\d{4}-\d{2}-\d{2}$/.test(agendaDate)) selectAgendaDate(agendaDate);
+  else if (activeRoute === "home" || activeRoute === "timetable") refreshAgenda();
+  if (activeRoute === "calendar") showCampusCalendar();
+  if (activeRoute === "map") {
+    openStaticFeature(() => import("./campus-map.js?v=26"), page, "campus-map-app", module => {
+      mapModule = module;
+      return module.showCampusMap({ campus: getPreferredCampus(), place: params.get("place") });
+    });
+  }
+  if (activeRoute === "floorplan") {
+    openStaticFeature(() => import("./floorplan.js?v=26"), page, "campus-floorplan-app",
+      module => module.showFloorplan(params.get("room")));
+  }
   if (moveFocus) {
     active.querySelector("h1").focus({ preventScroll: true });
     window.scrollTo(0, 0);
   }
+  if (agendaDate) document.getElementById("campus-agenda").scrollIntoView();
 }
 
 function resumePage() {
   updateDate();
   refreshTimetableDate();
   refreshFocus();
-  if (window.location.hash === "#todo") refreshTodos();
+  if (activePage?.route === "todo") refreshTodos();
+  if (activePage?.route === "home" || activePage?.route === "timetable") refreshAgenda();
 }
 
-renderServices();
+const lightTracking = matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)");
+let highlight;
+let highlightFrame;
+document.querySelector(".content").addEventListener("pointermove", event => {
+  if (!lightTracking.matches || event.pointerType !== "mouse") return;
+  const card = event.target.closest(".service-card, .timetable-card");
+  if (!card) return;
+  highlight = { card, x: event.clientX, y: event.clientY };
+  if (highlightFrame !== undefined) return;
+  highlightFrame = requestAnimationFrame(() => {
+    highlightFrame = undefined;
+    const { card, x, y } = highlight;
+    const bounds = card.getBoundingClientRect();
+    card.style.setProperty("--pointer-x", `${x - bounds.left}px`);
+    card.style.setProperty("--pointer-y", `${y - bounds.top}px`);
+  });
+});
+
+initializeCampusServices();
+initializeAgenda();
 updateDate();
 initializeTimetable();
 refreshFocus();

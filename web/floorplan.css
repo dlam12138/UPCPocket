@@ -1,0 +1,52 @@
+.floorplan-panel {
+  display: grid;
+  gap: .85rem;
+}
+
+.floorplan-search,
+.floorplan-controls,
+.floorplan-zoom,
+.floorplan-matches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem .85rem;
+  align-items: end;
+}
+
+.floorplan-search .field {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.floorplan-controls select {
+  min-height: 44px;
+  margin-inline-start: .3rem;
+  padding-inline: .5rem;
+  border: 1px solid var(--control-line);
+  border-radius: .6rem;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.floorplan-status {
+  color: var(--muted);
+}
+
+.floorplan-matches:empty {
+  display: none;
+}
+
+.floorplan-viewport {
+  max-height: min(58vh, 32rem);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: .8rem;
+  background: var(--paper);
+}
+
+.floorplan-viewport canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}

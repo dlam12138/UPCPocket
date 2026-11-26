@@ -1,4 +1,4 @@
-import { transact } from "./db.js";
+import { transact } from "./db.js?v=24";
 
 const form = document.querySelector("#todo-form");
 const titleInput = document.querySelector("#todo-name");
@@ -8,10 +8,71 @@ const list = document.querySelector("#todo-list");
 const readStatus = document.querySelector("#todo-read-status");
 const writeStatus = document.querySelector("#todo-write-status");
 const retryButton = document.querySelector("#retry-todos");
+const summary = document.createElement("div");
+summary.className = "todo-summary";
+summary.hidden = true;
+summary.innerHTML = `
+  <dl class="todo-counts">
+    <div><dt>未完成</dt><dd data-todo-open>0</dd></div>
+    <div><dt>已完成</dt><dd data-todo-completed>0</dd></div>
+  </dl>
+  <progress class="todo-progress" value="0" max="1" aria-label="待办完成进度"></progress>`;
+list.before(summary);
+const openCount = summary.querySelector("[data-todo-open]");
+const completeCount = summary.querySelector("[data-todo-completed]");
+const progress = summary.querySelector("progress");
 const dateFormat = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
+const sortKey = "upc-pocket:todo-sort";
+const sortModes = [
+  ["due", "截止日期"],
+  ["priority", "重要程度"],
+  ["created", "最新添加"],
+];
+const priorities = [
+  ["0", "低"],
+  ["1", "普通"],
+  ["2", "高"],
+];
+const normalPriority = 1;
+
+function priorityField() {
+  const field = document.createElement("label");
+  field.className = "field todo-priority-field";
+  field.textContent = "重要程度";
+  const select = document.createElement("select");
+  select.name = "priority";
+  select.replaceChildren(...priorities.map(([value, label]) => new Option(label, value)));
+  select.value = String(normalPriority);
+  field.append(select);
+  return field;
+}
+
+const addPriorityField = priorityField();
+const addPriority = addPriorityField.querySelector("select");
+addButton.before(addPriorityField);
+
+const sort = document.querySelector("#todo-sort");
+const sortControl = document.createElement("select");
+sortControl.setAttribute("aria-label", "待办排序");
+sortControl.replaceChildren(...sortModes.map(([value, label]) => new Option(label, value)));
+if (sort) {
+  const field = document.createElement("label");
+  field.className = "todo-sort-field";
+  field.textContent = "排序";
+  field.append(sortControl);
+  sort.append(field);
+}
+let sortMode = "due";
+try {
+  const savedSort = localStorage.getItem(sortKey);
+  if (sortModes.some(([value]) => value === savedSort)) sortMode = savedSort;
+} catch {
+  // Sorting still works for the current page when preferences are unavailable.
+}
+sortControl.value = sortMode;
 
 const dialog = document.createElement("dialog");
-dialog.className = "settings-dialog";
+dialog.className = "settings-dialog todo-dialog";
 dialog.setAttribute("aria-labelledby", "todo-edit-title");
 dialog.innerHTML = `
   <form class="todo-edit-form">
@@ -33,13 +94,16 @@ document.body.append(dialog);
 const editForm = dialog.querySelector("form");
 const editTitle = editForm.elements.title;
 const editDue = editForm.elements.due;
+const editPriorityField = priorityField();
+editDue.closest("label").after(editPriorityField);
+const editPriority = editPriorityField.querySelector("select");
 const editStatus = editForm.querySelector("[role=status]");
 const saveButton = editForm.querySelector("button[type=submit]");
 const deleteButton = editForm.querySelector("[data-delete]");
 const cancelButton = editForm.querySelector("[data-cancel]");
 
 const undoNotice = document.createElement("div");
-undoNotice.className = "workspace-status";
+undoNotice.className = "workspace-status todo-undo";
 undoNotice.hidden = true;
 undoNotice.innerHTML = `<p role="status">已删除待办</p><button class="text-button" type="button">撤销删除</button>`;
 list.before(undoNotice);
@@ -49,13 +113,23 @@ let busy = false;
 let editing = null;
 let deleted = null;
 
+function todoPriority(todo) {
+  return todo.priority ?? normalPriority;
+}
+
 function orderTodos(left, right) {
-  return Number(left.completed) - Number(right.completed)
-    || (left.completed
-      ? right.completedAt - left.completedAt
-      : (left.dueAt ?? Infinity) - (right.dueAt ?? Infinity))
-    || right.createdAt - left.createdAt
-    || right.id - left.id;
+  const group = Number(left.completed) - Number(right.completed);
+  if (group) return group;
+  const byCreated = right.createdAt - left.createdAt || right.id - left.id;
+  if (sortMode === "created") return byCreated;
+  if (sortMode === "priority") {
+    const byPriority = todoPriority(right) - todoPriority(left);
+    if (byPriority) return byPriority;
+  }
+  const byDate = left.completed
+    ? right.completedAt - left.completedAt
+    : (left.dueAt ?? Infinity) - (right.dueAt ?? Infinity);
+  return byDate || byCreated;
 }
 
 function readAll(store, setResult) {
@@ -70,7 +144,7 @@ function localDateTime(timestamp) {
   return `${String(date.getFullYear()).padStart(4, "0")}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function readTodoFields(name, due) {
+function readTodoFields(name, due, priority) {
   const title = name.value.trim();
   if (!title) {
     name.setCustomValidity("请输入待办标题");
@@ -84,12 +158,13 @@ function readTodoFields(name, due) {
     due.reportValidity();
     return null;
   }
-  return { title, dueAt };
+  return { title, dueAt, priority: Number(priority.value) };
 }
 
 function sameTodo(saved, expected) {
   if (!saved || (saved.revision ?? 0) !== (expected.revision ?? 0)) return false;
-  return ["title", "createdAt", "dueAt", "completed", "completedAt"].every(key => saved[key] === expected[key]);
+  return todoPriority(saved) === todoPriority(expected)
+    && ["title", "createdAt", "dueAt", "completed", "completedAt"].every(key => saved[key] === expected[key]);
 }
 
 function nextRevision(todo) {
@@ -117,6 +192,7 @@ function openEditor(todo) {
   editDue.setCustomValidity("");
   editTitle.value = todo.title;
   editDue.value = localDateTime(todo.dueAt);
+  editPriority.value = String(todoPriority(todo));
   saveButton.disabled = false;
   deleteButton.disabled = false;
   dialog.showModal();
@@ -125,9 +201,12 @@ function openEditor(todo) {
 
 function renderTodos(todos) {
   const focusedId = list.contains(document.activeElement) ? document.activeElement.id : null;
+  let completedCount = 0;
   const rows = todos.sort(orderTodos).map(todo => {
+    if (todo.completed) completedCount += 1;
     const row = document.createElement("li");
     row.className = "todo-row";
+    row.dataset.completed = String(todo.completed);
     const label = document.createElement("label");
     label.className = "check-row";
     const checkbox = document.createElement("input");
@@ -140,7 +219,15 @@ function renderTodos(todos) {
     title.className = "record-title";
     title.textContent = todo.title;
     copy.append(title);
-    if (todo.dueAt !== null) {
+    const priority = todoPriority(todo);
+    if (priority !== normalPriority) {
+      const marker = document.createElement("span");
+      marker.className = "todo-priority-marker";
+      marker.dataset.priority = priority === 2 ? "high" : "low";
+      marker.textContent = priority === 2 ? "高优先" : "低优先";
+      copy.append(marker);
+    }
+    if (todo.dueAt != null) {
       const due = document.createElement("time");
       due.className = "record-date";
       due.dateTime = new Date(todo.dueAt).toISOString();
@@ -159,7 +246,14 @@ function renderTodos(todos) {
     return row;
   });
   list.replaceChildren(...rows);
-  list.hidden = todos.length === 0;
+  const empty = todos.length === 0;
+  openCount.textContent = String(todos.length - completedCount);
+  completeCount.textContent = String(completedCount);
+  progress.max = todos.length || 1;
+  progress.value = completedCount;
+  summary.hidden = empty;
+  list.hidden = empty;
+  readStatus.classList.toggle("todo-empty", empty);
   readStatus.textContent = todos.length === 0 ? "还没有待办" : "";
   retryButton.hidden = true;
   if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
@@ -192,7 +286,10 @@ export async function refreshTodos() {
   if (busy) return;
   busy = true;
   addButton.disabled = true;
-  if (list.hidden) readStatus.textContent = "正在读取待办…";
+  if (list.hidden) {
+    readStatus.classList.remove("todo-empty");
+    readStatus.textContent = "正在读取待办…";
+  }
   retryButton.hidden = true;
   try {
     renderTodos(await transact("todos", "readonly", (tx, setResult) => {
@@ -208,6 +305,15 @@ export async function refreshTodos() {
 }
 
 retryButton.addEventListener("click", refreshTodos);
+sortControl.addEventListener("change", () => {
+  sortMode = sortControl.value;
+  try {
+    localStorage.setItem(sortKey, sortMode);
+  } catch {
+    writeStatus.textContent = "本次排序有效，无法保存偏好。";
+  }
+  refreshTodos();
+});
 for (const input of [titleInput, dueInput, editTitle, editDue]) {
   input.addEventListener("input", () => input.setCustomValidity(""));
 }
@@ -222,7 +328,7 @@ window.addEventListener("hashchange", () => {
 async function submitEditor(remove) {
   if (busy || !editing || saveButton.disabled) return;
   const todo = editing;
-  const fields = remove ? null : readTodoFields(editTitle, editDue);
+  const fields = remove ? null : readTodoFields(editTitle, editDue, editPriority);
   if (!remove && !fields) return;
   if (fields && editDue.value === localDateTime(todo.dueAt)) fields.dueAt = todo.dueAt;
 
@@ -233,6 +339,7 @@ async function submitEditor(remove) {
   cancelButton.disabled = true;
   editTitle.readOnly = true;
   editDue.readOnly = true;
+  editPriority.disabled = true;
   editStatus.textContent = "";
   writeStatus.textContent = "";
   let stale = false;
@@ -266,6 +373,7 @@ async function submitEditor(remove) {
     cancelButton.disabled = false;
     editTitle.readOnly = false;
     editDue.readOnly = false;
+    editPriority.disabled = false;
   }
 }
 
@@ -309,12 +417,13 @@ undoButton.addEventListener("click", async () => {
 form.addEventListener("submit", async event => {
   event.preventDefault();
   if (busy) return;
-  const fields = readTodoFields(titleInput, dueInput);
+  const fields = readTodoFields(titleInput, dueInput, addPriority);
   if (!fields) return;
   busy = true;
   addButton.disabled = true;
   titleInput.readOnly = true;
   dueInput.readOnly = true;
+  addPriority.disabled = true;
   writeStatus.textContent = "";
   try {
     const todos = await transact("todos", "readwrite", (tx, setResult) => {
@@ -334,5 +443,6 @@ form.addEventListener("submit", async event => {
     addButton.disabled = false;
     titleInput.readOnly = false;
     dueInput.readOnly = false;
+    addPriority.disabled = false;
   }
 });

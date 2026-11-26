@@ -13,6 +13,7 @@ ADR 记录影响模块边界、数据兼容或信任链的长期决定，不记�
 | [007](007-offline-campus-navigation.md) | 两校区离线校园地图与前台导航 | Accepted（开发实现，现场待验） |
 | [008](008-ios-pwa-local-data-and-school-links.md) | iOS PWA 静态部署、本机数据与学校官方入口 | Accepted |
 | [009](009-web-semester-timetable-import.md) | Web 学期课表本地文件导入 | Accepted |
+| [010](010-safari-static-campus.md) | Safari 校园服务、离线地图与本机日程 | Accepted |
 
 新增重大决策使用递增编号，写明日期、状态、背景、决策、备选、理由、影响/代价和源码/需求依据。Accepted 表示当前生效；Proposed 尚未采纳；Superseded 需链接替代记录；Deprecated 说明停用原因。变更既有选择时新增关联记录并更新旧记录状态，不重写原决策内容或假造过去讨论。
 

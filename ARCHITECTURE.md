@@ -175,11 +175,11 @@ sequenceDiagram
 
 ## iOS 网页版（静态 PWA）
 
-[`web/`](web/) 是独立的静态 PWA，不属于 Android Gradle 模块，也不需要 Android 工具链。浏览器使用哈希路由切换首页、课表、服务、待办和专注；服务页下的空闲教室、学校校历、e站通和图书馆为固定学校官方入口，用户点击后离开本站。站内不收集学校账号密码，不设登录、预约或业务中转接口。
+[`web/`](web/) 是独立的静态 PWA，不属于 Android Gradle 模块，也不需要 Android 工具链。浏览器使用哈希路由切换首页、课表、服务、待办和专注；服务目录使用站内公开数据和固定官方入口。通讯录、地图路网与楼层图存于同源静态资源，搜索和算路在浏览器内完成。校历索引随版本发布，原图由教务处提供。站内不收集学校账密，学校登录、预约、支付和实时查询由官方页面处理。
 
-待办、专注状态与历史、导入的学期课表保存在当前浏览环境的 IndexedDB（数据库 `upc-pocket`）；外观偏好保存在 `localStorage`。专注的活动状态及结束记录在同一事务内结算。V3 学期课表在浏览器内严格校验后按学年和学期整体提交，失败保留旧快照；`.ics` 只作当前页面内存中的临时预览。详见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)。
+待办、个人日程、专注状态与历史、导入的学期课表保存在当前浏览环境的 IndexedDB（数据库 `upc-pocket`）。v3 追加日程仓库，保留旧对象仓库。常用校区、服务固定等偏好保存在 `localStorage`。前台定位数据留在运行内存。专注的活动状态及结束记录在同一事务内结算。V3 学期课表在浏览器内严格校验后按学年和学期整体提交，失败保留旧快照；`.ics` 只作当前页面内存中的临时预览。详见 [本机课表决策](docs/adr/009-web-semester-timetable-import.md)。
 
-Service Worker 按部署范围和版本缓存允许列表中的静态资源；`.ics` 解析器与 Safari 书签脚本按需加载并进入离线缓存。网站数据与静态缓存分别维护，清除站点数据会移除本机记录。静态 HTTPS 地址和安装身份需保持稳定。整体决策见 [ADR 008](docs/adr/008-ios-pwa-local-data-and-school-links.md)，使用与验证边界见 [iOS 网页版](docs/web.md)。
+Service Worker 按部署范围和版本缓存允许列表中的静态资源；`.ics` 解析器与 Safari 书签脚本按需加载并进入离线缓存。网站数据与静态缓存分别维护，清除站点数据会移除本机记录。静态 HTTPS 地址和安装身份需保持稳定。整体决策见 [ADR 008](docs/adr/008-ios-pwa-local-data-and-school-links.md) 和 [ADR 010](docs/adr/010-safari-static-campus.md)。使用与验证边界见 [iOS 网页版](docs/web.md)。
 
 ## 更新、诊断与验证边界
 

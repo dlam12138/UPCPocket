@@ -1,0 +1,3090 @@
+{
+  "units": [
+    {
+      "id": "admissions",
+      "name": "本科招生办公室",
+      "college": false,
+      "aliases": [
+        "本科招生办",
+        "招生办"
+      ],
+      "introduction": "学校本科招生与中学生招生宣传的办事窗口"
+    },
+    {
+      "id": "language",
+      "name": "语言文字工作委员会办公室",
+      "college": false,
+      "aliases": [
+        "语委办",
+        "普通话"
+      ],
+      "introduction": "学校语言文字工作与普通话水平测试联络窗口"
+    },
+    {
+      "id": "administration",
+      "name": "党委办公室、校长办公室",
+      "college": false,
+      "aliases": [
+        "校办",
+        "学校办公室",
+        "党办",
+        "校长办公室"
+      ],
+      "introduction": "学校综合协调、值班及公务来访联络窗口"
+    },
+    {
+      "id": "security",
+      "name": "保卫处",
+      "college": false,
+      "aliases": [
+        "保卫部"
+      ],
+      "introduction": "学校安全保卫、校园出入与户籍事务管理部门"
+    },
+    {
+      "id": "education-development",
+      "name": "教育发展中心",
+      "college": false,
+      "introduction": "学校继续教育与合作办学相关项目的联络单位"
+    },
+    {
+      "id": "archives",
+      "name": "档案与校史馆",
+      "college": false,
+      "aliases": [
+        "档案馆",
+        "校史馆"
+      ],
+      "introduction": "学校档案保存与档案利用服务单位"
+    },
+    {
+      "id": "graduate-school",
+      "name": "研究生院",
+      "college": false,
+      "aliases": [
+        "研招办",
+        "研究生招生办"
+      ],
+      "introduction": "学校研究生招生与教育管理部门"
+    },
+    {
+      "id": "academic-affairs",
+      "name": "教务处",
+      "college": false,
+      "aliases": [
+        "运行科",
+        "学籍科",
+        "教务"
+      ],
+      "introduction": "学校本科教学运行与学籍管理部门"
+    },
+    {
+      "id": "employment",
+      "name": "学生就业指导中心",
+      "college": false,
+      "aliases": [
+        "就业中心",
+        "就业指导中心"
+      ],
+      "introduction": "学校就业资讯、招聘服务和毕业生就业手续窗口"
+    },
+    {
+      "id": "student-affairs",
+      "name": "党委学生工作部",
+      "college": false,
+      "aliases": [
+        "学工部",
+        "学工处",
+        "学生工作处"
+      ],
+      "introduction": "学校学生工作管理部门，提供学生档案及资助服务"
+    },
+    {
+      "id": "international-cooperation",
+      "name": "国际合作与交流处",
+      "college": false,
+      "aliases": [
+        "外事处",
+        "国际处"
+      ],
+      "introduction": "学校国际交流与合作管理部门，提供在校生境外交流咨询"
+    },
+    {
+      "id": "student-union",
+      "name": "校团委",
+      "college": false,
+      "aliases": [
+        "团委"
+      ],
+      "introduction": "学校共青团组织和社会实践、志愿服务联络单位"
+    },
+    {
+      "id": "venues",
+      "name": "体育场馆管理中心",
+      "college": false,
+      "aliases": [
+        "体育场馆",
+        "场馆中心"
+      ],
+      "introduction": "学校体育场馆开放和使用服务单位"
+    },
+    {
+      "id": "finance",
+      "name": "财务处",
+      "college": false,
+      "aliases": [
+        "财务",
+        "财务科"
+      ],
+      "introduction": "学校财务管理与学生缴费事务服务部门"
+    },
+    {
+      "id": "geosciences",
+      "name": "地球科学与技术学院",
+      "college": true,
+      "aliases": [
+        "地学院",
+        "地球学院"
+      ],
+      "introduction": "地质学、油气资源勘查、地球物理和测井教学科研"
+    },
+    {
+      "id": "petroleum",
+      "name": "石油工程学院",
+      "college": true,
+      "aliases": [
+        "石工学院",
+        "石工"
+      ],
+      "introduction": "石油天然气工程、海洋油气工程等教学科研"
+    },
+    {
+      "id": "chemistry",
+      "name": "化学化工学院",
+      "college": true,
+      "aliases": [
+        "化工学院",
+        "化学院"
+      ],
+      "introduction": "化学、化工、应用化学、环境与能源化工教学科研"
+    },
+    {
+      "id": "mechanical",
+      "name": "机电工程学院",
+      "college": true,
+      "aliases": [
+        "机电学院",
+        "机电"
+      ],
+      "introduction": "机械、智能制造、车辆和工业设计、安全及船舶海洋工程教学科研"
+    },
+    {
+      "id": "pipeline-civil",
+      "name": "储运与建筑工程学院",
+      "college": true,
+      "aliases": [
+        "储建学院",
+        "储建"
+      ],
+      "introduction": "油气储运、土木、工程力学、燃气和建筑教学科研"
+    },
+    {
+      "id": "materials",
+      "name": "材料科学与工程学院",
+      "college": true,
+      "aliases": [
+        "材料学院",
+        "材料"
+      ],
+      "introduction": "材料科学、材料成型、材料物理化学及新能源材料教学科研"
+    },
+    {
+      "id": "new-energy",
+      "name": "石大山能新能源学院",
+      "college": true,
+      "aliases": [
+        "新能源学院",
+        "山能学院"
+      ],
+      "introduction": "化工装备、能源动力、电气及储能相关教学科研"
+    },
+    {
+      "id": "ocean-space",
+      "name": "海洋与空间信息学院",
+      "college": true,
+      "aliases": [
+        "海空学院",
+        "海洋学院"
+      ],
+      "introduction": "测绘遥感、电子信息、通信和海洋信息教学科研"
+    },
+    {
+      "id": "control",
+      "name": "控制科学与工程学院",
+      "college": true,
+      "aliases": [
+        "控制学院",
+        "信控学院"
+      ],
+      "introduction": "自动化、智能感知、测控与控制科学教学科研"
+    },
+    {
+      "id": "computing",
+      "name": "青岛软件学院、计算机科学与技术学院",
+      "college": true,
+      "aliases": [
+        "青岛软件学院",
+        "计算机科学与技术学院",
+        "计科学院",
+        "计算机学院"
+      ],
+      "introduction": "计算机、软件工程、人工智能教学科研及软件产教融合"
+    },
+    {
+      "id": "science",
+      "name": "理学院",
+      "college": true,
+      "introduction": "数学、统计、物理和光电方向教学科研及公共基础课程"
+    },
+    {
+      "id": "economics",
+      "name": "经济管理学院",
+      "college": true,
+      "aliases": [
+        "经管学院",
+        "经管"
+      ],
+      "introduction": "管理科学、工商管理、应用经济和能源经济管理教学科研"
+    },
+    {
+      "id": "foreign-languages",
+      "name": "外国语学院",
+      "college": true,
+      "aliases": [
+        "外院",
+        "外语学院"
+      ],
+      "introduction": "英语、俄语、公共外语教学与跨文化人才培养"
+    },
+    {
+      "id": "humanities-law",
+      "name": "文法学院",
+      "college": true,
+      "aliases": [
+        "文法"
+      ],
+      "introduction": "法学、汉语言文学、音乐学等专业教学科研，开展公共文法教育"
+    },
+    {
+      "id": "marxism",
+      "name": "马克思主义学院",
+      "college": true,
+      "aliases": [
+        "马院",
+        "马克思学院"
+      ],
+      "introduction": "思想政治理论课教学、马克思主义理论科研和研究生培养"
+    },
+    {
+      "id": "physical-education",
+      "name": "体育教学部",
+      "college": false,
+      "aliases": [
+        "体育部",
+        "体教部"
+      ],
+      "introduction": "公共体育教学、体质测试、训练竞赛、体育人才培养与场馆管理"
+    },
+    {
+      "id": "guanghua-energy",
+      "name": "光华能源学院",
+      "college": true,
+      "aliases": [
+        "光华学院"
+      ],
+      "introduction": "联合培养能源领域拔尖人才，开展深层油气及新能源交叉研究"
+    },
+    {
+      "id": "huicui",
+      "name": "荟萃学院",
+      "college": true,
+      "aliases": [
+        "荟萃"
+      ],
+      "introduction": "拔尖创新人才培养、实验班、特色班、分流及本研一体化培养咨询"
+    },
+    {
+      "id": "engineering-talent",
+      "name": "卓越工程师学院",
+      "college": true,
+      "aliases": [
+        "卓工学院",
+        "卓工"
+      ],
+      "introduction": "统筹卓越工程师招生培养与学位制度、校企协同和培养资源"
+    },
+    {
+      "id": "international-education",
+      "name": "国际教育学院",
+      "college": true,
+      "aliases": [
+        "国教学院",
+        "国际留学生"
+      ],
+      "introduction": "来华国际学生招生、培养、签证和日常服务，开展汉语国际推广"
+    },
+    {
+      "id": "distance-education",
+      "name": "远程教育学院",
+      "college": true,
+      "aliases": [
+        "远教学院",
+        "远程教育"
+      ],
+      "introduction": "学历继续教育、成人招生、教学与学籍服务"
+    },
+    {
+      "id": "continuing-education",
+      "name": "继续教育学院",
+      "college": true,
+      "aliases": [
+        "继续教育",
+        "继教学院"
+      ],
+      "introduction": "非学历教育、专业技术培训、校企培训和在线培训"
+    }
+  ],
+  "offices": [
+    {
+      "id": "admissions-620f0d0a5c",
+      "unitId": "admissions",
+      "name": "本科招生办公室",
+      "category": "本科招生",
+      "duties": "本科招生计划、宣传、录取和咨询，主办相关中学生夏令营，提供毕业生电子档案和报考登记表相关咨询",
+      "consultations": [
+        "本科招生计划",
+        "宣传",
+        "录取和咨询",
+        "主办相关中学生夏令营",
+        "提供毕业生电子档案和报考登记表相关咨询"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼901-3",
+      "phones": [
+        {
+          "number": "0532-86983086",
+          "label": "招生咨询"
+        },
+        {
+          "number": "0532-86981305",
+          "label": "办公室"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://jwc.upc.edu.cn/cxcyjyglbgs_18576/list.htm",
+        "https://jwc.upc.edu.cn/2022/0916/c18507a384244/page.htm",
+        "https://csun.upc.edu.cn/2024/0613/c4443a433979/page.htm",
+        "https://youth.upc.edu.cn/2026/0713/c11148a497047/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "language-578675b9ba",
+      "unitId": "language",
+      "name": "语言文字工作委员会办公室",
+      "category": "普通话测试",
+      "duties": "普通话水平测试报名、考试安排、成绩与证书相关通知",
+      "consultations": [
+        "普通话水平测试报名",
+        "考试安排",
+        "成绩与证书相关通知"
+      ],
+      "campus": "tdw",
+      "sources": [
+        "https://jwc.upc.edu.cn/2026/0918/c18518a500454/page.htm",
+        "https://jwc.upc.edu.cn/2024/1126/c19569a446842/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "administration-019fa844ba",
+      "unitId": "administration",
+      "name": "学校综合值班",
+      "category": "综合咨询",
+      "duties": "学校综合协调、综合值班和公务来访。校际团体研学可先联系校办询问",
+      "consultations": [
+        "学校综合协调",
+        "综合值班和公务来访",
+        "校际团体研学可先联系校办询问"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼103",
+      "phones": [
+        {
+          "number": "0532-86981279",
+          "label": "学校综合值班"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://office.upc.edu.cn/ryzz/list.htm",
+        "https://office.upc.edu.cn/btlm/"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "security-9839f08f47",
+      "unitId": "security",
+      "name": "校园出入咨询",
+      "category": "校园出入",
+      "duties": "校门管理、校园出入秩序及访客事项咨询",
+      "consultations": [
+        "校门管理",
+        "校园出入秩序及访客事项咨询"
+      ],
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86981215",
+          "label": "综合科"
+        }
+      ],
+      "sources": [
+        "https://gac.upc.edu.cn/1345/list.htm",
+        "https://ast.upc.edu.cn/_upload/article/files/94/cc/72b73d3842528b181117e7beb5bf/5de7b7af-118c-4ebc-a3d3-b4a401200cf6.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "security-ba1f8bf70d",
+      "unitId": "security",
+      "name": "综合科（户籍）",
+      "category": "户籍",
+      "duties": "办理户籍手续和户口迁移相关咨询",
+      "campus": "tdw",
+      "address": "大学生活动中心一楼南侧",
+      "phones": [
+        {
+          "number": "0532-86981215",
+          "label": "户籍"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "activities",
+        "name": "大学生活动中心"
+      },
+      "sources": [
+        "https://gac.upc.edu.cn/1345/list.htm",
+        "https://rsc.upc.edu.cn/2024/0322/c2280a426222/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "education-development-83a6562d31",
+      "unitId": "education-development",
+      "name": "留学培训项目",
+      "category": "留学培训",
+      "duties": "高中毕业后留学培训项目咨询与现场报名",
+      "campus": "tdw",
+      "address": "留培楼D201",
+      "phones": [
+        {
+          "number": "0532-86980911"
+        },
+        {
+          "number": "0532-86980913"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://sdlx.upc.edu.cn/2026/0520/c16086a280384/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "education-development-461d144b6a",
+      "unitId": "education-development",
+      "name": "合作办学项目",
+      "category": "合作办学",
+      "duties": "合作办学项目咨询，含中外合作工程管理硕士",
+      "consultations": [
+        "合作办学项目咨询",
+        "含中外合作工程管理硕士"
+      ],
+      "campus": "tdw",
+      "address": "长江西路66号培训楼",
+      "phones": [
+        {
+          "number": "0532-86981276",
+          "label": "工程管理硕士项目"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
+      "sources": [
+        "https://zwhz.upc.edu.cn/",
+        "https://jyfz.upc.edu.cn/2026/1020/c8270a503341/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "archives-1b70258c77",
+      "unitId": "archives",
+      "name": "档案利用窗口",
+      "category": "档案",
+      "duties": "查阅录取名册、往届成绩、毕业及学位登记材料",
+      "consultations": [
+        "查阅录取名册",
+        "往届成绩",
+        "毕业及学位登记材料"
+      ],
+      "campus": "tdw",
+      "address": "图书馆总馆六楼0631",
+      "phones": [
+        {
+          "number": "0532-86981938"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "library",
+        "name": "图书馆"
+      },
+      "sources": [
+        "https://dag.upc.edu.cn/14848/list.htm",
+        "https://dag.upc.edu.cn/14851/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "graduate-school-c07b2006a0",
+      "unitId": "graduate-school",
+      "name": "研究生院招生办公室",
+      "category": "研究生业务",
+      "duties": "研究生招生政策、报名、初复试及录取咨询",
+      "consultations": [
+        "研究生招生政策",
+        "报名",
+        "初复试及录取咨询"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼601",
+      "phones": [
+        {
+          "number": "0532-86981390"
+        },
+        {
+          "number": "0532-86981979"
+        },
+        {
+          "number": "0532-86983117"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://gs.upc.edu.cn/22470/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "academic-affairs-eb873ff7d4",
+      "unitId": "academic-affairs",
+      "name": "教学运行与服务中心（教学运行）",
+      "category": "本科教学",
+      "duties": "调课、排课、选课和教学运行。咨询补缓考、四六级和计算机等级考试",
+      "consultations": [
+        "调课",
+        "排课",
+        "选课和教学运行",
+        "咨询补缓考",
+        "四六级和计算机等级考试"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼107",
+      "phones": [
+        {
+          "number": "0532-86981302"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://jwc.upc.edu.cn/473/list.htm",
+        "https://jwc.upc.edu.cn/2019/0318/c18518a199702/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "academic-affairs-16830f7cf1",
+      "unitId": "academic-affairs",
+      "name": "教学运行与服务中心（学籍学业）",
+      "category": "教学与学籍",
+      "duties": "学籍、学历、学位、在读证明、成绩管理、转专业、辅修及学生证业务",
+      "consultations": [
+        "学籍",
+        "学历",
+        "学位",
+        "在读证明",
+        "成绩管理",
+        "转专业",
+        "辅修及学生证业务"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼107",
+      "phones": [
+        {
+          "number": "0532-86981303"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://jwc.upc.edu.cn/473/list.htm",
+        "https://jwc.upc.edu.cn/2026/0920/c18518a500567/page.htm",
+        "https://cce.upc.edu.cn/2024/0321/c17967a426109/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "employment-56b3e69c8e",
+      "unitId": "employment",
+      "name": "就业平台咨询",
+      "category": "就业",
+      "duties": "就业资讯、企业招聘及招聘会咨询",
+      "consultations": [
+        "就业资讯",
+        "企业招聘及招聘会咨询"
+      ],
+      "campus": "tdw",
+      "address": "学生就业指导中心110",
+      "phones": [
+        {
+          "number": "0532-86981519",
+          "label": "平台咨询"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "employment-center",
+        "name": "学生就业指导中心"
+      },
+      "sources": [
+        "https://career.upc.edu.cn/career/news/gwy",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://career.upc.edu.cn/career/news/view/tzgg/123830911098818560"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "employment-fb99969484",
+      "unitId": "employment",
+      "name": "就业手续",
+      "category": "就业",
+      "duties": "办理毕业生就业手续",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86981520"
+        },
+        {
+          "number": "0532-86983084"
+        }
+      ],
+      "sources": [
+        "https://career.upc.edu.cn/career/news/gwy",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://career.upc.edu.cn/career/news/view/tzgg/123830911098818560"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "employment-c6332814ee",
+      "unitId": "employment",
+      "name": "就业手续",
+      "category": "就业",
+      "duties": "办理毕业生就业手续",
+      "campus": "gzk",
+      "phones": [
+        {
+          "number": "0532-86981075"
+        },
+        {
+          "number": "0532-86981076"
+        }
+      ],
+      "sources": [
+        "https://career.upc.edu.cn/career/news/gwy",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://career.upc.edu.cn/career/news/view/tzgg/123830911098818560"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "student-affairs-69874d66e2",
+      "unitId": "student-affairs",
+      "name": "学生档案",
+      "category": "档案",
+      "duties": "接收、整理和归档在校生档案，组织毕业档案转递",
+      "consultations": [
+        "接收",
+        "整理和归档在校生档案",
+        "组织毕业档案转递"
+      ],
+      "campus": "tdw",
+      "address": "校医院楼三层学工部309",
+      "phones": [
+        {
+          "number": "0532-86981510"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "hospital",
+        "name": "校医院"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19496/list.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0911/c4439a499613/pagem.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0612/c4443a494938/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "student-affairs-c4a7808936",
+      "unitId": "student-affairs",
+      "name": "学生资助中心",
+      "category": "资助",
+      "duties": "奖助学金、国家助学贷款、绿色通道、困难资助",
+      "consultations": [
+        "奖助学金",
+        "国家助学贷款",
+        "绿色通道",
+        "困难资助"
+      ],
+      "campus": "tdw",
+      "address": "大学生活动中心一楼东南角",
+      "phones": [
+        {
+          "number": "0532-86983247"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "activities",
+        "name": "大学生活动中心"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/_t1756/2026/0911/c4439a499649/pagem.htm",
+        "https://csun.upc.edu.cn/2026/0825/c21834a498586/page.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0920/c4442a500603/pagem.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0916/c21799a500166/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "student-affairs-a479f44cf9",
+      "unitId": "student-affairs",
+      "name": "学生资助中心",
+      "category": "资助",
+      "duties": "奖助学金、国家助学贷款、绿色通道、困难资助",
+      "consultations": [
+        "奖助学金",
+        "国家助学贷款",
+        "绿色通道",
+        "困难资助"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "学3公寓北侧109",
+      "mapTarget": {
+        "campus": "gzk",
+        "placeId": "osm-w1510504265",
+        "name": "学3"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/_t1756/2026/0911/c4439a499649/pagem.htm",
+        "https://csun.upc.edu.cn/2026/0825/c21834a498586/page.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0920/c4442a500603/pagem.htm",
+        "https://csun.upc.edu.cn/_t1756/2026/0916/c21799a500166/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-cooperation-47d6801e39",
+      "unitId": "international-cooperation",
+      "name": "在校生交流",
+      "category": "境外交流",
+      "duties": "在校生海外学习、寒暑期交流、国家公派及学生团组审批",
+      "consultations": [
+        "在校生海外学习",
+        "寒暑期交流",
+        "国家公派及学生团组审批"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼1210",
+      "phones": [
+        {
+          "number": "0532-86983652",
+          "label": "寒暑期交流"
+        },
+        {
+          "number": "0532-86981982",
+          "label": "国家公派"
+        },
+        {
+          "number": "0532-86981270",
+          "label": "学生团组审批"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://io.upc.edu.cn/jgsz/list.htm",
+        "https://io.upc.edu.cn/eng/19884/list.htm",
+        "https://io.upc.edu.cn/2026/0702/c4616a496353/pagem.htm",
+        "https://io.upc.edu.cn/2026/0706/c4616a496632/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "student-union-d781d0f34b",
+      "unitId": "student-union",
+      "name": "社会实践与志愿服务",
+      "category": "社会实践",
+      "duties": "组织大学生社会实践和志愿活动，咨询社会实践材料",
+      "consultations": [
+        "组织大学生社会实践和志愿活动",
+        "咨询社会实践材料"
+      ],
+      "campus": "tdw",
+      "address": "大学生活动中心",
+      "phones": [
+        {
+          "number": "0532-86981162",
+          "label": "团委组织部"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "activities",
+        "name": "大学生活动中心"
+      },
+      "sources": [
+        "https://youth.upc.edu.cn/2026/0619/c11148a495354/page.htm",
+        "https://youth.upc.edu.cn/2026/0903/c22600a498922/page.htm",
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "venues-25e3af229c",
+      "unitId": "venues",
+      "name": "体育馆值班室",
+      "category": "场馆服务",
+      "duties": "体育馆、网球场等场地开放、预约和使用咨询",
+      "consultations": [
+        "体育馆",
+        "网球场等场地开放",
+        "预约和使用咨询"
+      ],
+      "campus": "tdw",
+      "address": "体育馆值班室",
+      "phones": [
+        {
+          "number": "0532-86981828"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "sport",
+        "name": "体育馆"
+      },
+      "sources": [
+        "https://sports.upc.edu.cn/2023/0606/c7678a405213/page.htm",
+        "https://hqc.upc.edu.cn/22198/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "finance-4306883d88",
+      "unitId": "finance",
+      "name": "收入与人员经费管理科",
+      "category": "财务",
+      "duties": "学费、住宿费、缴费和银行卡相关咨询",
+      "consultations": [
+        "学费",
+        "住宿费",
+        "缴费和银行卡相关咨询"
+      ],
+      "campus": "tdw",
+      "address": "行政办公楼206",
+      "phones": [
+        {
+          "number": "0532-86981600"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/2026/0825/c21834a498586/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "geosciences-f15050b16a",
+      "unitId": "geosciences",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "地质学、油气资源勘查、地球物理和测井教学科研",
+      "consultations": [
+        "地质学",
+        "油气资源勘查",
+        "地球物理和测井教学科研"
+      ],
+      "campus": "tdw",
+      "address": "工科楼C座245",
+      "phones": [
+        {
+          "number": "0532-86981878"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-c",
+        "name": "工科楼C座"
+      },
+      "sources": [
+        "https://geori.upc.edu.cn/xyxz/list.htm",
+        "https://geori.upc.edu.cn/_t1927/10920/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "geosciences-61bbc690c9",
+      "unitId": "geosciences",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "tdw",
+      "address": "工科楼C座243",
+      "phones": [
+        {
+          "number": "0532-86981328"
+        },
+        {
+          "number": "0532-86983552"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-c",
+        "name": "工科楼C座"
+      },
+      "sources": [
+        "https://geori.upc.edu.cn/xyxz/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "geosciences-41f6febd03",
+      "unitId": "geosciences",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "工科楼C-235",
+      "phones": [
+        {
+          "number": "0532-86981880"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-c",
+        "name": "工科楼C座"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "geosciences-8255e7683e",
+      "unitId": "geosciences",
+      "name": "研招及相关研究生教务",
+      "category": "研究生业务",
+      "duties": "研究生招生与教务事务",
+      "campus": "tdw",
+      "address": "工科楼C座243",
+      "phones": [
+        {
+          "number": "0532-86981750"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-c",
+        "name": "工科楼C座"
+      },
+      "sources": [
+        "https://geori.upc.edu.cn/xyxz/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "petroleum-6a6f4b145b",
+      "unitId": "petroleum",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "石油天然气工程、海洋油气工程等教学科研",
+      "consultations": [
+        "石油天然气工程",
+        "海洋油气工程等教学科研"
+      ],
+      "campus": "tdw",
+      "address": "工科楼B座349",
+      "phones": [
+        {
+          "number": "0532-86981936"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-b",
+        "name": "工科楼B座"
+      },
+      "sources": [
+        "https://pe.upc.edu.cn/lxfs/list.htm",
+        "https://pe.upc.edu.cn/yqzlx/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "petroleum-f7e42a48e4",
+      "unitId": "petroleum",
+      "name": "本科生教育办公室",
+      "category": "本科教学",
+      "duties": "本科生教育与教学事务",
+      "campus": "tdw",
+      "address": "工科楼B座351",
+      "phones": [
+        {
+          "number": "0532-86981380"
+        }
+      ],
+      "email": "sgyjxb@upc.edu.cn",
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-b",
+        "name": "工科楼B座"
+      },
+      "sources": [
+        "https://pe.upc.edu.cn/lxfs/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "petroleum-2d875b91b5",
+      "unitId": "petroleum",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "工科楼B365",
+      "phones": [
+        {
+          "number": "0532-86981989"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-b",
+        "name": "工科楼B座"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "petroleum-e89df24410",
+      "unitId": "petroleum",
+      "name": "研招及相关研究生教务",
+      "category": "研究生业务",
+      "duties": "研究生招生与教务事务",
+      "campus": "tdw",
+      "address": "工科楼B座351",
+      "phones": [
+        {
+          "number": "0532-86981703"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-b",
+        "name": "工科楼B座"
+      },
+      "sources": [
+        "https://pe.upc.edu.cn/lxfs/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "chemistry-61bc2e94f7",
+      "unitId": "chemistry",
+      "name": "专职辅导员办公室",
+      "category": "学生事务",
+      "duties": "化学、化工、应用化学、环境与能源化工教学科研",
+      "consultations": [
+        "化学",
+        "化工",
+        "应用化学",
+        "环境与能源化工教学科研"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "C2-647",
+      "phones": [
+        {
+          "number": "0532-86981570"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://cce.upc.edu.cn/2555/listm.htm",
+        "https://cce.upc.edu.cn/2026/0930/c2641a501778/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "chemistry-7e05ae9dba",
+      "unitId": "chemistry",
+      "name": "分管本科教育联系",
+      "category": "本科教学",
+      "duties": "本科教育事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼643",
+      "phones": [
+        {
+          "number": "0532-86980603"
+        }
+      ],
+      "sources": [
+        "https://cce.upc.edu.cn/2557/listm.htm",
+        "https://cce.upc.edu.cn/2026/0917/c19160a500346/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "chemistry-5ee4e9cc44",
+      "unitId": "chemistry",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼644",
+      "sources": [
+        "https://cce.upc.edu.cn/2026/0917/c19160a500346/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "chemistry-1298096323",
+      "unitId": "chemistry",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "C2-655",
+      "phones": [
+        {
+          "number": "0532-86981731"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "chemistry-6691e17f8f",
+      "unitId": "chemistry",
+      "name": "分管研究生教育联系",
+      "category": "研究生业务",
+      "duties": "研究生教育事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼641",
+      "phones": [
+        {
+          "number": "0532-86980381"
+        }
+      ],
+      "sources": [
+        "https://cce.upc.edu.cn/2557/listm.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "mechanical-d97be22783",
+      "unitId": "mechanical",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "机械、智能制造、车辆和工业设计、安全及船舶海洋工程教学科研",
+      "consultations": [
+        "机械",
+        "智能制造",
+        "车辆和工业设计",
+        "安全及船舶海洋工程教学科研"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟真楼361",
+      "phones": [
+        {
+          "number": "0532-86983300"
+        }
+      ],
+      "sources": [
+        "https://cmee.upc.edu.cn/2026/0908/c21202a499320/page.htm",
+        "https://cmee.upc.edu.cn/21229/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "mechanical-ef86ae9f6e",
+      "unitId": "mechanical",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟真楼403",
+      "phones": [
+        {
+          "number": "0532-86983308"
+        }
+      ],
+      "email": "jdjx@upc.edu.cn",
+      "sources": [
+        "https://cmee.upc.edu.cn/21235/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "mechanical-8b6ed57fdf",
+      "unitId": "mechanical",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "C1-465-467",
+      "phones": [
+        {
+          "number": "0532-86983312"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "mechanical-d55ad71a13",
+      "unitId": "mechanical",
+      "name": "研究生教育办公室",
+      "category": "研究生业务",
+      "duties": "研究生教育与教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟真楼401",
+      "phones": [
+        {
+          "number": "0532-86983309"
+        }
+      ],
+      "email": "jdyjs@upc.edu.cn",
+      "sources": [
+        "https://cmee.upc.edu.cn/21235/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "pipeline-civil-84262ee4d2",
+      "unitId": "pipeline-civil",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "油气储运、土木、工程力学、燃气和建筑教学科研",
+      "consultations": [
+        "油气储运",
+        "土木",
+        "工程力学",
+        "燃气和建筑教学科研"
+      ],
+      "campus": "tdw",
+      "address": "工科楼D座245",
+      "phones": [
+        {
+          "number": "0532-86981822"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-d",
+        "name": "工科楼D座"
+      },
+      "sources": [
+        "https://cj.upc.edu.cn/xybgs/list.htm",
+        "https://cj.upc.edu.cn/3688/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "pipeline-civil-0ae12d8d4f",
+      "unitId": "pipeline-civil",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "tdw",
+      "address": "工科楼D座247",
+      "phones": [
+        {
+          "number": "0532-86981813"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-d",
+        "name": "工科楼D座"
+      },
+      "sources": [
+        "https://cj.upc.edu.cn/xybgs/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "pipeline-civil-f1e571ef4f",
+      "unitId": "pipeline-civil",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "工科楼D229",
+      "phones": [
+        {
+          "number": "0532-86981935"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-d",
+        "name": "工科楼D座"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "pipeline-civil-004333694a",
+      "unitId": "pipeline-civil",
+      "name": "研招及相关研究生教务",
+      "category": "研究生业务",
+      "duties": "研究生招生与教务事务",
+      "campus": "tdw",
+      "address": "工科楼D座247",
+      "phones": [
+        {
+          "number": "0532-86981332"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering-d",
+        "name": "工科楼D座"
+      },
+      "sources": [
+        "https://cj.upc.edu.cn/xybgs/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "materials-cde25f7145",
+      "unitId": "materials",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "材料科学、材料成型、材料物理化学及新能源材料教学科研",
+      "consultations": [
+        "材料科学",
+        "材料成型",
+        "材料物理化学及新能源材料教学科研"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼241",
+      "phones": [
+        {
+          "number": "0532-86983670"
+        }
+      ],
+      "sources": [
+        "https://mse.upc.edu.cn/lxfs/list.htm",
+        "https://mse.upc.edu.cn/rcpy/list.htm",
+        "https://news.upc.edu.cn/info/1445/120873.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "materials-d1208d49d8",
+      "unitId": "materials",
+      "name": "本科教学秘书",
+      "category": "本科教学",
+      "duties": "本科教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼210",
+      "phones": [
+        {
+          "number": "0532-86983751"
+        },
+        {
+          "number": "0532-86983753"
+        }
+      ],
+      "sources": [
+        "https://mse.upc.edu.cn/lxfs/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "materials-950c48b9a5",
+      "unitId": "materials",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "C2-208",
+      "phones": [
+        {
+          "number": "0532-86983732"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "materials-ba6416e97a",
+      "unitId": "materials",
+      "name": "研究生教学秘书",
+      "category": "研究生业务",
+      "duties": "研究生教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼210",
+      "phones": [
+        {
+          "number": "0532-86983756"
+        },
+        {
+          "number": "0532-86983759"
+        }
+      ],
+      "sources": [
+        "https://mse.upc.edu.cn/lxfs/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "new-energy-88e270fc18",
+      "unitId": "new-energy",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "化工装备、能源动力、电气及储能相关教学科研",
+      "consultations": [
+        "化工装备",
+        "能源动力",
+        "电气及储能相关教学科研"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼536",
+      "phones": [
+        {
+          "number": "0532-86983800"
+        }
+      ],
+      "sources": [
+        "https://ne.upc.edu.cn/lxfs/list.htm",
+        "https://ne.upc.edu.cn/xygk/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "new-energy-e371d14741",
+      "unitId": "new-energy",
+      "name": "本科教学秘书",
+      "category": "本科教学",
+      "duties": "本科教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼541",
+      "phones": [
+        {
+          "number": "0532-86983814"
+        }
+      ],
+      "sources": [
+        "https://ne.upc.edu.cn/lxfs/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "new-energy-b3e49ccb41",
+      "unitId": "new-energy",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "C2-524",
+      "phones": [
+        {
+          "number": "0532-86983810"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "new-energy-e9f6e7f7e2",
+      "unitId": "new-energy",
+      "name": "研究生教学及招生",
+      "category": "研究生业务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼544",
+      "phones": [
+        {
+          "number": "0532-86983815"
+        }
+      ],
+      "sources": [
+        "https://ne.upc.edu.cn/lxfs/list.htm",
+        "https://ne.upc.edu.cn/2026/0915/c14962a500060/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "ocean-space-a76ee39237",
+      "unitId": "ocean-space",
+      "name": "学院公开办公室",
+      "category": "学院综合",
+      "duties": "测绘遥感、电子信息、通信和海洋信息教学科研",
+      "consultations": [
+        "测绘遥感",
+        "电子信息",
+        "通信和海洋信息教学科研"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼307",
+      "phones": [
+        {
+          "number": "0532-86980518",
+          "label": "院级总联系"
+        }
+      ],
+      "email": "ocean@upc.edu.cn",
+      "sources": [
+        "https://ocean.upc.edu.cn/lxfs/list.htm",
+        "https://ocean.upc.edu.cn/2026/0930/c15098a501713/page.htm",
+        "https://ocean.upc.edu.cn/xygk/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "ocean-space-07b75d0466",
+      "unitId": "ocean-space",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼308B",
+      "sources": [
+        "https://ocean.upc.edu.cn/lxfs/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "ocean-space-cc8dcc0686",
+      "unitId": "ocean-space",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼402B",
+      "phones": [
+        {
+          "number": "0532-86983821"
+        }
+      ],
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "ocean-space-bf03c62a29",
+      "unitId": "ocean-space",
+      "name": "辅导员办公室",
+      "category": "学生事务",
+      "duties": "学生事务及日常联系",
+      "campus": "gzk",
+      "region": "东区",
+      "address": "国工楼B531",
+      "phones": [
+        {
+          "number": "0532-86188603"
+        }
+      ],
+      "mapTarget": {
+        "campus": "gzk",
+        "placeId": "osm-w1359338290",
+        "name": "国家工程实验楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://cmee.upc.edu.cn/2026/1020/c21262a503359/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "ocean-space-2aba9ec813",
+      "unitId": "ocean-space",
+      "name": "研究生教学办公室",
+      "category": "研究生业务",
+      "duties": "研究生教学事务",
+      "campus": "gzk",
+      "region": "西区",
+      "address": "惟实楼308A",
+      "sources": [
+        "https://ocean.upc.edu.cn/lxfs/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "control-5e7ecc3ffd",
+      "unitId": "control",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "自动化、智能感知、测控与控制科学教学科研",
+      "consultations": [
+        "自动化",
+        "智能感知",
+        "测控与控制科学教学科研"
+      ],
+      "campus": "tdw",
+      "address": "工科楼E座1313",
+      "phones": [
+        {
+          "number": "0532-86981335"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://auto.upc.edu.cn/17243/list.htm",
+        "https://auto.upc.edu.cn/17239/listm.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "control-7184577410",
+      "unitId": "control",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "tdw",
+      "address": "工科楼E座1303",
+      "phones": [
+        {
+          "number": "0532-86983460"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://auto.upc.edu.cn/17243/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "control-db9b34b829",
+      "unitId": "control",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "工科楼E1307",
+      "phones": [
+        {
+          "number": "0532-86983461"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "control-e4de996d78",
+      "unitId": "control",
+      "name": "研究生招生",
+      "category": "研究生业务",
+      "duties": "研究生招生咨询",
+      "campus": "tdw",
+      "address": "工科楼E座1303",
+      "phones": [
+        {
+          "number": "0532-86983468"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://auto.upc.edu.cn/17243/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "control-15a0dbbd42",
+      "unitId": "control",
+      "name": "在校研究生教学",
+      "category": "研究生业务",
+      "duties": "在校研究生教学事务",
+      "campus": "tdw",
+      "address": "工科楼E座1313",
+      "phones": [
+        {
+          "number": "0532-86980053"
+        }
+      ],
+      "email": "xinkongjiaowu@upc.edu.cn",
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://auto.upc.edu.cn/17243/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "computing-0a238300f6",
+      "unitId": "computing",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "计算机、软件工程、人工智能教学科研及软件产教融合",
+      "consultations": [
+        "计算机",
+        "软件工程",
+        "人工智能教学科研及软件产教融合"
+      ],
+      "campus": "tdw",
+      "address": "工科楼E座1104",
+      "phones": [
+        {
+          "number": "0532-86983963"
+        },
+        {
+          "number": "0532-86983962"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://computer.upc.edu.cn/6284/list.htm",
+        "https://computer.upc.edu.cn/6282/"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "computing-8de35cb9f7",
+      "unitId": "computing",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "tdw",
+      "address": "工科楼E座1107",
+      "phones": [
+        {
+          "number": "0532-86981327"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://computer.upc.edu.cn/6284/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "computing-e94cf4963a",
+      "unitId": "computing",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "工科楼E1001",
+      "phones": [
+        {
+          "number": "0532-86981970"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "computing-1fa42ee584",
+      "unitId": "computing",
+      "name": "研究生教务／研招",
+      "category": "研究生业务",
+      "duties": "研究生招生与教务事务",
+      "campus": "tdw",
+      "address": "工科楼E座1105",
+      "phones": [
+        {
+          "number": "0532-86981339"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "engineering",
+        "name": "工科楼E座"
+      },
+      "sources": [
+        "https://computer.upc.edu.cn/6284/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "science-2125a0241a",
+      "unitId": "science",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "数学、统计、物理和光电方向教学科研及公共基础课程",
+      "consultations": [
+        "数学",
+        "统计",
+        "物理和光电方向教学科研及公共基础课程"
+      ],
+      "campus": "tdw",
+      "address": "文理楼261",
+      "phones": [
+        {
+          "number": "0532-86983363"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sci.upc.edu.cn/6760/list.htm",
+        "https://sci.upc.edu.cn/6757/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "science-b26f2dc7d9",
+      "unitId": "science",
+      "name": "教务联系（院机关秘书）",
+      "category": "本科教学",
+      "campus": "tdw",
+      "address": "文理楼255",
+      "phones": [
+        {
+          "number": "0532-86983360"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sci.upc.edu.cn/6760/list.htm",
+        "https://jwc.upc.edu.cn/611/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "science-aa67c96814",
+      "unitId": "science",
+      "name": "理科实验班管理办公室",
+      "category": "特色培养",
+      "campus": "tdw",
+      "address": "基础实验楼C416",
+      "phones": [
+        {
+          "number": "0532-86983035"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "foundation-lab",
+        "name": "基础实验楼"
+      },
+      "sources": [
+        "https://sci.upc.edu.cn/6760/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "science-70d0d27d02",
+      "unitId": "science",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "文理楼283",
+      "phones": [
+        {
+          "number": "0532-86983170"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "science-04c344b8ea",
+      "unitId": "science",
+      "name": "研究生招生",
+      "category": "研究生业务",
+      "duties": "研究生招生咨询",
+      "campus": "tdw",
+      "address": "文理楼259",
+      "phones": [
+        {
+          "number": "0532-86983362"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sci.upc.edu.cn/6760/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-ef2a1d5d43",
+      "unitId": "economics",
+      "name": "行政服务中心综合办公室",
+      "category": "学院综合",
+      "duties": "管理科学、工商管理、应用经济和能源经济管理教学科研",
+      "consultations": [
+        "管理科学",
+        "工商管理",
+        "应用经济和能源经济管理教学科研"
+      ],
+      "campus": "tdw",
+      "address": "文理楼",
+      "phones": [
+        {
+          "number": "0532-86981324"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sem.upc.edu.cn/xzfwzx2/list.htm",
+        "https://sem.upc.edu.cn/19678/listm.htm",
+        "https://sem.upc.edu.cn/19680/listm.htm",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-a9a1921ab8",
+      "unitId": "economics",
+      "name": "行政服务中心本科教学",
+      "category": "本科教学",
+      "campus": "tdw",
+      "address": "文理楼551",
+      "phones": [
+        {
+          "number": "0532-86983291"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sem.upc.edu.cn/xzfwzx2/list.htm",
+        "https://jwc.upc.edu.cn/611/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-353f5ad05f",
+      "unitId": "economics",
+      "name": "科研办公室",
+      "category": "科研",
+      "duties": "学院科研事务",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86983290"
+        }
+      ],
+      "sources": [
+        "https://sem.upc.edu.cn/xzfwzx2/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-2b16e7a6b2",
+      "unitId": "economics",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "文理楼548",
+      "phones": [
+        {
+          "number": "0532-86983293"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-c7f45dcd7c",
+      "unitId": "economics",
+      "name": "全日制研究生教学与招生",
+      "category": "研究生业务",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86983292"
+        }
+      ],
+      "sources": [
+        "https://sem.upc.edu.cn/xzfwzx2/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "economics-80d915b32c",
+      "unitId": "economics",
+      "name": "非全日制研究生招生",
+      "category": "研究生业务",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86983197"
+        }
+      ],
+      "sources": [
+        "https://sem.upc.edu.cn/xzfwzx2/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "foreign-languages-cd28f55509",
+      "unitId": "foreign-languages",
+      "name": "院级联系",
+      "category": "学院综合",
+      "duties": "英语、俄语、公共外语教学与跨文化人才培养",
+      "consultations": [
+        "英语",
+        "俄语",
+        "公共外语教学与跨文化人才培养"
+      ],
+      "campus": "tdw",
+      "address": "文理楼",
+      "phones": [
+        {
+          "number": "0532-86983435"
+        }
+      ],
+      "email": "sfs@upc.edu.cn",
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sfs.upc.edu.cn/",
+        "https://sfs.upc.edu.cn/2026/0908/c16784a499351/page.htm",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://sfs.upc.edu.cn/2022/0525/c16750a375909/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "foreign-languages-70089c0f8e",
+      "unitId": "foreign-languages",
+      "name": "本科生导师与教学联系",
+      "category": "本科教学",
+      "campus": "tdw",
+      "address": "文理楼353",
+      "phones": [
+        {
+          "number": "0532-86983214"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://sfs.upc.edu.cn/2026/0624/c16785a495873/page.htm",
+        "https://jwc.upc.edu.cn/611/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "foreign-languages-d069e86d1e",
+      "unitId": "foreign-languages",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "文理楼356",
+      "phones": [
+        {
+          "number": "0532-86980649"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "foreign-languages-ddc150fb00",
+      "unitId": "foreign-languages",
+      "name": "研究生招生",
+      "category": "研究生业务",
+      "duties": "研究生招生咨询",
+      "phones": [
+        {
+          "number": "0532-86983229"
+        }
+      ],
+      "sources": [
+        "https://yz.upc.edu.cn/2026/0905/c25697a283954/page.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "humanities-law-edb56e5adc",
+      "unitId": "humanities-law",
+      "name": "院级联络及院长书记信箱",
+      "category": "学院综合",
+      "duties": "法学、汉语言文学、音乐学等专业教学科研，开展公共文法教育",
+      "consultations": [
+        "法学",
+        "汉语言文学",
+        "音乐学等专业教学科研",
+        "开展公共文法教育"
+      ],
+      "campus": "tdw",
+      "address": "文理楼",
+      "phones": [
+        {
+          "number": "0532-86983178"
+        }
+      ],
+      "email": "shl@upc.edu.cn",
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://shl.upc.edu.cn/_t2097/1548/list.psp",
+        "https://shl.upc.edu.cn/_t2097/1584/list.psp",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://shl.upc.edu.cn/",
+        "https://shl.upc.edu.cn/1548/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "humanities-law-c4ddd20f0e",
+      "unitId": "humanities-law",
+      "name": "院部教学联系",
+      "category": "本科教学",
+      "campus": "tdw",
+      "address": "文理楼362",
+      "phones": [
+        {
+          "number": "0532-86983231"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://shl.upc.edu.cn/1548/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "humanities-law-94a83fd13f",
+      "unitId": "humanities-law",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "文理楼360",
+      "phones": [
+        {
+          "number": "0532-86983212"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "humanities-law-2af99f8414",
+      "unitId": "humanities-law",
+      "name": "研究生招生",
+      "category": "研究生业务",
+      "duties": "研究生招生咨询",
+      "phones": [
+        {
+          "number": "0532-86983236"
+        }
+      ],
+      "sources": [
+        "https://yz.upc.edu.cn/2026/0905/c25697a283954/page.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "marxism-c4f4d4ab68",
+      "unitId": "marxism",
+      "name": "学院公开窗口",
+      "category": "学院综合",
+      "duties": "思想政治理论课教学、马克思主义理论科研和研究生培养",
+      "consultations": [
+        "思想政治理论课教学",
+        "马克思主义理论科研和研究生培养"
+      ],
+      "campus": "tdw",
+      "address": "文理楼466",
+      "phones": [
+        {
+          "number": "0532-86983037"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://szjyb.upc.edu.cn/yjg/list.htm",
+        "https://szjyb.upc.edu.cn/xyjj/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "marxism-0f6d50fdc9",
+      "unitId": "marxism",
+      "name": "本科教学办公室",
+      "category": "本科教学",
+      "duties": "本科课程与教学事务",
+      "campus": "tdw",
+      "address": "文理楼455",
+      "phones": [
+        {
+          "number": "0532-86983352"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://szjyb.upc.edu.cn/yjg/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "marxism-890636bb13",
+      "unitId": "marxism",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "文理楼460",
+      "phones": [
+        {
+          "number": "0532-86983345"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "marxism-e45fad2a8f",
+      "unitId": "marxism",
+      "name": "研究生招生及教学",
+      "category": "研究生业务",
+      "campus": "tdw",
+      "address": "文理楼455",
+      "phones": [
+        {
+          "number": "0532-86981322"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "liberalarts",
+        "name": "文理楼"
+      },
+      "sources": [
+        "https://szjyb.upc.edu.cn/yjg/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-04a53aef4f",
+      "unitId": "physical-education",
+      "name": "综合办公室",
+      "category": "学院综合",
+      "duties": "公共体育教学、体质测试、训练竞赛、体育人才培养与场馆管理",
+      "consultations": [
+        "公共体育教学",
+        "体质测试",
+        "训练竞赛",
+        "体育人才培养与场馆管理"
+      ],
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86981312"
+        }
+      ],
+      "sources": [
+        "https://sports.upc.edu.cn/7639/list.htm",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://sports.upc.edu.cn/7637/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-44830925a3",
+      "unitId": "physical-education",
+      "name": "古镇口分校区联系点",
+      "category": "学院综合",
+      "duties": "古镇口校区体育教学部联系点",
+      "campus": "gzk",
+      "address": "古镇口体育场看台",
+      "phones": [
+        {
+          "number": "0532-86981128"
+        }
+      ],
+      "sources": [
+        "https://sports.upc.edu.cn/7639/list.htm",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://sports.upc.edu.cn/7637/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-9ba2b1d10e",
+      "unitId": "physical-education",
+      "name": "本科教学、科研与运动队学籍",
+      "category": "本科教学",
+      "duties": "公共体育教学、体育训练、竞赛与体质健康测试",
+      "consultations": [
+        "公共体育教学",
+        "体育训练",
+        "竞赛与体质健康测试"
+      ],
+      "campus": "tdw",
+      "address": "体育馆C115",
+      "phones": [
+        {
+          "number": "0532-86981186"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "sport",
+        "name": "体育馆"
+      },
+      "sources": [
+        "https://sports.upc.edu.cn/7639/list.htm",
+        "https://jwc.upc.edu.cn/611/list.htm",
+        "https://sports.upc.edu.cn/"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-54c3343491",
+      "unitId": "physical-education",
+      "name": "竞训与群体中心",
+      "category": "体育专项",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86983890"
+        }
+      ],
+      "sources": [
+        "https://sports.upc.edu.cn/7639/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-d71c2d2eb2",
+      "unitId": "physical-education",
+      "name": "学院团委",
+      "category": "学生事务",
+      "duties": "学院团委及学生事务",
+      "campus": "tdw",
+      "address": "体育馆C112",
+      "phones": [
+        {
+          "number": "0532-86981204"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "sport",
+        "name": "体育馆"
+      },
+      "sources": [
+        "https://csun.upc.edu.cn/19487/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "physical-education-c37445046d",
+      "unitId": "physical-education",
+      "name": "研究生招生及教学",
+      "category": "研究生业务",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86981186"
+        }
+      ],
+      "sources": [
+        "https://sports.upc.edu.cn/7639/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "guanghua-energy-4b21f0339b",
+      "unitId": "guanghua-energy",
+      "name": "学院办公室",
+      "category": "学院综合",
+      "duties": "联合培养能源领域拔尖人才，开展深层油气及新能源交叉研究",
+      "consultations": [
+        "联合培养能源领域拔尖人才",
+        "开展深层油气及新能源交叉研究"
+      ],
+      "campus": "tdw",
+      "address": "逸夫实验楼、特种实验楼",
+      "phones": [
+        {
+          "number": "0532-86983969"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
+      "sources": [
+        "https://energy.upc.edu.cn/main.htm",
+        "https://news.upc.edu.cn/info/1436/119603.htm",
+        "https://skldog.upc.edu.cn/2026/0908/c21356a499364/pagem.htm",
+        "https://csun.upc.edu.cn/19487/list.htm",
+        "https://energy.upc.edu.cn/22973/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "guanghua-energy-857cf01ec8",
+      "unitId": "guanghua-energy",
+      "name": "研究生招生",
+      "category": "研究生业务",
+      "duties": "研究生招生咨询",
+      "campus": "tdw",
+      "address": "逸夫楼228",
+      "phones": [
+        {
+          "number": "0532-86983970"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
+      "sources": [
+        "https://energy.upc.edu.cn/22973/list.htm",
+        "https://yz.upc.edu.cn/_upload/article/files/1c/0a/e34235e649198302b606646f88ad/455ee03c-7e27-47e3-83ac-59bdc7c29351.pdf"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "guanghua-energy-7ae1a70ac3",
+      "unitId": "guanghua-energy",
+      "name": "人才培养与团委",
+      "category": "人才培养",
+      "campus": "tdw",
+      "address": "逸夫楼228",
+      "phones": [
+        {
+          "number": "0532-86983970"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
+      "sources": [
+        "https://energy.upc.edu.cn/22973/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "guanghua-energy-b069a17ad9",
+      "unitId": "guanghua-energy",
+      "name": "科研与平台建设",
+      "category": "科研",
+      "campus": "tdw",
+      "address": "逸夫楼213",
+      "phones": [
+        {
+          "number": "0532-86981900"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "yifu-building",
+        "name": "逸夫楼"
+      },
+      "sources": [
+        "https://energy.upc.edu.cn/22973/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "huicui-354389da87",
+      "unitId": "huicui",
+      "name": "学院办公室（实验班及专业分流）",
+      "category": "特色培养",
+      "duties": "拔尖创新人才培养、实验班、特色班、分流及本研一体化培养咨询",
+      "consultations": [
+        "拔尖创新人才培养",
+        "实验班",
+        "特色班",
+        "分流及本研一体化培养咨询"
+      ],
+      "campus": "tdw",
+      "address": "行政楼905",
+      "phones": [
+        {
+          "number": "0532-86980920"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "admin",
+        "name": "行政楼"
+      },
+      "sources": [
+        "https://huicui.upc.edu.cn/3841/list.htm",
+        "https://huicui.upc.edu.cn/2026/0316/c3861a484786/page.htm",
+        "https://huicui.upc.edu.cn/gzzz/list.htm",
+        "https://huicui.upc.edu.cn/2023/1030/c3861a414830/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "engineering-talent-73b88f9832",
+      "unitId": "engineering-talent",
+      "name": "卓工专项培养咨询",
+      "category": "研究生培养",
+      "phones": [
+        {
+          "number": "0532-86983476"
+        }
+      ],
+      "sources": [
+        "https://gs.upc.edu.cn/22470/list.htm",
+        "https://gs.upc.edu.cn/22468/list.htm",
+        "https://gs.upc.edu.cn/2026/0312/c14664a484529/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "engineering-talent-c11fe2ff40",
+      "unitId": "engineering-talent",
+      "name": "古镇口研究生教育和卓越工程师服务窗口",
+      "category": "研究生培养",
+      "duties": "统筹卓越工程师招生培养与学位制度、校企协同和培养资源",
+      "consultations": [
+        "统筹卓越工程师招生培养与学位制度",
+        "校企协同和培养资源"
+      ],
+      "campus": "gzk",
+      "region": "西区",
+      "address": "求是图书馆三楼师生事务服务大厅B304",
+      "phones": [
+        {
+          "number": "0532-86981083"
+        }
+      ],
+      "sources": [
+        "https://gs.upc.edu.cn/22470/list.htm",
+        "https://gs.upc.edu.cn/22468/list.htm",
+        "https://gs.upc.edu.cn/2026/0312/c14664a484529/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-education-f00ec7a61c",
+      "unitId": "international-education",
+      "name": "综合事务办公室",
+      "category": "学院综合",
+      "duties": "来华国际学生招生、培养、签证和日常服务，开展汉语国际推广",
+      "consultations": [
+        "来华国际学生招生",
+        "培养",
+        "签证和日常服务",
+        "开展汉语国际推广"
+      ],
+      "campus": "tdw",
+      "address": "留培楼A-217、A-225",
+      "phones": [
+        {
+          "number": "0532-86983101"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://cie.upc.edu.cn/gywm/jgsz.htm",
+        "https://cie.upc.edu.cn/admission_cn/gywm1/gjjyxy.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-education-db3cc88bcc",
+      "unitId": "international-education",
+      "name": "招生事务办公室",
+      "category": "来华招生",
+      "duties": "接受来华留学申请，解答专业、报名和入学咨询",
+      "consultations": [
+        "接受来华留学申请",
+        "解答专业",
+        "报名和入学咨询"
+      ],
+      "campus": "tdw",
+      "address": "留培楼A-201",
+      "phones": [
+        {
+          "number": "0532-86983201"
+        },
+        {
+          "number": "0532-86981298"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://cie.upc.edu.cn/gywm/jgsz.htm",
+        "https://cie.upc.edu.cn/admission_cn/"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-education-4b84509ec5",
+      "unitId": "international-education",
+      "name": "国际学生事务办公室",
+      "category": "学生事务",
+      "duties": "国际学生日常管理、学生活动和奖学金",
+      "consultations": [
+        "国际学生日常管理",
+        "学生活动和奖学金"
+      ],
+      "campus": "tdw",
+      "address": "留培楼A-201",
+      "phones": [
+        {
+          "number": "0532-86981271"
+        },
+        {
+          "number": "0532-86983187"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://cie.upc.edu.cn/gywm/jgsz.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-education-9ec1990e00",
+      "unitId": "international-education",
+      "name": "国际学生教学事务办公室",
+      "category": "教学与学籍",
+      "duties": "教学协调、学籍和非学历生教学",
+      "consultations": [
+        "教学协调",
+        "学籍和非学历生教学"
+      ],
+      "campus": "tdw",
+      "address": "留培楼A-205",
+      "phones": [
+        {
+          "number": "0532-86983215"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://cie.upc.edu.cn/gywm/jgsz.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "international-education-6a2c75fe72",
+      "unitId": "international-education",
+      "name": "签证事务办公室",
+      "category": "签证",
+      "duties": "出入境手续、保险与临时住宿登记",
+      "consultations": [
+        "出入境手续",
+        "保险与临时住宿登记"
+      ],
+      "campus": "tdw",
+      "address": "留培楼A-209",
+      "phones": [
+        {
+          "number": "0532-86983026"
+        },
+        {
+          "number": "0532-86981273"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training",
+        "name": "留培楼"
+      },
+      "sources": [
+        "https://cie.upc.edu.cn/gywm/jgsz.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "distance-education-5f56fbbc83",
+      "unitId": "distance-education",
+      "name": "学院服务热线",
+      "category": "学院综合",
+      "duties": "学历继续教育、成人招生、教学与学籍服务",
+      "consultations": [
+        "学历继续教育",
+        "成人招生",
+        "教学与学籍服务"
+      ],
+      "campus": "tdw",
+      "address": "长江西路66号培训楼",
+      "phones": [
+        {
+          "number": "400-640-1953",
+          "label": "服务"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
+      "sources": [
+        "https://upol.upc.edu.cn/9936/list.htm",
+        "https://jyfz.upc.edu.cn/2026/1020/c8270a503341/page.htm",
+        "https://upol.upc.edu.cn/_t777/2024/1218/c9958a261423/pagem.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "distance-education-39d677c6ee",
+      "unitId": "distance-education",
+      "name": "成人招生与青岛直属教学点",
+      "category": "学历继续教育",
+      "duties": "成人高等教育招生、专升本咨询、教学与学籍服务",
+      "consultations": [
+        "成人高等教育招生",
+        "专升本咨询",
+        "教学与学籍服务"
+      ],
+      "campus": "tdw",
+      "address": "培训楼B103",
+      "phones": [
+        {
+          "number": "0532-86983592",
+          "label": "招生咨询"
+        },
+        {
+          "number": "0532-86981655",
+          "label": "青岛教学点"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
+      "sources": [
+        "https://upol.upc.edu.cn/9936/list.htm",
+        "https://jwc.upc.edu.cn/2024/0624/c19431a441787/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "distance-education-dba166368d",
+      "unitId": "distance-education",
+      "name": "教学运行部（教材、在线学习与作业）",
+      "category": "学历继续教育",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86980661"
+        }
+      ],
+      "email": "upol@upc.edu.cn",
+      "sources": [
+        "https://upol.upc.edu.cn/9936/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "distance-education-f73a4a6f09",
+      "unitId": "distance-education",
+      "name": "毕业及学位",
+      "category": "学历继续教育",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86980662"
+        }
+      ],
+      "email": "ycxj@upc.edu.cn",
+      "sources": [
+        "https://upol.upc.edu.cn/9936/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "distance-education-1943940b00",
+      "unitId": "distance-education",
+      "name": "学籍档案、学生信息和课程考试",
+      "category": "学历继续教育",
+      "campus": "tdw",
+      "phones": [
+        {
+          "number": "0532-86980660"
+        }
+      ],
+      "sources": [
+        "https://upol.upc.edu.cn/9936/list.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    },
+    {
+      "id": "continuing-education-647574959e",
+      "unitId": "continuing-education",
+      "name": "线下培训咨询",
+      "category": "非学历培训",
+      "duties": "非学历教育、专业技术培训、校企培训和在线培训",
+      "consultations": [
+        "非学历教育",
+        "专业技术培训",
+        "校企培训和在线培训"
+      ],
+      "campus": "tdw",
+      "address": "长江西路66号培训楼",
+      "phones": [
+        {
+          "number": "0532-86983514"
+        }
+      ],
+      "mapTarget": {
+        "campus": "tdw",
+        "placeId": "training-building",
+        "name": "培训楼"
+      },
+      "sources": [
+        "https://upce.upc.edu.cn/",
+        "https://upce.upc.edu.cn/2025/0701/c22259a264598/page.htm",
+        "https://jyfz.upc.edu.cn/2026/1020/c8270a503341/page.htm"
+      ],
+      "checkedOn": "2026-11-21"
+    }
+  ]
+}

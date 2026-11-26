@@ -1,4 +1,4 @@
-import { transact } from "./db.js";
+import { transact } from "./db.js?v=24";
 
 const STORE = "timetableSemesters";
 

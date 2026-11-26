@@ -1,14 +1,13 @@
-:root:has([data-route="timetable"]:not([hidden])) { background: #f7f7fd; }
 [data-route="timetable"] {
-  --timetable-surface: #f1f1f9;
-  --timetable-ink: #23242e;
-  --timetable-muted: #515361;
-  --timetable-primary: #41659d;
-  --timetable-header-today: #dfe5fc;
-  --timetable-lane: #f0f0f8;
-  --timetable-lane-today: #eeeffa;
-  --timetable-border: #dcdeea;
-  --timetable-rule: #e6e7f0;
+  --timetable-surface: #fff1f7;
+  --timetable-ink: var(--ink);
+  --timetable-muted: var(--muted);
+  --timetable-primary: var(--accent);
+  --timetable-header-today: #fedce9;
+  --timetable-lane: #fdf1f6;
+  --timetable-lane-today: #ffedf4;
+  --timetable-border: var(--line);
+  --timetable-rule: #ecdce6;
   color: var(--timetable-ink);
 }
 .timetable-page-heading {
@@ -375,21 +374,14 @@
 .timetable-setup textarea { font-family: ui-monospace, monospace; }
 .timetable-transfer form { display: flex; justify-content: end; gap: 8px; margin-top: 14px; }
 .timetable-transfer :is(.button, .text-button) { margin: 0; }
-.hero-copy #today-course-summary { margin-top: 10px; color: var(--ink); line-height: 1.4; }
+.hero-copy #today-course-summary { margin-top: 10px; line-height: 1.4; }
 
-@media (prefers-color-scheme: dark) {
-  :root:has([data-route="timetable"]:not([hidden])) { background: #181922; }
-  [data-route="timetable"] {
-    --timetable-surface: #232530;
-    --timetable-ink: #ebecf4;
-    --timetable-muted: #b7bacb;
-    --timetable-primary: #b1c8f8;
-    --timetable-header-today: #344475;
-    --timetable-lane: #272936;
-    --timetable-lane-today: #2c344f;
-    --timetable-border: #3a3e52;
-    --timetable-rule: #343747;
-  }
+[data-theme="dark"] [data-route="timetable"] {
+  --timetable-surface: #1a1628;
+  --timetable-header-today: #3a213b;
+  --timetable-lane: #1c1729;
+  --timetable-lane-today: #2a1b31;
+  --timetable-rule: #352a43;
 }
 
 @media (max-width: 700px) {
