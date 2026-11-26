@@ -33,6 +33,7 @@
   border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--hero);
+  box-shadow: var(--panel-shadow);
 }
 .campus-map-canvas {
   display: block;

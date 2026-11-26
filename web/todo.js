@@ -8,6 +8,19 @@ const list = document.querySelector("#todo-list");
 const readStatus = document.querySelector("#todo-read-status");
 const writeStatus = document.querySelector("#todo-write-status");
 const retryButton = document.querySelector("#retry-todos");
+const summary = document.createElement("div");
+summary.className = "todo-summary";
+summary.hidden = true;
+summary.innerHTML = `
+  <dl class="todo-counts">
+    <div><dt>未完成</dt><dd data-todo-open>0</dd></div>
+    <div><dt>已完成</dt><dd data-todo-completed>0</dd></div>
+  </dl>
+  <progress class="todo-progress" value="0" max="1" aria-label="待办完成进度"></progress>`;
+list.before(summary);
+const openCount = summary.querySelector("[data-todo-open]");
+const completeCount = summary.querySelector("[data-todo-completed]");
+const progress = summary.querySelector("progress");
 const dateFormat = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 const sortKey = "upc-pocket:todo-sort";
 const sortModes = [
@@ -28,7 +41,8 @@ function priorityField() {
   field.textContent = "重要程度";
   const select = document.createElement("select");
   select.name = "priority";
-  select.replaceChildren(...priorities.map(([value, label]) => new Option(label, value, value === "1")));
+  select.replaceChildren(...priorities.map(([value, label]) => new Option(label, value)));
+  select.value = String(normalPriority);
   field.append(select);
   return field;
 }
@@ -58,7 +72,7 @@ try {
 sortControl.value = sortMode;
 
 const dialog = document.createElement("dialog");
-dialog.className = "settings-dialog";
+dialog.className = "settings-dialog todo-dialog";
 dialog.setAttribute("aria-labelledby", "todo-edit-title");
 dialog.innerHTML = `
   <form class="todo-edit-form">
@@ -89,7 +103,7 @@ const deleteButton = editForm.querySelector("[data-delete]");
 const cancelButton = editForm.querySelector("[data-cancel]");
 
 const undoNotice = document.createElement("div");
-undoNotice.className = "workspace-status";
+undoNotice.className = "workspace-status todo-undo";
 undoNotice.hidden = true;
 undoNotice.innerHTML = `<p role="status">已删除待办</p><button class="text-button" type="button">撤销删除</button>`;
 list.before(undoNotice);
@@ -187,9 +201,12 @@ function openEditor(todo) {
 
 function renderTodos(todos) {
   const focusedId = list.contains(document.activeElement) ? document.activeElement.id : null;
+  let completedCount = 0;
   const rows = todos.sort(orderTodos).map(todo => {
+    if (todo.completed) completedCount += 1;
     const row = document.createElement("li");
     row.className = "todo-row";
+    row.dataset.completed = String(todo.completed);
     const label = document.createElement("label");
     label.className = "check-row";
     const checkbox = document.createElement("input");
@@ -205,7 +222,8 @@ function renderTodos(todos) {
     const priority = todoPriority(todo);
     if (priority !== normalPriority) {
       const marker = document.createElement("span");
-      marker.className = "record-date todo-priority-marker";
+      marker.className = "todo-priority-marker";
+      marker.dataset.priority = priority === 2 ? "high" : "low";
       marker.textContent = priority === 2 ? "高优先" : "低优先";
       copy.append(marker);
     }
@@ -228,7 +246,14 @@ function renderTodos(todos) {
     return row;
   });
   list.replaceChildren(...rows);
-  list.hidden = todos.length === 0;
+  const empty = todos.length === 0;
+  openCount.textContent = String(todos.length - completedCount);
+  completeCount.textContent = String(completedCount);
+  progress.max = todos.length || 1;
+  progress.value = completedCount;
+  summary.hidden = empty;
+  list.hidden = empty;
+  readStatus.classList.toggle("todo-empty", empty);
   readStatus.textContent = todos.length === 0 ? "还没有待办" : "";
   retryButton.hidden = true;
   if (focusedId) document.getElementById(focusedId)?.focus({ preventScroll: true });
@@ -261,7 +286,10 @@ export async function refreshTodos() {
   if (busy) return;
   busy = true;
   addButton.disabled = true;
-  if (list.hidden) readStatus.textContent = "正在读取待办…";
+  if (list.hidden) {
+    readStatus.classList.remove("todo-empty");
+    readStatus.textContent = "正在读取待办…";
+  }
   retryButton.hidden = true;
   try {
     renderTodos(await transact("todos", "readonly", (tx, setResult) => {

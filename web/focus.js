@@ -14,6 +14,11 @@ try {
 }
 const stateLabel = document.querySelector("#focus-state");
 const timer = document.querySelector("#focus-time");
+const dial = document.createElement("div");
+dial.className = "focus-dial";
+dial.dataset.phase = "idle";
+timer.before(dial);
+dial.append(timer, stateLabel);
 const error = document.querySelector("#focus-error");
 const retry = document.querySelector("#retry-focus");
 const historyList = document.querySelector("#focus-history");
@@ -22,7 +27,7 @@ const controls = Array.from(document.querySelectorAll("[data-focus-action]"));
 const dateFormat = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
 const summary = document.createElement("section");
 summary.id = "focus-summary";
-summary.className = "workspace-section";
+summary.className = "workspace-section focus-summary";
 summary.hidden = true;
 summary.setAttribute("aria-labelledby", "focus-summary-title");
 summary.innerHTML = `
@@ -129,6 +134,12 @@ function tick() {
   if (!ready) return;
   const ms = remaining(activeSession, Date.now());
   renderTime(ms);
+  if (activeSession) {
+    const progress = Math.min(1, Math.max(0, ms / plannedDuration(activeSession)));
+    dial.style.setProperty("--focus-progress", (progress * 360) + "deg");
+  } else {
+    dial.style.removeProperty("--focus-progress");
+  }
   if (activeSession?.phase !== "running" || document.hidden || failed) return;
   if (ms === 0) {
     synchronize();
@@ -182,6 +193,7 @@ function renderHistory(entries) {
     .map(entry => {
       const row = document.createElement("li");
       row.className = "history-item";
+      row.dataset.completed = String(entry.completed);
       const label = document.createElement("span");
       label.className = "record-title";
       const seconds = Math.floor(entry.durationMs / 1000);
@@ -203,6 +215,7 @@ function renderHistory(entries) {
 function renderControls() {
   if (!ready) return;
   const phase = activeSession?.phase;
+  dial.dataset.phase = phase ?? "idle";
   durationChoice.hidden = Boolean(phase);
   const primary = phase === "running" ? "pause" : phase === "paused" ? "resume" : "start";
   const previousFocus = controls.find(button => button === document.activeElement);

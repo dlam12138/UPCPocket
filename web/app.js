@@ -1,8 +1,8 @@
 import { initializeAgenda, refreshAgenda, selectAgendaDate } from "./agenda.js?v=24";
 import { showCampusCalendar } from "./calendar.js";
-import { getPreferredCampus, initializeCampusServices, showCampusServices } from "./campus-services.js";
-import { refreshFocus } from "./focus.js?v=24";
-import { refreshTodos } from "./todo.js?v=24";
+import { getPreferredCampus, initializeCampusServices, showCampusServices } from "./campus-services.js?v=26";
+import { refreshFocus } from "./focus.js?v=26";
+import { refreshTodos } from "./todo.js?v=26";
 import { initializeTimetable, refreshTimetableDate } from "./timetable.js?v=24";
 
 const campusDateOptions = { timeZone: "Asia/Shanghai", year: "numeric", month: "long", day: "numeric" };
@@ -54,7 +54,8 @@ transparency.addEventListener("change", () => {
 
 // 地址末尾的 #home、#timetable 等标记当前页面，浏览器的前进和后退也能使用。
 const pages = Array.from(document.querySelectorAll(".page"));
-const navigation = document.querySelectorAll(".dock a");
+const dock = document.querySelector(".dock");
+const navigation = Array.from(dock.querySelectorAll("a"));
 // 旧版图书馆分馆地址仍指向同一页，三个馆区都在该页给出官方入口。
 const legacyLibraryRoutes = new Set(["library-east", "library-qiushi"]);
 
@@ -83,10 +84,19 @@ function showPage(moveFocus) {
   const params = new URLSearchParams(query);
   const agendaDate = activeRoute === "timetable" ? params.get("agenda") : null;
   const dockRoute = active.dataset.parent ?? activeRoute;
+  const dockIndex = navigation.findIndex(link => link.hash === "#" + dockRoute);
+  const previous = activePage;
+  dock.style.setProperty("--dock-index", dockIndex);
+  if (previous && previous.element !== active) {
+    delete previous.element.dataset.enter;
+    const backward = dockIndex < previous.dockIndex ||
+      (dockIndex === previous.dockIndex && previous.element.dataset.parent === activeRoute);
+    active.dataset.enter = backward ? "backward" : "forward";
+  }
   if (activePage?.route === "map" && (activeRoute !== "map" || activePage.hash !== location.hash)) {
     mapModule?.hideCampusMap();
   }
-  const page = { route: activeRoute, hash: location.hash };
+  const page = { route: activeRoute, hash: location.hash, element: active, dockIndex };
   activePage = page;
   for (const page of pages) {
     page.hidden = page !== active;
@@ -109,13 +119,13 @@ function showPage(moveFocus) {
   else if (activeRoute === "home" || activeRoute === "timetable") refreshAgenda();
   if (activeRoute === "calendar") showCampusCalendar();
   if (activeRoute === "map") {
-    openStaticFeature(() => import("./campus-map.js"), page, "campus-map-app", module => {
+    openStaticFeature(() => import("./campus-map.js?v=26"), page, "campus-map-app", module => {
       mapModule = module;
       return module.showCampusMap({ campus: getPreferredCampus(), place: params.get("place") });
     });
   }
   if (activeRoute === "floorplan") {
-    openStaticFeature(() => import("./floorplan.js"), page, "campus-floorplan-app",
+    openStaticFeature(() => import("./floorplan.js?v=26"), page, "campus-floorplan-app",
       module => module.showFloorplan(params.get("room")));
   }
   if (moveFocus) {
@@ -132,6 +142,24 @@ function resumePage() {
   if (activePage?.route === "todo") refreshTodos();
   if (activePage?.route === "home" || activePage?.route === "timetable") refreshAgenda();
 }
+
+const lightTracking = matchMedia("(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)");
+let highlight;
+let highlightFrame;
+document.querySelector(".content").addEventListener("pointermove", event => {
+  if (!lightTracking.matches || event.pointerType !== "mouse") return;
+  const card = event.target.closest(".service-card, .timetable-card");
+  if (!card) return;
+  highlight = { card, x: event.clientX, y: event.clientY };
+  if (highlightFrame !== undefined) return;
+  highlightFrame = requestAnimationFrame(() => {
+    highlightFrame = undefined;
+    const { card, x, y } = highlight;
+    const bounds = card.getBoundingClientRect();
+    card.style.setProperty("--pointer-x", `${x - bounds.left}px`);
+    card.style.setProperty("--pointer-y", `${y - bounds.top}px`);
+  });
+});
 
 initializeCampusServices();
 initializeAgenda();

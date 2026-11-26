@@ -11,14 +11,14 @@ const locationErrors = {
 };
 const schemes = {
   light: {
-    background: "#edf1e6", area: "#e0ebd7", building: "#b0bdaa", field: "#c0d8ae",
-    water: "#adcedb", road: "#fffef8", path: "#c0cabc", ink: "#263c33", selection: "#235f44",
-    walk: "#b04913", bike: "#2353a5", accuracy: "#225ac627", location: "#135ac0", pinBorder: "#fffef8",
+    background: "#f4edef", area: "#eae0e6", building: "#c7b3c1", field: "#d3d9d0",
+    water: "#afd4de", road: "#fffcfd", path: "#c9bcc7", ink: "#2c2032", selection: "#b5003c",
+    walk: "#a44716", bike: "#16589e", accuracy: "#225ac627", location: "#135ac0", pinBorder: "#fffcfd",
   },
   dark: {
-    background: "#23342c", area: "#304634", building: "#64766a", field: "#436046",
-    water: "#365d69", road: "#91a394", path: "#566d60", ink: "#f0f8f3", selection: "#b1e4c4",
-    walk: "#ffbe90", bike: "#95bfff", accuracy: "#8baeff3d", location: "#8baeff", pinBorder: "#102822",
+    background: "#151522", area: "#242034", building: "#65556e", field: "#3b4950",
+    water: "#234959", road: "#93839a", path: "#5c536c", ink: "#f0eef8", selection: "#ff5a82",
+    walk: "#ffbe90", bike: "#80deff", accuracy: "#44cbff36", location: "#72d8ff", pinBorder: "#131323",
   },
 };
 
@@ -121,7 +121,6 @@ function createMapController(root, data) {
   const followButton = element("follow");
   const canvas = root.querySelector("canvas");
   const context = canvas.getContext("2d");
-  const theme = matchMedia("(prefers-color-scheme: dark)");
   element("data").href = MAP_DATA.href;
 
   for (const entry of data.campuses) campusSelect.add(new Option(entry.name, entry.id));
@@ -153,7 +152,7 @@ function createMapController(root, data) {
       canvas.height = Math.round(height * ratio);
     }
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    const colors = theme.matches ? schemes.dark : schemes.light;
+    const colors = document.documentElement.dataset.theme === "dark" ? schemes.dark : schemes.light;
     const lonScale = Math.cos(view[1] * DEGREES_TO_RADIANS);
     const [west, south, east, north] = campus.bounds;
     const scale = zoom * Math.min((width - 30) / (east - west) / lonScale, (height - 30) / (north - south));
@@ -525,7 +524,7 @@ function createMapController(root, data) {
   canvas.addEventListener("lostpointercapture", () => { drag = undefined; });
   if (typeof ResizeObserver === "function") new ResizeObserver(redraw).observe(canvas);
   else addEventListener("resize", redraw);
-  theme.addEventListener("change", redraw);
+  document.documentElement.addEventListener("pocket-theme-change", redraw);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && watch !== undefined) stopLocation();
   });

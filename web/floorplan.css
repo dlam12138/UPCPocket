@@ -41,7 +41,7 @@
   max-height: min(58vh, 32rem);
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: .65rem;
+  border-radius: .8rem;
   background: var(--paper);
 }
 

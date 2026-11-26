@@ -177,7 +177,9 @@ function serviceRow(entry, status) {
   const anchor = link("", entry.href ?? `#${entry.id}`, "campus-link");
   const label = node("span", "campus-link-label");
   label.append(node("strong", "", entry.name), node("span", "campus-link-summary", entry.summary));
-  anchor.append(label, icon(anchor.target ? "external" : "arrow"));
+  const tile = node("span", `tile-icon campus-row-icon ${entry.color ?? "blue"}`);
+  tile.append(icon(entry.icon ?? (anchor.target ? "external" : "grid")));
+  anchor.append(tile, label, icon(anchor.target ? "external" : "arrow"));
   row.append(anchor);
   if (entry.id) row.append(pinButton(entry, status));
   return row;
@@ -224,6 +226,17 @@ function renderServices() {
   const results = node("div");
   root.replaceChildren(field, announcements, results);
 
+  const groups = [
+    ["学习与空间", ["timetable", "classroom", "library", "calendar", "floorplan", "learning"]],
+    ["校园生活", ["map", "directory", "power", "venues"]],
+    ["学校办事", ["official", "service-catalog"]],
+  ];
+  const defaultGroups = groups.map(([title, ids]) => {
+    const group = node("section", "campus-service-group");
+    group.append(node("h2", "", title), listLinks(ids.map(id => servicesById.get(id)), announcements));
+    return group;
+  });
+
   refreshServiceResults = () => {
     const terms = searchTerms(input.value);
     const links = [...officialLinks, ...learningLinks].filter(entry => entry.href?.startsWith("http"));
@@ -232,9 +245,14 @@ function renderServices() {
       ? []
       : campusOrder(links.filter(entry => matches([entry.name, entry.summary, entry.keywords], terms)));
     const entries = [...filteredServices, ...linkedResults];
-    results.replaceChildren(entries.length > 0
-      ? listLinks(entries, announcements)
-      : node("p", "campus-empty", "没有找到匹配的服务"));
+    if (terms.length === 0) {
+      results.replaceChildren(...defaultGroups);
+      for (const button of results.querySelectorAll("[data-campus-pin]")) updatePinButton(button);
+    } else {
+      results.replaceChildren(entries.length > 0
+        ? listLinks(entries, announcements)
+        : node("p", "campus-empty", "没有找到匹配的服务"));
+    }
     announcements.textContent = terms.length > 0 ? `找到 ${entries.length} 个入口` : "";
   };
   input.addEventListener("input", refreshServiceResults);

@@ -1,25 +1,26 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f8f9f3" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#101b17" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#0a0a14">
   <meta name="description" content="在 iPhone 主屏幕查课表、校园地图和通讯录，管理本机日程、待办和专注。">
   <meta name="referrer" content="no-referrer">
   <title>首页 · UPC Pocket</title>
-  <link rel="icon" href="./app-icon.svg" type="image/svg+xml">
+  <link rel="icon" href="./app-icon.svg?v=26" type="image/svg+xml">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="preload" href="./campus.webp" as="image" fetchpriority="high">
-  <link rel="stylesheet" href="./styles.css?v=24">
-  <link rel="stylesheet" href="./timetable.css">
-  <link rel="stylesheet" href="./campus-services.css">
-  <link rel="stylesheet" href="./calendar.css">
-  <link rel="stylesheet" href="./campus-map.css">
-  <link rel="stylesheet" href="./floorplan.css">
-  <link rel="stylesheet" href="./agenda.css">
-  <script src="./app.js?v=24" type="module"></script>
+  <script src="./appearance.js?v=26"></script>
+  <link rel="stylesheet" href="./styles.css?v=26">
+  <link rel="stylesheet" href="./timetable.css?v=26">
+  <link rel="stylesheet" href="./campus-services.css?v=26">
+  <link rel="stylesheet" href="./calendar.css?v=26">
+  <link rel="stylesheet" href="./campus-map.css?v=26">
+  <link rel="stylesheet" href="./floorplan.css?v=26">
+  <link rel="stylesheet" href="./agenda.css?v=26">
+  <link rel="stylesheet" href="./workspace.css?v=26">
+  <script src="./app.js?v=26" type="module"></script>
 </head>
 <body>
   <!-- 页面共用的线条图标。每个 symbol 都可以通过 use 重复使用。 -->
@@ -42,7 +43,7 @@
   <header class="site-header">
     <div class="header-inner">
       <a class="brand" href="#home" aria-label="UPC Pocket 首页">
-        <img src="./app-icon.svg" width="35" height="35" alt="">
+        <img src="./app-icon.svg?v=26" width="35" height="35" alt="">
         <span>UPC Pocket</span>
       </a>
       <button class="settings-button" type="button" id="open-settings" hidden>
@@ -55,7 +56,7 @@
     <section class="page" data-route="home" aria-labelledby="home-title">
       <div class="page-heading">
         <time class="today"></time>
-        <h1 id="home-title" tabindex="-1">我的校园首页</h1>
+        <h1 id="home-title" tabindex="-1">我的校园</h1>
       </div>
 
       <article class="timetable-card">
@@ -98,7 +99,7 @@
 
     <section class="page" data-route="classroom" data-parent="services" aria-labelledby="classroom-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="classroom-title" tabindex="-1">空闲教室</h1>
       </div>
       <div class="detail-card">
@@ -109,7 +110,7 @@
 
     <section class="page" data-route="calendar" data-parent="services" aria-labelledby="calendar-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="calendar-title" tabindex="-1">学校校历</h1>
       </div>
       <div id="campus-calendar-app"></div>
@@ -117,7 +118,7 @@
 
     <section class="page" data-route="directory" data-parent="services" aria-labelledby="directory-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="directory-title" tabindex="-1">校园通讯录</h1>
       </div>
       <div id="campus-directory-app"></div>
@@ -125,7 +126,7 @@
 
     <section class="page" data-route="learning" data-parent="services" aria-labelledby="learning-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="learning-title" tabindex="-1">学习平台</h1>
       </div>
       <div id="campus-learning-app"></div>
@@ -133,7 +134,7 @@
 
     <section class="page" data-route="official" data-parent="services" aria-labelledby="official-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="official-title" tabindex="-1">校园官方网页</h1>
       </div>
       <div id="campus-official-app"></div>
@@ -141,7 +142,7 @@
 
     <section class="page" data-route="map" data-parent="services" aria-labelledby="map-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="map-title" tabindex="-1">校园地图</h1>
       </div>
       <div id="campus-map-app"></div>
@@ -149,7 +150,7 @@
 
     <section class="page" data-route="floorplan" data-parent="services" aria-labelledby="floorplan-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="floorplan-title" tabindex="-1">卓越楼平面图</h1>
       </div>
       <div id="campus-floorplan-app"></div>
@@ -157,7 +158,7 @@
 
     <section class="page" data-route="power" data-parent="services" aria-labelledby="power-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="power-title" tabindex="-1">宿舍电量</h1>
       </div>
       <div id="campus-power-app"></div>
@@ -165,7 +166,7 @@
 
     <section class="page" data-route="venues" data-parent="services" aria-labelledby="venues-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="venues-title" tabindex="-1">体育场馆</h1>
       </div>
       <div id="campus-venues-app"></div>
@@ -173,7 +174,7 @@
 
     <section class="page" data-route="service-catalog" data-parent="services" aria-labelledby="service-catalog-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="service-catalog-title" tabindex="-1">e站通</h1>
       </div>
       <div class="detail-card">
@@ -184,7 +185,7 @@
 
     <section class="page" data-route="library" data-parent="services" aria-labelledby="library-title" hidden>
       <div class="page-heading">
-        <a class="text-link" href="#services">校园服务</a>
+        <a class="text-link back-link" href="#services"><svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg>校园服务</a>
         <h1 id="library-title" tabindex="-1">图书馆</h1>
       </div>
       <div class="detail-card">
@@ -209,68 +210,73 @@
 
     <section class="page" data-route="todo" aria-labelledby="todo-title" hidden>
       <div class="page-heading"><h1 id="todo-title" tabindex="-1">待办</h1></div>
-      <section class="detail-card workspace-card" aria-labelledby="todo-new-title">
-        <h2 id="todo-new-title">新增待办</h2>
-        <form class="todo-form" id="todo-form">
-          <div class="field">
-            <label for="todo-name">标题</label>
-            <input type="text" id="todo-name" placeholder="例如：还图书" autocomplete="off" required>
+      <div class="todo-layout">
+        <section class="detail-card workspace-card todo-composer" aria-labelledby="todo-new-title">
+          <h2 id="todo-new-title">新增待办</h2>
+          <form class="todo-form" id="todo-form">
+            <div class="field">
+              <label for="todo-name">标题</label>
+              <input type="text" id="todo-name" placeholder="例如：还图书" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="todo-due">截止时间 <span>（可选）</span></label>
+              <input type="datetime-local" id="todo-due">
+            </div>
+            <button class="button" type="submit" id="add-todo" disabled>添加</button>
+          </form>
+          <p id="todo-write-status" class="operation-error" role="status"></p>
+        </section>
+        <section class="workspace-section todo-workspace" aria-labelledby="todo-list-title">
+          <div class="section-heading">
+            <h2 id="todo-list-title">我的待办</h2>
+            <div id="todo-sort"></div>
           </div>
-          <div class="field">
-            <label for="todo-due">截止时间 <span>（可选）</span></label>
-            <input type="datetime-local" id="todo-due">
+          <div class="workspace-status">
+            <p id="todo-read-status" role="status">正在读取待办…</p>
+            <button class="text-button" type="button" id="retry-todos" hidden>重试</button>
           </div>
-          <button class="button" type="submit" id="add-todo" disabled>添加</button>
-        </form>
-        <p id="todo-write-status" class="operation-error" role="status"></p>
-      </section>
-      <section class="workspace-section" aria-labelledby="todo-list-title">
-        <div class="section-heading">
-          <h2 id="todo-list-title">我的待办</h2>
-          <div id="todo-sort"></div>
-        </div>
-        <div class="workspace-status">
-          <p id="todo-read-status" role="status">正在读取待办…</p>
-          <button class="text-button" type="button" id="retry-todos" hidden>重试</button>
-        </div>
-        <ul class="record-list" id="todo-list" hidden></ul>
-      </section>
+          <ul class="record-list" id="todo-list" hidden></ul>
+        </section>
+      </div>
     </section>
 
     <section class="page" data-route="focus" aria-labelledby="focus-title" hidden>
       <div class="page-heading"><h1 id="focus-title" tabindex="-1">专注</h1></div>
-      <section class="detail-card workspace-card focus-card" aria-labelledby="focus-clock-title">
-        <h2 id="focus-clock-title" class="focus-clock-title">专注计时</h2>
-        <p id="focus-state" role="status">正在恢复计时…</p>
-        <div class="focus-time" id="focus-time" role="timer" aria-label="剩余时间">--:--</div>
-        <label class="focus-duration" id="focus-duration-choice" hidden>专注时长
-          <select id="focus-duration">
-            <option value="15">15 分钟</option>
-            <option value="25" selected>25 分钟</option>
-            <option value="45">45 分钟</option>
-            <option value="60">60 分钟</option>
-          </select>
-        </label>
-        <div class="focus-actions">
-          <button class="button" type="button" data-focus-action="start" hidden>开始</button>
-          <button class="button" type="button" data-focus-action="pause" hidden>暂停</button>
-          <button class="button" type="button" data-focus-action="resume" hidden>继续</button>
-          <button class="button button-secondary" type="button" data-focus-action="finish" hidden>结束</button>
-        </div>
-        <div class="workspace-status focus-status">
-          <p id="focus-error" class="operation-error" role="status"></p>
-          <button class="text-button" type="button" id="retry-focus" hidden>重试</button>
-        </div>
-      </section>
-      <section class="workspace-section" aria-labelledby="focus-history-title">
-        <div class="section-heading"><h2 id="focus-history-title">专注记录</h2></div>
-        <p id="focus-history-status" role="status"></p>
-        <ul class="record-list" id="focus-history" hidden></ul>
-      </section>
+      <div class="focus-layout">
+        <section class="detail-card workspace-card focus-card" aria-labelledby="focus-clock-title">
+          <h2 id="focus-clock-title" class="focus-clock-title">专注计时</h2>
+          <p id="focus-state" role="status">正在恢复计时…</p>
+          <div class="focus-time" id="focus-time" role="timer" aria-label="剩余时间">--:--</div>
+          <label class="focus-duration" id="focus-duration-choice" hidden>专注时长
+            <select id="focus-duration">
+              <option value="15">15 分钟</option>
+              <option value="25" selected>25 分钟</option>
+              <option value="45">45 分钟</option>
+              <option value="60">60 分钟</option>
+            </select>
+          </label>
+          <div class="focus-actions">
+            <button class="button" type="button" data-focus-action="start" hidden>开始</button>
+            <button class="button" type="button" data-focus-action="pause" hidden>暂停</button>
+            <button class="button" type="button" data-focus-action="resume" hidden>继续</button>
+            <button class="button button-secondary" type="button" data-focus-action="finish" hidden>结束</button>
+          </div>
+          <div class="workspace-status focus-status">
+            <p id="focus-error" class="operation-error" role="status"></p>
+            <button class="text-button" type="button" id="retry-focus" hidden>重试</button>
+          </div>
+        </section>
+        <section class="workspace-section" aria-labelledby="focus-history-title">
+          <div class="section-heading"><h2 id="focus-history-title">专注记录</h2></div>
+          <p id="focus-history-status" role="status"></p>
+          <ul class="record-list" id="focus-history" hidden></ul>
+        </section>
+      </div>
     </section>
   </main>
 
   <nav class="dock" aria-label="主导航">
+    <span class="dock-indicator" aria-hidden="true"></span>
     <a href="#home" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-home"/></svg><span>首页</span></a>
     <a href="#timetable"><svg class="icon" aria-hidden="true"><use href="#i-calendar"/></svg><span>课表</span></a>
     <a href="#services"><svg class="icon" aria-hidden="true"><use href="#i-grid"/></svg><span>服务</span></a>
@@ -292,6 +298,15 @@
           <option value="gzk">古镇口</option>
         </select>
         <p id="campus-preference-status" class="operation-error" role="status"></p>
+      </div>
+      <div class="field settings-campus">
+        <label for="appearance-theme">主题</label>
+        <select id="appearance-theme">
+          <option value="dark">深色</option>
+          <option value="light">浅色</option>
+          <option value="system">跟随系统</option>
+        </select>
+        <p id="appearance-theme-status" class="operation-error" role="status"></p>
       </div>
       <label class="check-row"><input id="reduce-transparency" type="checkbox">降低透明度</label>
       <p id="settings-status" class="operation-error" role="status"></p>

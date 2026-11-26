@@ -24,8 +24,9 @@
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--surface);
+  box-shadow: var(--panel-shadow);
   list-style: none;
 }
 
@@ -42,11 +43,10 @@
 .campus-link {
   display: flex;
   flex: 1;
-  justify-content: space-between;
   align-items: center;
   gap: 12px;
   min-width: 0;
-  min-height: 54px;
+  min-height: 59px;
   padding: 10px 15px;
 }
 
@@ -63,8 +63,25 @@
 
 .campus-link-label {
   display: grid;
+  flex: 1;
   gap: 3px;
   overflow-wrap: anywhere;
+}
+
+.campus-link .campus-row-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.campus-row-icon .icon { width: 17px; height: 17px; }
+.campus-service-group + .campus-service-group { margin-top: 22px; }
+.campus-service-group h2 {
+  margin-bottom: 8px;
+  font-size: 1.1rem;
+  font-weight: 720;
 }
 
 .campus-link-summary,
@@ -90,6 +107,7 @@
 }
 
 .campus-pin[aria-pressed="true"] {
+  color: var(--accent);
   background: var(--dock-active);
 }
 

@@ -159,7 +159,7 @@ function createView(mount) {
     const action = event.target.closest("[data-zoom]")?.dataset.zoom;
     if (action) setZoom(action === "reset" ? 1 : zoom + (action === "in" ? .5 : -.5));
   });
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => drawPlan(canvas, sheet, selected));
+  document.documentElement.addEventListener("pocket-theme-change", () => drawPlan(canvas, sheet, selected));
   show(sheets[0]);
   return { find };
 }
