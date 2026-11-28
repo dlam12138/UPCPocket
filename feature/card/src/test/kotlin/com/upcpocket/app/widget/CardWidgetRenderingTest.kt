@@ -10,6 +10,7 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.data.ecard.CardBalanceBinding
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
@@ -31,12 +32,11 @@ class CardWidgetRenderingTest {
 
     private val context = ApplicationProvider.getApplicationContext<Application>()
     private val now = 1_700_000_000_000L
-    private val id = "2099000123"
-    private val binding = CardBalanceBinding(
+    private val reference = SchoolAccountReference(
         accountId = SchoolAccountId("acct_test_account_a"),
-        studentId = id,
         credentialGeneration = AccountGeneration(2),
     )
+    private val binding = CardBalanceBinding(reference)
 
     private fun pending(requestCode: Int): PendingIntent = PendingIntent.getActivity(
         context,
@@ -69,9 +69,7 @@ class CardWidgetRenderingTest {
     fun `compact card shows total and transition balance without a refresh button`() {
         val root = render(
             snapshot = DirectCardSnapshot(
-                accountId = binding.accountId.value,
-                studentId = id,
-                credentialGeneration = 2,
+                accountReference = reference,
                 balanceCents = 12345,
                 transitionCents = 678,
                 fetchedAt = now,
@@ -117,9 +115,7 @@ class CardWidgetRenderingTest {
     @Test
     fun `cleaning hides old identity values even when an old snapshot is supplied`() {
         val old = DirectCardSnapshot(
-            accountId = binding.accountId.value,
-            studentId = id,
-            credentialGeneration = 1,
+            accountReference = reference.copy(credentialGeneration = AccountGeneration(1)),
             balanceCents = 12345,
             transitionCents = 0,
             fetchedAt = now,
@@ -136,9 +132,7 @@ class CardWidgetRenderingTest {
     @Test
     fun `refreshing and failure keep old values and the last success time`() {
         val card = DirectCardSnapshot(
-            accountId = binding.accountId.value,
-            studentId = id,
-            credentialGeneration = 2,
+            accountReference = reference,
             balanceCents = 12345,
             transitionCents = 0,
             fetchedAt = now,
@@ -157,9 +151,7 @@ class CardWidgetRenderingTest {
     @Test
     fun `same-owner cache from older credential generation is marked historical`() {
         val card = DirectCardSnapshot(
-            accountId = binding.accountId.value,
-            studentId = id,
-            credentialGeneration = 1,
+            accountReference = reference.copy(credentialGeneration = AccountGeneration(1)),
             balanceCents = 12345,
             transitionCents = 0,
             fetchedAt = now,
@@ -187,9 +179,7 @@ class CardWidgetRenderingTest {
         val views = CardWidgetRenderer(ctx).views(
             status = CardBindingStatus(CardBindingAvailability.READY, binding),
             snapshot = DirectCardSnapshot(
-                accountId = binding.accountId.value,
-                studentId = id,
-                credentialGeneration = 2,
+                accountReference = reference,
                 balanceCents = 699,
                 transitionCents = 0,
                 fetchedAt = now,
@@ -224,9 +214,7 @@ class CardWidgetRenderingTest {
         val views = CardWidgetRenderer(light).views(
             status = CardBindingStatus(CardBindingAvailability.READY, binding),
             snapshot = DirectCardSnapshot(
-                accountId = binding.accountId.value,
-                studentId = id,
-                credentialGeneration = 2,
+                accountReference = reference,
                 balanceCents = 12345,
                 transitionCents = 0,
                 fetchedAt = now,

@@ -11,8 +11,11 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
 import com.upcpocket.app.account.api.SchoolStudentIdentity
+import com.upcpocket.app.card.CardBackendBalance
+import com.upcpocket.app.card.CardBackendDataSource
+import com.upcpocket.app.card.CardBackendTransactionPage
+import com.upcpocket.app.card.CardBackendTransactionsSummary
 import com.upcpocket.app.card.CardCapabilities
-import com.upcpocket.app.card.CardInputStore
 import com.upcpocket.app.card.CardPlugin
 import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.focus.FocusCapabilities
@@ -130,14 +133,13 @@ class ReducedAssemblyTest {
         val context = ApplicationProvider.getApplicationContext<Application>()
         val card = CardPlugin(
             context = context,
-            account = object : SchoolAccountStudentIdentityReader {
-                override val state = MutableStateFlow(SchoolAccountState())
-                override val studentIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
-            },
-            inputStore = object : CardInputStore {
-                override val studentId: Flow<String> = flowOf("")
-                override suspend fun save(studentId: String) = Unit
-                override suspend fun clear() = Unit
+            account = openAccount(),
+            backend = object : CardBackendDataSource {
+                override suspend fun balance(): CardBackendBalance = error("精简装配测试不得联网")
+                override suspend fun transactions(month: java.time.YearMonth?, page: Int, size: Int): CardBackendTransactionPage =
+                    error("精简装配测试不得联网")
+                override suspend fun transactionsSummary(month: java.time.YearMonth?): CardBackendTransactionsSummary =
+                    error("精简装配测试不得联网")
             },
             onSnapshotChanged = {},
         )

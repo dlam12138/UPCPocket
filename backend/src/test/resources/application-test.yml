@@ -30,3 +30,32 @@ pocket:
       audience: upcpocket-admin-test
   cas:
     enabled: false
+  proxy:
+    not-configured-adapters: false
+    single-flight:
+      max-entries: 64
+      max-waiters-per-entry: 8
+      wait-timeout-ms: 5000
+    account-rate-limit:
+      window-ms: 60000
+      max-requests: 1000
+      max-tracked-accounts: 1000
+    modules:
+      timetable:
+        timeout-ms: 5000
+        max-concurrency: 4
+        queue-capacity: 8
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 1000
+      card:
+        timeout-ms: 5000
+        max-concurrency: 4
+        queue-capacity: 8
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 1000
+      grades:
+        timeout-ms: 5000
+        max-concurrency: 4
+        queue-capacity: 8
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 1000

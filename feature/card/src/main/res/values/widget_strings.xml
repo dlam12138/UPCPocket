@@ -12,10 +12,10 @@
     <string name="widget_card_cleaning_hint">旧身份数值已隐藏</string>
     <string name="widget_card_reconfigure">需重新保存</string>
     <string name="widget_card_reconfigure_hint">打开应用处理账号</string>
-    <string name="widget_card_no_student_id">无法查询</string>
-    <string name="widget_card_no_student_hint">登录名不是有效学号</string>
     <string name="widget_card_no_account">尚未绑定</string>
     <string name="widget_card_no_account_hint">打开应用设置学校账号</string>
+    <string name="widget_card_backend_not_ready">服务未就绪</string>
+    <string name="widget_card_backend_not_ready_hint">稍后再试</string>
     <string name="widget_card_history">历史值 · %1$s</string>
     <string name="widget_balance_unit">元</string>
     <string name="widget_refresh_card">刷新校园卡余额</string>

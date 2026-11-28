@@ -36,15 +36,10 @@ import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.platform.crypto.ByteCrypto
 import com.upcpocket.app.plugin.ui.LocalPluginPageActive
-import com.upcpocket.app.upcauth.TimetableAuthenticator
-import com.upcpocket.app.upcauth.UpcAuthCookie
-import com.upcpocket.app.upcauth.UpcAuthFailure
-import com.upcpocket.app.upcauth.UpcAuthResult
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -63,14 +58,21 @@ class TimetableFirstLoginScreenTest {
     private val directory = java.nio.file.Files.createTempDirectory("timetable-first-login")
         .toFile()
     private val account = FakeAccount()
-    private val auth = FakeAuth()
-
     private fun service(
         transport: ProgrammedTransport,
     ): TimetableService = TimetableService(
         account = account,
-        authenticator = auth,
-        api = TimetableApi(transport, clock = { 1_700_000_000_000 }),
+        backend = TimetableApiTestBackendSource(transport, clock = { 1_700_000_000_000 }),
+        sessionStore = TimetableSessionStore(directory, TestCrypto()),
+        cacheStore = TimetableCacheStore(directory),
+        clock = { 1_700_000_000_000 },
+        todayProvider = { java.time.LocalDate.parse("2026-10-28") },
+        ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+    )
+
+    private fun service(backend: TimetableBackendSource): TimetableService = TimetableService(
+        account = account,
+        backend = backend,
         sessionStore = TimetableSessionStore(directory, TestCrypto()),
         cacheStore = TimetableCacheStore(directory),
         clock = { 1_700_000_000_000 },
@@ -163,19 +165,6 @@ class TimetableFirstLoginScreenTest {
 
     @Test
     fun coursesOnlyHidesLocalAgendaAndKeepsSelectedWeekAndRequests() {
-        auth.result = UpcAuthResult.Success(
-            listOf(
-                UpcAuthCookie(
-                    name = "eai-sess",
-                    value = "synthetic-session",
-                    domain = "app.upc.edu.cn",
-                    path = "/",
-                    secure = true,
-                    httpOnly = true,
-                    expiresAtEpochSeconds = null,
-                ),
-            ),
-        )
         var requests = 0
         val transport = ProgrammedTransport { request ->
             requests++
@@ -330,15 +319,18 @@ class TimetableFirstLoginScreenTest {
     }
 
     @Test
-    fun firstInteractionRequiredShowsReachableLoginAndCanContinue() {
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") {
-                json(javaClass.getResource("/timetable_index.json")!!.readText())
-            } else {
-                json(javaClass.getResource("/timetable_week_08.json")!!.readText())
-            }
+    fun backendChallengeOpensOfficialPageWithoutCreatingLocalSchoolSession() {
+        val source = object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex =
+                throw TimetableBackendFailure(TimetableBackendFailureCode.INTERACTIVE_CHALLENGE)
+
+            override suspend fun week(
+                year: String,
+                term: String,
+                week: Int,
+            ): TimetableBackendWeek = error("challenge must stop before week query")
         }
-        val service = service(transport)
+        val service = service(source)
         val viewModel = TimetableViewModel(service)
         rule.setContent {
             MaterialTheme {
@@ -351,43 +343,23 @@ class TimetableFirstLoginScreenTest {
         rule.waitUntil(5_000) {
             service.state.value.connection == TimetableConnection.INTERACTION_REQUIRED
         }
-        rule.onNodeWithText("学校登录").assertIsDisplayed().performClick()
+        rule.onNodeWithText("打开学校官方页").assertIsDisplayed().performClick()
         rule.waitUntil(5_000) {
             service.state.value.interactionUrl != null
         }
         rule.onNodeWithText("网页登录").assertIsDisplayed()
 
-        // 模拟学校网页正常完成登录后，业务层用页面 Cookie 再验证 index，
-        // 然后主动刷新取得当前周；不依赖 WebView 注入表单。
-        runBlocking {
-            assertTrue(service.adoptInteractiveCookies("eai-sess=web-session"))
-            service.refresh()
-        }
-        rule.waitUntil(5_000) {
-            service.state.value.terms.isNotEmpty() &&
-                service.state.value.weekState == TimetableWeekState.READY
-        }
-        rule.onNodeWithText("关闭").performClick()
-        rule.onNodeWithText("第 8 周").assertExists()
-        rule.onNodeWithText("共 19 周").assertExists()
-        assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
+        rule.onNodeWithText("返回设置").performClick()
+        assertEquals(TimetableConnection.INTERACTION_REQUIRED, service.state.value.connection)
+        assertTrue(service.state.value.terms.isEmpty())
+        assertEquals(
+            null,
+            TimetableSessionStore(directory, TestCrypto()).load("acct_synthetic_1", 1),
+        )
     }
 
     @Test
     fun accountSwitchDropsOldDetailAndLoginDialog() {
-        auth.result = UpcAuthResult.Success(
-            listOf(
-                UpcAuthCookie(
-                    name = "eai-sess",
-                    value = "synthetic-session",
-                    domain = "app.upc.edu.cn",
-                    path = "/",
-                    secure = true,
-                    httpOnly = true,
-                    expiresAtEpochSeconds = null,
-                ),
-            ),
-        )
         val transport = ProgrammedTransport { request ->
             if (request.method == "GET") {
                 json(javaClass.getResource("/timetable_index.json")!!.readText())
@@ -427,15 +399,15 @@ class TimetableFirstLoginScreenTest {
             service.state.value.accountEpoch > 0 && service.state.value.terms.isEmpty()
         }
         rule.onNodeWithText("日期").assertDoesNotExist()
-        rule.onNodeWithText("学校登录").assertDoesNotExist()
-        rule.onNodeWithText("账号已保存，点击右上角刷新读取课表。")
+        rule.onNodeWithText("打开学校官方页").assertDoesNotExist()
+        rule.onNodeWithText("校方托管账号已绑定，点击右上角刷新读取课表。")
             .assertIsDisplayed()
         rule.onNodeWithContentDescription("刷新课表").performClick()
         rule.waitUntil(5_000) {
             service.state.value.connection == TimetableConnection.CONNECTED &&
                 service.state.value.weekState == TimetableWeekState.READY
         }
-        rule.onNodeWithText("账号已保存，点击右上角刷新读取课表。")
+        rule.onNodeWithText("校方托管账号已绑定，点击右上角刷新读取课表。")
             .assertDoesNotExist()
     }
 
@@ -462,7 +434,7 @@ class TimetableFirstLoginScreenTest {
         )
         private val _state = MutableStateFlow(
             SchoolAccountState(
-                status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                status = SchoolAccountStatus.MANAGED_ACTIVE,
                 generation = AccountGeneration(1),
                 maskedAccount = "20••••01",
                 savedAtEpochMillis = 1,
@@ -477,24 +449,12 @@ class TimetableFirstLoginScreenTest {
                 AccountGeneration(2),
             )
             _state.value = SchoolAccountState(
-                status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                status = SchoolAccountStatus.MANAGED_ACTIVE,
                 generation = AccountGeneration(2),
                 maskedAccount = "20••••02",
                 savedAtEpochMillis = 2,
             )
         }
-    }
-
-    private class FakeAuth : TimetableAuthenticator {
-        var result: UpcAuthResult = UpcAuthResult.Failure(
-            UpcAuthFailure.INTERACTION_REQUIRED,
-            "https://cas.upc.edu.cn/cas/login?service=synthetic",
-        )
-
-        override suspend fun authenticate(
-            expectedAccountId: SchoolAccountId,
-            expectedCredentialGeneration: Long,
-        ): UpcAuthResult = result
     }
 
     private class TestCrypto : ByteCrypto {

@@ -265,6 +265,12 @@ private fun CampusSwitchRow(
 private fun accountStatusLabel(status: SchoolAccountStatus): String = when (status) {
     SchoolAccountStatus.LOADING -> "读取中"
     SchoolAccountStatus.NOT_CONFIGURED -> "未设置"
+    SchoolAccountStatus.MANAGED_ACTIVE -> "校方托管已连接"
+    SchoolAccountStatus.MANAGED_REAUTH_REQUIRED -> "需要重新验证"
+    SchoolAccountStatus.MANAGED_DISABLED -> "校方托管已停用"
+    SchoolAccountStatus.UNBIND_PENDING -> "解除托管待重试"
+    SchoolAccountStatus.SIGN_OUT_PENDING -> "退出本机待重试"
+    SchoolAccountStatus.BACKEND_NOT_READY -> "校方服务未就绪"
     SchoolAccountStatus.SAVED_UNVERIFIED -> "已保存，尚未验证"
     SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存"
     SchoolAccountStatus.SWITCHING -> "切换中"

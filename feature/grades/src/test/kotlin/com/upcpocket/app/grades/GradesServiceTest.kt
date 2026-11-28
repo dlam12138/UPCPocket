@@ -7,9 +7,6 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.platform.crypto.ByteCrypto
-import com.upcpocket.app.upcauth.GradesAuthenticator
-import com.upcpocket.app.upcauth.UpcAuthCookie
-import com.upcpocket.app.upcauth.UpcAuthResult
 import java.io.File
 import java.nio.file.Files
 import kotlinx.coroutines.CompletableDeferred
@@ -51,11 +48,11 @@ class GradesServiceTest {
         val files = GradesFiles(directory, XorCrypto())
         assertTrue(files.save(snapshot(bindingA)))
         val reader = FakeReader(validState(bindingA), bindingA)
-        val authenticator = BlockingAuthenticator()
-        val service = createService(reader, authenticator, files)
+        val backend = BlockingBackendSource()
+        val service = createService(reader, backend, files)
 
         val job = launch { service.sync() }
-        authenticator.entered.await()
+        backend.entered.await()
         assertEquals(GradesConnection.CONNECTING, service.state.value.connection)
 
         job.cancelAndJoin()
@@ -77,7 +74,7 @@ class GradesServiceTest {
         stored.writeText("not-json", Charsets.UTF_8)
 
         val reader = FakeReader(validState(bindingA), bindingA)
-        val service = createService(reader, SuccessAuthenticator, files)
+        val service = createService(reader, NoBackendSource, files)
 
         service.restore()
         assertEquals(GradesConnection.PROTOCOL_ERROR, service.state.value.connection)
@@ -90,9 +87,7 @@ class GradesServiceTest {
         val reader = FakeReader(validState(bindingA), bindingA)
         val service = createService(
             account = reader,
-            authenticator = SuccessAuthenticator,
-            files = files,
-            remote = FakeRemote(
+            backend = FakeBackendSource(
                 index = GradesIndex(listOf(term), term),
                 courses = mapOf(
                     term.key to listOf(
@@ -100,6 +95,7 @@ class GradesServiceTest {
                     ),
                 ),
             ),
+            files = files,
         )
 
         service.sync()
@@ -120,7 +116,7 @@ class GradesServiceTest {
             SchoolAccountState(status = SchoolAccountStatus.LOADING),
             reference = null,
         )
-        val service = createService(reader, SuccessAuthenticator, files)
+        val service = createService(reader, NoBackendSource, files)
 
         reader.set(validState(bindingA), bindingA)
         service.restore()
@@ -136,15 +132,15 @@ class GradesServiceTest {
     @Test
     fun cancelledOldAccountSyncCannotOverwriteTheNewAccountState() = runTest {
         val reader = FakeReader(validState(bindingA), bindingA)
-        val authenticator = BlockingAuthenticator()
-        val service = createService(reader, authenticator, GradesFiles(directory, XorCrypto()))
+        val backend = BlockingBackendSource()
+        val service = createService(reader, backend, GradesFiles(directory, XorCrypto()))
         val bindingB = SchoolAccountReference(
             SchoolAccountId("acct_synthetic_b"),
             AccountGeneration(2),
         )
 
         val job = launch { service.sync() }
-        authenticator.entered.await()
+        backend.entered.await()
         reader.set(validState(bindingB), bindingB)
         runCurrent()
         assertEquals(bindingB, service.state.value.owner)
@@ -176,7 +172,7 @@ class GradesServiceTest {
             ),
         )
         val reader = FakeReader(validState(bindingA), bindingA)
-        val remote = FakeRemote(
+        val backend = FakeBackendSource(
             index = GradesIndex(listOf(term, termB, termC), term),
             courses = mapOf(
                 termB.key to listOf(
@@ -184,11 +180,11 @@ class GradesServiceTest {
                 ),
             ),
             failures = mapOf(
-                term.key to GradesRemoteFailure.PROTOCOL,
-                termC.key to GradesRemoteFailure.PROTOCOL,
+                term.key to GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
+                termC.key to GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
             ),
         )
-        val synced = createService(reader, SuccessAuthenticator, files, remote)
+        val synced = createService(reader, backend, files)
         synced.sync()
         assertEquals(GradesConnection.PARTIAL, synced.state.value.connection)
         assertEquals(GradesFailure.PROTOCOL_ERROR, synced.state.value.lastFailure)
@@ -196,9 +192,8 @@ class GradesServiceTest {
         // 新进程：同一目录重新构造存储与服务，只做恢复。
         val restored = createService(
             reader,
-            SuccessAuthenticator,
+            NoBackendSource,
             GradesFiles(directory, XorCrypto()),
-            NoRemote,
         )
         restored.restore()
 
@@ -220,20 +215,19 @@ class GradesServiceTest {
     fun partialSyncWithFailedSnapshotWriteKeepsUnsavedChangesAcrossRestore() = runTest {
         val termB = GradesTerm(year = "2024", term = "2")
         val reader = FakeReader(validState(bindingA), bindingA)
-        val remote = FakeRemote(
+        val backend = FakeBackendSource(
             index = GradesIndex(listOf(term, termB), term),
             courses = mapOf(
                 term.key to listOf(
                     GradesCourse(term = term, courseName = "高等数学", score = "95"),
                 ),
             ),
-            failures = mapOf(termB.key to GradesRemoteFailure.PROTOCOL),
+            failures = mapOf(termB.key to GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR),
         )
         val service = createService(
             reader,
-            SuccessAuthenticator,
+            backend,
             GradesFiles(directory, FailEncryptCrypto()),
-            remote,
         )
 
         service.sync()
@@ -266,15 +260,15 @@ class GradesServiceTest {
             ),
         )
         val reader = FakeReader(validState(bindingA), bindingA)
-        val remote = FakeRemote(
+        val backend = FakeBackendSource(
             index = GradesIndex(listOf(term, termB), term),
             courses = emptyMap(),
             failures = mapOf(
-                term.key to GradesRemoteFailure.PROTOCOL,
-                termB.key to GradesRemoteFailure.PROTOCOL,
+                term.key to GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
+                termB.key to GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
             ),
         )
-        val service = createService(reader, SuccessAuthenticator, files, remote)
+        val service = createService(reader, backend, files)
 
         service.sync()
 
@@ -292,9 +286,8 @@ class GradesServiceTest {
         // 也不能把沿用结果的成功时间改成这次失败尝试的时间。
         val restored = createService(
             reader,
-            SuccessAuthenticator,
+            NoBackendSource,
             GradesFiles(directory, XorCrypto()),
-            NoRemote,
         )
         restored.restore()
 
@@ -312,23 +305,116 @@ class GradesServiceTest {
         assertFalse(restoredState.unsavedChanges)
     }
 
+    @Test
+    fun incompleteBackendIndexDoesNotReplacePriorResults() = runTest {
+        val files = GradesFiles(directory, XorCrypto())
+        assertTrue(files.save(snapshot(bindingA)))
+        val reader = FakeReader(validState(bindingA), bindingA)
+        val backend = FakeBackendSource(
+            index = GradesIndex(listOf(term), term),
+            courses = emptyMap(),
+            completeTerms = false,
+        )
+        val service = createService(reader, backend, files)
+
+        service.sync()
+
+        assertEquals(GradesConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(GradesFailure.PROTOCOL_ERROR, service.state.value.lastFailure)
+        assertEquals(1_700_000_000_000L, service.state.value.lastSyncedAtEpochMillis)
+        assertEquals("高等数学", service.state.value.termResults.single().courses.single().courseName)
+        val stored = files.loadResult() as GradesLoadResult.Loaded
+        assertEquals(1, stored.snapshot.results.size)
+        assertEquals(1_700_000_000_000L, stored.snapshot.savedAtEpochMillis)
+    }
+
+    @Test
+    fun moduleDisabledPreservesOwnedSnapshotAndSuccessfulTimestamp() = runTest {
+        val files = GradesFiles(directory, XorCrypto())
+        assertTrue(files.save(snapshot(bindingA)))
+        val reader = FakeReader(validState(bindingA), bindingA)
+        val backend = FakeBackendSource(
+            index = GradesIndex(listOf(term), term),
+            courses = emptyMap(),
+            failures = mapOf(term.key to GradesBackendFailureCode.MODULE_DISABLED),
+        )
+        val service = createService(reader, backend, files)
+
+        service.sync()
+
+        val state = service.state.value
+        assertEquals(GradesConnection.NETWORK_UNAVAILABLE, state.connection)
+        assertEquals(GradesFailure.MODULE_DISABLED, state.lastFailure)
+        assertEquals(1_700_000_000_000L, state.lastSyncedAtEpochMillis)
+        assertEquals("高等数学", state.termResults.single().courses.single().courseName)
+        assertEquals(1_700_000_000_100L, state.termResults.single().fetchedAtEpochMillis)
+        assertFalse(state.unsavedChanges)
+    }
+
+    @Test
+    fun rateLimitKeepsRetryAfterHintAndExistingOwnedResults() = runTest {
+        val files = GradesFiles(directory, XorCrypto())
+        assertTrue(files.save(snapshot(bindingA)))
+        val reader = FakeReader(validState(bindingA), bindingA)
+        val backend = object : GradesBackendSource {
+            override suspend fun terms(): GradesBackendTerms =
+                throw GradesBackendFailure(
+                    code = GradesBackendFailureCode.RATE_LIMITED,
+                    retryAfterSeconds = 45,
+                )
+
+            override suspend fun courses(year: String, term: String): GradesBackendCourses =
+                error("rate limited term index must stop before course requests")
+        }
+        val service = createService(reader, backend, files)
+
+        service.sync()
+
+        val state = service.state.value
+        assertEquals(GradesConnection.NETWORK_UNAVAILABLE, state.connection)
+        assertEquals(GradesFailure.RATE_LIMITED, state.lastFailure)
+        assertEquals(45L, state.retryAfterSeconds)
+        assertEquals("高等数学", state.termResults.single().courses.single().courseName)
+        assertEquals(1_700_000_000_000L, state.lastSyncedAtEpochMillis)
+    }
+
+    @Test
+    fun incompleteCourseResponseRetainsPreviousTermResult() = runTest {
+        val files = GradesFiles(directory, XorCrypto())
+        assertTrue(files.save(snapshot(bindingA)))
+        val reader = FakeReader(validState(bindingA), bindingA)
+        val backend = FakeBackendSource(
+            index = GradesIndex(listOf(term), term),
+            courses = mapOf(term.key to listOf(GradesCourse(term, "新成绩", score = "88"))),
+            incompleteCourseTerms = setOf(term.key),
+        )
+        val service = createService(reader, backend, files)
+
+        service.sync()
+
+        val state = service.state.value
+        assertEquals(GradesConnection.PARTIAL, state.connection)
+        assertEquals(GradesFailure.PROTOCOL_ERROR, state.lastFailure)
+        assertEquals(listOf(term), state.lastSyncRetainedTerms)
+        assertEquals("高等数学", state.termResults.single().courses.single().courseName)
+        assertEquals(1_700_000_000_100L, state.termResults.single().fetchedAtEpochMillis)
+    }
+
     private fun TestScope.createService(
         account: SchoolAccountReferenceReader,
-        authenticator: GradesAuthenticator,
+        backend: GradesBackendSource,
         files: GradesFiles,
-        remote: GradesRemote = NoRemote,
     ): GradesService = GradesService(
         account = account,
-        authenticator = authenticator,
+        backend = backend,
         files = files,
-        remote = remote,
         clock = { 1_700_000_000_500L },
         ioDispatcher = StandardTestDispatcher(testScheduler),
         scope = backgroundScope,
     )
 
     private fun validState(binding: SchoolAccountReference) = SchoolAccountState(
-        status = SchoolAccountStatus.SAVED_UNVERIFIED,
+        status = SchoolAccountStatus.MANAGED_ACTIVE,
         generation = binding.credentialGeneration,
     )
 
@@ -382,60 +468,56 @@ class GradesServiceTest {
         }
     }
 
-    private class BlockingAuthenticator : GradesAuthenticator {
+    private class BlockingBackendSource : GradesBackendSource {
         val entered = CompletableDeferred<Unit>()
 
-        override suspend fun authenticate(
-            expectedAccountId: SchoolAccountId,
-            expectedCredentialGeneration: Long,
-        ): UpcAuthResult {
+        override suspend fun terms(): GradesBackendTerms {
             entered.complete(Unit)
             awaitCancellation()
         }
+
+        override suspend fun courses(year: String, term: String): GradesBackendCourses =
+            error("blocking terms request must not continue")
     }
 
-    private object SuccessAuthenticator : GradesAuthenticator {
-        override suspend fun authenticate(
-            expectedAccountId: SchoolAccountId,
-            expectedCredentialGeneration: Long,
-        ): UpcAuthResult = UpcAuthResult.Success(
-            listOf(
-                UpcAuthCookie(
-                    name = "SESSION",
-                    value = "synthetic",
-                    domain = UpcAuthCookie.HOST,
-                    path = "/",
-                    secure = true,
-                    httpOnly = true,
-                    expiresAtEpochSeconds = null,
-                ),
-            ),
-        )
-    }
-
-    private object NoRemote : GradesRemote {
-        override suspend fun getIndex(cookies: List<UpcAuthCookie>): GradesIndex =
+    private object NoBackendSource : GradesBackendSource {
+        override suspend fun terms(): GradesBackendTerms =
             error("unexpected index request")
 
-        override suspend fun getTerm(
-            cookies: List<UpcAuthCookie>,
-            term: GradesTerm,
-        ): List<GradesCourse> = error("unexpected term request")
+        override suspend fun courses(year: String, term: String): GradesBackendCourses =
+            error("unexpected courses request")
     }
 
-    private class FakeRemote(
+    private class FakeBackendSource(
         private val index: GradesIndex,
         private val courses: Map<String, List<GradesCourse>>,
-        private val failures: Map<String, GradesRemoteFailure> = emptyMap(),
-    ) : GradesRemote {
-        override suspend fun getIndex(cookies: List<UpcAuthCookie>): GradesIndex = index
+        private val failures: Map<String, GradesBackendFailureCode> = emptyMap(),
+        private val completeTerms: Boolean = true,
+        private val incompleteCourseTerms: Set<String> = emptySet(),
+    ) : GradesBackendSource {
+        override suspend fun terms(): GradesBackendTerms = GradesBackendTerms(
+            terms = index.terms.map { GradesBackendTerm(it.year, it.term) },
+            currentTerm = index.currentTerm?.let { GradesBackendTerm(it.year, it.term) },
+            complete = completeTerms,
+        )
 
-        override suspend fun getTerm(
-            cookies: List<UpcAuthCookie>,
-            term: GradesTerm,
-        ): List<GradesCourse> {
-            failures[term.key]?.let { throw GradesRemoteException(it) }
-            return courses[term.key].orEmpty()
+        override suspend fun courses(year: String, term: String): GradesBackendCourses {
+            val key = "$year|$term"
+            failures[key]?.let { throw GradesBackendFailure(it) }
+            val rows = courses[key].orEmpty().map {
+                GradesBackendCourse(
+                    courseName = it.courseName,
+                    score = it.score,
+                    credits = it.credits,
+                    courseType = it.courseType,
+                    examType = it.examType,
+                )
+            }
+            return GradesBackendCourses(
+                courses = rows,
+                complete = key !in incompleteCourseTerms,
+                fetchedAtEpochMillis = 1_700_000_000_500L,
+            )
         }
     }
 

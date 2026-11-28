@@ -17,10 +17,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /** Uses a private fixture only after an explicit instrumentation argument opts in. */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy local-password CAS acceptance is disabled after local school-password removal.")
 class RealServicePortalAuthTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context = instrumentation.targetContext
@@ -47,7 +49,7 @@ class RealServicePortalAuthTest {
         authenticator = null
         if (!createdAccount) return
         runBlocking {
-            val deleted = runCatching { SchoolAccountRepository(context).delete() }
+            val deleted = runCatching { SchoolAccountRepository(context).signOut() }
             assertTrue("ACCOUNT_CLEANUP_FAILED", deleted.isSuccess && !existingAccount.exists())
         }
         createdAccount = false
@@ -73,7 +75,7 @@ class RealServicePortalAuthTest {
         assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
         createdAccount = true
         val saved = try {
-            repository.save(accountName, password)
+            repository.bind(accountName, password, acceptCustody = true)
         } finally {
             password.fill('\u0000')
         }

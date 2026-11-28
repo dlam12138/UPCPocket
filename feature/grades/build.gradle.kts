@@ -41,7 +41,6 @@ dependencies {
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))
     implementation(project(":core:plugin-ui"))
-    implementation(project(":core:upc-auth"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.foundation)
@@ -51,7 +50,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

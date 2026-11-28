@@ -17,11 +17,6 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticMediaType
 import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticSink
 import com.upcpocket.app.platform.diagnostics.Diagnostics
-import com.upcpocket.app.upcauth.TimetableAuthenticator
-import com.upcpocket.app.upcauth.UpcAuthCookie
-import com.upcpocket.app.upcauth.UpcAuthFailure
-import com.upcpocket.app.upcauth.UpcAuthResult
-import com.upcpocket.app.upcauth.UpcTimetableAuthEndpoints
 import java.io.File
 import java.time.LocalDate
 import kotlinx.coroutines.CompletableDeferred
@@ -57,7 +52,6 @@ class TimetableServiceTest {
     private val directory = java.nio.file.Files.createTempDirectory("timetable-service").toFile()
     private val crypto = TestCrypto()
     private val account = FakeAccount()
-    private val auth = FakeAuthenticator()
     private var today = LocalDate.parse("2026-10-28")
     private var now = 1_700_000_000_000L
 
@@ -78,14 +72,12 @@ class TimetableServiceTest {
         assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
         assertEquals(8, service.state.value.selectedWeek)
         assertEquals(TimetableWeekState.READY, service.state.value.weekState)
-        assertEquals(1, auth.calls)
         assertEquals(1, transport.count("GET"))
         assertEquals(1, transport.count("POST"))
 
         service.selectWeek(9)
         assertEquals(9, service.state.value.selectedWeek)
         assertEquals(TimetableWeekState.EMPTY, service.state.value.weekState)
-        assertEquals(1, auth.calls)
         assertEquals(2, transport.count("POST"))
         assertTrue(transport.postBodies().last().contains("week=9"))
     }
@@ -166,7 +158,6 @@ class TimetableServiceTest {
         assertEquals(TimetableTodayState.READY, service.todayState.value.todayState)
         assertEquals(listOf("更新后的今日课程"), service.todayState.value.todayMeetings.map { it.courseName })
         assertEquals(now, service.todayState.value.todayFetchedAtEpochMillis)
-        assertEquals(0, auth.calls)
         assertEquals(0, transport.count("GET"))
         assertEquals(0, transport.count("POST"))
     }
@@ -497,7 +488,6 @@ class TimetableServiceTest {
         service.selectTerm(spring)
         assertEquals("2", service.state.value.selectedTerm)
         assertEquals(1, service.state.value.selectedWeek)
-        assertEquals(1, auth.calls)
         assertEquals(2, transport.count("POST"))
         assertTrue(transport.postBodies().last().contains("term=2"))
         assertTrue(transport.postBodies().last().contains("week=1"))
@@ -553,7 +543,6 @@ class TimetableServiceTest {
         assertEquals(9, service.state.value.selectedWeek)
         assertEquals(LocalDate.parse("2026-11-01"), service.state.value.weekDates.first())
         assertEquals(TimetableWeekState.EMPTY, service.state.value.weekState)
-        assertEquals(0, auth.calls)
         assertEquals(1, transport.count("GET"))
         assertEquals(1, transport.count("POST"))
     }
@@ -591,7 +580,6 @@ class TimetableServiceTest {
         assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
         assertEquals(8, service.state.value.selectedWeek)
         assertEquals(LocalDate.parse("2026-10-25"), service.state.value.weekDates.first())
-        assertEquals(0, auth.calls)
     }
 
     @Test
@@ -639,87 +627,49 @@ class TimetableServiceTest {
     }
 
     @Test
-    fun sessionAuthExpiryRecoversExactlyOnce() = runTest {
+    fun backendTokenFailureKeepsSameOwnerCachedWeek() = runTest {
         seedCacheAndSession()
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") {
-                json(indexFixture())
-            } else if (transportFailures++ == 0) {
-                json("""{"e":10013,"d":{}}""")
-            } else {
-                json(weekFixture())
-            }
-        }
-        val service = service(transport)
-        service.open()
-        assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
-        assertEquals(1, auth.calls)
-        assertEquals(2, transport.count("POST"))
-    }
+        val source = object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex =
+                throw TimetableBackendFailure(TimetableBackendFailureCode.TOKEN_INVALID)
 
-    @Test
-    fun secondAuthFailureStopsWithoutPasswordLoop() = runTest {
-        seedCacheAndSession()
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") {
-                json(indexFixture())
-            } else {
-                json("""{"e":10013,"d":{}}""")
-            }
+            override suspend fun week(
+                year: String,
+                term: String,
+                week: Int,
+            ): TimetableBackendWeek = error("index failure must stop before week query")
         }
-        val service = service(transport)
+        val service = serviceFromBackend(source)
+
         service.open()
+
         assertEquals(TimetableConnection.SESSION_EXPIRED, service.state.value.connection)
-        assertEquals(1, auth.calls)
-        assertEquals(2, transport.count("POST"))
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertEquals("示例课程A", service.state.value.meetings.first().courseName)
+        assertEquals(1, cacheStore.load(ACCOUNT_ID).weeks.size)
     }
 
     @Test
-    fun invalidPasswordIsTerminalAndNotRetried() = runTest {
-        auth.result = UpcAuthResult.Failure(UpcAuthFailure.INVALID_CREDENTIALS)
-        val transport = ProgrammedTransport { error("认证失败后不得查询课表") }
-        val service = service(transport)
-        service.open()
-        assertEquals(TimetableConnection.AUTH_FAILED, service.state.value.connection)
-        assertEquals(1, auth.calls)
-        assertEquals(0, transport.count("POST"))
-        assertTrue(service.state.value.message!!.contains("密码不正确"))
-    }
+    fun interactiveChallengeUsesFixedOfficialEntryWithoutAdoptingCookies() = runTest {
+        val source = object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex =
+                throw TimetableBackendFailure(TimetableBackendFailureCode.INTERACTIVE_CHALLENGE)
 
-    @Test
-    fun captchaMovesToInteractionWithoutPasswordRetry() = runTest {
-        auth.result = UpcAuthResult.Failure(
-            UpcAuthFailure.INTERACTION_REQUIRED,
-            "https://cas.upc.edu.cn/cas/login?service=synthetic",
-        )
-        val service = service(ProgrammedTransport { error("需交互时不得查询课表") })
+            override suspend fun week(
+                year: String,
+                term: String,
+                week: Int,
+            ): TimetableBackendWeek = error("challenge must stop before week query")
+        }
+        val service = serviceFromBackend(source)
+
         service.open()
+        val officialUrl = "https://app.upc.edu.cn/site/weekschedule/index"
+
         assertEquals(TimetableConnection.INTERACTION_REQUIRED, service.state.value.connection)
-        assertEquals(1, auth.calls)
-        assertNotNull(service.state.value.interactionUrl)
-        assertEquals("https://cas.upc.edu.cn/cas/login?service=synthetic", service.state.value.interactionUrl)
-    }
-
-    @Test
-    fun webLoginPreservesOfficialChallengeUrl() = runTest {
-        val challenge = "https://cas.upc.edu.cn/cas/login?service=synthetic&execution=abc"
-        auth.result = UpcAuthResult.Failure(UpcAuthFailure.INTERACTION_REQUIRED, challenge)
-        val service = service(ProgrammedTransport { error("需交互时不得查询课表") })
-        service.open()
-        assertEquals(challenge, service.beginInteractiveLogin())
-        assertEquals(challenge, service.state.value.interactionUrl)
-    }
-
-    @Test
-    fun webLoginRejectsNonOfficialChallengeUrl() = runTest {
-        auth.result = UpcAuthResult.Failure(
-            UpcAuthFailure.INTERACTION_REQUIRED,
-            "https://evil.example/cas/login",
-        )
-        val service = service(ProgrammedTransport { error("需交互时不得查询课表") })
-        service.open()
-        assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, service.state.value.interactionUrl)
-        assertEquals(UpcTimetableAuthEndpoints.LOGIN_URL, service.beginInteractiveLogin())
+        assertEquals(officialUrl, service.state.value.interactionUrl)
+        assertEquals(officialUrl, service.beginInteractiveLogin())
+        assertNull(sessionStore.load(ACCOUNT_ID, 1))
     }
 
     @Test
@@ -758,7 +708,68 @@ class TimetableServiceTest {
         assertEquals(TimetableConnection.NETWORK_UNAVAILABLE, service.state.value.connection)
         assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
         assertEquals("示例课程A", service.state.value.meetings.first().courseName)
-        assertEquals(0, auth.calls)
+    }
+
+    @Test
+    fun incompleteBackendWeekPreservesThePreviousCompleteCache() = runTest {
+        seedCacheAndSession()
+        val priorIndex = index()
+        val backend = object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex = priorIndex.toBackendIndex()
+
+            override suspend fun week(
+                year: String,
+                term: String,
+                week: Int,
+            ): TimetableBackendWeek {
+                val selected = priorIndex.find(year, term)!!
+                val start = selected.startDay.plusDays((week - 1L) * 7L)
+                return TimetableBackendWeek(
+                    year = year,
+                    term = term,
+                    week = week,
+                    weekDates = (0..6).map { start.plusDays(it.toLong()) },
+                    meetings = emptyList(),
+                    complete = false,
+                    fetchedAtEpochMillis = now,
+                )
+            }
+        }
+        val service = serviceFromBackend(backend)
+
+        service.open()
+
+        assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertEquals("示例课程A", service.state.value.meetings.single().courseName)
+        assertEquals(1, cacheStore.load(ACCOUNT_ID).weeks.size)
+        assertEquals(now - 60_000, cacheStore.load(ACCOUNT_ID).weeks.single().fetchedAtEpochMillis)
+    }
+
+    @Test
+    fun moduleDisabledKeepsTheCurrentAccountCacheAndItsTimestamp() = runTest {
+        seedCacheAndSession()
+        val priorIndex = index()
+        val backend = object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex = priorIndex.toBackendIndex()
+
+            override suspend fun week(
+                year: String,
+                term: String,
+                week: Int,
+            ): TimetableBackendWeek = throw TimetableBackendFailure(
+                TimetableBackendFailureCode.MODULE_DISABLED,
+            )
+        }
+        val service = serviceFromBackend(backend)
+
+        service.open()
+
+        assertEquals(TimetableConnection.NETWORK_UNAVAILABLE, service.state.value.connection)
+        assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
+        assertEquals("示例课程A", service.state.value.meetings.single().courseName)
+        assertEquals(now - 60_000, service.state.value.weekFetchedAtEpochMillis)
+        assertTrue(service.state.value.message!!.contains("未开放课表模块"))
     }
 
     @Test
@@ -798,8 +809,11 @@ class TimetableServiceTest {
 
     @Test
     fun networkFailureWithoutCacheIsErrorNotEmptyWeek() = runTest {
-        auth.result = UpcAuthResult.Failure(UpcAuthFailure.NETWORK_UNAVAILABLE)
-        val service = service(ProgrammedTransport { error("auth already failed") })
+        val service = service(
+            ProgrammedTransport {
+                throw TimetableTransportException(TimetableTransportFailure.NETWORK)
+            },
+        )
         service.open()
         assertFalse(service.state.value.weekState == TimetableWeekState.EMPTY)
         assertEquals(TimetableWeekState.ERROR, service.state.value.weekState)
@@ -904,7 +918,7 @@ class TimetableServiceTest {
         service.open()
         assertEquals(TimetableConnection.PROTOCOL_ERROR, service.state.value.connection)
         assertEquals(TimetableWeekState.CACHED, service.state.value.weekState)
-        assertTrue(service.state.value.message!!.contains("网页内容"))
+        assertTrue(service.state.value.message!!.contains("格式异常"))
         assertTrue(service.state.value.message!!.contains("已保留上次缓存"))
         assertEquals("示例课程A", service.state.value.meetings.first().courseName)
     }
@@ -936,63 +950,32 @@ class TimetableServiceTest {
             }
         })
         try {
-            val service = service(
-                ProgrammedTransport { request ->
-                    if (request.method == "GET") {
-                        json(indexFixture())
-                    } else {
-                        json(weekFixture(), "text/html")
-                    }
-                },
+            val transport = ProgrammedTransport { request ->
+                if (request.method == "GET") {
+                    json(indexFixture())
+                } else {
+                    json(weekFixture(), "text/html")
+                }
+            }
+            val op = Diagnostics.beginOperation()
+            val api = TimetableApi(transport, { now })
+            val parsedIndex = api.getIndex(emptyList(), operationId = op.id, diagnosticOperation = op)
+            val parsedWeek = api.getWeek(
+                emptyList(),
+                parsedIndex.terms.first(),
+                8,
+                operationId = op.id,
+                diagnosticOperation = op,
             )
-            service.open()
+            assertEquals(6, parsedWeek.meetings.size)
             val mismatch = events.single {
                 it.detail == DiagnosticDetail.RESPONSE_MIME_MISMATCH
             }
-            assertNotNull(mismatch.operationId)
+            assertEquals(op.id, mismatch.operationId)
             assertEquals(DiagnosticPhase.RESPONSE, mismatch.phase)
             assertEquals(DiagnosticMediaType.HTML, mismatch.mediaType)
             assertEquals(DiagnosticBodyType.JSON_OBJECT, mismatch.bodyType)
-            assertTrue(
-                events.filter { it.operationId == mismatch.operationId }
-                    .any { it.detail == DiagnosticDetail.WEEK_OK },
-            )
         } finally {
-            Diagnostics.install(null)
-        }
-    }
-
-    @Test
-    fun lateAuthenticationCompletionIsDroppedAfterAccountClearAdvancesDiagnosticEpoch() = runTest {
-        val sink = EpochDiagnosticSink()
-        val authStarted = CompletableDeferred<Unit>()
-        val releaseAuth = CompletableDeferred<Unit>()
-        auth.beforeReturn = {
-            authStarted.complete(Unit)
-            releaseAuth.await()
-        }
-        Diagnostics.install(sink)
-        try {
-            val service = service(ProgrammedTransport { error("transport must not run after account clear") })
-            val opening = launch { service.open() }
-            withTimeout(5_000) { authStarted.await() }
-
-            val authStart = sink.events.single { it.action == DiagnosticAction.AUTH_START }
-            assertNotNull(authStart.operationId)
-            sink.clearForAccountChange()
-            assertTrue(service.invalidateForAccount(AccountDataScope.SESSIONS_ONLY))
-            releaseAuth.complete(Unit)
-            opening.join()
-
-            assertFalse(
-                sink.events.any {
-                    it.action == DiagnosticAction.AUTH_COMPLETE &&
-                        it.operationId == authStart.operationId
-                },
-            )
-        } finally {
-            releaseAuth.complete(Unit)
-            auth.beforeReturn = {}
             Diagnostics.install(null)
         }
     }
@@ -1006,7 +989,7 @@ class TimetableServiceTest {
             if (request.method == "GET") {
                 requestStarted.complete(Unit)
                 releaseResponse.await()
-                json(indexFixture(), "text/html")
+                json(indexFixture())
             } else {
                 error("week request must not run after account clear")
             }
@@ -1094,81 +1077,6 @@ class TimetableServiceTest {
     }
 
     @Test
-    fun interactiveWebCookiesAreBoundToOpenedAccountAndGeneration() = runTest {
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") json(indexFixture()) else json(weekFixture())
-        }
-        val service = service(transport)
-        assertEquals(
-            "https://cas.upc.edu.cn/cas/login",
-            service.beginInteractiveLogin()!!.substringBefore("?"),
-        )
-        assertTrue(service.adoptInteractiveCookies("eai-sess=web-session; other=value"))
-        assertEquals(TimetableConnection.CONNECTED, service.state.value.connection)
-        assertNotNull(sessionStore.load(ACCOUNT_ID, 1))
-        assertEquals("eai-sess", sessionStore.load(ACCOUNT_ID, 1)!!.cookies.first().name)
-    }
-
-    @Test
-    fun interactiveAdoptionSharesOneOperationIdAcrossCookieIndexWeekAndCache() = runTest {
-        val events = mutableListOf<DiagnosticEvent>()
-        Diagnostics.install(object : DiagnosticSink {
-            override fun record(event: DiagnosticEvent) {
-                events += event
-            }
-        })
-        try {
-            val transport = ProgrammedTransport { request ->
-                if (request.method == "GET") json(indexFixture()) else json(weekFixture())
-            }
-            val service = service(transport)
-            assertNotNull(service.beginInteractiveLogin())
-            assertTrue(
-                service.adoptInteractiveCookies(
-                    cookieHeader = "eai-sess=web-session",
-                    operationId = "abcd1234",
-                ),
-            )
-            val correlated = events.filter { it.operationId == "abcd1234" }
-            assertTrue(
-                correlated.any {
-                    it.phase == DiagnosticPhase.COOKIE &&
-                        it.action == DiagnosticAction.QUERY_COMPLETE
-                },
-            )
-            assertTrue(
-                correlated.any {
-                    it.phase == DiagnosticPhase.INDEX &&
-                        it.detail == DiagnosticDetail.INDEX_OK
-                },
-            )
-            assertTrue(
-                correlated.any {
-                    it.phase == DiagnosticPhase.CACHE &&
-                        it.detail == DiagnosticDetail.CACHE_SAVED
-                },
-            )
-            assertTrue(
-                correlated.any {
-                    it.phase == DiagnosticPhase.WEEK &&
-                        it.detail == DiagnosticDetail.WEEK_OK
-                },
-            )
-        } finally {
-            Diagnostics.install(null)
-        }
-    }
-
-    @Test
-    fun interactiveCookiesRejectedAfterAccountSwitch() = runTest {
-        val service = service(ProgrammedTransport { json(indexFixture()) })
-        service.beginInteractiveLogin()
-        account.publish(OTHER_REFERENCE)
-        assertFalse(service.adoptInteractiveCookies("eai-sess=web-session"))
-        assertNull(sessionStore.load(ACCOUNT_ID, 1))
-    }
-
-    @Test
     fun weekCacheAndPublishAreOrderedAgainstAccountInvalidation() = runTest {
         seedCacheAndSession()
         val entered = CompletableDeferred<Unit>()
@@ -1196,64 +1104,6 @@ class TimetableServiceTest {
         assertNull(service.state.value.selectedWeek)
         assertNull(sessionStore.load(ACCOUNT_ID, 1))
         assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
-    }
-
-    @Test
-    fun automaticAuthSessionSaveIsOrderedAgainstInvalidation() = runTest {
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") json(indexJson(8)) else json(weekFixture())
-        }
-        val service = service(transport) { label ->
-            if (label == "auth-session") {
-                entered.complete(Unit)
-                release.await()
-            }
-        }
-        val operation = launch { service.open() }
-        withTimeout(5_000) { entered.await() }
-        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
-            service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
-        }
-        yield()
-        assertFalse(invalidation.isCompleted)
-        release.complete(Unit)
-        operation.join()
-        invalidation.await()
-        assertNull(sessionStore.load(ACCOUNT_ID, 1))
-        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
-        assertTrue(service.state.value.terms.isEmpty())
-    }
-
-    @Test
-    fun webViewAdoptionSessionSaveIsOrderedAgainstInvalidation() = runTest {
-        val entered = CompletableDeferred<Unit>()
-        val release = CompletableDeferred<Unit>()
-        val transport = ProgrammedTransport { request ->
-            if (request.method == "GET") json(indexJson(8)) else json(weekFixture())
-        }
-        val service = service(transport) { label ->
-            if (label == "adopt-session") {
-                entered.complete(Unit)
-                release.await()
-            }
-        }
-        assertNotNull(service.beginInteractiveLogin())
-        val adoption = launch { service.adoptInteractiveCookies("eai-sess=web-session") }
-        withTimeout(5_000) { entered.await() }
-        val invalidation = async(start = CoroutineStart.UNDISPATCHED) {
-            service.invalidateForAccount(AccountDataScope.PERSONAL_DATA)
-        }
-        yield()
-        assertFalse(invalidation.isCompleted)
-        release.complete(Unit)
-        adoption.join()
-        invalidation.await()
-        assertNull(sessionStore.load(ACCOUNT_ID, 1))
-        assertTrue(cacheStore.load(ACCOUNT_ID).weeks.isEmpty())
-        assertTrue(service.state.value.terms.isEmpty())
-        assertNull(service.state.value.interactionUrl)
     }
 
     @Test
@@ -1359,7 +1209,6 @@ class TimetableServiceTest {
             ),
             snapshot.days[3].courses.map { it.periodLabel to it.name },
         )
-        assertEquals(0, auth.calls)
         assertEquals(0, transport.count("GET"))
         assertEquals(0, transport.count("POST"))
         assertTrue(service.isWeekWidgetSnapshotCurrent(snapshot))
@@ -1864,11 +1713,20 @@ class TimetableServiceTest {
         transport: ProgrammedTransport,
         colorStore: TimetableColorStore = TimetableColorStore.inMemory(),
         commitBarrier: suspend (String) -> Unit = {},
+    ): TimetableService = serviceFromBackend(
+        backend = TimetableApiTestBackendSource(transport, clock = { now }),
+        colorStore = colorStore,
+        commitBarrier = commitBarrier,
+    )
+
+    private fun serviceFromBackend(
+        backend: TimetableBackendSource,
+        colorStore: TimetableColorStore = TimetableColorStore.inMemory(),
+        commitBarrier: suspend (String) -> Unit = {},
     ): TimetableService =
         TimetableService(
             account = account,
-            authenticator = auth,
-            api = TimetableApi(transport, clock = { now }),
+            backend = backend,
             sessionStore = sessionStore,
             cacheStore = cacheStore,
             clock = { now },
@@ -2064,6 +1922,22 @@ class TimetableServiceTest {
 
     private fun index(): TimetableIndex = TimetableProtocol.parseIndex(indexFixture())
 
+    private fun TimetableIndex.toBackendIndex(): TimetableBackendIndex = TimetableBackendIndex(
+        terms = terms.map { term ->
+            TimetableBackendTerm(
+                year = term.year,
+                term = term.term,
+                label = term.label,
+                startDay = term.startDay,
+                totalWeeks = term.totalWeeks,
+            )
+        },
+        currentYear = currentYear,
+        currentTerm = currentTerm,
+        currentWeek = currentWeek,
+        weekDates = currentWeekdays,
+    )
+
     private fun indexFixture(): String =
         javaClass.getResource("/timetable_index.json")!!.readText()
 
@@ -2078,8 +1952,6 @@ class TimetableServiceTest {
         mapOf("content-type" to listOf(mime)),
         body.toByteArray(),
     )
-
-    private var transportFailures = 0
 
     companion object {
         private const val ACCOUNT_ID = "acct_synthetic_1"
@@ -2096,7 +1968,7 @@ class TimetableServiceTest {
     private inner class FakeAccount : SchoolAccountReferenceReader {
         private val _state = MutableStateFlow(
             SchoolAccountState(
-                status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                status = SchoolAccountStatus.MANAGED_ACTIVE,
                 generation = AccountGeneration(1),
                 maskedAccount = "20••••01",
                 studentIdAvailable = false,
@@ -2110,7 +1982,7 @@ class TimetableServiceTest {
         fun publish(reference: SchoolAccountReference) {
             _reference.value = reference
             _state.value = SchoolAccountState(
-                status = SchoolAccountStatus.SAVED_UNVERIFIED,
+                status = SchoolAccountStatus.MANAGED_ACTIVE,
                 generation = reference.credentialGeneration,
                 maskedAccount = "20••••02",
                 savedAtEpochMillis = 1,
@@ -2120,33 +1992,6 @@ class TimetableServiceTest {
         fun setLoading() {
             _reference.value = null
             _state.value = SchoolAccountState(status = SchoolAccountStatus.LOADING)
-        }
-    }
-
-    private inner class FakeAuthenticator : TimetableAuthenticator {
-        var calls = 0
-        var beforeReturn: suspend () -> Unit = {}
-        var result: UpcAuthResult = UpcAuthResult.Success(
-            listOf(
-                UpcAuthCookie(
-                    name = "eai-sess",
-                    value = "new-session",
-                    domain = "app.upc.edu.cn",
-                    path = "/",
-                    secure = true,
-                    httpOnly = true,
-                    expiresAtEpochSeconds = null,
-                ),
-            ),
-        )
-
-        override suspend fun authenticate(
-            expectedAccountId: SchoolAccountId,
-            expectedCredentialGeneration: Long,
-        ): UpcAuthResult {
-            calls++
-            beforeReturn()
-            return result
         }
     }
 

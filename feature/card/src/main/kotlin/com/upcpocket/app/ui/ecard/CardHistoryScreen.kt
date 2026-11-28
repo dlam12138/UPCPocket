@@ -12,10 +12,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.upcpocket.app.account.api.SchoolStudentIdentity
-import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.data.cardhistory.*
-import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.ui.components.ChartBarItem
 import com.upcpocket.app.ui.components.DailyBarChart
 import com.upcpocket.app.ui.components.GlassCard
@@ -46,13 +45,12 @@ internal fun CardHistoryScreenContent(
     client: CardHistoryClient,
     back: () -> Unit,
     accountSettings: () -> Unit,
-    syntheticResources: CardHistoryWebResourceProvider? = null,
     /** Test seam signals only after the request guard and final state cleanup have run. */
-    onRequestSettledForTest: ((SchoolStudentIdentity) -> Unit)? = null,
+    onRequestSettledForTest: ((SchoolAccountReference) -> Unit)? = null,
     /** Test seam signals when guarded history rows enter page state, before the summary request. */
-    onRowsCommittedForTest: ((SchoolStudentIdentity) -> Unit)? = null,
+    onRowsCommittedForTest: ((SchoolAccountReference) -> Unit)? = null,
 ) {
-    val owner by client.studentIdentity.collectAsStateWithLifecycle()
+    val owner by client.accountReference.collectAsStateWithLifecycle()
     val account by client.accountState.collectAsStateWithLifecycle()
     var bound by remember { mutableStateOf<BoundCardHistoryPage?>(null) }
     var rows by remember { mutableStateOf(emptyList<CardHistoryRow>()) }
@@ -61,7 +59,6 @@ internal fun CardHistoryScreenContent(
     var month by remember { mutableStateOf<YearMonth?>(null) }
     var monthDialog by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
-    var loginAttempt by remember { mutableStateOf<CardHistoryInteractiveAttempt?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var search by rememberSaveable { mutableStateOf("") }
     var directionFilterName by rememberSaveable { mutableStateOf(CardHistoryDirectionFilter.ALL.name) }
@@ -69,11 +66,10 @@ internal fun CardHistoryScreenContent(
     var selectedChartDay by remember { mutableStateOf<Int?>(null) }
     var requestId by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val available = owner != null && !account.blocksPersonalSessions
-    LaunchedEffect(owner, account.blocksPersonalSessions) {
+    val available = owner != null && account.isManagedActive &&
+        owner?.credentialGeneration == account.generation
+    LaunchedEffect(owner, account.status, account.cleanupRequired, account.generation) {
         requestId++
-        loginAttempt?.let { client.cancelInteractiveLogin(it.id) }
-        loginAttempt = null
         bound = null
         rows = emptyList()
         summary = null
@@ -94,7 +90,6 @@ internal fun CardHistoryScreenContent(
         message = null
         scope.launch {
             try {
-                if (!client.hasSession()) client.login()
                 val first = if (all) client.all(selected) { loaded, total ->
                     if (id == requestId && client.isCurrent(expected)) message = "正在加载 $loaded / $total 条"
                 }
@@ -123,32 +118,11 @@ internal fun CardHistoryScreenContent(
             catch (error: Exception) {
                 if (id == requestId && client.isCurrent(expected)) {
                     summaryIsPrevious = summary != null
-                    message = when ((error as? CardHistoryException)?.reason) {
-                        CardHistoryFailure.AUTHENTICATION -> "学校登录未完成，请检查学校账号。"
-                        CardHistoryFailure.INVALID_CREDENTIALS -> "学校未接受账号密码，请在账号设置中核对。"
-                        CardHistoryFailure.INTERACTION_REQUIRED -> "请在学校页面继续登录。"
-                        CardHistoryFailure.LOGIN_REQUIRED -> "会话已过期，请再点查询重新登录。"
-                        CardHistoryFailure.NETWORK -> "学校服务暂时无法连接，请稍后重试。"
-                        CardHistoryFailure.ACCESS_DENIED -> "学校暂不允许登录，请稍后再试。"
-                        CardHistoryFailure.UPSTREAM -> "学校登录服务暂不可用，请稍后重试。"
-                        else -> "本次查询未完成，已保留本页先前结果。"
-                    }
+                    message = historyFailureMessage(error, hasPrevious = oldRows.isNotEmpty())
                 }
             } finally {
                 if (id == requestId) loading = false
                 onRequestSettledForTest?.invoke(expected)
-            }
-        }
-    }
-    fun startVerification() {
-        if (!available || loading || loginAttempt != null) return
-        try {
-            loginAttempt = client.beginInteractiveLogin()
-            message = null
-        } catch (error: CardHistoryException) {
-            message = when (error.reason) {
-                CardHistoryFailure.ACCOUNT_CHANGED, CardHistoryFailure.ACCOUNT_UNAVAILABLE -> "学校账号已变化，请重新查询。"
-                else -> "暂时无法打开学校登录页面，请稍后重试。"
             }
         }
     }
@@ -195,7 +169,13 @@ internal fun CardHistoryScreenContent(
             item(key = "conditions", contentType = "controls") {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        owner?.studentId?.let(AccountMask::mask) ?: "尚未设置可用学校账号",
+                        when {
+                            available -> "校方托管账号"
+                            account.status == SchoolAccountStatus.BACKEND_NOT_READY -> "校方服务未就绪"
+                            account.status == SchoolAccountStatus.MANAGED_REAUTH_REQUIRED -> "托管会话已失效"
+                            account.status == SchoolAccountStatus.MANAGED_DISABLED -> "托管账号已停用"
+                            else -> "尚未绑定校方托管账号"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -207,7 +187,7 @@ internal fun CardHistoryScreenContent(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = month == null,
-                            enabled = !loading && loginAttempt == null,
+                            enabled = !loading,
                             onClick = {
                                 if (month != null) {
                                     requestId++
@@ -224,32 +204,25 @@ internal fun CardHistoryScreenContent(
                         )
                         FilterChip(
                             selected = month != null,
-                            enabled = !loading && loginAttempt == null,
+                            enabled = !loading,
                             onClick = { monthDialog = true },
                             label = { Text(month?.toString() ?: "按月") },
                         )
                     }
                     Button(
                         onClick = { query() },
-                        enabled = available && !loading && loginAttempt == null,
+                        enabled = available && !loading,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    ) { Text("登录并查询") }
+                    ) { Text("查询流水") }
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         OutlinedButton(
                             onClick = { query(all = true) },
-                            enabled = available && !loading && loginAttempt == null,
+                            enabled = available && !loading,
                             modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                         ) { Text("加载全部") }
-                        if (client.supportsInteractiveLogin) {
-                            OutlinedButton(
-                                onClick = ::startVerification,
-                                enabled = available && !loading && loginAttempt == null,
-                                modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                            ) { Text("网页登录") }
-                        }
                     }
                     if (loading) {
                         LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -312,7 +285,7 @@ internal fun CardHistoryScreenContent(
                         OutlinedTextField(
                             value = search,
                             onValueChange = { search = it },
-                            enabled = !loading && loginAttempt == null,
+                            enabled = !loading,
                             label = { Text("搜索已加载记录") },
                             singleLine = true,
                             trailingIcon = {
@@ -367,7 +340,7 @@ internal fun CardHistoryScreenContent(
                     item(key = "load-more", contentType = "actions") {
                         OutlinedButton(
                             onClick = { query(more = true) },
-                            enabled = !loading && available && loginAttempt == null,
+                            enabled = !loading && available,
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                         ) { Text("加载更多") }
                     }
@@ -393,32 +366,34 @@ internal fun CardHistoryScreenContent(
         },
     )
 
-    loginAttempt?.let { attempt ->
-        CardHistoryLoginDialog(
-            client = client,
-            attempt = attempt,
-            syntheticResources = syntheticResources,
-            onSuccess = {
-                loginAttempt = null
-                query()
-            },
-            onFailure = { reason ->
-                loginAttempt = null
-                message = when (reason) {
-                    CardHistoryFailure.ACCOUNT_CHANGED, CardHistoryFailure.ACCOUNT_UNAVAILABLE -> "学校账号已变化，请重新查询。"
-                    CardHistoryFailure.NETWORK -> "学校服务暂时无法连接，请稍后重试。"
-                    CardHistoryFailure.PROTOCOL -> "学校登录结果未通过校验，请重新开始网页登录。"
-                    CardHistoryFailure.INVALID_CREDENTIALS -> "学校未完成登录，请检查账号后重试。"
-                    CardHistoryFailure.ACCESS_DENIED -> "学校暂不允许登录，请稍后再试。"
-                    CardHistoryFailure.UPSTREAM -> "学校登录服务暂不可用，请稍后重试。"
-                    else -> "学校登录没有完成，请重新开始。"
-                }
-            },
-            onClose = {
-                client.cancelInteractiveLogin(attempt.id)
-                loginAttempt = null
-            },
-        )
+}
+
+private fun historyFailureMessage(error: Exception, hasPrevious: Boolean): String {
+    val retained = if (hasPrevious) "本页已有结果已保留。" else "请稍后重试。"
+    val retrySeconds = (error as? CardHistoryException)?.retryAfterMillis
+        ?.takeIf { it > 0L }
+        ?.coerceAtMost(86_400_000L)
+        ?.let { (it + 999L) / 1_000L }
+    return when ((error as? CardHistoryException)?.reason) {
+    CardHistoryFailure.ACCOUNT_UNAVAILABLE -> "请先绑定校方托管账号。"
+    CardHistoryFailure.ACCOUNT_CHANGED -> "账号状态已变化，请重新查询。"
+    CardHistoryFailure.SERVICE_NOT_READY -> "校方校园卡服务暂不可用；$retained"
+    CardHistoryFailure.MODULE_DISABLED -> "校方暂未开放校园卡流水；$retained"
+    CardHistoryFailure.CIRCUIT_OPEN -> "校园卡服务暂时熔断；$retained"
+    CardHistoryFailure.TIMEOUT -> "校方校园卡服务响应超时；$retained"
+    CardHistoryFailure.RATE_LIMITED -> if (retrySeconds == null) {
+        "查询过于频繁；$retained"
+    } else {
+        "查询过于频繁，约 ${retrySeconds} 秒后重试；$retained"
+    }
+    CardHistoryFailure.IDENTITY_UNSUPPORTED -> "当前校方账号暂不支持校园卡流水。"
+    CardHistoryFailure.CREDENTIAL_UPDATE_REQUIRED -> "请先在托管账号设置中更新学校密码。"
+    CardHistoryFailure.INTERACTIVE_CHALLENGE -> "学校要求额外验证，请按校方提示完成验证。"
+    CardHistoryFailure.VERIFICATION_BUSY -> "学校验证正在处理中，请稍后重试。"
+    CardHistoryFailure.UNAUTHENTICATED -> "校方托管会话已失效，请重新绑定账号。"
+    CardHistoryFailure.PROTOCOL -> "校方返回的数据格式异常；$retained"
+    CardHistoryFailure.NETWORK -> "暂时无法连接校方服务；$retained"
+    null -> "本次查询未完成；$retained"
     }
 }
 

@@ -287,13 +287,13 @@ private fun GradesStatusHeader(
         if (state.account != GradesAccountState.READY) {
             val (label, containerColor, contentColor) = when (state.account) {
                 GradesAccountState.ACCOUNT_REQUIRED ->
-                    Triple("未设置账号", scheme.surfaceVariant, scheme.onSurfaceVariant)
+                    Triple("未绑定托管账号", scheme.surfaceVariant, scheme.onSurfaceVariant)
                 GradesAccountState.RESTORING ->
-                    Triple("账号恢复中", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                    Triple("托管账号恢复中", scheme.tertiaryContainer, scheme.onTertiaryContainer)
                 GradesAccountState.CLEANING ->
                     Triple("账号清理中", scheme.errorContainer, scheme.onErrorContainer)
                 GradesAccountState.READY ->
-                    Triple("已保存账号", scheme.secondaryContainer, scheme.onSecondaryContainer)
+                    Triple("已绑定托管账号", scheme.secondaryContainer, scheme.onSecondaryContainer)
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -328,7 +328,7 @@ private fun GradesStatusHeader(
                     onClick = onOpenAccount,
                     modifier = Modifier.testTag("grades_account_action"),
                 ) {
-                    Text("设置学校账号")
+                    Text("绑定校方托管账号")
                 }
             }
             return@Column
@@ -393,6 +393,16 @@ private fun GradesStatusHeader(
                 modifier = Modifier.testTag("grades_official_action"),
             ) {
                 Text("打开学校成绩网页")
+            }
+        }
+        if (state.sync is GradesSyncState.Failed &&
+            state.sync.reason.opensAccountSettings()
+        ) {
+            CampusTextButton(
+                onClick = onOpenAccount,
+                modifier = Modifier.testTag("grades_managed_account_action"),
+            ) {
+                Text("更新托管密码")
             }
         }
     }
@@ -476,18 +486,18 @@ private fun emptySpec(
     onOpenOfficialPage: () -> Unit,
 ): GradesEmptySpec = when (state.account) {
     GradesAccountState.ACCOUNT_REQUIRED -> GradesEmptySpec(
-        title = "未设置学校账号",
-        subtitle = "保存学校账号后可同步教务成绩。",
-        actionLabel = "设置学校账号",
+        title = "未绑定校方托管账号",
+        subtitle = "绑定校方托管账号后可同步教务成绩。",
+        actionLabel = "绑定托管账号",
         action = onOpenAccount,
     )
     GradesAccountState.RESTORING -> GradesEmptySpec(
-        title = "正在恢复学校账号",
+        title = "正在恢复校方托管账号",
         subtitle = "恢复完成后可同步教务成绩。",
     )
     GradesAccountState.CLEANING -> GradesEmptySpec(
-        title = "正在清理学校账号",
-        subtitle = "清理完成后可重新设置账号并同步。",
+        title = "正在清理校方托管账号",
+        subtitle = "清理完成后可重新绑定账号并同步。",
     )
     GradesAccountState.READY -> when (val sync = state.sync) {
         GradesSyncState.Loading -> GradesEmptySpec(
@@ -526,12 +536,21 @@ private fun emptySpec(
         }
         is GradesSyncState.Failed -> {
             val official = sync.reason.opensOfficialPage()
+            val accountSettings = sync.reason.opensAccountSettings()
             GradesEmptySpec(
                 title = "同步失败",
-                subtitle = "${sync.reason.displayLabel()}。未获取到成绩，" +
+                subtitle = "${sync.reason.displayLabel(sync.retryAfterSeconds)}。未获取到成绩，" +
                     "${failureHint(sync.reason)}。",
-                actionLabel = if (official) "打开学校成绩网页" else "重试",
-                action = if (official) onOpenOfficialPage else onSync,
+                actionLabel = when {
+                    official -> "打开学校成绩网页"
+                    accountSettings -> "更新托管密码"
+                    else -> "重试"
+                },
+                action = when {
+                    official -> onOpenOfficialPage
+                    accountSettings -> onOpenAccount
+                    else -> onSync
+                },
             )
         }
     }
@@ -544,9 +563,9 @@ private fun accountSummary(state: GradesUiState): String {
         "无法同步教务成绩"
     }
     return when (state.account) {
-        GradesAccountState.ACCOUNT_REQUIRED -> "未设置学校账号 · $history"
-        GradesAccountState.RESTORING -> "正在恢复学校账号 · $history"
-        GradesAccountState.CLEANING -> "正在清理学校账号 · $history"
+        GradesAccountState.ACCOUNT_REQUIRED -> "未绑定校方托管账号 · $history"
+        GradesAccountState.RESTORING -> "正在恢复校方托管账号 · $history"
+        GradesAccountState.CLEANING -> "正在清理校方托管账号 · $history"
         GradesAccountState.READY -> syncSummary(state)
     }
 }
@@ -607,13 +626,13 @@ private fun syncDetail(state: GradesUiState): String? = when (val sync = state.s
         detail = if (state.courses.isNotEmpty()) {
             val syncedTerms = state.terms.count { it.isSynced }
             val failedTerms = state.terms.count { it.syncFailed }
-            "${sync.reason.displayLabel()} · " + when {
+            "${sync.reason.displayLabel(sync.retryAfterSeconds)} · " + when {
                 syncedTerms == 0 -> "已保留本机已有成绩记录"
                 failedTerms > 0 -> "$failedTerms 个学期同步失败，已保留已同步记录"
                 else -> "已保留已同步记录"
             }
         } else {
-            "${sync.reason.displayLabel()} · ${failureHint(sync.reason)}"
+                "${sync.reason.displayLabel(sync.retryAfterSeconds)} · ${failureHint(sync.reason)}"
         },
         unsavedChanges = state.unsavedChanges,
     )
@@ -638,26 +657,63 @@ private fun appendUnsavedHint(detail: String?, unsavedChanges: Boolean): String?
         listOfNotNull(detail, UNSAVED_CHANGES_MESSAGE).joinToString("；")
     }
 
-private fun GradesSyncFailure.displayLabel(): String = when (this) {
-    GradesSyncFailure.NETWORK -> "网络不可用"
-    GradesSyncFailure.AUTH -> "学校登录已失效"
-    GradesSyncFailure.STORAGE -> "本机成绩读取或保存失败"
-    GradesSyncFailure.INTERACTION -> "学校要求交互验证"
-    GradesSyncFailure.SERVER -> "教务系统暂时不可用"
-    GradesSyncFailure.UNSUPPORTED -> "教务返回内容无法识别"
-    GradesSyncFailure.UNKNOWN -> "同步未完成"
+private fun GradesSyncFailure.displayLabel(retryAfterSeconds: Long? = null): String {
+    if (this == GradesSyncFailure.RATE_LIMITED && retryAfterSeconds != null) {
+        return "请求过于频繁，请在 ${retryAfterSeconds.coerceIn(1, 86_400)} 秒后重试"
+    }
+    return when (this) {
+        GradesSyncFailure.NETWORK -> "网络不可用"
+        GradesSyncFailure.AUTH -> "校方托管会话已失效"
+        GradesSyncFailure.SERVICE_NOT_READY -> "校方服务未就绪"
+        GradesSyncFailure.CREDENTIAL_UPDATE_REQUIRED -> "需要更新托管密码"
+        GradesSyncFailure.VERIFICATION_BUSY -> "校方验证处理中"
+        GradesSyncFailure.STORAGE -> "本机成绩读取或保存失败"
+        GradesSyncFailure.INTERACTION -> "学校要求交互验证"
+        GradesSyncFailure.SERVER -> "教务系统暂时不可用"
+        GradesSyncFailure.MODULE_DISABLED -> "校方暂未开放成绩模块"
+        GradesSyncFailure.CIRCUIT_OPEN -> "校方成绩服务正在暂停请求"
+        GradesSyncFailure.UPSTREAM_UNAVAILABLE -> "教务系统暂时不可用"
+        GradesSyncFailure.UPSTREAM_TIMEOUT -> "教务系统响应超时"
+        GradesSyncFailure.VALIDATION_FAILED -> "成绩请求参数未通过校验"
+        GradesSyncFailure.IDENTITY_UNSUPPORTED -> "当前账号暂不支持成绩同步"
+        GradesSyncFailure.RATE_LIMITED -> "请求过于频繁"
+        GradesSyncFailure.UNSUPPORTED -> "教务返回内容无法识别"
+        GradesSyncFailure.UNKNOWN -> "同步未完成"
+    }
 }
 
 /** AUTH 与 INTERACTION 都需要用户到学校网页完成验证。 */
 private fun GradesSyncFailure.opensOfficialPage(): Boolean =
-    this == GradesSyncFailure.AUTH || this == GradesSyncFailure.INTERACTION
+    this == GradesSyncFailure.AUTH ||
+        this == GradesSyncFailure.INTERACTION ||
+        this == GradesSyncFailure.SERVICE_NOT_READY ||
+        this == GradesSyncFailure.SERVER ||
+        this == GradesSyncFailure.MODULE_DISABLED ||
+        this == GradesSyncFailure.CIRCUIT_OPEN ||
+        this == GradesSyncFailure.UPSTREAM_UNAVAILABLE ||
+        this == GradesSyncFailure.UPSTREAM_TIMEOUT ||
+        this == GradesSyncFailure.IDENTITY_UNSUPPORTED ||
+        this == GradesSyncFailure.UNSUPPORTED
+
+private fun GradesSyncFailure.opensAccountSettings(): Boolean =
+    this == GradesSyncFailure.AUTH || this == GradesSyncFailure.CREDENTIAL_UPDATE_REQUIRED
 
 private fun failureHint(reason: GradesSyncFailure): String = when (reason) {
-    GradesSyncFailure.AUTH -> "请检查学校账号后重试"
+    GradesSyncFailure.AUTH -> "请在校方托管账号设置中重新绑定"
+    GradesSyncFailure.CREDENTIAL_UPDATE_REQUIRED -> "请在校方托管账号设置中更新密码"
     GradesSyncFailure.INTERACTION -> "请完成学校网页验证后重试"
+    GradesSyncFailure.SERVICE_NOT_READY -> "校方服务地址尚未配置"
+    GradesSyncFailure.VERIFICATION_BUSY -> "稍后重试"
     GradesSyncFailure.STORAGE -> "请重新同步"
     GradesSyncFailure.NETWORK,
     GradesSyncFailure.SERVER,
+    GradesSyncFailure.MODULE_DISABLED,
+    GradesSyncFailure.CIRCUIT_OPEN,
+    GradesSyncFailure.UPSTREAM_UNAVAILABLE,
+    GradesSyncFailure.UPSTREAM_TIMEOUT,
+    GradesSyncFailure.VALIDATION_FAILED,
+    GradesSyncFailure.IDENTITY_UNSUPPORTED,
+    GradesSyncFailure.RATE_LIMITED,
     GradesSyncFailure.UNSUPPORTED,
     GradesSyncFailure.UNKNOWN -> "请稍后重试"
 }

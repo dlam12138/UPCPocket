@@ -2,7 +2,6 @@ package com.upcpocket.app.data.card
 
 import com.upcpocket.app.data.cardhistory.CardHistoryException
 import com.upcpocket.app.data.cardhistory.CardHistoryFailure
-import com.upcpocket.app.data.cardrecharge.RechargeFailure
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
 import com.upcpocket.app.platform.diagnostics.DiagnosticEvent
@@ -91,28 +90,18 @@ internal class CardDiagnostics private constructor(
             val reason = when (error) {
                 is CardHistoryException -> when (error.reason) {
                     CardHistoryFailure.ACCOUNT_UNAVAILABLE, CardHistoryFailure.ACCOUNT_CHANGED -> DiagnosticReason.ACCOUNT
-                    CardHistoryFailure.LOGIN_REQUIRED, CardHistoryFailure.AUTHENTICATION,
-                    CardHistoryFailure.INVALID_CREDENTIALS -> DiagnosticReason.AUTH
-                    CardHistoryFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
-                    CardHistoryFailure.ACCESS_DENIED -> DiagnosticReason.POLICY
+                    CardHistoryFailure.UNAUTHENTICATED,
+                    CardHistoryFailure.CREDENTIAL_UPDATE_REQUIRED -> DiagnosticReason.AUTH
+                    CardHistoryFailure.INTERACTIVE_CHALLENGE,
+                    CardHistoryFailure.VERIFICATION_BUSY -> DiagnosticReason.INTERACTION
                     CardHistoryFailure.NETWORK -> DiagnosticReason.NETWORK
-                    CardHistoryFailure.PROTOCOL -> DiagnosticReason.SCHEMA
-                    CardHistoryFailure.UPSTREAM -> DiagnosticReason.HTTP
-                }
-                is RechargeFailure -> when (error.stage) {
-                    "P-ACCOUNT" -> DiagnosticReason.ACCOUNT
-                    "P-SESSION", "P-LOGIN" -> DiagnosticReason.AUTH
-                    "P-NETWORK" -> DiagnosticReason.NETWORK
-                    "P-HTTP" -> DiagnosticReason.HTTP
-                    "P-PENDING-STORE" -> DiagnosticReason.STORAGE
-                    "P-PENDING", "P-AMOUNT", "P-CARD-BLOCKED", "P-CARD-OWNER", "P-CARD-TYPE",
-                    "P-ORDER-OWNER", "P-ORIGIN", "P-WX-ORIGIN", "P-WX-URI", "P-WX-CALLBACK" -> DiagnosticReason.POLICY
-                    "P-SIZE", "P-JSON", "P-RESULT", "P-DATA", "P-URL", "P-API-REDIRECT",
-                    "P-CONFIG", "P-CARDS", "P-CARD-ACCOUNT", "P-FEE-CONFIG", "P-SIGN-DOWNLOAD",
-                    "P-SIGN-FORMAT", "P-ORDER-REDIRECT", "P-ORDER-INFO", "P-PAY-METHOD",
-                    "P-PAY-RESPONSE", "P-WX-REDIRECT", "P-WX-FORM", "P-WX-SCRIPT", "P-STATUS" -> DiagnosticReason.SCHEMA
-                    "P-ORDER-UNKNOWN" -> DiagnosticReason.UNKNOWN
-                    else -> DiagnosticReason.UNKNOWN
+                    CardHistoryFailure.PROTOCOL,
+                    CardHistoryFailure.IDENTITY_UNSUPPORTED -> DiagnosticReason.SCHEMA
+                    CardHistoryFailure.SERVICE_NOT_READY,
+                    CardHistoryFailure.MODULE_DISABLED,
+                    CardHistoryFailure.CIRCUIT_OPEN,
+                    CardHistoryFailure.RATE_LIMITED -> DiagnosticReason.HTTP
+                    CardHistoryFailure.TIMEOUT -> DiagnosticReason.NETWORK
                 }
                 is SecurityException -> DiagnosticReason.POLICY
                 is IOException -> if (phase in setOf(DiagnosticPhase.PARSE, DiagnosticPhase.PERSONAL_VERIFY)) {

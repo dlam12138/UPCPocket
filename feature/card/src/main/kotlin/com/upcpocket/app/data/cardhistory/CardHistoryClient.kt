@@ -1,531 +1,191 @@
 package com.upcpocket.app.data.cardhistory
 
-import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
-import com.upcpocket.app.account.api.SchoolStudentIdentity
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
+import com.upcpocket.app.account.api.SchoolAccountState
+import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
-import com.upcpocket.app.data.card.CardDiagnostics
-import com.upcpocket.app.platform.diagnostics.DiagnosticAction
-import com.upcpocket.app.platform.diagnostics.DiagnosticBindingSource
-import com.upcpocket.app.platform.diagnostics.DiagnosticCallbackState
-import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
-import com.upcpocket.app.platform.diagnostics.DiagnosticModule
-import com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame
-import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
-import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
-import com.upcpocket.app.platform.diagnostics.DiagnosticReason
-import com.upcpocket.app.platform.diagnostics.DiagnosticResult
-import com.upcpocket.app.platform.diagnostics.Diagnostics
+import com.upcpocket.app.card.CardBackendDataSource
+import com.upcpocket.app.card.CardBackendException
+import com.upcpocket.app.card.CardBackendFailureCode
+import com.upcpocket.app.card.CardBackendTransaction
 import java.io.IOException
 import java.time.YearMonth
-import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.*
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
 
-internal data class CardReadHttpResponse(val code: Int, val body: String?, val location: String?)
-internal class CardReadBodyTooLargeException : IOException()
-
-/** Keep the Call cancellable until the bounded response body has been consumed. */
-internal suspend fun Call.awaitCardReadResponse(
-    trace: CardHistoryTransportTrace?,
-    maximumBodyBytes: Int,
-): CardReadHttpResponse = suspendCancellableCoroutine { continuation ->
-    val activeCall = this
-    continuation.invokeOnCancellation {
-        runCatching { trace?.coroutineCancelled() }
-        activeCall.cancel()
-    }
-    if (!continuation.isActive) return@suspendCancellableCoroutine
-    enqueue(object : Callback {
-        override fun onFailure(call: Call, error: IOException) {
-            continuation.resumeWith(Result.failure(error))
-        }
-
-        override fun onResponse(call: Call, response: Response) {
-            val result = try {
-                Result.success(response.use {
-                    CardReadHttpResponse(
-                        it.code,
-                        it.readCardReadBody(trace, maximumBodyBytes),
-                        it.header("Location"),
-                    )
-                })
-            } catch (failure: Throwable) {
-                if (failure is CardReadBodyTooLargeException) runCatching { trace?.responseTooLarge() }
-                Result.failure(failure)
-            }
-            continuation.resumeWith(result)
-        }
-    })
-}
-
-private fun Response.readCardReadBody(
-    trace: CardHistoryTransportTrace?,
-    maximumBodyBytes: Int,
-): String? {
-    if (code != 200) return null
-    val body = body ?: return null
-    // OkHttp body events can arrive only after the first byte; keep an explicit interval around the bounded reader.
-    runCatching { trace?.responseBodyReadStart() }
-    try {
-        val output = java.io.ByteArrayOutputStream()
-        body.byteStream().use { stream ->
-            val buffer = ByteArray(8192)
-            while (true) {
-                val count = stream.read(buffer)
-                if (count < 0) break
-                if (output.size() + count > maximumBodyBytes) {
-                    throw CardReadBodyTooLargeException()
-                }
-                output.write(buffer, 0, count)
-            }
-        }
-        return output.toString("UTF-8")
-    } finally {
-        runCatching { trace?.responseBodyReadEnd() }
-    }
-}
-
-/** Implemented by the host's restricted auth adapter, never by a password-reading feature. */
-fun interface CardHistoryAuthenticator {
-    suspend fun authenticate(identity: SchoolStudentIdentity): String
-}
-
-private fun recordCardInteractiveDiagnostic(
-    operation: DiagnosticOperation,
-    action: DiagnosticAction,
-    result: DiagnosticResult,
-    phase: DiagnosticPhase,
-    detail: DiagnosticDetail,
-    reason: DiagnosticReason? = null,
-    callbackState: DiagnosticCallbackState? = null,
-    navigationFrame: DiagnosticNavigationFrame? = null,
-    bindingSource: DiagnosticBindingSource? = null,
-) {
-    runCatching {
-        Diagnostics.record(
-            module = DiagnosticModule.CARD,
-            action = action,
-            result = result,
-            reason = reason,
-            phase = phase,
-            detail = detail,
-            operation = operation,
-            callbackState = callbackState,
-            navigationFrame = navigationFrame,
-            bindingSource = bindingSource,
-        )
-    }
-}
+data class CardHistoryRow(val id: String, val title: String, val time: String, val amountFen: Long)
+data class CardHistoryPage(val rows: List<CardHistoryRow>, val total: Int, val pages: Int)
+data class CardHistorySummary(val incomeFen: Long, val expenseFen: Long)
+data class BoundCardHistoryPage(
+    val owner: SchoolAccountReference,
+    val month: YearMonth?,
+    val current: Int,
+    val data: CardHistoryPage,
+)
 
 enum class CardHistoryFailure {
-    ACCOUNT_UNAVAILABLE, ACCOUNT_CHANGED, LOGIN_REQUIRED, NETWORK, PROTOCOL, AUTHENTICATION,
-    INTERACTION_REQUIRED, INVALID_CREDENTIALS, ACCESS_DENIED, UPSTREAM,
+    ACCOUNT_UNAVAILABLE,
+    ACCOUNT_CHANGED,
+    NETWORK,
+    PROTOCOL,
+    SERVICE_NOT_READY,
+    MODULE_DISABLED,
+    CIRCUIT_OPEN,
+    TIMEOUT,
+    RATE_LIMITED,
+    IDENTITY_UNSUPPORTED,
+    CREDENTIAL_UPDATE_REQUIRED,
+    INTERACTIVE_CHALLENGE,
+    VERIFICATION_BUSY,
+    UNAUTHENTICATED,
 }
-class CardHistoryException(val reason: CardHistoryFailure) : IOException(reason.name)
-data class CardHistorySummary(val incomeFen: Long, val expenseFen: Long)
-data class BoundCardHistoryPage(val owner: SchoolStudentIdentity, val month: YearMonth?, val current: Int, val data: CardHistoryPage)
 
-internal class CardRechargeSession(val owner: SchoolStudentIdentity, val token: String, private val valid: () -> Boolean, private val expire: () -> Unit = {}) {
-    fun checkCurrent() { if (!valid()) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED) }
-    fun expireIfCurrent() = expire()
-    override fun toString() = "CardRechargeSession([REDACTED])"
-}
+class CardHistoryException(
+    val reason: CardHistoryFailure,
+    val retryAfterMillis: Long? = null,
+) : IOException(reason.name)
 
-/** Only fixed HTTPS, read-only endpoints; a session is checked against the current account generation. */
+/** Backend only; this client owns no token, Cookie, web session, or disk persistence. */
 class CardHistoryClient(
-    private val account: SchoolAccountStudentIdentityReader,
-    private val authenticator: CardHistoryAuthenticator,
-    http: OkHttpClient = OkHttpClient.Builder()
-        .followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build(),
-    private val interactiveAuthenticator: CardHistoryInteractiveAuthenticator? = null,
+    private val account: SchoolAccountReferenceReader,
+    private val backend: CardBackendDataSource,
 ) {
-    private val readTransport = CardHistoryReadTransport(http)
-
-    private class Session(val owner: SchoolStudentIdentity, val token: String)
-    private class InteractiveState(
-        val id: Long,
-        val owner: SchoolStudentIdentity,
-        val epoch: Long,
-        val operation: DiagnosticOperation,
-    ) {
-        var consumed = false
-        var cancelled = false
-    }
-    private class ActiveWebView(val attemptId: Long, val lease: CardHistoryWebViewLease)
-
-    @Volatile private var session: Session? = null
-    private val epoch = AtomicLong()
-    private val stateLock = Any()
-    private val attemptIds = AtomicLong()
-    private var interactiveState: InteractiveState? = null
-    private var activeWebView: ActiveWebView? = null
-    val studentIdentity get() = account.studentIdentity
+    val accountReference get() = account.accountReference
     val accountState get() = account.state
-    val supportsInteractiveLogin get() = interactiveAuthenticator != null
-    fun hasSession(): Boolean = session?.let { isCurrent(it.owner) } == true
 
-    fun clearSession() {
-        invalidateState()?.dispose()
-    }
+    suspend fun invalidateForAccountChange(): Boolean = true
 
-    /** Account invalidation is a barrier: the active browser is destroyed before cookie cleanup. */
-    suspend fun invalidateForAccountChange(): Boolean {
-        val lease = invalidateState() ?: return true
-        val stopped = runCatching { lease.disposeAndAwait() }.getOrDefault(false)
-        if (stopped) synchronized(stateLock) {
-            if (activeWebView?.lease === lease) activeWebView = null
+    fun isCurrent(owner: SchoolAccountReference): Boolean = currentOwner() == owner
+
+    suspend fun page(
+        month: YearMonth? = null,
+        current: Int = 1,
+        size: Int = 50,
+    ): BoundCardHistoryPage {
+        if (current < 1 || size !in 1..100) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+        val owner = currentOwner() ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_UNAVAILABLE)
+        val result = try {
+            backend.transactions(month, current, size)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (known: CardHistoryException) {
+            throw known
+        } catch (failure: CardBackendException) {
+            throw failure.toHistoryException()
+        } catch (_: Exception) {
+            throw CardHistoryException(CardHistoryFailure.NETWORK)
         }
-        return stopped
-    }
-
-    private fun invalidateState(): CardHistoryWebViewLease? = synchronized(stateLock) {
-        epoch.incrementAndGet()
-        session = null
-        interactiveState?.cancelled = true
-        interactiveState = null
-        activeWebView?.lease
-    }
-
-    fun beginInteractiveLogin(): CardHistoryInteractiveAttempt {
-        val bridge = interactiveAuthenticator
-            ?: throw CardHistoryException(CardHistoryFailure.INTERACTION_REQUIRED)
-        val owner = identity()
-        val generation = epoch.get()
-        val entryUrl = bridge.entryUrl
-        val operation = Diagnostics.beginOperation()
-        recordCardInteractiveDiagnostic(
-            operation, DiagnosticAction.AUTH_START, DiagnosticResult.PENDING,
-            DiagnosticPhase.WEBVIEW_NAVIGATION, DiagnosticDetail.AUTH_REQUIRED,
-            bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+        val expectedPages = if (result.total <= 0) 0 else
+            ((result.total.toLong() + size - 1L) / size).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+        if (!isCurrent(owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        if (result.page != current || result.size != size || result.total < result.rows.size ||
+            result.pages < 0 || result.rows.size > result.size ||
+            result.pages != expectedPages ||
+            result.rows.map { it.rowKey }.toSet().size != result.rows.size
+        ) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+        val rows = result.rows.map(::toRow)
+        if (!isCurrent(owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        return BoundCardHistoryPage(
+            owner = owner,
+            month = month,
+            current = current,
+            data = CardHistoryPage(rows, result.total, result.pages),
         )
-        if (bridge.inspectNavigation(entryUrl, "GET", true, operation) != CardHistoryWebNavigation.Allow) {
-            recordCardInteractiveDiagnostic(
-                operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.BLOCKED,
-                DiagnosticPhase.WEBVIEW_NAVIGATION, DiagnosticDetail.WEBVIEW_NAVIGATION_BLOCKED,
-                reason = DiagnosticReason.POLICY,
-                navigationFrame = com.upcpocket.app.platform.diagnostics.DiagnosticNavigationFrame.MAIN,
-                bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
-            )
+    }
+
+    /** User initiated only; rows remain in the screen's memory and never enter a disk store. */
+    suspend fun all(
+        month: YearMonth? = null,
+        onProgress: (Int, Int) -> Unit = { _, _ -> },
+    ): BoundCardHistoryPage {
+        val first = page(month, current = 1)
+        val owner = first.owner
+        val rows = LinkedHashMap<String, CardHistoryRow>()
+        var result = first
+        result.data.rows.forEach { rows[it.id] = it }
+        onProgress(rows.size, result.data.total)
+        for (pageNumber in 2..first.data.pages) {
+            if (!isCurrent(owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+            result = page(month, pageNumber)
+            if (result.owner != owner || result.data.rows.isEmpty()) {
+                throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            }
+            val previous = rows.size
+            result.data.rows.forEach { rows.putIfAbsent(it.id, it) }
+            if (rows.size == previous && rows.size < result.data.total) {
+                throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+            }
+            onProgress(rows.size, result.data.total)
+            if (pageNumber < first.data.pages) delay(250)
+        }
+        if (!isCurrent(owner) || rows.size != first.data.total) {
             throw CardHistoryException(CardHistoryFailure.PROTOCOL)
         }
-        val previousLease = synchronized(stateLock) { activeWebView?.lease }
-        previousLease?.dispose()
-        val id = attemptIds.incrementAndGet()
-        val next = InteractiveState(id, owner, generation, operation)
-        synchronized(stateLock) {
-            if (activeWebView != null) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            if (epoch.get() != generation || !isCurrent(owner)) {
-                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-            }
-            interactiveState?.cancelled = true
-            interactiveState = next
-        }
-        return CardHistoryInteractiveAttempt(id, entryUrl)
+        return result.copy(data = result.data.copy(rows = rows.values.toList()))
     }
 
-    fun inspectInteractiveNavigation(url: String, method: String, isMainFrame: Boolean): CardHistoryWebNavigation {
-        val operation = synchronized(stateLock) { interactiveState?.operation }
-        return interactiveAuthenticator?.inspectNavigation(url, method, isMainFrame, operation)
-            ?: CardHistoryWebNavigation.Block
-    }
-
-    fun isInteractiveLoginCurrent(attemptId: Long): Boolean = synchronized(stateLock) {
-        interactiveState?.let { it.id == attemptId && !it.cancelled } == true
-    }
-
-    /** The returned handle unregisters only; the client owns immediate destruction on invalidation. */
-    fun registerInteractiveWebView(attemptId: Long, lease: CardHistoryWebViewLease): AutoCloseable? {
-        val accepted = synchronized(stateLock) {
-            if (interactiveState?.id != attemptId || interactiveState?.cancelled == true || activeWebView != null) {
-                false
-            } else {
-                activeWebView = ActiveWebView(attemptId, lease)
-                true
-            }
+    suspend fun summary(month: YearMonth? = null): CardHistorySummary {
+        val owner = currentOwner() ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_UNAVAILABLE)
+        val summary = try {
+            backend.transactionsSummary(month)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (known: CardHistoryException) {
+            throw known
+        } catch (failure: CardBackendException) {
+            throw failure.toHistoryException()
+        } catch (_: Exception) {
+            throw CardHistoryException(CardHistoryFailure.NETWORK)
         }
-        if (!accepted) {
-            lease.dispose()
-            return null
-        }
-        return AutoCloseable {
-            synchronized(stateLock) {
-                if (activeWebView?.attemptId == attemptId && activeWebView?.lease === lease) {
-                    activeWebView = null
-                }
-            }
-        }
-    }
-
-    fun cancelInteractiveLogin(attemptId: Long) {
-        synchronized(stateLock) {
-            val active = interactiveState
-            if (active?.id != attemptId) return
-            active.cancelled = true
-            interactiveState = null
-        }
-        synchronized(stateLock) { activeWebView?.takeIf { it.attemptId == attemptId }?.lease }?.dispose()
-    }
-
-    /** Captured results are single-use, then go through the same identity check and session commit as native login. */
-    suspend fun completeInteractiveLogin(attemptId: Long, resultUrl: String): Unit = withContext(Dispatchers.IO) {
-        val bridge = interactiveAuthenticator
-            ?: throw CardHistoryException(CardHistoryFailure.INTERACTION_REQUIRED)
-        val initial = synchronized(stateLock) {
-            interactiveState?.takeIf { it.id == attemptId && !it.cancelled && !it.consumed }
-                ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-        }
-        val decision = bridge.inspectNavigation(resultUrl, "GET", true, initial.operation)
-        if (decision !is CardHistoryWebNavigation.Complete || decision.url != resultUrl) {
-            recordCardInteractiveDiagnostic(
-                initial.operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.FAIL,
-                DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_REJECTED,
-                reason = DiagnosticReason.POLICY, callbackState = DiagnosticCallbackState.REJECTED,
-                bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
-            )
+        if (!isCurrent(owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
+        if (summary.incomeFen < 0 || summary.expenseFen < 0) {
             throw CardHistoryException(CardHistoryFailure.PROTOCOL)
         }
-        val state = synchronized(stateLock) {
-            val active = interactiveState
-                ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-            if (active !== initial || active.id != attemptId || active.cancelled || active.consumed) {
-                recordCardInteractiveDiagnostic(
-                    initial.operation, DiagnosticAction.AUTH_STOP, DiagnosticResult.BLOCKED,
-                    DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_REJECTED,
-                    reason = DiagnosticReason.STALE, callbackState = DiagnosticCallbackState.STALE,
-                    bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
-                )
-                throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-            }
-            active.consumed = true
-            active
-        }
-        recordCardInteractiveDiagnostic(
-            state.operation, DiagnosticAction.AUTH_STAGE, DiagnosticResult.OK,
-            DiagnosticPhase.WEBVIEW_CALLBACK, DiagnosticDetail.WEBVIEW_CALLBACK_CONSUMED,
-            callbackState = DiagnosticCallbackState.CONSUMED,
-            bindingSource = DiagnosticBindingSource.VERIFIED_WEB,
+        return CardHistorySummary(summary.incomeFen, summary.expenseFen)
+    }
+
+    private fun currentOwner(): SchoolAccountReference? {
+        val state = account.state.value
+        if (state.status != SchoolAccountStatus.MANAGED_ACTIVE || state.blocksPersonalSessions) return null
+        return account.accountReference.value?.takeIf { it.credentialGeneration == state.generation }
+    }
+
+    private fun toRow(value: CardBackendTransaction): CardHistoryRow {
+        if (value.rowKey.isBlank() || value.rowKey.length > 256 || value.title.length > 512 ||
+            value.time.isBlank() || value.time.length > 128
+        ) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
+        return CardHistoryRow(
+            id = value.rowKey,
+            title = value.title.ifBlank { "校园卡交易" },
+            time = value.time.ifBlank { "时间未知" },
+            amountFen = value.amountFen,
         )
-        checkInteractiveCurrent(state)
-        val token = bridge.completeResult(state.owner, resultUrl, state.operation)
-        checkInteractiveCurrent(state)
-        verifyAndCommit(state.owner, state.epoch, token, state)
-    }
-
-    private fun identity(): SchoolStudentIdentity = account.studentIdentity.value
-        ?.takeUnless { account.state.value.blocksPersonalSessions }
-        ?: throw CardHistoryException(CardHistoryFailure.ACCOUNT_UNAVAILABLE)
-    fun isCurrent(owner: SchoolStudentIdentity): Boolean =
-        !account.state.value.blocksPersonalSessions && account.studentIdentity.value == owner
-
-    suspend fun login(): Unit = withContext(Dispatchers.IO) {
-        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_IDENTITY_VERIFY, DiagnosticPhase.BUSINESS_SESSION)
-        try {
-            val owner = identity()
-            val generation = epoch.get()
-            val token = authenticator.authenticate(owner)
-            currentCoroutineContext().ensureActive()
-            verifyAndCommit(owner, generation, token, diagnostic = diagnostic)
-        } catch (error: Throwable) {
-            diagnostic.fail(error)
-            throw error
-        }
-    }
-
-    private suspend fun verifyAndCommit(
-        owner: SchoolStudentIdentity,
-        generation: Long,
-        token: String,
-        interactive: InteractiveState? = null,
-        diagnostic: CardDiagnostics = CardDiagnostics.begin(DiagnosticDetail.CARD_IDENTITY_VERIFY, DiagnosticPhase.PERSONAL_VERIFY),
-    ) {
-        try {
-            val coroutineContext = currentCoroutineContext()
-            coroutineContext.ensureActive()
-            diagnostic.phase = DiagnosticPhase.PERSONAL_VERIFY
-            val candidate = Session(owner, token)
-            CardHistoryProtocol.verifyIdentity(
-                get("/berserker-base/user?synAccessSource=h5", candidate, diagnostic), owner.studentId,
-            )
-            synchronized(stateLock) {
-                coroutineContext.ensureActive()
-                if (!isCurrent(owner) || epoch.get() != generation ||
-                    (interactive != null && (interactiveState !== interactive || interactive.cancelled))
-                ) {
-                    throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-                }
-                session = candidate
-                if (interactive != null) interactiveState = null
-            }
-            diagnostic.finish()
-        } catch (error: Throwable) {
-            diagnostic.fail(error)
-            throw error
-        }
-    }
-
-    private fun checkInteractiveCurrent(state: InteractiveState) {
-        val valid = synchronized(stateLock) {
-            interactiveState === state && !state.cancelled && epoch.get() == state.epoch
-        }
-        if (!valid || !isCurrent(state.owner)) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-    }
-
-    suspend fun page(month: YearMonth? = null, current: Int = 1, size: Int = 50): BoundCardHistoryPage = withContext(Dispatchers.IO) {
-        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_PAGE, DiagnosticPhase.BUSINESS_SESSION)
-        try {
-            val active = requireSession()
-            val generation = epoch.get()
-            diagnostic.phase = DiagnosticPhase.RESPONSE
-            val body = get(
-                "/berserker-search/search/personal/turnover?" + query(month, current, size), active, diagnostic,
-            )
-            diagnostic.phase = DiagnosticPhase.PARSE
-            val actual = (CardHistoryProtocol.data(body)["current"] as? JsonPrimitive)?.intOrNull
-            if (actual != null && actual != current) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            val parsed = CardHistoryProtocol.parseRows(body)
-            checkCurrent(active, generation)
-            BoundCardHistoryPage(active.owner, month, current, parsed).also { diagnostic.finish() }
-        } catch (error: Throwable) {
-            diagnostic.fail(error)
-            throw error
-        }
-    }
-
-    /** Explicit user action only. Failure never returns a partial list as a complete history. */
-    suspend fun all(month: YearMonth? = null, onProgress: (Int, Int) -> Unit = { _, _ -> }): BoundCardHistoryPage {
-        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_PAGE, DiagnosticPhase.BUSINESS_SESSION)
-        try {
-            val owner = requireSession().owner
-            val generation = epoch.get()
-            val records = linkedMapOf<String, CardHistoryRow>()
-            var current = 1
-            do {
-                diagnostic.phase = DiagnosticPhase.RESPONSE
-                val result = page(month, current)
-                diagnostic.phase = DiagnosticPhase.PARSE
-                if (result.owner != owner || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-                val previous = records.size
-                result.data.rows.forEach { records[it.id] = it }
-                if (current > 1 && records.size == previous) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                onProgress(records.size, result.data.total)
-                if (current >= result.data.pages) {
-                    if (!isCurrent(owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-                    if (records.size != result.data.total) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                    diagnostic.finish()
-                    return result.copy(data = result.data.copy(rows = records.values.toList()))
-                }
-                if (result.data.rows.isEmpty()) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-                current++
-                delay(250)
-            } while (true)
-        } catch (error: Throwable) {
-            diagnostic.fail(error)
-            throw error
-        }
-    }
-
-    suspend fun summary(month: YearMonth? = null): CardHistorySummary = withContext(Dispatchers.IO) {
-        val diagnostic = CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_SUMMARY, DiagnosticPhase.BUSINESS_SESSION)
-        try {
-            val active = requireSession()
-            val generation = epoch.get()
-            diagnostic.phase = DiagnosticPhase.RESPONSE
-            val body = get(
-                "/berserker-search/statistics/turnover/count?" + query(month, 1, 50), active, diagnostic,
-            )
-            diagnostic.phase = DiagnosticPhase.PARSE
-            val data = CardHistoryProtocol.data(body)
-            fun amount(key: String): Long = CardHistoryProtocol.fen(data[key])?.takeIf { it >= 0 }
-                ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            val result = CardHistorySummary(amount("income"), amount("expenses"))
-            checkCurrent(active, generation)
-            result.also { diagnostic.finish() }
-        } catch (error: Throwable) {
-            diagnostic.fail(error)
-            throw error
-        }
-    }
-
-    /** Restricted to this feature's recharge adapter; no credential or token reaches a page. */
-    internal suspend fun <T> withRechargeSession(block: suspend (CardRechargeSession) -> T): T {
-        if (!hasSession()) login()
-        val active = requireSession()
-        val generation = epoch.get()
-        val lease = CardRechargeSession(active.owner, active.token, valid = {
-            synchronized(stateLock) { session === active && epoch.get() == generation && isCurrent(active.owner) }
-        }, expire = {
-            synchronized(stateLock) {
-                if(session === active && epoch.get() == generation && isCurrent(active.owner)) {
-                    session=null
-                    epoch.incrementAndGet()
-                }
-            }
-        })
-        lease.checkCurrent()
-        val result = block(lease)
-        lease.checkCurrent()
-        return result
-    }
-
-    private fun requireSession(): Session {
-        val active = session ?: throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
-        if (!isCurrent(active.owner)) { clearSession(); throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED) }
-        return active
-    }
-    private fun checkCurrent(active: Session, generation: Long) {
-        if (!isCurrent(active.owner) || epoch.get() != generation) throw CardHistoryException(CardHistoryFailure.ACCOUNT_CHANGED)
-    }
-    private suspend fun get(path: String, active: Session, diagnostic: CardDiagnostics): String {
-        val token = active.token
-        if (token.isBlank() || token.length > 16384 || token.any { it <= ' ' || it == '\u007f' })
-            throw CardHistoryException(CardHistoryFailure.AUTHENTICATION)
-        val request = Request.Builder().url(CardHistoryProtocol.BASE + path)
-            .header("Accept", "application/json").header("synAccessSource", "h5")
-            .header("synjones-auth", "bearer $token").build()
-        val prepared = readTransport.prepare(request)
-        try {
-            val response = prepared.client.newCall(prepared.request)
-                .awaitCardReadResponse(prepared.trace, CARD_HISTORY_RESPONSE_LIMIT_BYTES)
-            currentCoroutineContext().ensureActive()
-            if (response.code == 401 || response.code == 403) {
-                if (session === active) clearSession()
-                throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
-            }
-            if (response.code != 200) throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            val text = response.body ?: throw CardHistoryException(CardHistoryFailure.PROTOCOL)
-            val code = runCatching {
-                (Json.parseToJsonElement(text).jsonObject["code"] as? JsonPrimitive)?.intOrNull
-            }.getOrNull()
-            if (code == 401 || code == 403) {
-                if (session === active) clearSession()
-                throw CardHistoryException(CardHistoryFailure.LOGIN_REQUIRED)
-            }
-            return text
-        } catch (known: CardHistoryException) { throw known }
-        catch (_: CardHistoryRequestPolicyException) { throw CardHistoryException(CardHistoryFailure.PROTOCOL) }
-        catch (_: CardReadBodyTooLargeException) { throw CardHistoryException(CardHistoryFailure.PROTOCOL) }
-        catch (_: IOException) { throw CardHistoryException(CardHistoryFailure.NETWORK) }
-        finally { prepared.trace?.let { observed -> runCatching { diagnostic.transport(observed.snapshot()) } } }
-    }
-
-    companion object {
-        private const val CARD_HISTORY_RESPONSE_LIMIT_BYTES = 2 * 1024 * 1024
-
-        internal fun query(month: YearMonth?, current: Int, size: Int): String {
-            require(current > 0 && size in 1..100)
-            val fields = linkedMapOf("size" to "$size", "current" to "$current", "synAccessSource" to "h5")
-            if (month != null) { fields["timeFrom"] = month.atDay(1).toString(); fields["timeTo"] = month.atEndOfMonth().toString() }
-            return fields.entries.joinToString("&") { "${it.key}=${java.net.URLEncoder.encode(it.value, "UTF-8")}" }
-        }
     }
 }
+
+private fun CardBackendException.toHistoryException(): CardHistoryException = CardHistoryException(
+    reason = when (code) {
+        CardBackendFailureCode.BACKEND_NOT_READY -> CardHistoryFailure.SERVICE_NOT_READY
+        CardBackendFailureCode.TOKEN_INVALID,
+        CardBackendFailureCode.UNAUTHENTICATED,
+        CardBackendFailureCode.DISABLED -> CardHistoryFailure.UNAUTHENTICATED
+        CardBackendFailureCode.INTERACTIVE_CHALLENGE -> CardHistoryFailure.INTERACTIVE_CHALLENGE
+        CardBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED -> CardHistoryFailure.CREDENTIAL_UPDATE_REQUIRED
+        CardBackendFailureCode.VERIFICATION_BUSY -> CardHistoryFailure.VERIFICATION_BUSY
+        CardBackendFailureCode.MODULE_DISABLED -> CardHistoryFailure.MODULE_DISABLED
+        CardBackendFailureCode.CIRCUIT_OPEN -> CardHistoryFailure.CIRCUIT_OPEN
+        CardBackendFailureCode.UPSTREAM_UNAVAILABLE,
+        CardBackendFailureCode.DEPENDENCY_UNAVAILABLE -> CardHistoryFailure.SERVICE_NOT_READY
+        CardBackendFailureCode.UPSTREAM_TIMEOUT -> CardHistoryFailure.TIMEOUT
+        CardBackendFailureCode.RATE_LIMITED -> CardHistoryFailure.RATE_LIMITED
+        CardBackendFailureCode.IDENTITY_UNSUPPORTED -> CardHistoryFailure.IDENTITY_UNSUPPORTED
+        CardBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
+        CardBackendFailureCode.VALIDATION_FAILED -> CardHistoryFailure.PROTOCOL
+        CardBackendFailureCode.SIGN_IN_FAILED -> CardHistoryFailure.UNAUTHENTICATED
+        CardBackendFailureCode.NETWORK_UNAVAILABLE,
+        CardBackendFailureCode.TLS_ERROR,
+        CardBackendFailureCode.UNKNOWN -> CardHistoryFailure.NETWORK
+    },
+    retryAfterMillis = retryAfterMillis,
+)

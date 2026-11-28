@@ -1,734 +1,813 @@
 package com.upcpocket.app.account
 
 import com.upcpocket.app.account.api.AccountDataScope
-import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.AccountInvalidationFailure
+import com.upcpocket.app.account.api.AccountInvalidationReason
 import com.upcpocket.app.account.api.AccountInvalidationRequest
 import com.upcpocket.app.account.api.AccountInvalidationResult
 import com.upcpocket.app.account.api.SchoolAccountErrorCode
-import com.upcpocket.app.account.api.SchoolAccountId
-import com.upcpocket.app.account.api.SchoolAccountIdentityCheck
 import com.upcpocket.app.account.api.SchoolAccountInvalidator
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.SchoolAccountWriteResult
-import com.upcpocket.app.platform.crypto.ByteCrypto
-import java.io.IOException
-import java.security.GeneralSecurityException
+import com.upcpocket.app.account.api.blocksPersonalSessions
+import com.upcpocket.app.campusbackend.BackendOriginPolicy
+import com.upcpocket.app.campusbackend.CampusBackendClient
+import java.io.File
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertArrayEquals
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class SchoolAccountRepositoryTest {
-
-    private val oldPassword = "synthetic-old-password"
-    private val newPassword = "synthetic-new-password"
-    private val account = "20260001"
-    private val otherAccount = "20260002"
+    @get:Rule val temporary = TemporaryFolder()
 
     @Test
-    fun firstSaveEncryptsAndRestoresWithoutPlaintext() = runTest {
-        val store = MemoryStore()
-        val crypto = FakeCrypto()
-        val repository = repository(store, crypto)
-        repository.restore()
-
-        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
-        val secret = oldPassword.toCharArray()
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            repository.save(account, secret),
-        )
-        assertTrue("保存后调用方传入的密码数组应被清零", secret.all { it == '\u0000' })
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)
-        assertEquals(AccountGeneration(1), repository.state.value.generation)
-        assertEquals("MASK-01", repository.state.value.maskedAccount)
-        assertTrue(repository.state.value.studentIdAvailable)
-        assertEquals("MASK-01", repository.state.value.maskedStudentId)
-        val identity = repository.studentIdentity.value!!
-        assertEquals(account, identity.studentId)
-        assertEquals(AccountGeneration(1), identity.credentialGeneration)
-        assertFalse(identity.accountId.value.contains(account))
-
-        val raw = store.read(AccountFormat.ACCOUNT_FILE, 64 * 1024)!!
-        assertFalse(raw.toString(Charsets.UTF_8).contains(account))
-        assertFalse(raw.toString(Charsets.UTF_8).contains(oldPassword))
-        assertNoCredentialPlaintext(store, account, oldPassword)
-
-        val reopened = repository(store, crypto)
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals(AccountGeneration(1), reopened.state.value.generation)
-        assertEquals("MASK-01", reopened.state.value.maskedAccount)
-        assertEquals(identity.accountId, reopened.studentIdentity.value?.accountId)
-        assertEquals(identity.accountId, reopened.accountReference.value?.accountId)
-        assertEquals(AccountGeneration(1), reopened.accountReference.value?.credentialGeneration)
-        assertFalse(reopened.state.value.cleanupRequired)
-    }
-
-    @Test
-    fun savedPrefixedStudentIdIsPublishedAfterRestore() = runTest {
-        val store = MemoryStore()
-        val crypto = FakeCrypto()
-        val first = repository(store, crypto)
-        first.restore()
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            first.save("TS999999999", oldPassword.toCharArray()),
-        )
-
-        val reopened = repository(store, crypto)
-        reopened.restore()
-
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertTrue(reopened.state.value.studentIdAvailable)
-        assertEquals("TS999999999", reopened.studentIdentity.value?.studentId)
-        assertEquals(AccountGeneration(1), reopened.studentIdentity.value?.credentialGeneration)
-    }
-
-    @Test
-    fun identityVerifierComparesOnlyTheCurrentAccountAndGeneration() = runTest {
-        val repository = repository(MemoryStore())
-        repository.restore()
-
-        assertEquals(
-            SchoolAccountIdentityCheck.UNAVAILABLE,
-            repository.verifyLoginName(
-                SchoolAccountId("acct_missing_identity"),
-                AccountGeneration(1),
-                account,
-            ),
-        )
-
-        repository.save(account, oldPassword.toCharArray())
-        val reference = repository.accountReference.value!!
-        assertEquals(
-            SchoolAccountIdentityCheck.MATCH,
-            repository.verifyLoginName(
-                reference.accountId,
-                reference.credentialGeneration,
-                account,
-            ),
-        )
-        assertEquals(
-            SchoolAccountIdentityCheck.MISMATCH,
-            repository.verifyLoginName(
-                reference.accountId,
-                reference.credentialGeneration,
-                otherAccount,
-            ),
-        )
-        assertEquals(
-            SchoolAccountIdentityCheck.CHANGED,
-            repository.verifyLoginName(
-                reference.accountId,
-                AccountGeneration(2),
-                account,
-            ),
-        )
-    }
-
-    @Test
-    fun passwordUpdateIncrementsGenerationAndOnlyClearsSessions() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        invalidator.requests.clear()
-
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            repository.save(account, newPassword.toCharArray()),
-        )
-        assertEquals(AccountGeneration(2), repository.state.value.generation)
-        assertEquals(1, invalidator.requests.size)
-        assertEquals(AccountDataScope.SESSIONS_ONLY, invalidator.requests.single().scope)
-        assertEquals(AccountGeneration(1), invalidator.requests.single().previousGeneration)
-        assertEquals(AccountGeneration(2), invalidator.requests.single().nextGeneration)
-    }
-
-    @Test
-    fun accountSwitchClearsPersonalDataAndRejectsOldToken() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        val oldToken = repository.state.value.captureRequestToken()!!
-        val oldAccountId = repository.studentIdentity.value!!.accountId
-
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            repository.save(otherAccount, newPassword.toCharArray()),
-        )
-        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
-        assertFalse(repository.state.value.isCurrent(oldToken))
-        assertEquals(AccountGeneration(2), repository.state.value.generation)
-        assertEquals("MASK-02", repository.state.value.maskedAccount)
-        assertNotEquals(oldAccountId, repository.studentIdentity.value!!.accountId)
-    }
-
-    @Test
-    fun nonNumericAliasHasNoControlledStudentIdentity() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        val alias = "student-alias@example.invalid"
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            repository.save(alias, oldPassword.toCharArray()),
-        )
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)
-        assertFalse(repository.state.value.studentIdAvailable)
-        assertNull(repository.state.value.maskedStudentId)
-        assertNull(repository.studentIdentity.value)
-    }
-
-    @Test
-    fun accountReferenceExistsForAliasWithoutStudentIdentity() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        assertNull(repository.accountReference.value)
-        val alias = "student-alias@example.invalid"
-        repository.save(alias, oldPassword.toCharArray())
-        val reference = repository.accountReference.value!!
-        assertEquals(AccountGeneration(1), reference.credentialGeneration)
-        assertEquals(repository.studentIdentity.value?.accountId, null)
-        assertFalse(reference.accountId.value.contains(alias))
-        assertFalse(reference.toString().contains(alias))
-    }
-
-    @Test
-    @OptIn(RestrictedSchoolCredentialUse::class)
-    fun controlledCredentialUseIsBoundToCurrentGenerationAndClearsPassword() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        var seenPassword: CharArray? = null
-        val result = repository.withLoginCredential { credential ->
-            assertEquals(account, credential.loginName)
-            assertEquals(repository.accountReference.value, com.upcpocket.app.account.api.SchoolAccountReference(
-                accountId = credential.accountId,
-                credentialGeneration = credential.credentialGeneration,
-            ))
-            credential.usePassword { chars ->
-                seenPassword = chars
-                assertEquals(oldPassword, chars.concatToString())
-            }
-            "ok"
+    fun upgradePurgesLegacyAliasAndArtifactsWithoutReadingThem() = runBlocking {
+        val root = temporary.newFolder("no-backup")
+        val legacy = File(root, "school-account").apply { mkdirs() }
+        LegacySchoolCredentialPurger.legacyNames.forEach { name ->
+            listOf(name, "$name.bak", "$name.new").forEach { File(legacy, it).writeText("opaque-old-bytes") }
         }
-        assertEquals(SchoolCredentialUseResult.Success("ok"), result)
-        assertTrue(seenPassword!!.all { it == '\u0000' })
-    }
-
-    @Test
-    @OptIn(RestrictedSchoolCredentialUse::class)
-    fun credentialUseRejectsChangeDuringAuthentication() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        val result = repository.withLoginCredential { credential ->
-            credential.usePassword { assertEquals(oldPassword, it.concatToString()) }
-            repository.save(account, newPassword.toCharArray())
-            "late"
-        }
-        assertEquals(
-            SchoolCredentialUseResult.Failure(SchoolCredentialFailure.CHANGED_DURING_USE),
-            result,
+        val aliases = TestAliases(mutableSetOf(LegacySchoolCredentialPurger.LEGACY_KEY_ALIAS))
+        val requests = mutableListOf<com.upcpocket.app.account.api.AccountInvalidationRequest>()
+        val account = repository(
+            root,
+            aliases = aliases,
+            invalidators = listOf(SchoolAccountInvalidator { request ->
+                requests += request
+                AccountInvalidationResult.Success
+            }),
         )
+
+        assertTrue(account.beginLegacyCredentialUpgrade())
+        assertTrue(account.state.value.cleanupRequired)
+        assertTrue(account.purgeLegacyPasswordMaterial())
+        assertFalse(aliases.contains(LegacySchoolCredentialPurger.LEGACY_KEY_ALIAS))
+        assertTrue(legacy.listFiles().orEmpty().isEmpty())
+        assertEquals(SchoolAccountWriteResult.Success, account.finishLegacyCredentialUpgrade())
+        assertEquals(false, account.state.value.cleanupRequired)
+        assertEquals(SchoolAccountStatus.BACKEND_NOT_READY, account.state.value.status)
+        assertEquals(1, requests.size)
+        assertEquals(AccountDataScope.PERSONAL_DATA, requests.single().scope)
+        assertFalse(requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).readMigrationMarker()).pending)
     }
 
     @Test
-    @OptIn(RestrictedSchoolCredentialUse::class)
-    fun credentialUseIsUnavailableWithoutAccount() = runTest {
-        val repository = repository(MemoryStore())
-        repository.restore()
-        val result = repository.withLoginCredential { "unexpected" }
-        assertEquals(
-            SchoolCredentialUseResult.Failure(SchoolCredentialFailure.NOT_CONFIGURED),
-            result,
+    fun interruptedLegacyCleanupRemainsGatedAndRetriesOnNextAttempt() = runBlocking {
+        val root = temporary.newFolder("interrupted")
+        var attempts = 0
+        val account = repository(
+            root,
+            invalidators = listOf(SchoolAccountInvalidator {
+                attempts++
+                if (attempts == 1) AccountInvalidationResult.failure(AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT)
+                else AccountInvalidationResult.Success
+            }),
         )
-    }
-
-    @Test
-    fun shortenedOrPaddedLoginNameIsNotTreatedAsStudentId() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        // 不截取、不 trim 出数字；只有规范化后的整串符合 8–16 位才可用。
-        val tooShort = "1234567"
-        repository.save(tooShort, oldPassword.toCharArray())
-        assertNull(repository.studentIdentity.value)
-        val padded = " 20260001 "
-        repository.save(padded, oldPassword.toCharArray())
-        assertEquals("20260001", repository.studentIdentity.value?.studentId)
-    }
-
-    @Test
-    fun encryptionFailureKeepsOldVersion() = runTest {
-        val store = MemoryStore()
-        val crypto = FakeCrypto()
-        val repository = repository(store, crypto)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        val before = store.snapshot()
-
-        crypto.failEncrypt = true
-        val result = repository.save(account, newPassword.toCharArray())
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.ENCRYPTION_FAILED),
-            result,
-        )
-        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
-        assertEquals(AccountGeneration(1), repository.state.value.generation)
-
-        val reopened = repository(store, FakeCrypto())
-        reopened.restore()
-        assertEquals(AccountGeneration(1), reopened.state.value.generation)
-        assertEquals("MASK-01", reopened.state.value.maskedAccount)
-    }
-
-    @Test
-    fun pendingWriteFailureKeepsOldVersion() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        val before = store.snapshot()
-
-        store.failWrite = AccountFormat.PENDING_FILE
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
-            repository.save(account, newPassword.toCharArray()),
-        )
-        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
-        assertEquals(AccountGeneration(1), repository.state.value.generation)
-    }
-
-    @Test
-    fun journalWriteFailureKeepsOldVersionAndRemovesPending() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        val before = store.snapshot()
-
-        store.failWrite = AccountFormat.JOURNAL_FILE
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
-            repository.save(account, newPassword.toCharArray()),
-        )
-        assertFalse(store.exists(AccountFormat.PENDING_FILE))
-        assertArrayEquals(before[AccountFormat.ACCOUNT_FILE], store.files[AccountFormat.ACCOUNT_FILE])
-        assertEquals(AccountGeneration(1), repository.state.value.generation)
-    }
-
-    @Test
-    fun transitionStateWriteFailureKeepsOldVersion() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        val before = store.snapshot()
-
-        store.failWrite = AccountFormat.STATE_FILE
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
-            repository.save(account, newPassword.toCharArray()),
-        )
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
-        assertFalse(store.exists(AccountFormat.PENDING_FILE))
-        assertArrayEquals(before[AccountFormat.STATE_FILE], store.files[AccountFormat.STATE_FILE])
-
-        val reopened = repository(store, FakeCrypto())
-        reopened.restore()
-        assertEquals(AccountGeneration(1), reopened.state.value.generation)
-        assertEquals("MASK-01", reopened.state.value.maskedAccount)
-    }
-
-    @Test
-    fun crashAfterJournalResumesSwitchOnRestart() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        store.crashAfterWrite = AccountFormat.JOURNAL_FILE
-        try {
-            repository.save(otherAccount, newPassword.toCharArray())
-            fail("应当模拟进程中断")
-        } catch (_: SimulatedCrash) {
-            // 模拟进程在 journal 写入后退出。
-        }
-        store.crashAfterWrite = null
-        invalidator.requests.clear()
-
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals(AccountGeneration(2), reopened.state.value.generation)
-        assertEquals("MASK-02", reopened.state.value.maskedAccount)
-        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
-        assertFalse(store.exists(AccountFormat.PENDING_FILE))
-    }
-
-    @Test
-    fun cleanupFailurePersistsRemovingAndResumes() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator(fail = true)
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
+        account.beginLegacyCredentialUpgrade()
+        account.purgeLegacyPasswordMaterial()
 
         assertEquals(
             SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_FAILED),
-            repository.delete(),
+            account.finishLegacyCredentialUpgrade(),
         )
-        assertEquals(SchoolAccountStatus.REMOVING, repository.state.value.status)
-        assertTrue(repository.state.value.cleanupRequired)
-        assertNull(repository.studentIdentity.value)
-        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
-        assertTrue(store.exists(AccountFormat.ACCOUNT_FILE))
-
-        invalidator.fail = false
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, reopened.state.value.status)
-        assertFalse(reopened.state.value.cleanupRequired)
-        assertNull(reopened.studentIdentity.value)
-        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+        assertTrue(account.state.value.cleanupRequired)
+        assertTrue(requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).readMigrationMarker()).pending)
+        assertEquals(SchoolAccountWriteResult.Success, account.retryCleanup())
+        assertFalse(account.state.value.cleanupRequired)
+        assertEquals(2, attempts)
     }
 
     @Test
-    fun pendingDeleteFailureKeepsCommittedJournalAndResumesWithoutReinvalidating() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        invalidator.requests.clear()
-        val oldCiphertext = store.files.getValue(AccountFormat.ACCOUNT_FILE).copyOf()
-        store.failDelete = AccountFormat.PENDING_FILE
+    fun missingLegacyMigrationMarkerCannotBeTreatedAsCompleted() = runBlocking {
+        val account = repository(temporary.newFolder("missing-migration-marker"))
 
         assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.STORAGE_FAILED),
-            repository.save(account, newPassword.toCharArray()),
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_FAILED),
+            account.finishLegacyCredentialUpgrade(),
         )
-        assertEquals(AccountGeneration(2), repository.state.value.generation)
-        assertTrue(repository.state.value.cleanupRequired)
-        assertEquals(SchoolAccountErrorCode.STORAGE_FAILED, repository.state.value.errorCode)
-        assertTrue(store.exists(AccountFormat.ACCOUNT_FILE))
-        assertFalse(oldCiphertext.contentEquals(store.files.getValue(AccountFormat.ACCOUNT_FILE)))
-        assertTrue(store.exists(AccountFormat.PENDING_FILE))
-        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
-        assertEquals(1, invalidator.requests.size)
-
-        // 新正式密文已写入，不能把旧版本误当回滚；重启只收尾 pending/journal。
-        store.failDelete = null
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals(AccountGeneration(2), reopened.state.value.generation)
-        assertEquals(1, invalidator.requests.size)
-        assertFalse(store.exists(AccountFormat.PENDING_FILE))
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
+        assertTrue(account.state.value.cleanupRequired)
+        assertEquals(SchoolAccountStatus.REMOVING, account.state.value.status)
     }
 
     @Test
-    fun journalDeleteFailureAfterSameAccountUpdateDoesNotReplaySessionsInvalidation() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        invalidator.requests.clear()
+    fun passwordAccessIsClosedAndBindClearsInputWhenCustodyWasNotAccepted() = runBlocking {
+        val root = temporary.newFolder("closed-password-path")
+        val account = repository(root)
+        account.beginLegacyCredentialUpgrade()
+        account.purgeLegacyPasswordMaterial()
+        assertEquals(SchoolAccountWriteResult.Success, account.finishLegacyCredentialUpgrade())
 
-        store.failDelete = AccountFormat.JOURNAL_FILE
+        val password = "synthetic-passphrase".toCharArray()
+        assertEquals(
+            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CUSTODY_REQUIRED),
+            account.bind("synthetic-user", password, acceptCustody = false),
+        )
+        assertTrue(password.all { it == '\u0000' })
+
+        var callbackInvoked = false
+        @OptIn(RestrictedSchoolCredentialUse::class)
+        val result = account.withLoginCredential {
+            callbackInvoked = true
+            "unexpected"
+        }
+        assertEquals(SchoolCredentialUseResult.Failure(SchoolCredentialFailure.NOT_CONFIGURED), result)
+        assertFalse(callbackInvoked)
+        assertTrue(root.walkTopDown().filter(File::isFile).none { it.readText().contains("synthetic-passphrase") })
+    }
+
+    @Test
+    fun failedMeRevokesOnlyTheNewDeviceSessionAndDoesNotCommit() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val deviceId = UUID.randomUUID().toString()
+            server.enqueue(jsonResponse("""{"token":"synthetic-pocket-token","deviceId":"$deviceId","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_UNAVAILABLE","requestId":"request-1"}""", 503))
+            server.enqueue(MockResponse().setResponseCode(204))
+            val root = temporary.newFolder("failed-me")
+            val origin = server.url("/").toString().removeSuffix("/")
+            val account = repository(root, client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug), origin = origin)
+            completeMigration(account)
+
+            val password = "synthetic-passphrase".toCharArray()
+            val result = account.bind("synthetic-user", password, acceptCustody = true)
+            assertEquals(SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UPSTREAM_UNAVAILABLE), result)
+            assertTrue(password.all { it == '\u0000' })
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(account.accountReference.value)
+
+            val create = server.takeRequest()
+            assertEquals("POST", create.method)
+            assertEquals("/api/v1/auth/sessions", create.path)
+            assertTrue(create.body.readUtf8().contains("\"acceptCustody\":true"))
+            val getMe = server.takeRequest()
+            assertEquals("GET", getMe.method)
+            assertEquals("Bearer synthetic-pocket-token", getMe.getHeader("Authorization"))
+            val revoke = server.takeRequest()
+            assertEquals("DELETE", revoke.method)
+            assertEquals("/api/v1/me/session", revoke.path)
+            assertEquals("Bearer synthetic-pocket-token", revoke.getHeader("Authorization"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun staleSessionInvalidationCannotCloseTheNewlyBoundAccount() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val deviceA = UUID.randomUUID().toString()
+            val deviceB = UUID.randomUUID().toString()
+            val accountA = UUID.randomUUID().toString()
+            val accountB = UUID.randomUUID().toString()
+            server.enqueue(jsonResponse("""{"token":"token-a","deviceId":"$deviceA","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"accountId":"$accountA","state":"ACTIVE","credentialGeneration":1,"gateRevision":1}"""))
+            server.enqueue(jsonResponse("""{"token":"token-b","deviceId":"$deviceB","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"accountId":"$accountB","state":"ACTIVE","credentialGeneration":2,"gateRevision":2}"""))
+            val root = temporary.newFolder("session-fencing")
+            val origin = server.url("/").toString().removeSuffix("/")
+            val account = repository(root, client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug), origin = origin)
+            completeMigration(account)
+
+            assertEquals(SchoolAccountWriteResult.Success, account.bind("synthetic-a", "pass-a".toCharArray(), true))
+            val oldLease = requireNotNull(account.captureSessionLease())
+            assertEquals(SchoolAccountWriteResult.Success, account.bind("synthetic-b", "pass-b".toCharArray(), true))
+            val currentLease = requireNotNull(account.captureSessionLease())
+
+            assertNotEquals(oldLease.accountId, currentLease.accountId)
+            assertFalse(account.isSessionLeaseCurrent(oldLease))
+            assertFalse(account.invalidateSessionIfCurrent(oldLease))
+            assertTrue(account.isSessionLeaseCurrent(currentLease))
+            assertEquals(SchoolAccountStatus.MANAGED_ACTIVE, account.state.value.status)
+            assertEquals(accountB, account.accountReference.value?.accountId?.value)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun lateBindingAAfterBindingBDoesNotInvalidateOrOverwriteB() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val deviceA = UUID.randomUUID().toString()
+            val deviceB = UUID.randomUUID().toString()
+            val accountA = UUID.randomUUID().toString()
+            val accountB = UUID.randomUUID().toString()
+            server.enqueue(jsonResponse("""{"token":"token-a","deviceId":"$deviceA","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(
+                jsonResponse("""{"accountId":"$accountA","state":"ACTIVE","credentialGeneration":1,"gateRevision":1}""")
+                    .setBodyDelay(1500, TimeUnit.MILLISECONDS),
+            )
+            server.enqueue(jsonResponse("""{"token":"token-b","deviceId":"$deviceB","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"accountId":"$accountB","state":"ACTIVE","credentialGeneration":2,"gateRevision":2}"""))
+            server.enqueue(MockResponse().setResponseCode(204))
+            val root = temporary.newFolder("late-binding")
+            val origin = server.url("/").toString().removeSuffix("/")
+            val invalidations = mutableListOf<com.upcpocket.app.account.api.AccountInvalidationRequest>()
+            val account = repository(
+                root,
+                client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+                origin = origin,
+                invalidators = listOf(SchoolAccountInvalidator { request ->
+                    invalidations += request
+                    AccountInvalidationResult.Success
+                }),
+            )
+            completeMigration(account)
+
+            val bindingA = async(Dispatchers.Default) {
+                account.bind("synthetic-a", "pass-a".toCharArray(), acceptCustody = true)
+            }
+            assertEquals("POST", server.takeRequestRequired().method)
+            assertEquals("GET", server.takeRequestRequired().method)
+
+            val bindingB = async(Dispatchers.Default) {
+                account.bind("synthetic-b", "pass-b".toCharArray(), acceptCustody = true)
+            }
+            assertEquals(SchoolAccountWriteResult.Success, withTimeout(5_000) { bindingB.await() })
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.BUSY),
+                withTimeout(5_000) { bindingA.await() },
+            )
+
+            assertEquals(2, invalidations.size) // legacy purge and B's single bind commit
+            assertEquals(accountB, account.accountReference.value?.accountId?.value)
+            assertEquals(SchoolAccountStatus.MANAGED_ACTIVE, account.state.value.status)
+            val stored = requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+            assertEquals("token-b", stored.accessToken)
+            assertEquals(deviceB, stored.deviceId)
+            val createB = server.takeRequestRequired()
+            assertEquals("POST", createB.method)
+            assertEquals("/api/v1/auth/sessions", createB.path)
+            val getMeB = server.takeRequestRequired()
+            assertEquals("GET", getMeB.method)
+            assertEquals("Bearer token-b", getMeB.getHeader("Authorization"))
+            val revokeA = server.takeRequestRequired()
+            assertEquals("DELETE", revokeA.method)
+            assertEquals("Bearer token-a", revokeA.getHeader("Authorization"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun bindingHoldsCommitLockAcrossInvalidationFailureAndDoesNotLetWaitingBindClobberIt() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val deviceA = UUID.randomUUID().toString()
+            val deviceB = UUID.randomUUID().toString()
+            val accountA = UUID.randomUUID().toString()
+            val accountB = UUID.randomUUID().toString()
+            server.enqueue(jsonResponse("""{"token":"token-a","deviceId":"$deviceA","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"accountId":"$accountA","state":"ACTIVE","credentialGeneration":1,"gateRevision":1}"""))
+            server.enqueue(MockResponse().setResponseCode(204)) // revoke A after the failed local commit
+            val root = temporary.newFolder("commit-lock")
+            val origin = server.url("/").toString().removeSuffix("/")
+            val invalidationEntered = CompletableDeferred<Unit>()
+            val releaseInvalidation = CompletableDeferred<Unit>()
+            val invalidations = mutableListOf<com.upcpocket.app.account.api.AccountInvalidationRequest>()
+            var interceptNextInvalidation = false
+            val account = repository(
+                root,
+                client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+                origin = origin,
+                invalidators = listOf(SchoolAccountInvalidator { request ->
+                    invalidations += request
+                    if (interceptNextInvalidation) {
+                        interceptNextInvalidation = false
+                        invalidationEntered.complete(Unit)
+                        releaseInvalidation.await()
+                        AccountInvalidationResult.failure(AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED)
+                    } else {
+                        AccountInvalidationResult.Success
+                    }
+                }),
+            )
+            completeMigration(account)
+            invalidations.clear()
+            interceptNextInvalidation = true
+
+            val bindingA = async(Dispatchers.Default) {
+                account.bind("synthetic-a", "pass-a".toCharArray(), acceptCustody = true)
+            }
+            assertEquals("POST", server.takeRequestRequired().method)
+            assertEquals("GET", server.takeRequestRequired().method)
+            withTimeout(5_000) { invalidationEntered.await() }
+
+            val bindingB = async(Dispatchers.Default) {
+                account.bind("synthetic-b", "pass-b".toCharArray(), acceptCustody = true)
+            }
+            delay(100)
+            assertFalse(bindingA.isCompleted)
+            assertFalse(bindingB.isCompleted)
+            assertEquals(2, server.requestCount)
+
+            releaseInvalidation.complete(Unit)
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_FAILED),
+                withTimeout(5_000) { bindingA.await() },
+            )
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.CLEANUP_REQUIRED),
+                withTimeout(5_000) { bindingB.await() },
+            )
+            assertEquals(SchoolAccountStatus.REMOVING, account.state.value.status)
+            assertTrue(account.state.value.cleanupRequired)
+            assertEquals("DELETE", server.takeRequestRequired().method)
+
+            assertEquals(SchoolAccountWriteResult.Success, account.retryCleanup())
+            server.enqueue(jsonResponse("""{"token":"token-b","deviceId":"$deviceB","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            server.enqueue(jsonResponse("""{"accountId":"$accountB","state":"ACTIVE","credentialGeneration":2,"gateRevision":2}"""))
+            assertEquals(SchoolAccountWriteResult.Success, account.bind("synthetic-b", "pass-b".toCharArray(), true))
+            assertEquals(SchoolAccountStatus.MANAGED_ACTIVE, account.state.value.status)
+            assertEquals(accountB, account.accountReference.value?.accountId?.value)
+            assertEquals("token-b", ManagedSessionStorage(root, crypto = TestCrypto()).loadSession()?.accessToken)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun unbindTimeoutKeepsEncryptedClosedSessionAcrossRestoreAndRetriesUntilConfirmed() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val root = temporary.newFolder("unbind-pending")
+            val invalidations = mutableListOf<com.upcpocket.app.account.api.AccountInvalidationRequest>()
+            val account = bindManagedSession(server, root, "token-unbind", deviceId, accountId) { request ->
+                invalidations += request
+                AccountInvalidationResult.Success
+            }
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_TIMEOUT","requestId":"request-timeout"}""", 504))
+
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UNBIND_RESULT_UNKNOWN),
+                account.unbind(confirmed = true),
+            )
+            assertNull(account.captureSessionLease())
+            assertNull(account.accountReference.value)
+            assertTrue(account.state.value.blocksPersonalSessions)
+            assertEquals(SchoolAccountStatus.UNBIND_PENDING, account.state.value.status)
+            val storage = ManagedSessionStorage(root, crypto = TestCrypto())
+            val pending = requireNotNull(storage.loadSession())
+            assertEquals(ManagedSessionState.UNBIND_PENDING.name, pending.state)
+            assertTrue(pending.personalDataCleared)
+            assertTrue(File(root, "managed-session/managed-session-v1.enc").isFile)
+            val unbind = server.takeRequestRequired()
+            assertEquals("DELETE", unbind.method)
+            assertEquals("/api/v1/me", unbind.path)
+            assertEquals("Bearer token-unbind", unbind.getHeader("Authorization"))
+
+            val origin = server.url("/").toString().removeSuffix("/")
+            val restored = repository(
+                root,
+                client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+                origin = origin,
+            )
+            restored.restore()
+            assertEquals(SchoolAccountStatus.UNBIND_PENDING, restored.state.value.status)
+            assertFalse(restored.state.value.isManagedActive)
+            assertNull(restored.captureSessionLease())
+
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, restored.unbind(confirmed = true))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me", retry.path)
+            assertEquals("Bearer token-unbind", retry.getHeader("Authorization"))
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, restored.state.value.status)
+            assertNull(storage.loadSession())
+            assertFalse(File(root, "managed-session/managed-session-v1.enc").exists())
+            assertEquals(AccountInvalidationReason.ACCOUNT_REMOVED, invalidations.last().reason)
+            assertEquals(AccountDataScope.PERSONAL_DATA, invalidations.last().scope)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun unbindTreatsExplicitInvalidTokenResponseAsConfirmedAndClearsPendingSession() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("unbind-idempotent")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-unbind-idempotent", deviceId, accountId)
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_TIMEOUT","requestId":"request-timeout"}""", 504))
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UNBIND_RESULT_UNKNOWN),
+                account.unbind(confirmed = true),
+            )
+            server.takeRequestRequired()
+
+            server.enqueue(jsonResponse("""{"code":"TOKEN_INVALID","requestId":"request-invalid"}""", 401))
+            assertEquals(SchoolAccountWriteResult.Success, account.unbind(confirmed = true))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("Bearer token-unbind-idempotent", retry.getHeader("Authorization"))
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun signOutFailureKeepsEncryptedSessionClosedAndRetriesAfterRestore() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("signout-pending")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-signout", deviceId, accountId)
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_UNAVAILABLE","requestId":"request-5xx"}""", 503))
+
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UPSTREAM_UNAVAILABLE),
+                account.signOut(),
+            )
+            val first = server.takeRequestRequired()
+            assertEquals("DELETE", first.method)
+            assertEquals("/api/v1/me/session", first.path)
+            assertNull(account.captureSessionLease())
+            assertEquals(SchoolAccountStatus.SIGN_OUT_PENDING, account.state.value.status)
+            assertEquals(
+                ManagedSessionState.SIGN_OUT_PENDING.name,
+                ManagedSessionStorage(root, crypto = TestCrypto()).loadSession()?.state,
+            )
+
+            val origin = server.url("/").toString().removeSuffix("/")
+            val restored = repository(
+                root,
+                client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+                origin = origin,
+            )
+            restored.restore()
+            assertEquals(SchoolAccountStatus.SIGN_OUT_PENDING, restored.state.value.status)
+            assertNull(restored.captureSessionLease())
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, restored.signOut())
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me/session", retry.path)
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, restored.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun ownDeviceRevocationFailureKeepsOriginalActionForRetryAfterRestore() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("device-revoke-pending")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-device-revoke", deviceId, accountId)
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_UNAVAILABLE","requestId":"request-5xx"}""", 503))
+
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UPSTREAM_UNAVAILABLE),
+                account.revokeDevice(deviceId),
+            )
+            val first = server.takeRequestRequired()
+            assertEquals("DELETE", first.method)
+            assertEquals("/api/v1/me/devices/$deviceId", first.path)
+            assertEquals(SchoolAccountStatus.SIGN_OUT_PENDING, account.state.value.status)
+            assertNull(account.captureSessionLease())
+            assertEquals(
+                ManagedSessionState.DEVICE_REVOKE_PENDING.name,
+                ManagedSessionStorage(root, crypto = TestCrypto()).loadSession()?.state,
+            )
+
+            val origin = server.url("/").toString().removeSuffix("/")
+            val restored = repository(
+                root,
+                client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+                origin = origin,
+            )
+            restored.restore()
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, restored.revokeDevice(deviceId))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me/devices/$deviceId", retry.path)
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, restored.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun bindIsRejectedWhileUnbindPendingAndPreservesRetryableSession() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("bind-blocked-while-unbind-pending")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-unbind-block", deviceId, accountId)
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_TIMEOUT","requestId":"request-timeout"}""", 504))
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UNBIND_RESULT_UNKNOWN),
+                account.unbind(confirmed = true),
+            )
+            server.takeRequestRequired()
+            val requestsBeforeBind = server.requestCount
+
+            val password = "synthetic-rebind-pass".toCharArray()
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.BUSY),
+                account.bind("synthetic-rebind", password, acceptCustody = true),
+            )
+            assertTrue(password.all { it == '\u0000' })
+            assertEquals(requestsBeforeBind, server.requestCount)
+            assertEquals(SchoolAccountStatus.UNBIND_PENDING, account.state.value.status)
+            val stored = requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+            assertEquals("token-unbind-block", stored.accessToken)
+            assertEquals(ManagedSessionState.UNBIND_PENDING.name, stored.state)
+
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, account.unbind(confirmed = true))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me", retry.path)
+            assertEquals("Bearer token-unbind-block", retry.getHeader("Authorization"))
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun bindIsRejectedWhileRemoteUnbindIsInFlight() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("bind-blocked-during-inflight-unbind")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-inflight-unbind", deviceId, accountId)
+            server.enqueue(MockResponse().setResponseCode(204).setBodyDelay(1500, TimeUnit.MILLISECONDS))
+
+            val unbindJob = async(Dispatchers.Default) { account.unbind(confirmed = true) }
+            val deleteRequest = server.takeRequestRequired()
+            assertEquals("DELETE", deleteRequest.method)
+            assertEquals("/api/v1/me", deleteRequest.path)
+            val countDuringUnbind = server.requestCount
+
+            val password = "synthetic-rebind-pass".toCharArray()
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.BUSY),
+                account.bind("synthetic-rebind", password, acceptCustody = true),
+            )
+            assertTrue(password.all { it == '\u0000' })
+            assertEquals(countDuringUnbind, server.requestCount)
+
+            assertEquals(SchoolAccountWriteResult.Success, withTimeout(5_000) { unbindJob.await() })
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun updateManagedCredentialIsRejectedWhileUnbindPendingAndPreservesRetryableSession() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("update-blocked-while-unbind-pending")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-unbind-update-block", deviceId, accountId)
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_TIMEOUT","requestId":"request-timeout"}""", 504))
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UNBIND_RESULT_UNKNOWN),
+                account.unbind(confirmed = true),
+            )
+            server.takeRequestRequired()
+            val requestsBeforeUpdate = server.requestCount
+
+            val newPassword = "synthetic-new-pass".toCharArray()
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.BUSY),
+                account.updateManagedCredential("synthetic-user", newPassword),
+            )
+            assertTrue(newPassword.all { it == '\u0000' })
+            assertEquals(requestsBeforeUpdate, server.requestCount)
+            assertEquals(SchoolAccountStatus.UNBIND_PENDING, account.state.value.status)
+            val stored = requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+            assertEquals("token-unbind-update-block", stored.accessToken)
+            assertEquals(ManagedSessionState.UNBIND_PENDING.name, stored.state)
+
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, account.unbind(confirmed = true))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me", retry.path)
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun lateCredentialUpdateResultDoesNotClearPendingRevocationSession() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            val root = temporary.newFolder("late-update-does-not-clear-pending-unbind")
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            val account = bindManagedSession(server, root, "token-late-update-unbind", deviceId, accountId)
+            server.enqueue(MockResponse().setResponseCode(204).setBodyDelay(1500, TimeUnit.MILLISECONDS))
+            server.enqueue(jsonResponse("""{"code":"UPSTREAM_TIMEOUT","requestId":"request-timeout"}""", 504))
+
+            val updateJob = async(Dispatchers.Default) {
+                account.updateManagedCredential("synthetic-user", "synthetic-new-pass".toCharArray())
+            }
+            val updateReq = server.takeRequestRequired()
+            assertEquals("POST", updateReq.method)
+            assertEquals("/api/v1/auth/credential-updates", updateReq.path)
+
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.UNBIND_RESULT_UNKNOWN),
+                account.unbind(confirmed = true),
+            )
+            val unbindReq = server.takeRequestRequired()
+            assertEquals("DELETE", unbindReq.method)
+            assertEquals("/api/v1/me", unbindReq.path)
+
+            assertEquals(
+                SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.BUSY),
+                withTimeout(5_000) { updateJob.await() },
+            )
+            assertEquals(SchoolAccountStatus.UNBIND_PENDING, account.state.value.status)
+            val stored = requireNotNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+            assertEquals("token-late-update-unbind", stored.accessToken)
+            assertEquals(ManagedSessionState.UNBIND_PENDING.name, stored.state)
+
+            server.enqueue(MockResponse().setResponseCode(204))
+            assertEquals(SchoolAccountWriteResult.Success, account.unbind(confirmed = true))
+            val retry = server.takeRequestRequired()
+            assertEquals("DELETE", retry.method)
+            assertEquals("/api/v1/me", retry.path)
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, account.state.value.status)
+            assertNull(ManagedSessionStorage(root, crypto = TestCrypto()).loadSession())
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun changingBackendOriginClearsTheOldSessionAndPersonalDataBeforeReuse() = runBlocking {
+        val originalServer = MockWebServer()
+        val replacementServer = MockWebServer()
+        originalServer.start()
+        replacementServer.start()
+        try {
+            val deviceId = UUID.randomUUID().toString()
+            val accountId = UUID.randomUUID().toString()
+            originalServer.enqueue(jsonResponse("""{"token":"origin-bound-token","deviceId":"$deviceId","expiresAt":"2026-12-01T00:00:00Z"}"""))
+            originalServer.enqueue(jsonResponse("""{"accountId":"$accountId","state":"ACTIVE","credentialGeneration":1,"gateRevision":1}"""))
+            val root = temporary.newFolder("backend-origin-change")
+            val originalOrigin = originalServer.url("/").toString().removeSuffix("/")
+            val originalAccount = repository(
+                root,
+                client = CampusBackendClient.create(originalOrigin, BackendOriginPolicy.Debug),
+                origin = originalOrigin,
+            )
+            completeMigration(originalAccount)
+            assertEquals(
+                SchoolAccountWriteResult.Success,
+                originalAccount.bind("synthetic-user", "synthetic-passphrase".toCharArray(), acceptCustody = true),
+            )
+            assertTrue(originalAccount.hasUsableManagedSession())
+
+            val replacementOrigin = replacementServer.url("/").toString().removeSuffix("/")
+            val invalidated = mutableListOf<AccountDataScope>()
+            val replacementAccount = repository(
+                root,
+                client = CampusBackendClient.create(replacementOrigin, BackendOriginPolicy.Debug),
+                origin = replacementOrigin,
+                invalidators = listOf(SchoolAccountInvalidator { request ->
+                    invalidated += request.scope
+                    AccountInvalidationResult.Success
+                }),
+            )
+            replacementAccount.restore()
+
+            assertFalse(replacementAccount.hasUsableManagedSession())
+            assertEquals(SchoolAccountStatus.NOT_CONFIGURED, replacementAccount.state.value.status)
+            assertEquals(listOf(AccountDataScope.PERSONAL_DATA), invalidated)
+            assertEquals(0, replacementServer.requestCount)
+            assertEquals(
+                replacementOrigin,
+                ManagedSessionStorage(root, crypto = TestCrypto()).loadOrCreateConfig(replacementOrigin).backendOrigin,
+            )
+        } finally {
+            originalServer.shutdown()
+            replacementServer.shutdown()
+        }
+    }
+
+    private suspend fun completeMigration(account: SchoolAccountRepository) {
+        assertTrue(account.beginLegacyCredentialUpgrade())
+        assertTrue(account.purgeLegacyPasswordMaterial())
+        assertEquals(SchoolAccountWriteResult.Success, account.finishLegacyCredentialUpgrade())
+    }
+
+    private suspend fun bindManagedSession(
+        server: MockWebServer,
+        root: File,
+        token: String,
+        deviceId: String,
+        accountId: String,
+        invalidator: (AccountInvalidationRequest) -> AccountInvalidationResult = {
+            AccountInvalidationResult.Success
+        },
+    ): SchoolAccountRepository {
+        val origin = server.url("/").toString().removeSuffix("/")
+        val account = repository(
+            root,
+            client = CampusBackendClient.create(origin, BackendOriginPolicy.Debug),
+            origin = origin,
+            invalidators = listOf(SchoolAccountInvalidator { request -> invalidator(request) }),
+        )
+        completeMigration(account)
+        server.enqueue(jsonResponse("""{"token":"$token","deviceId":"$deviceId","expiresAt":"2026-12-01T00:00:00Z"}"""))
+        server.enqueue(jsonResponse("""{"accountId":"$accountId","state":"ACTIVE","credentialGeneration":1,"gateRevision":1}"""))
         assertEquals(
             SchoolAccountWriteResult.Success,
-            repository.save(account, newPassword.toCharArray()),
+            account.bind("synthetic-user", "synthetic-pass".toCharArray(), acceptCustody = true),
         )
-        assertEquals(AccountGeneration(2), repository.state.value.generation)
-        assertEquals(1, invalidator.requests.size)
-
-        store.files["unrelated-personal-after-update"] = byteArrayOf(1, 4, 7)
-        store.failDelete = null
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals(1, invalidator.requests.size)
-        assertArrayEquals(byteArrayOf(1, 4, 7), store.files["unrelated-personal-after-update"])
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
-    }
-
-    @Test
-    fun journalDeleteFailureAfterSwitchDoesNotReplayPersonalDataInvalidation() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        invalidator.requests.clear()
-
-        store.failDelete = AccountFormat.JOURNAL_FILE
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            repository.save(otherAccount, newPassword.toCharArray()),
-        )
-        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
-        assertEquals(1, invalidator.requests.size)
-
-        // 换号完成后用户重新建立的个人数据不能被下一次恢复当成旧数据清掉。
-        store.files["unrelated-personal-after-switch"] = byteArrayOf(7, 8, 9)
-        store.failDelete = null
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals(AccountGeneration(2), reopened.state.value.generation)
-        assertEquals(1, invalidator.requests.size)
-        assertArrayEquals(byteArrayOf(7, 8, 9), store.files["unrelated-personal-after-switch"])
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
-    }
-
-    @Test
-    fun journalDeleteFailureAfterDeleteDoesNotReplayPersonalDataInvalidation() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        invalidator.requests.clear()
-
-        store.failDelete = AccountFormat.JOURNAL_FILE
-        assertEquals(SchoolAccountWriteResult.Success, repository.delete())
-        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
-        assertTrue(store.exists(AccountFormat.JOURNAL_FILE))
-        assertEquals(1, invalidator.requests.size)
-
-        store.files["new-personal-after-delete"] = byteArrayOf(4, 5, 6)
-        store.failDelete = null
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, reopened.state.value.status)
-        assertEquals(1, invalidator.requests.size)
-        assertArrayEquals(byteArrayOf(4, 5, 6), store.files["new-personal-after-delete"])
-        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
-        assertFalse(store.exists(AccountFormat.JOURNAL_FILE))
-    }
-
-    @Test
-    fun deleteRemovesCredentialAndOnlyAccountFiles() = runTest {
-        val store = MemoryStore()
-        store.files["unrelated-focus"] = byteArrayOf(1, 2, 3)
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        assertEquals(SchoolAccountWriteResult.Success, repository.delete())
-        assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
-        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
-        assertArrayEquals(byteArrayOf(1, 2, 3), store.files["unrelated-focus"])
-        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
-        assertFalse(store.exists(AccountFormat.PENDING_FILE))
-        assertTrue(store.exists(AccountFormat.STATE_FILE))
-    }
-
-    @Test
-    fun keyFailureMarksNeedsReconfigurationAndClearsPersonalData() = runTest {
-        val store = MemoryStore()
-        val crypto = FakeCrypto()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, crypto, listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        crypto.failDecrypt = true
-        val reopened = repository(store, crypto, listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
-        assertEquals(SchoolAccountErrorCode.CREDENTIAL_UNAVAILABLE, reopened.state.value.errorCode)
-        assertFalse(reopened.state.value.cleanupRequired)
-        assertNull(reopened.state.value.maskedAccount)
-        assertEquals(AccountDataScope.PERSONAL_DATA, invalidator.requests.single().scope)
-        assertFalse(store.exists(AccountFormat.ACCOUNT_FILE))
-    }
-
-    @Test
-    fun corruptCiphertextIsFixedErrorAndRecoverable() = runTest {
-        val store = MemoryStore()
-        val invalidator = RecordingInvalidator()
-        val repository = repository(store, invalidators = listOf(invalidator))
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        store.files[AccountFormat.ACCOUNT_FILE] = "not-an-envelope".toByteArray()
-
-        val reopened = repository(store, invalidators = listOf(invalidator))
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
-        assertEquals(SchoolAccountErrorCode.CREDENTIAL_CORRUPTED, reopened.state.value.errorCode)
-
-        assertEquals(
-            SchoolAccountWriteResult.Success,
-            reopened.save(otherAccount, newPassword.toCharArray()),
-        )
-        assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, reopened.state.value.status)
-        assertEquals("MASK-02", reopened.state.value.maskedAccount)
-    }
-
-    @Test
-    fun unsupportedVersionIsNotTreatedAsSuccess() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-        store.files[AccountFormat.ACCOUNT_FILE] =
-            """{"format":"${AccountFormat.CREDENTIAL_FORMAT}","version":99,"ciphertext":"AAAA"}"""
-                .toByteArray()
-
-        val reopened = repository(store, FakeCrypto())
-        reopened.restore()
-        assertEquals(SchoolAccountStatus.NEEDS_RECONFIGURATION, reopened.state.value.status)
-        assertEquals(SchoolAccountErrorCode.UNSUPPORTED_VERSION, reopened.state.value.errorCode)
-    }
-
-    @Test
-    fun invalidInputDoesNotWriteAnything() = runTest {
-        val store = MemoryStore()
-        val repository = repository(store)
-        repository.restore()
-
-        val invalidAccountSecret = oldPassword.toCharArray()
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.INVALID_ACCOUNT),
-            repository.save("   ", invalidAccountSecret),
-        )
-        assertTrue(invalidAccountSecret.all { it == '\u0000' })
-        assertEquals(
-            SchoolAccountWriteResult.Failure(SchoolAccountErrorCode.INVALID_PASSWORD),
-            repository.save(account, CharArray(0)),
-        )
-        assertTrue(store.files.isEmpty())
-    }
-
-    @Test
-    fun controlledReaderAndStateExposeNoPasswordOrCredentialPayload() = runTest {
-        val repository = repository(MemoryStore())
-        repository.restore()
-        repository.save(account, oldPassword.toCharArray())
-
-        // 受控面只允许 accountId/学号/代次；toString 与状态字段都不得带回密码。
-        assertFalse(repository.state.value.toString().contains(oldPassword))
-        assertFalse(repository.studentIdentity.value.toString().contains(oldPassword))
-        val readerMethods = com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader::class.java
-            .methods
-            .map { it.name.lowercase() }
-        assertFalse(readerMethods.any { "password" in it || "credentialpayload" in it })
-        val stateFields = com.upcpocket.app.account.api.SchoolAccountState::class.java
-            .declaredFields
-            .map { it.name.lowercase() }
-        assertFalse(stateFields.any { "password" in it || "credential" in it })
+        assertEquals("POST", server.takeRequestRequired().method)
+        assertEquals("GET", server.takeRequestRequired().method)
+        return account
     }
 
     private fun repository(
-        store: MemoryStore,
-        crypto: FakeCrypto = FakeCrypto(),
+        root: File,
+        aliases: TestAliases = TestAliases(),
         invalidators: List<SchoolAccountInvalidator> = emptyList(),
+        client: CampusBackendClient = CampusBackendClient.create(null, BackendOriginPolicy.Debug),
+        origin: String? = null,
     ) = SchoolAccountRepository(
-        directory = java.io.File("/unused"),
-        crypto = crypto,
-        fileStore = store,
-        clock = { 1_700_000_000_000 },
-        ioDispatcher = Dispatchers.Unconfined,
+        storage = ManagedSessionStorage(root, crypto = TestCrypto()),
+        legacyPurger = LegacySchoolCredentialPurger(File(root, "school-account"), aliases),
+        backendClient = client,
+        backendOrigin = origin,
         invalidators = invalidators,
-        maskAccount = { "MASK-${it.takeLast(2)}" },
+        onSessionClosed = {},
+        deviceKindProvider = { com.upcpocket.app.campusbackend.CampusDeviceKind.PHONE },
+        clock = { 1_764_000_000_000L },
+        ioDispatcher = Dispatchers.Unconfined,
     )
 
-    private fun assertNoCredentialPlaintext(
-        store: MemoryStore,
-        account: String,
-        password: String,
-    ) {
-        store.files.forEach { (name, bytes) ->
-            val text = bytes.toString(Charsets.UTF_8)
-            assertFalse("$name 含账号明文", text.contains(account))
-            assertFalse("$name 含密码明文", text.contains(password))
-        }
+    private fun MockWebServer.takeRequestRequired(): okhttp3.mockwebserver.RecordedRequest =
+        requireNotNull(takeRequest(5, TimeUnit.SECONDS)) { "Expected HTTP request within 5 seconds" }
+
+    private fun jsonResponse(body: String, status: Int = 200) =
+        MockResponse().setResponseCode(status).setHeader("Content-Type", "application/json").setBody(body)
+
+    private class TestAliases(private val values: MutableSet<String> = mutableSetOf()) : LegacyAliasStore {
+        override fun contains(alias: String): Boolean = alias in values
+        override fun delete(alias: String) { values.remove(alias) }
     }
 
-    private class FakeCrypto : ByteCrypto {
-        var failEncrypt = false
-        var failDecrypt = false
+    private class TestCrypto : ManagedSessionCrypto {
+        override fun encrypt(plain: ByteArray): Pair<ByteArray, ByteArray> =
+            byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) to plain.map { (it.toInt() xor 0x5A).toByte() }.toByteArray()
 
-        override fun encrypt(plain: ByteArray): ByteArray {
-            if (failEncrypt) throw GeneralSecurityException("synthetic")
-            val output = ByteArray(plain.size + 1)
-            output[0] = 7
-            plain.forEachIndexed { index, byte -> output[index + 1] = (byte.toInt() xor 0x5A).toByte() }
-            return output
-        }
-
-        override fun decrypt(stored: ByteArray): ByteArray {
-            if (failDecrypt) throw GeneralSecurityException("synthetic")
-            if (stored.isEmpty() || stored[0] != 7.toByte()) throw GeneralSecurityException("synthetic")
-            return ByteArray(stored.size - 1) { index ->
-                (stored[index + 1].toInt() xor 0x5A).toByte()
-            }
-        }
-    }
-
-    private class RecordingInvalidator(var fail: Boolean = false) : SchoolAccountInvalidator {
-        val requests = mutableListOf<AccountInvalidationRequest>()
-
-        override suspend fun invalidate(request: AccountInvalidationRequest): AccountInvalidationResult {
-            requests += request
-            return if (fail) {
-                AccountInvalidationResult.failure(AccountInvalidationFailure.UNAVAILABLE)
-            } else {
-                AccountInvalidationResult.Success
-            }
-        }
-    }
-
-    private class SimulatedCrash : Error()
-
-    private class MemoryStore : AccountFileStore {
-        val files = linkedMapOf<String, ByteArray>()
-        var failWrite: String? = null
-        var crashAfterWrite: String? = null
-        var failDelete: String? = null
-
-        fun snapshot(): Map<String, ByteArray> = files.mapValues { it.value.copyOf() }
-
-        override fun read(name: String, maxBytes: Int): ByteArray? =
-            files[name]?.copyOf()?.takeIf { it.size <= maxBytes }
-
-        override fun write(name: String, bytes: ByteArray) {
-            if (failWrite == name) throw IOException("synthetic write failure")
-            files[name] = bytes.copyOf()
-            if (crashAfterWrite == name) throw SimulatedCrash()
-        }
-
-        override fun delete(name: String) {
-            if (failDelete == name) throw IOException("synthetic delete failure")
-            files.remove(name)
-        }
-
-        override fun exists(name: String): Boolean = files.containsKey(name)
+        override fun decrypt(iv: ByteArray, ciphertext: ByteArray): ByteArray =
+            ciphertext.map { (it.toInt() xor 0x5A).toByte() }.toByteArray()
     }
 }

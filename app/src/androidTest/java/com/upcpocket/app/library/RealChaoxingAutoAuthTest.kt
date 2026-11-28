@@ -21,6 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /**
@@ -31,6 +32,7 @@ import org.junit.runner.RunWith
  * 只做本人核验、区域列表、一个区域座位图与已用座位；不预约/取消/签到。
  */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy password auto-login acceptance is disabled after local school-password removal.")
 class RealChaoxingAutoAuthTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -54,7 +56,7 @@ class RealChaoxingAutoAuthTest {
             runCatching { runBlocking { service?.signOutForAccountChange() } }
             runCatching {
                 if (File(accountDirectory, "school-account-v1.enc").exists()) {
-                    runBlocking { SchoolAccountRepository(context).delete() }
+                    runBlocking { SchoolAccountRepository(context).signOut() }
                 }
             }
             runCatching { accountDirectory.deleteRecursively() }
@@ -72,7 +74,7 @@ class RealChaoxingAutoAuthTest {
         val repository = SchoolAccountRepository(context)
         repository.restore()
         assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
-        assertEquals(SchoolAccountWriteResult.Success, repository.save(account, password))
+        assertEquals(SchoolAccountWriteResult.Success, repository.bind(account, password, acceptCustody = true))
         shouldCleanup = true
         assertTrue(password.all { it == '\u0000' })
 

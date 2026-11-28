@@ -15,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /**
@@ -25,6 +26,7 @@ import org.junit.runner.RunWith
  * 缓存与临时文件。未提供私有文件时跳过，不访问学校。
  */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy local-password CAS acceptance is disabled; timetable now uses the Pocket backend.")
 class RealTimetableAuthTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -46,7 +48,7 @@ class RealTimetableAuthTest {
         if (!shouldCleanup) return
         runCatching {
             if (File(accountDirectory, "school-account-v1.enc").exists()) {
-                runBlocking { SchoolAccountRepository(context).delete() }
+                runBlocking { SchoolAccountRepository(context).signOut() }
             }
         }
         TimetableFiles.clearAll(context)
@@ -64,7 +66,7 @@ class RealTimetableAuthTest {
         assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
         assertEquals(
             SchoolAccountWriteResult.Success,
-            repository.save(account, password),
+            repository.bind(account, password, acceptCustody = true),
         )
         shouldCleanup = true
         assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)

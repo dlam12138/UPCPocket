@@ -6,9 +6,6 @@ import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
 import com.upcpocket.app.account.api.blocksPersonalSessions
-import com.upcpocket.app.upcauth.GradesAuthenticator
-import com.upcpocket.app.upcauth.UpcAuthFailure
-import com.upcpocket.app.upcauth.UpcAuthResult
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
@@ -32,19 +29,18 @@ import kotlinx.coroutines.withContext
  * 边界：
  *  - 账号、凭据代次与业务 epoch 在每次发布/落盘前的同一提交锁内复核；
  *  - 网络请求不持有提交锁，切换账号或清理后迟到结果不发布、不落盘；
- *  - 每次同步最多做一次正常 CAS 认证；验证码/二次验证直接停止，不重试；
+ *  - 校园业务只通过宿主注入的 Pocket backend source 读取，不访问学校 CAS 或本地密码；
  *  - 按索引顺序逐学期查询；普通学期失败保留该学期上一份完整结果并记录范围，
  *    认证失效立即停止后续查询；
  *  - 只把逐学期完整结果合并后写入本机加密快照，不保存 Cookie、密码或原始响应。
  *
  * 学校响应没有独立的学生标识或全校汇总，本服务不宣称完成学校侧身份比对；归属
- * 只依靠当前账号的内部 reference 与独立 CAS 会话。
+ * 只依靠当前受控账号 reference 与凭据代次归属。
  */
 class GradesService internal constructor(
     private val account: SchoolAccountReferenceReader,
-    private val authenticator: GradesAuthenticator,
+    private val backend: GradesBackendSource,
     private val files: GradesFiles,
-    private val remote: GradesRemote,
     private val clock: () -> Long = System::currentTimeMillis,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     /** 测试用提交屏障：仅在短提交锁内、最终复核之后调用。 */
@@ -53,13 +49,12 @@ class GradesService internal constructor(
 ) {
     constructor(
         account: SchoolAccountReferenceReader,
-        authenticator: GradesAuthenticator,
+        backend: GradesBackendSource,
         noBackupDir: File,
     ) : this(
         account = account,
-        authenticator = authenticator,
+        backend = backend,
         files = GradesFiles(noBackupDir),
-        remote = GradesApi(),
     )
 
     private val _state = MutableStateFlow(GradesUiState())
@@ -227,54 +222,31 @@ class GradesService internal constructor(
             }
             if (!started) return
 
-            val auth = authenticator.authenticate(
-                binding.accountId,
-                binding.credentialGeneration.value,
-            )
-            if (!isCurrent(binding, business)) return
-            when (auth) {
-                is UpcAuthResult.Failure -> {
-                    publishFailure(
-                        binding = binding,
-                        business = business,
-                        connection = auth.reason.toConnection(),
-                        failure = auth.reason.toGradesFailure(),
-                        prior = prior,
-                    )
-                    return
-                }
-                is UpcAuthResult.Success -> Unit
-            }
-            val cookies = (auth as UpcAuthResult.Success).cookies
-            if (cookies.isEmpty()) {
-                publishFailure(
-                    binding = binding,
-                    business = business,
-                    connection = GradesConnection.AUTH_FAILED,
-                    failure = GradesFailure.AUTH_EXPIRED,
-                    prior = prior,
-                )
-                return
-            }
-
             val index = try {
-                remote.getIndex(cookies)
+                backend.terms().toIndex()
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (failure: GradesRemoteException) {
-                publishRemoteFailure(binding, business, failure.failure, prior)
-                return
-            } catch (_: Exception) {
-                publishRemoteFailure(
+            } catch (failure: GradesBackendFailure) {
+                publishFailure(
                     binding,
                     business,
-                    GradesRemoteFailure.PROTOCOL,
+                    failure.code.toConnection(),
+                    failure.code.toGradesFailure(),
+                    prior,
+                    retryAfterSeconds = failure.retryAfterSeconds,
+                )
+                return
+            } catch (_: Exception) {
+                publishFailure(
+                    binding,
+                    business,
+                    GradesConnection.PROTOCOL_ERROR,
+                    GradesFailure.PROTOCOL_ERROR,
                     prior,
                 )
                 return
             }
             if (!isCurrent(binding, business)) return
-
             val indexedPrior = prior.forTerms(index.terms)
             val appliedIndex = commitMutex.withLock {
                 if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
@@ -309,6 +281,7 @@ class GradesService internal constructor(
             var mixedOrdinaryFailures = false
             var terminalFailure: GradesFailure? = null
             var terminalConnection: GradesConnection? = null
+            var terminalRetryAfterSeconds: Long? = null
 
             fun recordOrdinaryFailure(term: GradesTerm, failure: GradesFailure) {
                 if (ordinaryFailure == null) {
@@ -325,14 +298,15 @@ class GradesService internal constructor(
 
             for ((position, term) in index.terms.withIndex()) {
                 if (!isCurrent(binding, business)) return
-                val courses = try {
-                    remote.getTerm(cookies, term)
+                val termCourses = try {
+                    backend.courses(term.year, term.term).toTermResult(term)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
-                } catch (failure: GradesRemoteException) {
-                    if (failure.failure == GradesRemoteFailure.AUTH_REQUIRED) {
-                        terminalFailure = GradesFailure.AUTH_EXPIRED
-                        terminalConnection = GradesConnection.AUTH_FAILED
+                } catch (failure: GradesBackendFailure) {
+                    if (failure.code.isTerminalSessionFailure()) {
+                        terminalFailure = failure.code.toGradesFailure()
+                        terminalConnection = failure.code.toConnection()
+                        terminalRetryAfterSeconds = failure.retryAfterSeconds
                         markRemainingTerms(
                             index.terms,
                             position,
@@ -342,7 +316,10 @@ class GradesService internal constructor(
                         )
                         break
                     }
-                    recordOrdinaryFailure(term, failure.failure.toGradesFailure())
+                    recordOrdinaryFailure(
+                        term,
+                        failure.code.toGradesFailure(),
+                    )
                     continue
                 } catch (_: Exception) {
                     recordOrdinaryFailure(term, GradesFailure.PROTOCOL_ERROR)
@@ -350,8 +327,8 @@ class GradesService internal constructor(
                 }
                 results[term.key] = GradesTermResult(
                     term = term,
-                    courses = courses,
-                    fetchedAtEpochMillis = clock(),
+                    courses = termCourses.courses,
+                    fetchedAtEpochMillis = termCourses.fetchedAtEpochMillis,
                 )
                 updated++
             }
@@ -441,6 +418,8 @@ class GradesService internal constructor(
                     lastSyncRetainedTerms = retained.toList(),
                     lastSyncFailedTerms = failed.toList(),
                     lastFailure = failure,
+                    retryAfterSeconds = terminalRetryAfterSeconds
+                        ?.coerceIn(1, 86_400),
                     unsavedChanges = unsavedChanges,
                 )
             }
@@ -534,8 +513,7 @@ class GradesService internal constructor(
     private fun applyAccountStateLocked() {
         val state = account.state.value
         val reference = account.accountReference.value?.takeIf {
-            state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
-                !state.blocksPersonalSessions &&
+            state.isManagedActive && !state.blocksPersonalSessions &&
                 state.generation == it.credentialGeneration
         }
         val previous = currentBinding
@@ -580,7 +558,7 @@ class GradesService internal constructor(
     private fun isBindingCurrent(binding: SchoolAccountReference): Boolean {
         val state = account.state.value
         val reference = account.accountReference.value
-        return state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
+        return state.isManagedActive &&
             !state.blocksPersonalSessions &&
             state.generation == binding.credentialGeneration &&
             reference == binding
@@ -662,27 +640,13 @@ class GradesService internal constructor(
 
     // ── failures ──────────────────────────────────────────────────────────
 
-    private suspend fun publishRemoteFailure(
-        binding: SchoolAccountReference,
-        business: Long,
-        failure: GradesRemoteFailure,
-        prior: PriorData,
-    ) {
-        publishFailure(
-            binding = binding,
-            business = business,
-            connection = failure.toConnection(),
-            failure = failure.toGradesFailure(),
-            prior = prior,
-        )
-    }
-
     private suspend fun publishFailure(
         binding: SchoolAccountReference,
         business: Long,
         connection: GradesConnection,
         failure: GradesFailure,
         prior: PriorData,
+        retryAfterSeconds: Long? = null,
     ) {
         commitMutex.withLock {
             if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
@@ -705,6 +669,7 @@ class GradesService internal constructor(
                 lastSyncRetainedTerms = retained,
                 lastSyncFailedTerms = failed,
                 lastFailure = failure,
+                retryAfterSeconds = retryAfterSeconds?.coerceIn(1, 86_400),
                 unsavedChanges = current.owner == binding && current.unsavedChanges,
             )
         }
@@ -723,58 +688,69 @@ class GradesService internal constructor(
         }
     }
 
-    private fun UpcAuthFailure.toGradesFailure(): GradesFailure = when (this) {
-        UpcAuthFailure.INVALID_CREDENTIALS -> GradesFailure.AUTH_INVALID
-        UpcAuthFailure.INTERACTION_REQUIRED -> GradesFailure.AUTH_INTERACTION
-        UpcAuthFailure.NETWORK_UNAVAILABLE -> GradesFailure.NETWORK_UNAVAILABLE
-        UpcAuthFailure.TLS_ERROR -> GradesFailure.TLS_ERROR
-        UpcAuthFailure.UPSTREAM_ERROR -> GradesFailure.UPSTREAM_ERROR
-        UpcAuthFailure.PROTOCOL_ERROR -> GradesFailure.PROTOCOL_ERROR
-        UpcAuthFailure.ACCOUNT_UNAVAILABLE,
-        UpcAuthFailure.ACCOUNT_CHANGED,
-        -> GradesFailure.ACCOUNT_REQUIRED
-        UpcAuthFailure.ACCESS_DENIED -> GradesFailure.ACCESS_DENIED
+    private fun GradesBackendFailureCode.toGradesFailure(): GradesFailure = when (this) {
+        GradesBackendFailureCode.SERVICE_NOT_READY -> GradesFailure.SERVICE_NOT_READY
+        GradesBackendFailureCode.TOKEN_INVALID -> GradesFailure.TOKEN_INVALID
+        GradesBackendFailureCode.UNAUTHENTICATED -> GradesFailure.UNAUTHENTICATED
+        GradesBackendFailureCode.DISABLED -> GradesFailure.DISABLED
+        GradesBackendFailureCode.INTERACTIVE_CHALLENGE -> GradesFailure.AUTH_INTERACTION
+        GradesBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED ->
+            GradesFailure.CREDENTIAL_UPDATE_REQUIRED
+        GradesBackendFailureCode.VERIFICATION_BUSY -> GradesFailure.VERIFICATION_BUSY
+        GradesBackendFailureCode.MODULE_DISABLED -> GradesFailure.MODULE_DISABLED
+        GradesBackendFailureCode.CIRCUIT_OPEN -> GradesFailure.CIRCUIT_OPEN
+        GradesBackendFailureCode.UPSTREAM_UNAVAILABLE -> GradesFailure.UPSTREAM_UNAVAILABLE
+        GradesBackendFailureCode.UPSTREAM_TIMEOUT -> GradesFailure.UPSTREAM_TIMEOUT
+        GradesBackendFailureCode.DEPENDENCY_UNAVAILABLE -> GradesFailure.DEPENDENCY_UNAVAILABLE
+        GradesBackendFailureCode.VALIDATION_FAILED -> GradesFailure.VALIDATION_FAILED
+        GradesBackendFailureCode.IDENTITY_UNSUPPORTED -> GradesFailure.IDENTITY_UNSUPPORTED
+        GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR -> GradesFailure.PROTOCOL_ERROR
+        GradesBackendFailureCode.RATE_LIMITED -> GradesFailure.RATE_LIMITED
+        GradesBackendFailureCode.NETWORK_UNAVAILABLE -> GradesFailure.NETWORK_UNAVAILABLE
     }
 
-    private fun UpcAuthFailure.toConnection(): GradesConnection = when (this) {
-        UpcAuthFailure.INTERACTION_REQUIRED -> GradesConnection.INTERACTION_REQUIRED
-        UpcAuthFailure.NETWORK_UNAVAILABLE,
-        UpcAuthFailure.TLS_ERROR,
-        -> GradesConnection.NETWORK_UNAVAILABLE
-        UpcAuthFailure.UPSTREAM_ERROR -> GradesConnection.PROTOCOL_ERROR
-        UpcAuthFailure.PROTOCOL_ERROR -> GradesConnection.PROTOCOL_ERROR
-        UpcAuthFailure.INVALID_CREDENTIALS,
-        UpcAuthFailure.ACCOUNT_UNAVAILABLE,
-        UpcAuthFailure.ACCOUNT_CHANGED,
-        UpcAuthFailure.ACCESS_DENIED,
+    private fun GradesBackendFailureCode.toConnection(): GradesConnection = when (this) {
+        GradesBackendFailureCode.SERVICE_NOT_READY -> GradesConnection.NETWORK_UNAVAILABLE
+        GradesBackendFailureCode.TOKEN_INVALID,
+        GradesBackendFailureCode.UNAUTHENTICATED,
+        GradesBackendFailureCode.DISABLED,
+        GradesBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED,
+        GradesBackendFailureCode.IDENTITY_UNSUPPORTED,
         -> GradesConnection.AUTH_FAILED
-    }
-
-    private fun GradesRemoteFailure.toGradesFailure(): GradesFailure = when (this) {
-        GradesRemoteFailure.AUTH_REQUIRED -> GradesFailure.AUTH_EXPIRED
-        GradesRemoteFailure.NETWORK -> GradesFailure.NETWORK_UNAVAILABLE
-        GradesRemoteFailure.TIMEOUT -> GradesFailure.TIMEOUT
-        GradesRemoteFailure.TLS -> GradesFailure.TLS_ERROR
-        GradesRemoteFailure.TOO_LARGE,
-        GradesRemoteFailure.SCHEMA,
-        GradesRemoteFailure.PROTOCOL,
-        -> GradesFailure.PROTOCOL_ERROR
-        GradesRemoteFailure.HTTP,
-        GradesRemoteFailure.UPSTREAM,
-        -> GradesFailure.UPSTREAM_ERROR
-    }
-
-    private fun GradesRemoteFailure.toConnection(): GradesConnection = when (this) {
-        GradesRemoteFailure.AUTH_REQUIRED -> GradesConnection.AUTH_FAILED
-        GradesRemoteFailure.NETWORK,
-        GradesRemoteFailure.TIMEOUT,
-        GradesRemoteFailure.TLS,
-        -> GradesConnection.NETWORK_UNAVAILABLE
-        GradesRemoteFailure.TOO_LARGE,
-        GradesRemoteFailure.HTTP,
-        GradesRemoteFailure.UPSTREAM,
-        GradesRemoteFailure.SCHEMA,
-        GradesRemoteFailure.PROTOCOL,
+        GradesBackendFailureCode.INTERACTIVE_CHALLENGE -> GradesConnection.INTERACTION_REQUIRED
+        GradesBackendFailureCode.VALIDATION_FAILED,
+        GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
         -> GradesConnection.PROTOCOL_ERROR
+        GradesBackendFailureCode.VERIFICATION_BUSY,
+        GradesBackendFailureCode.MODULE_DISABLED,
+        GradesBackendFailureCode.CIRCUIT_OPEN,
+        GradesBackendFailureCode.UPSTREAM_UNAVAILABLE,
+        GradesBackendFailureCode.UPSTREAM_TIMEOUT,
+        GradesBackendFailureCode.DEPENDENCY_UNAVAILABLE,
+        GradesBackendFailureCode.RATE_LIMITED,
+        GradesBackendFailureCode.NETWORK_UNAVAILABLE,
+        -> GradesConnection.NETWORK_UNAVAILABLE
+    }
+
+    private fun GradesBackendFailureCode.isTerminalSessionFailure(): Boolean = when (this) {
+        GradesBackendFailureCode.TOKEN_INVALID,
+        GradesBackendFailureCode.UNAUTHENTICATED,
+        GradesBackendFailureCode.DISABLED,
+        GradesBackendFailureCode.INTERACTIVE_CHALLENGE,
+        GradesBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED,
+        GradesBackendFailureCode.VERIFICATION_BUSY,
+        GradesBackendFailureCode.MODULE_DISABLED,
+        GradesBackendFailureCode.CIRCUIT_OPEN,
+        GradesBackendFailureCode.UPSTREAM_UNAVAILABLE,
+        GradesBackendFailureCode.UPSTREAM_TIMEOUT,
+        GradesBackendFailureCode.DEPENDENCY_UNAVAILABLE,
+        GradesBackendFailureCode.RATE_LIMITED,
+        GradesBackendFailureCode.NETWORK_UNAVAILABLE,
+        -> true
+        GradesBackendFailureCode.SERVICE_NOT_READY,
+        GradesBackendFailureCode.VALIDATION_FAILED,
+        GradesBackendFailureCode.IDENTITY_UNSUPPORTED,
+        GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR,
+        -> false
     }
 }

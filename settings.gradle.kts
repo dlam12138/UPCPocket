@@ -36,6 +36,7 @@ include(
     ":core:designsystem",
     ":core:account-api",
     ":core:account",
+    ":core:campus-backend-client",
     ":core:platform",
     ":core:plugin-api",
     ":core:plugin-runtime",

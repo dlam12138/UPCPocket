@@ -1,6 +1,6 @@
 # 仓库内部契约
 
-本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，包含 2026-11-22 核对的 2.1.0 日程待办位置（课表/专注），以及 iOS 静态网页版的本机导入契约。项目没有自建 REST 服务或对第三方承诺稳定的远程 API；网页版不请求 `/api/*`，学校业务由固定官方页面处理。学校私有协议细节属于各业务适配，不在此复制带身份的请求或会话。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
+本文索引宿主、基础模块和 feature 之间使用的 Kotlin 契约，以及 `feat/campus-backend` 校方后端分支新增的只读转发 REST 客户端边界（[OpenAPI 契约](backend/openapi.yaml)）和 iOS 静态网页版的本机导入契约。`main` 公开直连线与 `web/` 静态网页版不请求本项目自建 `/api/*`；`feat/campus-backend` 校方托管分发线由 `core:campus-backend-client` 对接校方部署的 Pocket 后端 `/api/v1/*`（首批覆盖账号托管、设备会话与课表/校园卡/成绩只读接口），业务 feature 不直接持有 Pocket Bearer Token 或访问 `core:account`。完整签名与默认值见源码。公共契约变更需同步文档和消费者。 [架构](ARCHITECTURE.md)
 
 ## 插件、能力与 UI
 
@@ -60,9 +60,10 @@
 | `SchoolAccountReferenceReader.accountReference` | `StateFlow<SchoolAccountReference?>` | 内部 accountId 与代次；不要求登录名为纯数字，供课表等隔离归属 |
 | `SchoolAccountIdentityVerifier.verifyLoginName(expectedAccountId, expectedCredentialGeneration, candidateLoginName)` | suspend；`SchoolAccountIdentityCheck` | 比较学校返回身份；MATCH/MISMATCH/CHANGED/UNAVAILABLE，不暴露已存登录名 |
 | `SchoolAccountReader.restore()` | suspend；Unit | 宿主触发本机恢复，不主动登录全部业务 |
-| `SchoolAccountAdmin.save(account: String?, password: CharArray)` | suspend；`SchoolAccountWriteResult` | 当前输入交设置页持有；Success 仅本机提交成功，Failure 为固定 `SchoolAccountErrorCode` |
-| `SchoolAccountAdmin.delete()` / `retryCleanup()` | suspend；`SchoolAccountWriteResult` | 由账号设置持有；完成必要失效协调，失败不能假装清理已完成 |
+| `SchoolAccountAdmin.bind(loginName, password, acceptCustody)` / `updateManagedCredential(loginName, password)` | suspend；`SchoolAccountWriteResult` | `feat/campus-backend` 校方托管写入面：仅前台短暂传入 `CharArray` 并在 `finally` 清零、不落盘；待撤权或远端撤权在途期间返回 `BUSY` |
+| `SchoolAccountAdmin.listDevices()` / `revokeDevice(deviceId)` / `signOut()` / `unbind(confirmed)` / `retryCleanup()` | suspend；`ManagedDeviceListResult` / `SchoolAccountWriteResult` | 由账号设置持有；解绑/退出/撤销本设备先封闭本机个人数据并保留加密待撤权记录（`UNBIND_PENDING` / `SIGN_OUT_PENDING`），待远端确认或明确失效后才清除 |
 | `SchoolAccountInvalidator.invalidate(request: AccountInvalidationRequest)` | suspend；`AccountInvalidationResult` | request 含原因、范围、新旧代次；幂等，只返回固定失败，不携带异常原文 |
+| `CampusBackendClient`（`core:campus-backend-client`） | 纯 JVM OkHttp 客户端，覆盖 `/api/v1/auth/*`、`/api/v1/me*` 及 `timetable`/`card`/`grades` 只读接口 | 仅 `app` 与 `core:account` 消费；拒绝重定向，Release 默认允许 origin 为空（fail-closed）；业务 feature 通过宿主窄数据源接口（`TimetableBackendSource` / `CardBackendDataSource` / `GradesBackendSource`）消费，不接触 Bearer Token |
 
 `SchoolAccountController` 合并 reader/admin，但不作为业务插件的通用管理能力。`blocksPersonalSessions` 在 LOADING、cleanupRequired、SWITCHING、UPDATING、REMOVING 时阻断个人会话。`SESSIONS_ONLY` 与 `PERSONAL_DATA` 决定清会话或连同归属个人数据清理；消费者不能按界面短文案推断范围。
 

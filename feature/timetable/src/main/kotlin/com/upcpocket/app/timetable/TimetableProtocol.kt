@@ -322,7 +322,7 @@ object TimetableProtocol {
                             TimetableErrorCode.SCHEMA_CHANGED,
                             DiagnosticDetail.WEEK_PARSE_WEEK_LABEL,
                         )
-                    val parsedWeeks = weekNumbers(weekLabel, term.totalWeeks)
+                    val parsedWeeks = parseWeekNumbers(weekLabel, term.totalWeeks)
                     if (parsedWeeks == null || parsedWeeks.isEmpty() || week !in parsedWeeks) {
                         // 不把请求周补进源周列表；源标签明确排除或无法解释时
                         // 这条课程不能当作已核实的当前周课程。
@@ -536,7 +536,7 @@ object TimetableProtocol {
      * interpreted. The caller fails the week; it never appends the requested
      * week to source facts.
      */
-    private fun weekNumbers(raw: String, totalWeeks: Int): List<Int>? {
+    internal fun parseWeekNumbers(raw: String, totalWeeks: Int): List<Int>? {
         val tokens = raw.trim()
             .split(Regex("[,，、;；\\s]+"))
             .filter { it.isNotBlank() }

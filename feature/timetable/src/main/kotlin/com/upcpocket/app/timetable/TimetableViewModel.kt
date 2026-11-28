@@ -2,7 +2,6 @@ package com.upcpocket.app.timetable
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
@@ -44,22 +43,6 @@ class TimetableViewModel(
 
     fun cancelInteractiveLogin() {
         viewModelScope.launch { service.cancelInteractiveLogin() }
-    }
-
-    fun adoptInteractiveCookies(
-        cookieHeader: String,
-        diagnosticOperation: DiagnosticOperation,
-        onAccepted: (Boolean) -> Unit,
-    ) {
-        operation?.cancel()
-        operation = viewModelScope.launch {
-            val accepted = service.adoptInteractiveCookies(
-                cookieHeader = cookieHeader,
-                operationId = diagnosticOperation.id,
-                diagnosticOperation = diagnosticOperation,
-            )
-            onAccepted(accepted)
-        }
     }
 
     private fun run(block: suspend () -> Unit) {

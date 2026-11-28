@@ -2,6 +2,7 @@ package com.upcpocket.app.widget
 
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.card.CardWidgetRead
 import com.upcpocket.app.card.CardWidgetRevision
 import com.upcpocket.app.card.CardWidgetViewState
@@ -25,22 +26,18 @@ import org.junit.Test
  */
 class CardWidgetPublisherTest {
 
-    private val idA = "2099000001"
-    private val idB = "2099000002"
-    private val bindingA = CardBalanceBinding(
+    private val refA = SchoolAccountReference(
         accountId = SchoolAccountId("acct_test_publish_a"),
-        studentId = idA,
         credentialGeneration = AccountGeneration(1),
     )
-    private val bindingB = CardBalanceBinding(
+    private val refB = SchoolAccountReference(
         accountId = SchoolAccountId("acct_test_publish_b"),
-        studentId = idB,
         credentialGeneration = AccountGeneration(1),
     )
+    private val bindingA = CardBalanceBinding(accountReference = refA)
+    private val bindingB = CardBalanceBinding(accountReference = refB)
     private val snapshotA = DirectCardSnapshot(
-        accountId = bindingA.accountId.value,
-        studentId = idA,
-        credentialGeneration = 1,
+        accountReference = refA,
         balanceCents = 12345,
         transitionCents = 678,
         fetchedAt = 1_700_000_000_000,
@@ -55,13 +52,13 @@ class CardWidgetPublisherTest {
     )
     private val revA = CardWidgetRevision(
         availability = CardBindingAvailability.READY,
-        bindingToken = "${bindingA.accountId.value}:1",
+        bindingToken = "${refA.accountId.value}:1",
         businessEpoch = 0,
         snapshotRevision = 1,
     )
     private val revB = CardWidgetRevision(
         availability = CardBindingAvailability.READY,
-        bindingToken = "${bindingB.accountId.value}:1",
+        bindingToken = "${refB.accountId.value}:1",
         businessEpoch = 0,
         snapshotRevision = 2,
     )
@@ -106,9 +103,9 @@ class CardWidgetPublisherTest {
         assertFalse("旧 A 读取不得在 B 空态之后发布", lateA.await())
 
         val last = recorder.last()!!
-        assertEquals(bindingB.accountId, last.status.binding?.accountId)
+        assertEquals(refB.accountId, last.status.binding?.accountReference?.accountId)
         assertNull(last.snapshot)
-        assertFalse(recorder.snapshots().any { it?.studentId == idA })
+        assertFalse(recorder.snapshots().any { it?.accountReference?.accountId == refA.accountId })
     }
 
     @Test
@@ -139,7 +136,7 @@ class CardWidgetPublisherTest {
         assertTrue(publisher.publishLatestNow())
         release.complete(Unit)
         assertFalse(stale.await())
-        assertEquals(bindingB.accountId, recorder.last()?.status?.binding?.accountId)
+        assertEquals(refB.accountId, recorder.last()?.status?.binding?.accountReference?.accountId)
         assertNull(recorder.last()?.snapshot)
     }
 
@@ -181,12 +178,12 @@ class CardWidgetPublisherTest {
         )
 
         assertTrue(publisher.publishLatest())
-        assertEquals(idA, recorder.last()?.snapshot?.studentId)
+        assertEquals(refA.accountId, recorder.last()?.snapshot?.accountReference?.accountId)
 
         current.set(revB)
         next.set(CardWidgetRead(stateB, revB))
         assertTrue(publisher.publishLatest())
-        assertEquals(bindingB.accountId, recorder.last()?.status?.binding?.accountId)
+        assertEquals(refB.accountId, recorder.last()?.status?.binding?.accountReference?.accountId)
         assertNull(recorder.last()?.snapshot)
         assertEquals(2, recorder.states.size)
     }
@@ -245,7 +242,7 @@ class CardWidgetPublisherTest {
         )
         val clearedRevision = CardWidgetRevision(
             availability = CardBindingAvailability.READY,
-            bindingToken = "${bindingA.accountId.value}:1",
+            bindingToken = "${refA.accountId.value}:1",
             businessEpoch = 1,
             snapshotRevision = 2,
         )
@@ -272,7 +269,7 @@ class CardWidgetPublisherTest {
         release.complete(Unit)
         assertFalse(stale.await())
         assertEquals(CardBindingAvailability.READY, recorder.last()?.status?.availability)
-        assertEquals(bindingA.accountId, recorder.last()?.status?.binding?.accountId)
+        assertEquals(refA.accountId, recorder.last()?.status?.binding?.accountReference?.accountId)
         assertNull(recorder.last()?.snapshot)
     }
 
@@ -282,10 +279,12 @@ class CardWidgetPublisherTest {
         val started = CompletableDeferred<Unit>()
         val release = CompletableDeferred<Unit>()
         val calls = AtomicInteger()
-        val bindingA2 = bindingA.copy(credentialGeneration = AccountGeneration(2))
+        val bindingA2 = CardBalanceBinding(
+            accountReference = refA.copy(credentialGeneration = AccountGeneration(2)),
+        )
         val revA2 = CardWidgetRevision(
             availability = CardBindingAvailability.READY,
-            bindingToken = "${bindingA.accountId.value}:2",
+            bindingToken = "${refA.accountId.value}:2",
             businessEpoch = 0,
             snapshotRevision = 2,
         )
@@ -317,7 +316,7 @@ class CardWidgetPublisherTest {
         release.complete(Unit)
         assertFalse(old.await())
         val last = recorder.last()!!
-        assertEquals(AccountGeneration(2), last.status.binding?.credentialGeneration)
-        assertEquals(1L, last.snapshot?.credentialGeneration)
+        assertEquals(AccountGeneration(2), last.status.binding?.accountReference?.credentialGeneration)
+        assertEquals(AccountGeneration(1), last.snapshot?.accountReference?.credentialGeneration)
     }
 }

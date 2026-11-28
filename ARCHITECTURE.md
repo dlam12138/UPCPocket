@@ -1,10 +1,10 @@
 # UPC Pocket 当前架构
 
-本文于 2026-11-22 核对 2.1.0 开发代码的日程待办位置（课表/专注）。M0–M5 和 v0.1 方案保留当时的决策与验证。 [正式版及下载](README.md) · [版本与工具链](docs/BUILD.md) · [2.0.8 开发记录](docs/releases/2.0.8-development.md) · [ADR](docs/adr/README.md)
+本文于 2026-11-28 在 `feat/campus-backend` 校方后端分支同步阶段二 A（无本地学校密码托管线与首批只读转发）架构变更；`main` 仍保持 2.1.x 公开直连版。M0–M5 和 v0.1 方案保留当时的决策与验证。 [正式版及下载](README.md) · [版本与工具链](docs/BUILD.md) · [校内后端计划](docs/design/campus-backend-pilot-plan.md) · [ADR](docs/adr/README.md)
 
 ## 系统轮廓
 
-这是直接访问学校服务的 Android 客户端，没有本项目自建的账号或业务中转服务器。另有独立的 iOS 静态网页版（`web/`），同样不设账号服务、数据库或 `/api/*` 接口，见下文「iOS 网页版」。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
+在 `feat/campus-backend` 分支上，Android 端通过独立的纯 JVM 客户端模块 `core:campus-backend-client` 访问校方部署的 Pocket 后端（[`backend/`](backend/README.md)），手机本地不再保存学校密码；首批只读业务（课表、校园卡余额/流水、成绩）经宿主适配由 Pocket 后端代为转发，后端生产默认适配器与 Release origin 均保持 fail-closed 未配置状态直到校方运维落地。独立的 iOS 静态网页版（`web/`）继续不设账号服务、数据库或 `/api/*` 接口，见下文「iOS 网页版」。Compose / Material 3 负责展示；手动 AppGraph 负责装配；feature 纵向拥有业务、数据和 UI；Room、DataStore 与私有文件承担各自持久化。OkHttp 处理网络，受控 WebView 只承担已有学校网页流程。版本目录中的 Hilt 条目不表示已迁移到 Hilt。
 
 ```mermaid
 flowchart TD
@@ -28,7 +28,7 @@ flowchart TD
 
 ## 模块与依赖
 
-[settings.gradle.kts](settings.gradle.kts) 当前包含 22 个模块，包括 app、8 个 core 和 13 个 feature。表中依赖只列仓库内部直接 project 依赖。
+[settings.gradle.kts](settings.gradle.kts) 当前包含 23 个模块，包括 app、9 个 core 和 13 个 feature（独立的 `backend/` 服务端工程不进入根 Android Gradle）。表中依赖只列仓库内部直接 project 依赖。
 
 | 模块 | 职责 | 内部直接依赖 |
 | --- | --- | --- |
@@ -37,7 +37,8 @@ flowchart TD
 | `core:plugin-runtime` | 纯 JVM 注册、拓扑排序、校验、激活和能力解析 | plugin-api |
 | `core:plugin-ui` | Compose 页面、入口、设置区和底栏贡献契约/registry | plugin-api |
 | `core:account-api` | 纯 JVM 账号状态、受控身份/引用、代次和失效契约 | 无 |
-| `core:account` | 本机加密凭据、事务恢复、清理协调、账号设置 UI | account-api、platform、designsystem |
+| `core:campus-backend-client` | 纯 JVM 校方 Pocket 后端 `/api/v1` REST 客户端、来源白名单与固定错误码 | 无 |
+| `core:account` | Pocket 设备托管会话加密存储、旧本地密码离线清理、待撤权状态机与账号设置 UI | account-api、campus-backend-client、platform、designsystem |
 | `core:upc-auth` | UPC CAS 与各业务认证适配，短期使用凭据 | account、account-api、platform |
 | `core:platform` | 基础加密、账号脱敏、固定诊断模型 | 无 |
 | `core:designsystem` | Compose 主题、通用 UI、RemoteViews 支持 | 无 |

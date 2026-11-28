@@ -28,6 +28,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /**
@@ -38,6 +39,7 @@ import org.junit.runner.RunWith
  * 未提供私有文件时跳过，不访问学校，也不提交预约/取消/签到。
  */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy local-password CAS acceptance is disabled; use Pocket backend acceptance after authorization.")
 class RealLibraryAuthTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -63,7 +65,7 @@ class RealLibraryAuthTest {
         }
         runCatching {
             if (File(accountDirectory, "school-account-v1.enc").exists()) {
-                runBlocking { SchoolAccountRepository(context).delete() }
+                runBlocking { SchoolAccountRepository(context).signOut() }
             }
         }
         service = null
@@ -81,7 +83,7 @@ class RealLibraryAuthTest {
         assertEquals(SchoolAccountStatus.NOT_CONFIGURED, repository.state.value.status)
         assertEquals(
             SchoolAccountWriteResult.Success,
-            repository.save(account, password),
+            repository.bind(account, password, acceptCustody = true),
         )
         shouldCleanup = true
         assertEquals(SchoolAccountStatus.SAVED_UNVERIFIED, repository.state.value.status)

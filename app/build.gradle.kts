@@ -19,6 +19,9 @@ fun buildConfigString(value: String): String =
 
 val updateTestBaseUrl = providers.gradleProperty("updateTestBase").orNull.orEmpty().trim()
 val updateTestPublicKey = providers.gradleProperty("updateTestPublicKey").orNull.orEmpty().trim()
+// Pocket 校方托管服务仅允许 Debug 从本机 Gradle 配置注入联调地址。Release 在取得
+// 校方批准的精确 origin 前固定为空，CampusBackendClient 会在本地返回 NOT_CONFIGURED。
+val campusBackendOrigin = providers.gradleProperty("campusBackendOrigin").orNull.orEmpty().trim()
 
 // 仅用于本机受控安装验收：显式传入 e2eVersionCode 才改变版本；Release 任务直接失败。
 // 正常发布构建不要传这两个属性。
@@ -117,10 +120,12 @@ android {
             // 只有命令行显式提供时才注入；不写死本机地址，发布包也拿不到这两个字段。
             buildConfigField("String", "UPDATE_TEST_BASE_URL", buildConfigString(updateTestBaseUrl))
             buildConfigField("String", "UPDATE_TEST_PUBLIC_KEY", buildConfigString(updateTestPublicKey))
+            buildConfigField("String", "CAMPUS_BACKEND_ORIGIN", buildConfigString(campusBackendOrigin))
         }
         release {
             buildConfigField("String", "UPDATE_TEST_BASE_URL", "\"\"")
             buildConfigField("String", "UPDATE_TEST_PUBLIC_KEY", "\"\"")
+            buildConfigField("String", "CAMPUS_BACKEND_ORIGIN", "\"\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -170,6 +175,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:account"))
     implementation(project(":core:account-api"))
+    implementation(project(":core:campus-backend-client"))
     implementation(project(":core:upc-auth"))
     implementation(project(":core:platform"))
     implementation(project(":core:plugin-api"))

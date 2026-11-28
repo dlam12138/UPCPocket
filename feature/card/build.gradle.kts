@@ -49,7 +49,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(project(":core:plugin-runtime"))
@@ -59,8 +58,6 @@ dependencies {
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.androidx.activity.compose)
-    testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
-    testImplementation("com.squareup.okhttp3:okhttp-tls:${libs.versions.okhttp.get()}")
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.activity.compose)
 }

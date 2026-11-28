@@ -27,6 +27,28 @@ class UpcPocketApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppGraph.init(this)
+        // Take over the old password store synchronously and offline before any restore path.
+        // The persisted marker blocks account restore across a crash; clear widgets before the
+        // legacy ciphertext and aliases are removed.
+        val legacyUpgradePending = runCatching { AppGraph.account.beginLegacyCredentialUpgrade() }
+            .getOrDefault(true)
+        if (legacyUpgradePending) {
+            WidgetAutoRefresh.cancel(this, com.upcpocket.app.widget.WidgetKind.CARD)
+            WidgetAutoRefresh.cancel(this, com.upcpocket.app.widget.WidgetKind.TIMETABLE)
+            runCatching {
+                WidgetUpdates.updateKindNow(
+                    this,
+                    com.upcpocket.app.widget.WidgetKind.CARD,
+                    scheduleTicker = false,
+                )
+                WidgetUpdates.updateKindNow(
+                    this,
+                    com.upcpocket.app.widget.WidgetKind.TIMETABLE,
+                    scheduleTicker = false,
+                )
+            }
+            runCatching { AppGraph.account.purgeLegacyPasswordMaterial() }
+        }
         // 诊断 sink 在所有 feature 之前安装；release 也启用，不依赖 BuildConfig.DEBUG。
         AppGraph.installDiagnostics()
         AppGraph.startPlugins()
@@ -36,9 +58,14 @@ class UpcPocketApp : Application() {
         // release 包不会开启，也不暴露任何页面内容。
         if (BuildConfig.DEBUG) WebView.setWebContentsDebuggingEnabled(true)
 
-        // 先恢复统一账号并完成上次中断的清理，再允许插件恢复自己的业务状态。
-        // 账号恢复只读本机密文/状态文件，不联网、不遍历业务。
+        // Finish legacy-data deletion and cookie/cache invalidation before restoring account or
+        // plugins. This path is offline; failed cleanup remains gated for an explicit retry.
         appScope.launch {
+            if (legacyUpgradePending) {
+                if (AppGraph.account.finishLegacyCredentialUpgrade() !=
+                    com.upcpocket.app.account.api.SchoolAccountWriteResult.Success
+                ) return@launch
+            }
             AppGraph.account.restore()
             AppGraph.restorePlugins()
             WidgetUpdates.requestTodo(this@UpcPocketApp)
@@ -61,11 +88,6 @@ class UpcPocketApp : Application() {
         // 组件立即撤下旧身份数值，不等待新账号查询成功。
         appScope.launch {
             AppGraph.account.state.collect { state ->
-                // 有完整有效学号的统一账号成立后，旧版明文草稿不再是任何数据源；
-                // 即使余额插件未激活也在这里删除，避免遗留明文。
-                if (state.isCredentialSaved && state.studentIdAvailable) {
-                    runCatching { AppGraph.cardInputRepository.clear() }
-                }
                 runCatching { AppGraph.prepareCardForAccount() }
                 AppGraph.requestCardWidgetUpdate()
                 AppGraph.requestTimetableWidgetUpdate()

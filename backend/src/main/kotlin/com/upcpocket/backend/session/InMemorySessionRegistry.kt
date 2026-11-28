@@ -31,6 +31,7 @@ class InMemorySessionRegistry(
         val kind: DeviceKind,
         val credentialGeneration: Long,
         val gateRevision: Long,
+        val studentId: CharArray?,
         val expiresAt: Instant,
     )
 
@@ -81,6 +82,17 @@ class InMemorySessionRegistry(
     fun issue(account: AccountRecord, descriptor: DeviceDescriptor): IssuedPocketSession =
         issue(account, descriptor, captureIssueFence(account.accountId, descriptor.installationId))
 
+    fun issue(
+        account: AccountRecord,
+        descriptor: DeviceDescriptor,
+        studentId: CharArray?,
+    ): IssuedPocketSession = issue(
+        account,
+        descriptor,
+        captureIssueFence(account.accountId, descriptor.installationId),
+        studentId,
+    )
+
     fun discardUnusedIssueFence(fence: SessionIssueFence) = synchronized(lock) {
         releaseIssueFenceLocked(fence)
         reapUnusedEpochSlotsLocked()
@@ -90,6 +102,7 @@ class InMemorySessionRegistry(
         account: AccountRecord,
         descriptor: DeviceDescriptor,
         fence: SessionIssueFence,
+        studentId: CharArray? = null,
     ): IssuedPocketSession = synchronized(lock) {
         try {
             val now = clock.instant()
@@ -125,6 +138,7 @@ class InMemorySessionRegistry(
                 kind = descriptor.kind,
                 credentialGeneration = account.credentialGeneration,
                 gateRevision = account.gateRevision,
+                studentId = studentId?.copyOf(),
                 expiresAt = expiresAt,
             )
             tokens[digest] = record
@@ -192,6 +206,48 @@ class InMemorySessionRegistry(
                 (credentialGeneration == null || it.credentialGeneration == credentialGeneration) &&
                 (gateRevision == null || it.gateRevision == gateRevision)
         }
+    }
+
+    /** Returns a short-lived copy of the numeric identity bound to this exact Pocket token. */
+    fun copyStudentId(identity: PocketSessionIdentity): CharArray? = synchronized(lock) {
+        cleanupExpiredLocked(clock.instant())
+        val record = tokens[identity.tokenDigest] ?: return@synchronized null
+        if (!record.expiresAt.isAfter(clock.instant()) || record.deviceId != identity.deviceId ||
+            record.accountId != identity.accountId || record.credentialGeneration != identity.credentialGeneration ||
+            record.gateRevision != identity.gateRevision
+        ) return@synchronized null
+        record.studentId?.copyOf()
+    }
+
+    fun captureBusinessFence(identity: PocketSessionIdentity): SessionBusinessFence? = synchronized(lock) {
+        val now = clock.instant()
+        cleanupExpiredLocked(now)
+        val record = tokens[identity.tokenDigest] ?: return@synchronized null
+        if (!record.expiresAt.isAfter(now) || record.accountId != identity.accountId ||
+            record.deviceId != identity.deviceId || record.credentialGeneration != identity.credentialGeneration ||
+            record.gateRevision != identity.gateRevision
+        ) return@synchronized null
+        ensureEpochSlotLocked(record.accountId)
+        SessionBusinessFence(
+            accountId = record.accountId,
+            deviceId = record.deviceId,
+            credentialGeneration = record.credentialGeneration,
+            gateRevision = record.gateRevision,
+            businessEpoch = businessEpochs.getValue(record.accountId),
+            tokenDigest = record.digest,
+        )
+    }
+
+    fun isBusinessFenceCurrent(fence: SessionBusinessFence): Boolean = synchronized(lock) {
+        val now = clock.instant()
+        cleanupExpiredLocked(now)
+        val record = tokens[fence.tokenDigest] ?: return@synchronized false
+        record.expiresAt.isAfter(now) &&
+            record.accountId == fence.accountId &&
+            record.deviceId == fence.deviceId &&
+            record.credentialGeneration == fence.credentialGeneration &&
+            record.gateRevision == fence.gateRevision &&
+            (businessEpochs[record.accountId] ?: epochFloor) == fence.businessEpoch
     }
 
     fun getBusinessSession(key: BusinessSessionKey): BusinessSessionValue? = synchronized(lock) {
@@ -383,6 +439,7 @@ class InMemorySessionRegistry(
 
     private fun removeTokenLocked(digest: String) {
         val record = tokens.remove(digest) ?: return
+        record.studentId?.fill('\u0000')
         installationTokens.remove(record.accountId to record.installationId, digest)
     }
 

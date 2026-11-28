@@ -16,9 +16,14 @@ import com.upcpocket.backend.service.ApiException
 import com.upcpocket.backend.service.StudentAccountService
 import com.upcpocket.backend.session.BusinessLoginResult
 import com.upcpocket.backend.session.InMemorySessionRegistry
+import com.upcpocket.backend.proxy.BoundedSingleFlight
 import com.upcpocket.backend.support.FakeCasOutcome
 import com.upcpocket.backend.support.FakeUpcCasConfiguration
 import com.upcpocket.backend.support.FakeUpcCasVerifier
+import com.upcpocket.backend.support.FakeCampusModuleAdaptersConfiguration
+import com.upcpocket.backend.support.FakeTimetableAdapter
+import com.upcpocket.backend.support.FakeCardAdapter
+import com.upcpocket.backend.support.FakeGradesAdapter
 import com.upcpocket.backend.support.TestAdminJwtSupport
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -37,6 +42,7 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.beans.factory.SmartInitializingSingleton
 import org.springframework.http.MediaType
 import org.springframework.jdbc.core.JdbcTemplate
+import org.springframework.mock.web.MockHttpServletResponse
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.transaction.support.TransactionTemplate
@@ -49,6 +55,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.time.Clock
 import java.util.UUID
+import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
@@ -65,7 +72,11 @@ import java.util.concurrent.TimeUnit
 )
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-@Import(FakeUpcCasConfiguration::class, TestAdminJwtSupport.Configuration::class)
+@Import(
+    FakeUpcCasConfiguration::class,
+    FakeCampusModuleAdaptersConfiguration::class,
+    TestAdminJwtSupport.Configuration::class,
+)
 class BackendAcceptanceTest {
     @Autowired private lateinit var mockMvc: MockMvc
     @Autowired private lateinit var mapper: ObjectMapper
@@ -76,6 +87,10 @@ class BackendAcceptanceTest {
     @Autowired private lateinit var fakeCas: FakeUpcCasVerifier
     @Autowired private lateinit var student: StudentAccountService
     @Autowired private lateinit var sessions: InMemorySessionRegistry
+    @Autowired private lateinit var singleFlight: BoundedSingleFlight
+    @Autowired private lateinit var fakeTimetable: FakeTimetableAdapter
+    @Autowired private lateinit var fakeCard: FakeCardAdapter
+    @Autowired private lateinit var fakeGrades: FakeGradesAdapter
     @Autowired private lateinit var transactions: TransactionTemplate
     @Autowired
     @Qualifier("orphanedPendingAttemptRecovery")
@@ -83,10 +98,21 @@ class BackendAcceptanceTest {
 
     @BeforeEach
     fun resetRowsAndCasOutcomes() {
+        jdbc.update("DELETE FROM pocket_audit.module_switch_detail")
         jdbc.update("DELETE FROM pocket_audit.event")
+        jdbc.update("UPDATE pocket_module_switch SET enabled = FALSE, revision = 1, updated_at = CURRENT_TIMESTAMP")
         jdbc.update("DELETE FROM pocket_account")
         jdbc.update("DELETE FROM vault_policy")
         fakeCas.reset()
+        fakeTimetable.loginCalls.set(0)
+        fakeTimetable.loginStarted = null
+        fakeTimetable.loginRelease = null
+        fakeTimetable.indexStarted = null
+        fakeTimetable.indexRelease = null
+        fakeTimetable.indexFailureCode = null
+        fakeCard.loginCalls.set(0)
+        fakeCard.balanceSnoOverride = null
+        fakeGrades.loginCalls.set(0)
     }
 
     @Test
@@ -237,7 +263,9 @@ class BackendAcceptanceTest {
         }
         assertEquals(ApiErrorCode.SIGN_IN_FAILED, firstError.code)
         assertEquals(1, fakeCas.calls.get())
-        assertEquals(401, getMe(issued.token).andReturn().response.status)
+        getMe(issued.token).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("CREDENTIAL_UPDATE_REQUIRED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
         val secondError = assertThrows(ApiException::class.java) {
             student.executeAutoBusinessLogin(issued.accountId, UUID.fromString(issued.deviceId), "card", UUID.randomUUID()) {
                 error("reauth-required account must not invoke business login")
@@ -288,8 +316,10 @@ class BackendAcceptanceTest {
                 .content("""{"loginName":"student-e","password":"new-school-pass-e"}"""),
         ).andExpect(status().isNoContent)
 
-        assertEquals(401, getMe(first.token).andReturn().response.status)
-        assertEquals(401, getMe(second.token).andReturn().response.status)
+        getMe(first.token).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("TOKEN_INVALID"))
+        getMe(second.token).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("TOKEN_INVALID"))
         val account = accountStore.findByLoginTag(hasher.loginTag("student-e".toCharArray()))!!
         assertEquals(2, account.credentialGeneration)
         assertTrue(vault.matchesStoredCredential(account, "student-e".toCharArray(), "new-school-pass-e".toCharArray()))
@@ -314,7 +344,8 @@ class BackendAcceptanceTest {
         val account = accountStore.findByAccountId(issued.accountId)!!
         assertFalse(account.reauthRequired)
         assertEquals(2, account.credentialGeneration)
-        assertEquals(401, getMe(issued.token).andReturn().response.status)
+        getMe(issued.token).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("TOKEN_INVALID"))
     }
 
     @Test
@@ -384,7 +415,8 @@ class BackendAcceptanceTest {
         assertNull(updated.pendingAttemptId)
         assertFalse(updated.reauthRequired)
         assertEquals(2, updated.credentialGeneration)
-        assertEquals(401, getMe(issued.token).andReturn().response.status)
+        getMe(issued.token).andExpect(status().isUnauthorized)
+            .andExpect(jsonPath("$.code").value("TOKEN_INVALID"))
     }
 
     @Test
@@ -589,9 +621,360 @@ class BackendAcceptanceTest {
         ).andExpect(status().isOk)
     }
 
+    @Test
+    fun `module switch endpoints enforce scopes etags and atomic audit detail`() {
+        mockMvc.perform(
+            get("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage"))),
+        ).andExpect(status().isForbidden)
+            .andExpect(header().string("Cache-Control", "no-store"))
+
+        mockMvc.perform(
+            get("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.read"))),
+        ).andExpect(status().isOk)
+            .andExpect(header().string("ETag", "\"1\""))
+            .andExpect(jsonPath("$.moduleKey").value("timetable"))
+            .andExpect(jsonPath("$.enabled").value(false))
+            .andExpect(jsonPath("$.adapterReady").value(true))
+            .andExpect(header().string("Cache-Control", "no-store"))
+
+        mockMvc.perform(
+            put("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.read")))
+                .header("If-Match", "\"1\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true}"""),
+        ).andExpect(status().isForbidden)
+
+        mockMvc.perform(
+            put("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage")))
+                .header("If-Match", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true}"""),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+
+        mockMvc.perform(
+            put("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage")))
+                .header("If-Match", "\"1\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true}"""),
+        ).andExpect(status().isOk)
+            .andExpect(header().string("ETag", "\"2\""))
+            .andExpect(jsonPath("$.revision").value(2))
+            .andExpect(jsonPath("$.enabled").value(true))
+
+        val stale = mockMvc.perform(
+            put("/internal/admin/v1/modules/timetable/status")
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage")))
+                .header("If-Match", "\"1\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":false}"""),
+        ).andExpect(status().isPreconditionFailed)
+            .andExpect(jsonPath("$.code").value("REVISION_CHANGED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andReturn()
+        assertTrue(stale.response.contentAsString.contains("requestId"))
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM pocket_audit.event WHERE action_code = 'RESTORE'", Int::class.javaObjectType))
+        assertEquals(
+            1,
+            jdbc.queryForObject(
+                "SELECT COUNT(*) FROM pocket_audit.module_switch_detail WHERE module_key = 'timetable' AND previous_enabled = FALSE AND new_enabled = TRUE AND revision = 2",
+                Int::class.javaObjectType,
+            ),
+        )
+    }
+
+    @Test
+    fun `all seven read only module routes return the frozen fields without caching`() {
+        val issued = bind("12345678", "school-pass-modules")
+        enableModule("timetable")
+        enableModule("card")
+        enableModule("grades")
+
+        val accessLogger = LoggerFactory.getLogger(SanitizedAccessLogFilter::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        accessLogger.addAppender(appender)
+        val responses = try {
+            listOf(
+            mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(issued.token)))
+                .andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.terms[0].year").value("2026-2027")).andReturn().response.contentAsString,
+            mockMvc.perform(
+                get("/api/v1/timetable/week").param("year", "2026-2027").param("term", "1").param("week", "1")
+                    .header("Authorization", bearer(issued.token)),
+            ).andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.meetings[0].courseName").value("__COURSE_MARKER__"))
+                .andExpect(jsonPath("$.meetings[0].dayOfWeek").value(1)).andReturn().response.contentAsString,
+            mockMvc.perform(get("/api/v1/card/balance").header("Authorization", bearer(issued.token)))
+                .andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.balanceCents").value(1234)).andReturn().response.contentAsString,
+            mockMvc.perform(
+                get("/api/v1/card/transactions").param("month", "2026-11").param("page", "1").param("size", "50")
+                    .header("Authorization", bearer(issued.token)),
+            ).andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.pages").value(1)).andReturn().response.contentAsString,
+            mockMvc.perform(
+                get("/api/v1/card/transactions/summary").param("month", "2026-11")
+                    .header("Authorization", bearer(issued.token)),
+            ).andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.expenseFen").value(3250)).andReturn().response.contentAsString,
+            mockMvc.perform(get("/api/v1/grades/terms").header("Authorization", bearer(issued.token)))
+                .andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.currentTerm.term").value("1")).andReturn().response.contentAsString,
+            mockMvc.perform(
+                get("/api/v1/grades/courses").param("year", "2026-2027").param("term", "1")
+                    .header("Authorization", bearer(issued.token)),
+            ).andExpect(status().isOk).andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.courses[0].courseName").value("__GRADE_MARKER__"))
+                .andReturn().response.contentAsString,
+            )
+        } finally {
+            accessLogger.detachAppender(appender)
+            appender.stop()
+        }
+
+        val transactions = responses[3]
+        assertFalse(transactions.contains("raw-payment-number"))
+        assertFalse(responses[2].contains("sno"))
+        assertTrue(responses[3].contains("__TRANSACTION_MARKER__"))
+        assertEquals(1, fakeTimetable.loginCalls.get())
+        assertEquals(1, fakeCard.loginCalls.get())
+        assertEquals(1, fakeGrades.loginCalls.get())
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM pocket_audit.module_switch_detail", Int::class.javaObjectType))
+        val auditCodes = jdbc.queryForList("SELECT action_code FROM pocket_audit.event", String::class.java).joinToString(" ")
+        assertFalse(auditCodes.contains("__COURSE_MARKER__"))
+        assertFalse(auditCodes.contains("__TRANSACTION_MARKER__"))
+        assertFalse(auditCodes.contains("__GRADE_MARKER__"))
+        val accessLog = appender.list.joinToString(" ") { it.formattedMessage }
+        assertFalse(accessLog.contains("__COURSE_MARKER__"))
+        assertFalse(accessLog.contains("__TRANSACTION_MARKER__"))
+        assertFalse(accessLog.contains("__GRADE_MARKER__"))
+    }
+
+    @Test
+    fun `disabled modules unsupported balance identities and unexpected query parameters fail closed`() {
+        val numeric = bind("12345678", "school-pass-numeric")
+        fakeCas.calls.set(0)
+        mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(numeric.token)))
+            .andExpect(status().isServiceUnavailable)
+            .andExpect(jsonPath("$.code").value("MODULE_DISABLED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+        assertEquals(0, fakeCas.calls.get())
+        assertEquals(0, fakeTimetable.loginCalls.get())
+
+        enableModule("card")
+        val staff = bind("staff000", "school-pass-staff")
+        fakeCas.calls.set(0)
+        mockMvc.perform(get("/api/v1/card/balance").header("Authorization", bearer(staff.token)))
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.code").value("IDENTITY_UNSUPPORTED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+        assertEquals(0, fakeCas.calls.get())
+        assertEquals(0, fakeCard.loginCalls.get())
+
+        mockMvc.perform(
+            get("/api/v1/card/balance").param("accountId", "12345678")
+                .header("Authorization", bearer(numeric.token)),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+        mockMvc.perform(
+            get("/api/v1/card/balance").header("Authorization", bearer(numeric.token))
+                .contentType(MediaType.APPLICATION_JSON).content("""{"studentId":"12345678"}"""),
+        ).andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+    }
+
+    @Test
+    fun `card balance rejects an upstream student number that does not match the token`() {
+        val issued = bind("12345678", "school-pass-echo")
+        enableModule("card")
+        fakeCard.balanceSnoOverride = "87654321"
+
+        mockMvc.perform(get("/api/v1/card/balance").header("Authorization", bearer(issued.token)))
+            .andExpect(status().isBadGateway)
+            .andExpect(jsonPath("$.code").value("UPSTREAM_PROTOCOL_ERROR"))
+            .andExpect(header().string("Cache-Control", "no-store"))
+            .andExpect(jsonPath("$.sno").doesNotExist())
+    }
+
+    @Test
+    fun `two devices sharing a service key trigger only one upstream login`() {
+        val first = bind("23456789", "school-pass-singleflight")
+        val second = signIn("23456789", "school-pass-singleflight", UUID.randomUUID())
+        enableModule("timetable")
+        fakeCas.calls.set(0)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fakeTimetable.loginStarted = started
+        fakeTimetable.loginRelease = release
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val firstResponse = pool.submit<Int> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(first.token)))
+                    .andReturn().response.status
+            }
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            val secondResponse = pool.submit<Int> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(second.token)))
+                    .andReturn().response.status
+            }
+            awaitSingleFlightWaiter()
+            release.countDown()
+            assertEquals(200, firstResponse.get(5, TimeUnit.SECONDS))
+            assertEquals(200, secondResponse.get(5, TimeUnit.SECONDS))
+            assertEquals(1, fakeTimetable.loginCalls.get())
+            assertEquals(1, fakeCas.calls.get())
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `waiting device revalidates and retries when the flight leader device is kicked`() {
+        val first = bind("23456780", "school-pass-kicked-leader")
+        val second = signIn("23456780", "school-pass-kicked-leader", UUID.randomUUID())
+        enableModule("timetable")
+        fakeCas.calls.set(0)
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fakeTimetable.loginStarted = started
+        fakeTimetable.loginRelease = release
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val firstResponse = pool.submit(Callable<MockHttpServletResponse> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(first.token)))
+                    .andReturn().response
+            })
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            val secondResponse = pool.submit(Callable<MockHttpServletResponse> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(second.token)))
+                    .andReturn().response
+            })
+            awaitSingleFlightWaiter()
+            assertTrue(sessions.revokeDevice(first.accountId, UUID.fromString(first.deviceId)))
+            release.countDown()
+
+            val leaderResult = firstResponse.get(5, TimeUnit.SECONDS)
+            assertEquals(401, leaderResult.status)
+            assertTrue(leaderResult.contentAsString.contains("TOKEN_INVALID"))
+            assertEquals(200, secondResponse.get(5, TimeUnit.SECONDS).status)
+            assertEquals(2, fakeTimetable.loginCalls.get())
+            assertEquals(2, fakeCas.calls.get())
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `late upstream error is replaced by token revocation`() {
+        val issued = bind("34567891", "school-pass-revoked-error")
+        enableModule("timetable")
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fakeTimetable.indexStarted = started
+        fakeTimetable.indexRelease = release
+        fakeTimetable.indexFailureCode = ApiErrorCode.UPSTREAM_PROTOCOL_ERROR
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val pending = pool.submit(Callable<MockHttpServletResponse> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(issued.token)))
+                    .andReturn().response
+            })
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            assertTrue(sessions.revokeDevice(issued.accountId, UUID.fromString(issued.deviceId)))
+            release.countDown()
+            val response = pending.get(5, TimeUnit.SECONDS)
+            assertEquals(401, response.status)
+            assertTrue(response.contentAsString.contains("TOKEN_INVALID"))
+            assertEquals("no-store", response.getHeader("Cache-Control"))
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `a late module response is discarded after admin disables it while another module stays live`() {
+        val issued = bind("34567890", "school-pass-disable-race")
+        enableModule("timetable")
+        enableModule("card")
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        fakeTimetable.indexStarted = started
+        fakeTimetable.indexRelease = release
+        fakeTimetable.indexFailureCode = ApiErrorCode.UPSTREAM_PROTOCOL_ERROR
+        val pool = Executors.newSingleThreadExecutor()
+        try {
+            val pending = pool.submit(Callable<MockHttpServletResponse> {
+                mockMvc.perform(get("/api/v1/timetable/index").header("Authorization", bearer(issued.token)))
+                    .andReturn().response
+            })
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            disableModule("timetable")
+            release.countDown()
+            val response = pending.get(5, TimeUnit.SECONDS)
+            assertEquals(503, response.status)
+            assertTrue(response.contentAsString.contains("MODULE_DISABLED"))
+            assertEquals("no-store", response.getHeader("Cache-Control"))
+            val cardStatus = mockMvc.perform(get("/api/v1/card/balance").header("Authorization", bearer(issued.token)))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andReturn()
+            assertTrue(cardStatus.response.contentAsString.contains("balanceCents"))
+        } finally {
+            release.countDown()
+            pool.shutdownNow()
+        }
+    }
+
     private fun authPost(path: String) = post(path).with { request ->
         request.remoteAddr = "test-${UUID.randomUUID()}"
         request
+    }
+
+    private fun enableModule(moduleKey: String) {
+        val status = mockMvc.perform(
+            get("/internal/admin/v1/modules/{moduleKey}/status", moduleKey)
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.read"))),
+        ).andExpect(status().isOk).andReturn()
+        val revision = mapper.readTree(status.response.contentAsString)["revision"].asText()
+        mockMvc.perform(
+            put("/internal/admin/v1/modules/{moduleKey}/status", moduleKey)
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage")))
+                .header("If-Match", "\"$revision\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":true}"""),
+        ).andExpect(status().isOk)
+    }
+
+    private fun disableModule(moduleKey: String) {
+        val status = mockMvc.perform(
+            get("/internal/admin/v1/modules/{moduleKey}/status", moduleKey)
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.read"))),
+        ).andExpect(status().isOk).andReturn()
+        val revision = mapper.readTree(status.response.contentAsString)["revision"].asText()
+        mockMvc.perform(
+            put("/internal/admin/v1/modules/{moduleKey}/status", moduleKey)
+                .header("Authorization", bearer(TestAdminJwtSupport.token("module.manage")))
+                .header("If-Match", "\"$revision\"")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""{"enabled":false}"""),
+        ).andExpect(status().isOk)
+    }
+
+    private fun awaitSingleFlightWaiter() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(2)
+        while (singleFlight.activeWaiterCount() == 0 && System.nanoTime() < deadline) Thread.sleep(1)
+        assertTrue(singleFlight.activeWaiterCount() > 0, "second device did not join the login flight")
     }
 
     private fun bind(loginName: String, password: String): Issued {

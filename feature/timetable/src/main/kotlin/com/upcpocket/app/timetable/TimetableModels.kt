@@ -91,6 +91,7 @@ data class TimetableMeeting(
     val courseType: String? = null,
     val courseHour: String? = null,
     val examType: String? = null,
+    val classGroup: String? = null,
     @Serializable(with = LocalDateIsoSerializer::class) val date: LocalDate,
 ) {
     init {
@@ -229,7 +230,7 @@ enum class TimetableTodayState {
 /** 首页今日课程状态独立于周查询，避免只读缓存恢复触发宿主的周组件观察器。 */
 data class TimetableTodayUiState(
     val accountEpoch: Long = 0,
-    val accountSavedUnverified: Boolean = false,
+    val accountManagedActive: Boolean = false,
     val accountBlocked: Boolean = true,
     val today: LocalDate? = null,
     val todayMeetings: List<TimetableMeeting> = emptyList(),
@@ -244,7 +245,7 @@ data class TimetableUiState(
     val accountStatusLabel: String = "",
     val accountEpoch: Long = 0,
     val maskedAccount: String? = null,
-    val accountSavedUnverified: Boolean = false,
+    val accountManagedActive: Boolean = false,
     val connection: TimetableConnection = TimetableConnection.LOADING,
     val terms: List<TimetableTerm> = emptyList(),
     val selectedYear: String? = null,

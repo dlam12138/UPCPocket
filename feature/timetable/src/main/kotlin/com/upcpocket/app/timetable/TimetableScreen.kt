@@ -237,7 +237,7 @@ internal fun TimetableScreen(
     var loginHint by remember { mutableStateOf<String?>(null) }
     var loginEpoch by remember { mutableLongStateOf(0L) }
     var infoVisible by remember { mutableStateOf(false) }
-    val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked) {
+    val visibleDetail = if (state.accountManagedActive && !state.accountBlocked) {
         resolveMeetingSelection(detail, state.accountEpoch, state.meetings)
     } else {
         null
@@ -246,10 +246,10 @@ internal fun TimetableScreen(
     LaunchedEffect(
         state.accountEpoch,
         state.accountBlocked,
-        state.accountSavedUnverified,
+        state.accountManagedActive,
         state.meetings,
     ) {
-        if (state.accountBlocked || !state.accountSavedUnverified) {
+        if (state.accountBlocked || !state.accountManagedActive) {
             detail = null
             loginVisible = false
             loginHint = null
@@ -351,7 +351,7 @@ internal fun TimetableScreen(
             moduleLayout.onOrderChange(mergeReorderedSubset(normalizedOrder, reordered))
         }
     }
-    val timetableIsGrouped = !state.accountBlocked && state.accountSavedUnverified
+    val timetableIsGrouped = !state.accountBlocked && state.accountManagedActive
 
     Scaffold(
         containerColor = com.upcpocket.app.ui.theme.appScaffoldContainerColor(),
@@ -454,7 +454,7 @@ internal fun TimetableScreen(
                                         onOpenAccountSettings = onOpenAccountSettings,
                                     )
                                 }
-                                !state.accountSavedUnverified -> {
+                                !state.accountManagedActive -> {
                                     FirstRunCard(
                                         isLoading = state.connection == TimetableConnection.LOADING,
                                         onOpenAccountSettings = onOpenAccountSettings,
@@ -528,22 +528,11 @@ internal fun TimetableScreen(
         )
     }
     if (loginVisible && loginUrl != null && loginEpoch == state.accountEpoch &&
-        state.accountSavedUnverified && !state.accountBlocked
+        state.accountManagedActive && !state.accountBlocked
     ) {
         TimetableLoginDialog(
             url = loginUrl!!,
             hint = loginHint,
-            onCookies = { header, diagnosticOperation, result ->
-                viewModel.adoptInteractiveCookies(header, diagnosticOperation) { accepted ->
-                    if (accepted) {
-                        loginVisible = false
-                        loginHint = null
-                    } else {
-                        loginHint = "还没有检测到有效登录，请完成登录后重试。"
-                    }
-                    result(accepted)
-                }
-            },
             onClose = {
                 viewModel.cancelInteractiveLogin()
                 loginVisible = false
@@ -601,7 +590,7 @@ internal fun TimetableHomeSection(
     } else {
         null
     }
-    val visibleDetail = if (state.accountSavedUnverified && !state.accountBlocked &&
+    val visibleDetail = if (state.accountManagedActive && !state.accountBlocked &&
         state.today == actualToday
     ) {
         resolveMeetingSelection(detail, state.accountEpoch, state.todayMeetings)
@@ -611,12 +600,12 @@ internal fun TimetableHomeSection(
     LaunchedEffect(
         state.accountEpoch,
         state.accountBlocked,
-        state.accountSavedUnverified,
+        state.accountManagedActive,
         state.today,
         actualToday,
         state.todayMeetings,
     ) {
-        if (state.accountBlocked || !state.accountSavedUnverified ||
+        if (state.accountBlocked || !state.accountManagedActive ||
             state.today != actualToday ||
             (detail != null && visibleDetail == null)
         ) {
@@ -657,13 +646,15 @@ private fun AccountBlockedCard(message: String, onOpenAccountSettings: () -> Uni
                 containerColor = MaterialTheme.colorScheme.errorContainer,
                 contentColor = MaterialTheme.colorScheme.onErrorContainer,
             )
-            Text("学校账号需要更新", style = MaterialTheme.typography.titleLarge)
+            Text("校方托管账号需要更新", style = MaterialTheme.typography.titleLarge)
             Text(
                 message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            com.upcpocket.app.ui.components.CampusButton(onClick = onOpenAccountSettings) { Text("更新账号") }
+            com.upcpocket.app.ui.components.CampusButton(onClick = onOpenAccountSettings) {
+                Text("管理托管账号")
+            }
         }
     }
 }
@@ -682,7 +673,7 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
             )
             Text("连接课表", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "先设置学校账号，保存后返回这里，点击右上角刷新读取课表。",
+                text = "先绑定校方托管账号，再点击右上角刷新读取课表。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -692,9 +683,9 @@ private fun FirstRunCard(isLoading: Boolean, onOpenAccountSettings: () -> Unit) 
             com.upcpocket.app.ui.components.CampusButton(
                 onClick = onOpenAccountSettings,
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("设置学校账号") }
+            ) { Text("绑定托管账号") }
             Text(
-                text = "保存账号不等于登录成功；需要时请在学校页面完成登录。",
+                text = "学校要求验证时，请按提示打开官方页面完成验证。",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -726,7 +717,7 @@ private fun NoTermsCard() {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("尚未取得学期", style = MaterialTheme.typography.titleMedium)
             Text(
-                "点击右上角刷新重新读取；需要登录时，按上方提示完成登录后继续。",
+                "绑定校方托管账号后点击右上角刷新；如需验证，请按提示打开学校官方页面。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -965,7 +956,7 @@ internal fun ConnectionBanner(
             }
             if (!state.isBusy && state.connection == TimetableConnection.IDLE) {
                 Text(
-                    "账号已保存，点击右上角刷新读取课表。",
+                    "校方托管账号已绑定，点击右上角刷新读取课表。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(top = 6.dp),
@@ -973,7 +964,7 @@ internal fun ConnectionBanner(
             }
             if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
                 Text(
-                    "在学校页面完成登录后继续。",
+                    "请在学校官方页面完成验证后返回重试。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
@@ -1000,14 +991,16 @@ internal fun ConnectionBanner(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (state.connection == TimetableConnection.INTERACTION_REQUIRED) {
-                    com.upcpocket.app.ui.components.CampusButton(onClick = onOpenLogin) { Text("学校登录") }
+                    com.upcpocket.app.ui.components.CampusButton(onClick = onOpenLogin) {
+                        Text("打开学校官方页")
+                    }
                 }
                 if (state.canRetry && !state.isBusy) {
                     com.upcpocket.app.ui.components.CampusTextButton(onClick = onRetry) { Text("重试") }
                 }
                 if (state.connection == TimetableConnection.NOT_CONFIGURED ||
                     state.connection == TimetableConnection.AUTH_FAILED ||
-                    state.accountSavedUnverified
+                    state.accountManagedActive
                 ) {
                     com.upcpocket.app.ui.components.CampusTextButton(onClick = onOpenAccountSettings) { Text("学校账号") }
                 }
@@ -1699,8 +1692,8 @@ private fun todaySchoolStatus(
     )
 
     TimetableTodayState.ACCOUNT_REQUIRED -> TodayStatusSpec(
-        text = state.todayMessage ?: "请先保存学校账号。",
-        actionLabel = "学校账号",
+        text = state.todayMessage ?: "请先绑定校方托管账号。",
+        actionLabel = "托管账号",
         action = onOpenAccountSettings,
     )
 

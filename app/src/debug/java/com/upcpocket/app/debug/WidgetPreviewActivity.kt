@@ -17,6 +17,7 @@ import android.widget.RemoteViews
 import android.widget.TextView
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountReference
 import com.upcpocket.app.data.ecard.CardBalanceBinding
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
@@ -184,11 +185,11 @@ class WidgetPreviewActivity : Activity() {
     }
 
     private fun cardViews(scenario: Int, context: android.content.Context): RemoteViews {
-        val binding = CardBalanceBinding(
+        val reference = SchoolAccountReference(
             accountId = SchoolAccountId("acct_preview"),
-            studentId = "2099000123",
             credentialGeneration = AccountGeneration(2),
         )
+        val binding = CardBalanceBinding(accountReference = reference)
         val status = when (scenario) {
             3 -> CardBindingStatus(CardBindingAvailability.NO_ACCOUNT)
             4 -> CardBindingStatus(CardBindingAvailability.CLEANING)
@@ -198,17 +199,13 @@ class WidgetPreviewActivity : Activity() {
         val snapshot = when (scenario) {
             2, 3, 4, 5 -> null
             1 -> DirectCardSnapshot(
-                accountId = binding.accountId.value,
-                studentId = binding.studentId,
-                credentialGeneration = 2,
+                accountReference = reference,
                 balanceCents = 1234567,
                 transitionCents = 0,
                 fetchedAt = System.currentTimeMillis(),
             )
             else -> DirectCardSnapshot(
-                accountId = binding.accountId.value,
-                studentId = binding.studentId,
-                credentialGeneration = 2,
+                accountReference = reference,
                 balanceCents = 699,
                 transitionCents = 0,
                 fetchedAt = System.currentTimeMillis(),

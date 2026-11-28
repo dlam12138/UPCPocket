@@ -72,6 +72,15 @@ enum class SchoolAccountStatus {
     LOADING,
     NOT_CONFIGURED,
     SAVED_UNVERIFIED,
+    /** A Pocket-managed backend session was validated by GET /api/v1/me. */
+    MANAGED_ACTIVE,
+    MANAGED_REAUTH_REQUIRED,
+    MANAGED_DISABLED,
+    /** Remote account unbinding is unresolved; local personal data stays closed. */
+    UNBIND_PENDING,
+    /** This device's remote session revocation is unresolved; local data stays closed. */
+    SIGN_OUT_PENDING,
+    BACKEND_NOT_READY,
     NEEDS_RECONFIGURATION,
     SWITCHING,
     UPDATING,
@@ -91,6 +100,24 @@ enum class SchoolAccountErrorCode {
     CLEANUP_FAILED,
     CLEANUP_REQUIRED,
     BUSY,
+    BACKEND_NOT_READY,
+    CUSTODY_REQUIRED,
+    SIGN_IN_FAILED,
+    UNAUTHENTICATED,
+    TOKEN_INVALID,
+    INTERACTIVE_CHALLENGE,
+    CREDENTIAL_UPDATE_REQUIRED,
+    VERIFICATION_BUSY,
+    MODULE_DISABLED,
+    CIRCUIT_OPEN,
+    UPSTREAM_UNAVAILABLE,
+    DEPENDENCY_UNAVAILABLE,
+    UPSTREAM_TIMEOUT,
+    UPSTREAM_PROTOCOL_ERROR,
+    VALIDATION_FAILED,
+    IDENTITY_UNSUPPORTED,
+    RATE_LIMITED,
+    UNBIND_RESULT_UNKNOWN,
 }
 
 /** 页面与业务只能读取这个状态；密码不在状态里，也不能从这里反查。 */
@@ -106,16 +133,29 @@ data class SchoolAccountState(
     val cleanupRequired: Boolean = false,
     /** 上一次本机操作或恢复失败的固定错误码。 */
     val errorCode: SchoolAccountErrorCode? = null,
+    /** Pocket 托管设备 ID；不含 bearer token。 */
+    val deviceId: String? = null,
+    /** 服务端签发的会话过期时间；不代表当前网络可用。 */
+    val sessionExpiresAtEpochMillis: Long? = null,
+    /** 本机操作 fencing 代次，不向业务请求作为远端凭据代次使用。 */
+    val transactionGeneration: Long = 0,
 ) {
     val isCredentialSaved: Boolean
         get() = status == SchoolAccountStatus.SAVED_UNVERIFIED
 
+    val isManagedActive: Boolean
+        get() = status == SchoolAccountStatus.MANAGED_ACTIVE && !blocksPersonalSessions
+
     /** 个人请求只应在凭据可用时捕获；代次变化后必须拒绝迟到的写回。 */
     fun captureRequestToken(): AccountRequestToken? =
-        if (isCredentialSaved && generation.value > 0) AccountRequestToken(generation) else null
+        if ((isCredentialSaved || isManagedActive) && generation.value > 0) {
+            AccountRequestToken(generation)
+        } else {
+            null
+        }
 
     fun isCurrent(token: AccountRequestToken): Boolean =
-        isCredentialSaved && token.generation == generation
+        (isCredentialSaved || isManagedActive) && token.generation == generation
 }
 
 /** 业务请求捕获的账号代次；不包含账号、密码或会话。 */
@@ -156,7 +196,7 @@ interface SchoolAccountStudentIdentityReader : SchoolAccountGate {
 /**
  * 只读账号引用面，供不需要学号但需要账号隔离的业务使用。
  *
- * 只有状态为 `SAVED_UNVERIFIED`、代次大于 0 且未处于清理门闩时才发布引用。
+ * 仅在有可用的 Pocket 托管会话、代次大于 0 且未处于清理门闩时发布引用。
  */
 interface SchoolAccountReferenceReader : SchoolAccountGate {
     val accountReference: StateFlow<SchoolAccountReference?>
@@ -191,14 +231,16 @@ fun interface SchoolAccountIdentityVerifier {
  * - cleanupRequired：换号/删号/恢复清理还在进行或失败待重试；
  * - SWITCHING/UPDATING/REMOVING：事务已经把旧代次置为不可用。
  *
- * 未配置、已保存未验证、需要重新保存且清理已完成时，图书馆仍可按原有方式手动登录；
- * 这不代表已接入统一认证。
+ * 本机遗留“已保存未验证”状态只为兼容读取/清理，不提供学校密码；业务认证由 Pocket
+ * 托管会话或对应官方页面完成。
  */
 val SchoolAccountState.blocksPersonalSessions: Boolean
     get() = cleanupRequired || status == SchoolAccountStatus.LOADING ||
         status == SchoolAccountStatus.SWITCHING ||
         status == SchoolAccountStatus.UPDATING ||
-        status == SchoolAccountStatus.REMOVING
+        status == SchoolAccountStatus.REMOVING ||
+        status == SchoolAccountStatus.UNBIND_PENDING ||
+        status == SchoolAccountStatus.SIGN_OUT_PENDING
 
 /** 业务插件只依赖这个读取面；恢复由宿主调用。 */
 interface SchoolAccountReader : SchoolAccountGate {
@@ -207,9 +249,20 @@ interface SchoolAccountReader : SchoolAccountGate {
 
 /** 保存/删除/重试等编辑操作只交给宿主的账号设置页。 */
 interface SchoolAccountAdmin {
-    suspend fun save(account: String?, password: CharArray): SchoolAccountWriteResult
+    /** 用户前台同意托管后提交；实现不得持久化 password，调用返回前必须清零。 */
+    suspend fun bind(loginName: String, password: CharArray, acceptCustody: Boolean): SchoolAccountWriteResult
 
-    suspend fun delete(): SchoolAccountWriteResult
+    /** 不依赖已保存的 Pocket bearer token；password 只在本次前台操作中使用。 */
+    suspend fun updateManagedCredential(loginName: String, password: CharArray): SchoolAccountWriteResult
+
+    suspend fun listDevices(): ManagedDeviceListResult
+
+    suspend fun revokeDevice(deviceId: String): SchoolAccountWriteResult
+
+    suspend fun signOut(): SchoolAccountWriteResult
+
+    /** Requires a separate UI confirmation before the implementation sends DELETE /me. */
+    suspend fun unbind(confirmed: Boolean): SchoolAccountWriteResult
 
     suspend fun retryCleanup(): SchoolAccountWriteResult
 }
@@ -220,6 +273,20 @@ sealed interface SchoolAccountWriteResult {
     data object Success : SchoolAccountWriteResult
 
     data class Failure(val code: SchoolAccountErrorCode) : SchoolAccountWriteResult
+}
+
+data class ManagedDevice(
+    val deviceId: String,
+    val installationId: String,
+    val platform: String,
+    val kind: String,
+    val expiresAtEpochMillis: Long,
+)
+
+sealed interface ManagedDeviceListResult {
+    data class Success(val devices: List<ManagedDevice>) : ManagedDeviceListResult
+
+    data class Failure(val code: SchoolAccountErrorCode) : ManagedDeviceListResult
 }
 
 /**

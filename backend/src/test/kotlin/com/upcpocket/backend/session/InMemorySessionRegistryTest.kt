@@ -41,6 +41,16 @@ class InMemorySessionRegistryTest {
     }
 
     @Test
+    fun `business fence string representation omits its token digest`() {
+        val registry = InMemorySessionRegistry(clock = MutableClock(NOW))
+        val issued = registry.issue(account, descriptor(UUID.randomUUID()))
+        val identity = registry.authenticate(issued.token)!!
+        val fence = registry.captureBusinessFence(identity)!!
+
+        assertFalse(fence.toString().contains(fence.tokenDigest))
+    }
+
+    @Test
     fun `revoking one device preserves other Pocket tokens and blocks a delayed business response`() {
         val registry = InMemorySessionRegistry(clock = MutableClock(NOW))
         val first = registry.issue(account, descriptor(UUID.randomUUID()))

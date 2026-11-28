@@ -39,6 +39,8 @@ class PocketSecurityConfiguration {
                 auth.requestMatchers(HttpMethod.POST, "/internal/admin/v1/account-lookups").hasAuthority("SCOPE_account.read")
                     .requestMatchers(HttpMethod.PUT, "/internal/admin/v1/accounts/*/disabled").hasAuthority("SCOPE_account.manage")
                     .requestMatchers(HttpMethod.DELETE, "/internal/admin/v1/accounts/*/sessions").hasAuthority("SCOPE_account.manage")
+                    .requestMatchers(HttpMethod.GET, "/internal/admin/v1/modules/*/status").hasAuthority("SCOPE_module.read")
+                    .requestMatchers(HttpMethod.PUT, "/internal/admin/v1/modules/*/status").hasAuthority("SCOPE_module.manage")
                     .requestMatchers(HttpMethod.POST, "/internal/admin/v1/key-rotations").hasAuthority("SCOPE_key.rotate")
                     .requestMatchers(HttpMethod.GET, "/internal/admin/v1/health").hasAuthority("SCOPE_health.read")
                     .requestMatchers(HttpMethod.GET, "/internal/admin/v1/audit-events").hasAuthority("SCOPE_audit.read")

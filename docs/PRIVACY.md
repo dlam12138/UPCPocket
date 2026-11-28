@@ -1,8 +1,14 @@
 # 隐私与数据说明
 
-UPC Pocket 是非官方校园工具。Android 应用直接访问对应校园服务，不使用本项目自建的数据中转或账号服务器；iOS 静态网页版不设账号服务或业务接口，在本机处理个人日程、待办、专注与导入课表，学校业务交给官方页面。
+UPC Pocket 是非官方校园工具。`main` 公开版仍由 Android 应用直连学校服务；**本分支（`feat/campus-backend`）为校方后端托管分发线**：学校账密仅在用户明确勾选托管同意后经 HTTPS 提交至校方部署的 Pocket 后端加密托管，**手机本地不再保存学校密码**，课表、校园卡余额/流水与成绩由 Pocket 后端代取后返回手机（后端不落库业务正文）。iOS 静态网页版继续不设账号服务或业务接口，在本机处理个人日程、待办、专注与导入课表，学校业务交给官方页面。
 
-自 **2.0.3** 起提供“首页 → 设置 → 学校账号”：仅在用户主动点击“加密保存到本机”时，保存当前一个学校账号与密码；默认不保存，也不会把“记住学校登录”开关自动解释为同意保存密码。M2 起校园卡余额只读取该账号中可确认的本人学号，不向余额接口发送密码。M3 起课表认证适配、M4 起图书馆 `libseat` 认证适配可在用户进入对应业务或主动操作时，用该账号完成学校正常 CAS 登录；普通页面、组件和业务数据层不能读取明文密码。
+> **校方后端分支（阶段二 A）密码与升级边界**：
+> - 从旧版覆盖升级到校方后端分支时，应用启动先执行单向离线清理：销毁旧 Keystore 别名 `upcpocket.school-account.v1`、删除 `noBackupFilesDir/school-account/` 下所有旧凭据文件（绝不解密或自动上传），并清理个人业务缓存、会话与学校 Cookie；本机待办、专注、个人日程、隐藏座位、主题与寝室配置完整保留。
+> - 手机本地仅使用独立 Keystore 别名 `upcpocket.managed-session.v1` 在 `noBackupFilesDir/managed-session/` 加密保存 Pocket 设备会话（`accessToken`、`deviceId`、`accountId`、`credentialGeneration` 与受控状态），支持离线封闭个人数据并在远端解绑/退出超时后保留可重试的待撤权状态（待撤权确认前拒绝重新绑定或改密）。
+> - 前台输入密码使用非保存型 `TextFieldState` 与安全输入框（不写入 Android SavedState），提交、取消与离页时清除输入与撤销历史；应用自有仓库和网络层仅使用可清零 `CharArray`/`ByteArray` 并在 `finally` 清零、绝不落盘。同时需如实说明：Compose 输入控件、Android IME 与 JVM 内部仍可能短暂产生应用无法主动擦除的临时文本副本。
+> - 校园卡余额快照（v3）改为按受控 `SchoolAccountReference` 归属且不保存学号，微信充值在阶段二 A 仅引导至学校官方渠道；校园卡桌面组件自动刷新按随机 `installationId` 派生 25–35 分钟稳定抖动周期，WorkManager `WorkData` 不存放 Bearer 令牌。
+
+以下保留 2.0.3–2.1.1 公开直连基线及各功能模块明细作为对照；在 `feat/campus-backend` 分支中，账号、课表、校园卡与成绩的实际行为以上述校方托管边界与 [校内后端建设计划书](design/campus-backend-pilot-plan.md) 为准。
 
 ## iOS 网页版（静态 PWA）
 

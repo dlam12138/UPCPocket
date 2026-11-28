@@ -112,12 +112,13 @@ class InputPersistenceTest {
     }
 
     @Test
-    fun `旧校园卡学号草稿可持久化但只是迁移提示来源`() = runBlocking {
-        val card = CardInputRepository(prefs())
-        card.save("12345678")
-        assertEquals("12345678", CardInputRepository(prefs()).studentId.first())
-        card.clear()
-        assertEquals("", CardInputRepository(prefs()).studentId.first())
+    fun `个人数据清理会删除旧校园卡学号草稿`() = runBlocking {
+        prefs().setCardStudentId("12345678")
+        assertEquals("12345678", prefs().flow.first().cardStudentId)
+
+        prefs().clearCardStudentId()
+
+        assertEquals("", prefs().flow.first().cardStudentId)
     }
 
     @Test

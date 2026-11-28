@@ -19,8 +19,7 @@ import com.upcpocket.app.feature.card.R
  * 目标与缓存都必须来自当前统一账号绑定。后台自动更新由宿主调度；清理中/无绑定时
  * 只显示无身份的空状态，绝不保留旧学号或旧金额。
  *
- * 显示总余额、过渡余额与更新时间。脱敏学号不再常驻组件，账号目标与
- * 真实绑定状态仍完整保留在应用页面和账号设置。
+ * 显示总余额、过渡余额与更新时间。组件不包含学生标识。
  */
 class CardWidgetRenderer(private val context: Context) {
 
@@ -62,9 +61,9 @@ class CardWidgetRenderer(private val context: Context) {
                 CardBindingAvailability.NEEDS_RECONFIGURATION ->
                     context.getString(R.string.widget_card_reconfigure) to
                         context.getString(R.string.widget_card_reconfigure_hint)
-                CardBindingAvailability.STUDENT_ID_UNAVAILABLE ->
-                    context.getString(R.string.widget_card_no_student_id) to
-                        context.getString(R.string.widget_card_no_student_hint)
+                CardBindingAvailability.BACKEND_NOT_READY ->
+                    context.getString(R.string.widget_card_backend_not_ready) to
+                        context.getString(R.string.widget_card_backend_not_ready_hint)
                 CardBindingAvailability.NO_ACCOUNT ->
                     context.getString(R.string.widget_card_no_account) to
                         context.getString(R.string.widget_card_no_account_hint)
@@ -124,7 +123,8 @@ class CardWidgetRenderer(private val context: Context) {
             refreshing = refreshing,
             failed = failed,
         )
-        val historical = ownedSnapshot.credentialGeneration != binding.credentialGeneration.value
+        val historical = ownedSnapshot.accountReference.credentialGeneration !=
+            binding.accountReference.credentialGeneration
         WidgetRenderSupport.setMeta(
             views = views,
             viewId = R.id.widget_card_updated,

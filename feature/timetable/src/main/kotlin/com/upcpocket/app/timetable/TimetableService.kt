@@ -18,10 +18,6 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
-import com.upcpocket.app.upcauth.TimetableAuthenticator
-import com.upcpocket.app.upcauth.UpcAuthFailure
-import com.upcpocket.app.upcauth.UpcAuthResult
-import com.upcpocket.app.upcauth.UpcTimetableAuthEndpoints
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,20 +36,20 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.first
 
 private const val ACCOUNT_RESTORE_BUDGET_MS = 3_000L
+private const val OFFICIAL_TIMETABLE_URL = "https://app.upc.edu.cn/site/weekschedule/index"
 
 /**
  * 课表只读业务服务。
  *
- * - 所有会话、索引和周查询捕获 (accountId, credentialGeneration, businessEpoch)；
+ * - 所有索引和周查询捕获 (accountId, credentialGeneration, businessEpoch)；
  *   切换账号、清理、选周变化后迟到结果不再发布/落盘。
- * - 缺会话或明确 10013 才认证；一次操作最多恢复一次，不循环提交密码。
+ * - 校园数据只通过宿主注入的 Pocket backend source 读取，不保存学校 Cookie 或密码。
  * - 首入只查当前需要的周，切换周按需查询；无自动整学期遍历或轮询。
  * - 缓存只保存完整成功周；协议矛盾不覆盖上一次成功缓存。
  */
 class TimetableService(
     private val account: SchoolAccountReferenceReader,
-    private val authenticator: TimetableAuthenticator,
-    private val api: TimetableApi,
+    private val backend: TimetableBackendSource,
     private val sessionStore: TimetableSessionStore,
     private val cacheStore: TimetableCacheStore,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -69,7 +65,6 @@ class TimetableService(
     val todayState: StateFlow<TimetableTodayUiState> = _todayState.asStateFlow()
 
     private val operationMutex = Mutex()
-    private val authMutex = Mutex()
     private val commitMutex = Mutex()
     private val colorMutex = Mutex()
     private val businessEpoch = AtomicLong(0)
@@ -87,10 +82,8 @@ class TimetableService(
     @Volatile
     private var latestTodayTomorrowWidgetVersion: TodayTomorrowWidgetVersion? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val adopting = AtomicLong(0)
     private var currentBinding: SchoolAccountReference? = null
     private var lastIndex: TimetableIndex? = null
-    private var interactiveContext: InteractiveContext? = null
     private var explicitSelection = false
     private var accountEpochValue = 0L
 
@@ -99,8 +92,7 @@ class TimetableService(
         // “账号已恢复”回调清空刚查到的学期/周。
         currentBinding = account.accountReference.value?.takeIf { reference ->
             val state = account.state.value
-            state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
-                !state.blocksPersonalSessions &&
+            state.isManagedActive && !state.blocksPersonalSessions &&
                 state.generation == reference.credentialGeneration
         }
         scope.launch {
@@ -116,12 +108,6 @@ class TimetableService(
             }
         }
     }
-
-    private data class InteractiveContext(
-        val binding: SchoolAccountReference,
-        val businessEpoch: Long,
-        val diagnosticOperation: DiagnosticOperation,
-    )
 
     private data class TodayReadVersion(
         val businessEpoch: Long,
@@ -261,7 +247,7 @@ class TimetableService(
                 }
                 TimetableTodayUiState(
                     accountEpoch = accountEpochValue,
-                    accountSavedUnverified = true,
+                    accountManagedActive = true,
                     accountBlocked = false,
                     today = today,
                     todayState = TimetableTodayState.READING_CACHE,
@@ -324,7 +310,7 @@ class TimetableService(
         if (accountState.status == SchoolAccountStatus.LOADING) {
             return TimetableWidgetSnapshot(TimetableWidgetStatus.ACCOUNT_LOADING, null)
         }
-        if (!accountState.isCredentialSaved) {
+        if (!accountState.isManagedActive) {
             return TimetableWidgetSnapshot(TimetableWidgetStatus.NO_ACCOUNT, null)
         }
         val binding = bindingOrNull()
@@ -396,7 +382,7 @@ class TimetableService(
             accountState.blocksPersonalSessions -> TimetableWeekWidgetStatus.CLEANUP
             accountState.status == SchoolAccountStatus.LOADING ->
                 TimetableWeekWidgetStatus.ACCOUNT_LOADING
-            !accountState.isCredentialSaved -> TimetableWeekWidgetStatus.NO_ACCOUNT
+            !accountState.isManagedActive -> TimetableWeekWidgetStatus.NO_ACCOUNT
             bindingOrNull() == null -> TimetableWeekWidgetStatus.NO_ACCOUNT
             else -> TimetableWeekWidgetStatus.READING
         }
@@ -414,7 +400,7 @@ class TimetableService(
             accountState.blocksPersonalSessions -> TimetableTodayTomorrowWidgetStatus.CLEANUP
             accountState.status == SchoolAccountStatus.LOADING ->
                 TimetableTodayTomorrowWidgetStatus.ACCOUNT_LOADING
-            !accountState.isCredentialSaved -> TimetableTodayTomorrowWidgetStatus.NO_ACCOUNT
+            !accountState.isManagedActive -> TimetableTodayTomorrowWidgetStatus.NO_ACCOUNT
             bindingOrNull() == null -> TimetableTodayTomorrowWidgetStatus.NO_ACCOUNT
             else -> TimetableTodayTomorrowWidgetStatus.READING
         }
@@ -987,7 +973,7 @@ class TimetableService(
         }
     }
 
-    // ── interactive login ─────────────────────────────────────────────────
+    // ── official verification handoff ──────────────────────────────────────
 
     suspend fun beginInteractiveLogin(): String? {
         val binding = bindingOrNull() ?: run {
@@ -999,253 +985,28 @@ class TimetableService(
                 applyAccountStateLocked(account.state.value)
                 return@withLock null
             }
-            // 自动登录返回的挑战页可能带本次 CAS 的 service/执行上下文；只在
-            // 官方 host/path 白名单内沿用，否则回到固定课表入口。不能把
-            // authenticator 返回的任意地址直接交给 WebView。
-            val requested = _state.value.interactionUrl
-                ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
-                ?: UpcTimetableAuthEndpoints.LOGIN_URL
-            interactiveContext = InteractiveContext(
-                binding = binding,
-                businessEpoch = businessEpoch.get(),
-                diagnosticOperation = Diagnostics.beginOperation(),
-            )
             _state.update {
                 it.copy(
                     connection = TimetableConnection.INTERACTION_REQUIRED,
-                    interactionUrl = requested,
-                    message = "请在学校网页完成登录。",
+                    interactionUrl = OFFICIAL_TIMETABLE_URL,
+                    message = "请在学校官方页面完成验证，再返回校方托管账号设置。",
                     isBusy = false,
                     canRetry = true,
                 )
             }
-            requested
+            OFFICIAL_TIMETABLE_URL
         }
     }
 
     suspend fun cancelInteractiveLogin() {
-        commitMutex.withLock {
-            interactiveContext = null
-            _state.update { it.copy(interactionUrl = null) }
-        }
+        commitMutex.withLock { _state.update { it.copy(interactionUrl = null) } }
     }
 
     /**
-     * WebView 页面完成/跳转时调用。只有 Cookies 非空且索引验证成功才保存；
-     * 账号/代次/业务代次已变化的结果直接丢弃。
+     * Official WebView cookies never become a business session. Verification must be
+     * completed through the managed account flow; keeping this callback closed prevents
+     * a local-cookie/direct-school fallback from returning after migration.
      */
-    suspend fun adoptInteractiveCookies(
-        cookieHeader: String,
-        operationId: String? = null,
-        diagnosticOperation: DiagnosticOperation? = null,
-    ): Boolean {
-        val context = interactiveContext ?: return false
-        val started = clock()
-        val effectiveDiagnosticOperation = diagnosticOperation ?: context.diagnosticOperation
-        val op = operationId ?: effectiveDiagnosticOperation.id
-        recordQueryStart(DiagnosticPhase.COOKIE, null, op, effectiveDiagnosticOperation)
-        if (!isBindingCurrent(context.binding) || businessEpoch.get() != context.businessEpoch) {
-            interactiveContext = null
-            recordQueryFail(
-                phase = DiagnosticPhase.COOKIE,
-                detail = DiagnosticDetail.COOKIE_CONTEXT_STALE,
-                operationId = op,
-                reason = DiagnosticReason.AUTH,
-                diagnosticOperation = effectiveDiagnosticOperation,
-            )
-            publishAccountState()
-            return false
-        }
-        val cookies = parseCookieHeader(cookieHeader)
-        if (cookies.isEmpty()) {
-            recordQueryFail(
-                phase = DiagnosticPhase.COOKIE,
-                detail = DiagnosticDetail.COOKIE_EMPTY,
-                operationId = op,
-                reason = DiagnosticReason.AUTH,
-                diagnosticOperation = effectiveDiagnosticOperation,
-            )
-            return false
-        }
-        recordQueryComplete(
-            phase = DiagnosticPhase.COOKIE,
-            detail = DiagnosticDetail.COOKIE_PARSED,
-            result = DiagnosticResult.OK,
-            operationId = op,
-            itemCount = cookies.size,
-            durationMs = elapsed(started),
-            diagnosticOperation = effectiveDiagnosticOperation,
-        )
-        if (!adopting.compareAndSet(0, 1)) return false
-        return try {
-            operationMutex.withLock {
-                recordQueryStart(
-                    DiagnosticPhase.INDEX,
-                    DiagnosticDetail.INDEX_REQUEST,
-                    op,
-                    effectiveDiagnosticOperation,
-                )
-                val indexStarted = clock()
-                val index = try {
-                    api.getIndex(cookies, op, effectiveDiagnosticOperation)
-                } catch (failure: TimetableApiException) {
-                    commitMutex.withLock {
-                        if (isBindingCurrent(context.binding) &&
-                            businessEpoch.get() == context.businessEpoch
-                        ) {
-                            publishFailure(
-                                mapApiFailure(failure, currentHasCache(), DiagnosticPhase.INDEX),
-                                op,
-                                effectiveDiagnosticOperation,
-                            )
-                        }
-                    }
-                    return false
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    throw cancelled
-                } catch (failure: Exception) {
-                    recordQueryException(
-                        phase = DiagnosticPhase.INDEX,
-                        detail = DiagnosticDetail.INDEX_PARSE_TERM_INFO,
-                        operationId = op,
-                        failure = failure,
-                        durationMs = elapsed(indexStarted),
-                        diagnosticOperation = effectiveDiagnosticOperation,
-                    )
-                    return false
-                }
-                recordCompatibility(index.compatibility, op, effectiveDiagnosticOperation)
-                recordQueryComplete(
-                    phase = DiagnosticPhase.INDEX,
-                    detail = DiagnosticDetail.INDEX_OK,
-                    result = DiagnosticResult.OK,
-                    operationId = op,
-                    itemCount = index.terms.size,
-                    durationMs = elapsed(indexStarted),
-                    diagnosticOperation = effectiveDiagnosticOperation,
-                )
-                val accepted = commitMutex.withLock {
-                    if (!isBindingCurrent(context.binding) ||
-                        businessEpoch.get() != context.businessEpoch
-                    ) {
-                        interactiveContext = null
-                        applyAccountStateLocked(account.state.value)
-                        recordQueryFail(
-                            phase = DiagnosticPhase.COOKIE,
-                            detail = DiagnosticDetail.COOKIE_CONTEXT_STALE,
-                            operationId = op,
-                            reason = DiagnosticReason.AUTH,
-                            diagnosticOperation = effectiveDiagnosticOperation,
-                        )
-                        return@withLock false
-                    }
-                    val session = TimetableSession(
-                        accountId = context.binding.accountId.value,
-                        credentialGeneration = context.binding.credentialGeneration.value,
-                        businessGeneration = context.businessEpoch,
-                        savedAtEpochMillis = clock(),
-                        cookies = cookies,
-                    )
-                    commitBarrier("adopt-session")
-                    if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
-                        recordQueryFail(
-                            phase = DiagnosticPhase.SESSION,
-                            detail = DiagnosticDetail.COOKIE_SAVE_FAILED,
-                            operationId = op,
-                            reason = DiagnosticReason.STORAGE,
-                            diagnosticOperation = effectiveDiagnosticOperation,
-                        )
-                        _state.update {
-                            it.copy(
-                                connection = TimetableConnection.PROTOCOL_ERROR,
-                                message = "登录成功，但本机保存失败；请重试。",
-                                isBusy = false,
-                            )
-                        }
-                        return@withLock false
-                    }
-                    recordQueryComplete(
-                        phase = DiagnosticPhase.SESSION,
-                        detail = DiagnosticDetail.COOKIE_SAVED,
-                        result = DiagnosticResult.OK,
-                        operationId = op,
-                        itemCount = cookies.size,
-                        diagnosticOperation = effectiveDiagnosticOperation,
-                    )
-                    interactiveContext = null
-                    lastIndex = index
-                    applyIndexSelectionLocked(index, preserveSelection = explicitSelection)
-                    commitBarrier("adopt-cache")
-                    val cached = withContext(ioDispatcher) {
-                        cacheStore.save(
-                            context.binding.accountId.value,
-                            index,
-                            null,
-                            clock(),
-                        )
-                    }
-                    if (cached) {
-                        widgetCacheEpoch.incrementAndGet()
-                        recordQueryComplete(
-                            phase = DiagnosticPhase.CACHE,
-                            detail = DiagnosticDetail.CACHE_SAVED,
-                            result = DiagnosticResult.OK,
-                            operationId = op,
-                            itemCount = index.terms.size,
-                            diagnosticOperation = effectiveDiagnosticOperation,
-                        )
-                    } else {
-                        recordQueryFail(
-                            phase = DiagnosticPhase.CACHE,
-                            detail = DiagnosticDetail.CACHE_SAVE_FAILED,
-                            operationId = op,
-                            reason = DiagnosticReason.STORAGE,
-                            diagnosticOperation = effectiveDiagnosticOperation,
-                        )
-                    }
-                    _state.update {
-                        it.copy(
-                            connection = TimetableConnection.CONNECTED,
-                            interactionUrl = null,
-                            message = null,
-                            canRetry = false,
-                        )
-                    }
-                    true
-                }
-                if (!accepted) return false
-                val selected = _state.value.selectedTermOrNull
-                val week = _state.value.selectedWeek
-                if (selected != null && week != null) {
-                    loadWeekLocked(
-                        binding = context.binding,
-                        term = selected,
-                        week = week,
-                        token = selectionEpoch.get(),
-                        business = businessEpoch.get(),
-                        operationId = op,
-                        diagnosticOperation = effectiveDiagnosticOperation,
-                    )
-                } else {
-                    commitMutex.withLock {
-                        publishFailure(
-                            ServiceFailure(
-                                TimetableConnection.PROTOCOL_ERROR,
-                                "学校未返回可用学期。",
-                                detail = DiagnosticDetail.INDEX_PARSE_CURRENT,
-                            ),
-                            op,
-                            effectiveDiagnosticOperation,
-                        )
-                    }
-                }
-                true
-            }
-        } finally {
-            adopting.set(0)
-        }
-    }
-
     // ── invalidation ──────────────────────────────────────────────────────
 
     /**
@@ -1261,7 +1022,6 @@ class TimetableService(
             invalidateCalendarWidgetSnapshotsLocked()
             accountEpochValue += 1
             explicitSelection = false
-            interactiveContext = null
             lastIndex = null
             currentBinding = null
             _state.update {
@@ -1285,7 +1045,7 @@ class TimetableService(
             }
             _todayState.value = TimetableTodayUiState(
                 accountEpoch = accountEpochValue,
-                accountSavedUnverified = false,
+                accountManagedActive = false,
                 accountBlocked = true,
                 today = todayProvider(),
                 todayState = TimetableTodayState.ACCOUNT_BLOCKED,
@@ -1346,13 +1106,11 @@ class TimetableService(
             diagnosticOperation,
         )
         try {
-            val index = withSession(
-                binding = binding,
-                hasCache = currentHasCache(),
-                operationId = operationId,
-                phase = DiagnosticPhase.INDEX,
-                diagnosticOperation = diagnosticOperation,
-            ) { cookies -> api.getIndex(cookies, operationId, diagnosticOperation) }
+            val index = try {
+                backend.index().toDomainIndex()
+            } catch (failure: TimetableBackendFailure) {
+                throw mapBackendFailure(failure, DiagnosticPhase.INDEX)
+            }
             recordCompatibility(index.compatibility, operationId, diagnosticOperation)
             recordQueryComplete(
                 phase = DiagnosticPhase.INDEX,
@@ -1488,13 +1246,22 @@ class TimetableService(
             diagnosticOperation,
         )
         try {
-            val result = withSession(
-                binding = binding,
-                hasCache = currentHasCache(),
-                operationId = operationId,
-                phase = DiagnosticPhase.WEEK,
-                diagnosticOperation = diagnosticOperation,
-            ) { cookies -> api.getWeek(cookies, term, week, operationId, diagnosticOperation) }
+            val result = try {
+                backend.week(term.year, term.term, week).toDomainWeek(term, week)
+            } catch (failure: TimetableBackendFailure) {
+                throw mapBackendFailure(failure, DiagnosticPhase.WEEK)
+            }
+            if (!result.complete || result.fetchedAtEpochMillis <= 0L ||
+                result.term.year != term.year || result.term.term != term.term ||
+                result.week != week
+            ) {
+                throw ServiceFailure(
+                    TimetableConnection.PROTOCOL_ERROR,
+                    "校方返回的课表不完整或与所选周不匹配，已保留上次成功数据。",
+                    detail = DiagnosticDetail.WEEK_PARSE_CLASSES,
+                    phase = DiagnosticPhase.WEEK,
+                )
+            }
             recordCompatibility(result.compatibility, operationId, diagnosticOperation)
             recordQueryComplete(
                 phase = DiagnosticPhase.WEEK,
@@ -1526,7 +1293,7 @@ class TimetableService(
                     )
                     return@withLock
                 }
-                val stamped = result.copy(fetchedAtEpochMillis = clock())
+                val stamped = result
                 commitBarrier("week-cache")
                 val cached = withContext(ioDispatcher) {
                     cacheStore.save(binding.accountId.value, lastIndex, stamped, clock())
@@ -1584,364 +1351,111 @@ class TimetableService(
         }
     }
 
-    private suspend fun <T> withSession(
-        binding: SchoolAccountReference,
-        hasCache: Boolean,
-        operationId: String,
+    private fun mapBackendFailure(
+        failure: TimetableBackendFailure,
         phase: DiagnosticPhase,
-        diagnosticOperation: DiagnosticOperation,
-        operation: suspend (List<TimetableCookie>) -> T,
-    ): T {
-        var authAttempted = false
-        var retriedAfterAuth = false
-        while (true) {
-            val session = withContext(ioDispatcher) {
-                sessionStore.load(
-                    binding.accountId.value,
-                    binding.credentialGeneration.value,
-                )
-            }
-            if (session != null) {
-                if (!isBindingCurrent(binding)) {
-                    throw ServiceFailure(
-                        TimetableConnection.NOT_CONFIGURED,
-                        "学校账号已变化，请重新打开课表。",
-                    )
-                }
-                try {
-                    return operation(session.cookies)
-                } catch (failure: TimetableApiException) {
-                    if (failure.code == TimetableErrorCode.AUTH_REQUIRED) {
-                        if (retriedAfterAuth) {
-                            throw ServiceFailure(
-                                TimetableConnection.SESSION_EXPIRED,
-                                "登录已失效，请重新登录。",
-                                detail = DiagnosticDetail.AUTH_REQUIRED,
-                                phase = phase,
-                            )
-                        }
-                        // 旧会话明确失效：清掉后最多按当前凭据认证一次。
-                        withContext(ioDispatcher) { sessionStore.clear() }
-                    } else {
-                        throw mapApiFailure(failure, hasCache, phase)
-                    }
-                }
-            } else if (retriedAfterAuth) {
-                throw ServiceFailure(
-                    TimetableConnection.SESSION_EXPIRED,
-                    "登录已失效，请重新登录。",
-                    detail = DiagnosticDetail.AUTH_REQUIRED,
-                    phase = phase,
-                )
-            }
-            if (authAttempted) {
-                throw ServiceFailure(
-                    TimetableConnection.SESSION_EXPIRED,
-                    "登录已失效，请重新登录。",
-                    detail = DiagnosticDetail.AUTH_REQUIRED,
-                    phase = phase,
-                )
-            }
-            authenticate(binding, phase, diagnosticOperation)
-            authAttempted = true
-            retriedAfterAuth = true
-        }
-    }
-
-    private suspend fun authenticate(
-        binding: SchoolAccountReference,
-        phase: DiagnosticPhase,
-        diagnosticOperation: DiagnosticOperation,
-    ) {
-        authMutex.withLock {
-            if (!isBindingCurrent(binding)) {
-                throw ServiceFailure(
-                    TimetableConnection.NOT_CONFIGURED,
-                    "学校账号已变化，请重新打开课表。",
-                    phase = phase,
-                )
-            }
-            val existing = withContext(ioDispatcher) {
-                sessionStore.load(
-                    binding.accountId.value,
-                    binding.credentialGeneration.value,
-                )
-            }
-            if (existing != null) return
-            val business = businessEpoch.get()
-            val started = clock()
-            Diagnostics.record(
-                module = DiagnosticModule.TIMETABLE,
-                action = DiagnosticAction.AUTH_START,
-                result = DiagnosticResult.PENDING,
-                phase = DiagnosticPhase.AUTH,
-                operation = diagnosticOperation,
+    ): ServiceFailure {
+        val retryDelay = failure.retryAfterSeconds?.coerceIn(1, 86_400)
+        return when (failure.code) {
+            TimetableBackendFailureCode.SERVICE_NOT_READY -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "校方服务未就绪，已保留本机成功数据；可稍后重试或打开学校网页。",
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                phase = phase,
             )
-            val result = try {
-                authenticator.authenticate(
-                    expectedAccountId = binding.accountId,
-                    expectedCredentialGeneration = binding.credentialGeneration.value,
-                )
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                Diagnostics.record(
-                    module = DiagnosticModule.TIMETABLE,
-                    action = DiagnosticAction.AUTH_COMPLETE,
-                phase = DiagnosticPhase.AUTH,
-                    result = DiagnosticResult.CANCELLED,
-                    durationMs = (clock() - started).coerceAtLeast(0),
-                    operation = diagnosticOperation,
-                )
-                throw cancelled
-            } catch (failure: Exception) {
-                Diagnostics.recordException(
-                    module = DiagnosticModule.TIMETABLE,
-                    action = DiagnosticAction.AUTH_COMPLETE,
-                phase = DiagnosticPhase.AUTH,
-                    result = DiagnosticResult.FAIL,
-                    reason = DiagnosticReason.UNKNOWN,
-                    failure = failure,
-                    durationMs = (clock() - started).coerceAtLeast(0),
-                    operation = diagnosticOperation,
-                )
-                throw failure
-            }
-            val duration = (clock() - started).coerceAtLeast(0)
-            when (result) {
-                is UpcAuthResult.Failure -> {
-                    val reason = diagnosticAuthReason(result.reason)
-                    Diagnostics.record(
-                        module = DiagnosticModule.TIMETABLE,
-                        action = DiagnosticAction.AUTH_COMPLETE,
-                phase = DiagnosticPhase.AUTH,
-                        result = DiagnosticResult.FAIL,
-                        reason = reason,
-                        durationMs = duration,
-                        operation = diagnosticOperation,
-                    )
-                    if (result.reason == UpcAuthFailure.INTERACTION_REQUIRED) {
-                        Diagnostics.record(
-                            module = DiagnosticModule.TIMETABLE,
-                            action = DiagnosticAction.AUTH_INTERACTION,
-                            result = DiagnosticResult.BLOCKED,
-                            reason = DiagnosticReason.INTERACTION,
-                            phase = DiagnosticPhase.AUTH,
-                            durationMs = duration,
-                            operation = diagnosticOperation,
-                        )
-                    }
-                }
-                is UpcAuthResult.Success -> Diagnostics.record(
-                    module = DiagnosticModule.TIMETABLE,
-                    action = DiagnosticAction.AUTH_COMPLETE,
-                phase = DiagnosticPhase.AUTH,
-                    result = DiagnosticResult.OK,
-                    durationMs = duration,
-                    operation = diagnosticOperation,
-                )
-            }
-            when (result) {
-                is UpcAuthResult.Failure -> throw when (result.reason) {
-                    UpcAuthFailure.INVALID_CREDENTIALS -> ServiceFailure(
-                        TimetableConnection.AUTH_FAILED,
-                        "账号或密码不正确，请重新保存。",
-                        detail = DiagnosticDetail.AUTH_INVALID,
-                        phase = phase,
-                    )
-                    UpcAuthFailure.INTERACTION_REQUIRED -> ServiceFailure(
-                        TimetableConnection.INTERACTION_REQUIRED,
-                        "请在学校页面继续登录。",
-                        result.interactionUrl
-                            ?.takeIf(TimetableLoginPolicy::isAllowedEntry)
-                            ?: UpcTimetableAuthEndpoints.LOGIN_URL,
-                        detail = DiagnosticDetail.AUTH_INTERACTION,
-                        phase = phase,
-                    )
-                    UpcAuthFailure.NETWORK_UNAVAILABLE, UpcAuthFailure.TLS_ERROR ->
-                        ServiceFailure(
-                            TimetableConnection.NETWORK_UNAVAILABLE,
-                            "网络不可用，请稍后重试。",
-                            phase = phase,
-                        )
-                    UpcAuthFailure.ACCOUNT_UNAVAILABLE -> ServiceFailure(
-                        TimetableConnection.NOT_CONFIGURED,
-                        "账号不可用，请重新保存。",
-                        phase = phase,
-                    )
-                    UpcAuthFailure.ACCOUNT_CHANGED -> ServiceFailure(
-                        TimetableConnection.NOT_CONFIGURED,
-                        "账号已更换，请重新登录。",
-                        phase = phase,
-                    )
-                    UpcAuthFailure.ACCESS_DENIED, UpcAuthFailure.UPSTREAM_ERROR,
-                    UpcAuthFailure.PROTOCOL_ERROR,
-                    -> ServiceFailure(
-                        TimetableConnection.PROTOCOL_ERROR,
-                        "登录没有完成，请稍后重试。",
-                        detail = DiagnosticDetail.AUTH_REQUIRED,
-                        phase = phase,
-                    )
-                }
-                is UpcAuthResult.Success -> {
-                    commitMutex.withLock {
-                        if (!isBindingCurrent(binding) || businessEpoch.get() != business) {
-                            throw ServiceFailure(
-                                TimetableConnection.NOT_CONFIGURED,
-                                "账号已更换，请重新登录。",
-                                detail = DiagnosticDetail.AUTH_INVALID,
-                                phase = phase,
-                            )
-                        }
-                        val cookies = result.cookies.map {
-                            TimetableCookie(
-                                name = it.name,
-                                value = it.value,
-                                domain = it.domain,
-                                path = it.path,
-                                secure = it.secure,
-                                httpOnly = it.httpOnly,
-                                expiresAtEpochSeconds = it.expiresAtEpochSeconds,
-                            )
-                        }
-                        val session = TimetableSession(
-                            accountId = binding.accountId.value,
-                            credentialGeneration = binding.credentialGeneration.value,
-                            businessGeneration = business,
-                            savedAtEpochMillis = clock(),
-                            cookies = cookies,
-                        )
-                        commitBarrier("auth-session")
-                        if (!withContext(ioDispatcher) { sessionStore.save(session) }) {
-                            throw ServiceFailure(
-                                TimetableConnection.PROTOCOL_ERROR,
-                                "登录成功，但本机保存失败；请重试。",
-                                detail = DiagnosticDetail.COOKIE_SAVE_FAILED,
-                                phase = DiagnosticPhase.SESSION,
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun diagnosticAuthReason(reason: UpcAuthFailure): DiagnosticReason = when (reason) {
-        UpcAuthFailure.INVALID_CREDENTIALS,
-        UpcAuthFailure.ACCESS_DENIED,
-        -> DiagnosticReason.AUTH
-        UpcAuthFailure.INTERACTION_REQUIRED -> DiagnosticReason.INTERACTION
-        UpcAuthFailure.NETWORK_UNAVAILABLE -> DiagnosticReason.NETWORK
-        UpcAuthFailure.TLS_ERROR -> DiagnosticReason.TLS
-        UpcAuthFailure.ACCOUNT_UNAVAILABLE,
-        UpcAuthFailure.ACCOUNT_CHANGED,
-        -> DiagnosticReason.ACCOUNT
-        UpcAuthFailure.UPSTREAM_ERROR -> DiagnosticReason.UNKNOWN
-        UpcAuthFailure.PROTOCOL_ERROR -> DiagnosticReason.SCHEMA
-    }
-
-    private fun mapApiFailure(
-        failure: TimetableApiException,
-        hasCache: Boolean,
-        phase: DiagnosticPhase,
-    ): ServiceFailure = when {
-        failure.code == TimetableErrorCode.AUTH_REQUIRED -> ServiceFailure(
-            TimetableConnection.SESSION_EXPIRED,
-            "登录已失效，请重新登录。",
-            detail = failure.detail ?: DiagnosticDetail.AUTH_REQUIRED,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            mediaType = failure.mediaType,
-            bodyType = failure.bodyType,
-            phase = phase,
-        )
-        failure.code == TimetableErrorCode.LOGIN_PAGE -> ServiceFailure(
-            TimetableConnection.SESSION_EXPIRED,
-            "登录状态已失效，请重新网页登录。",
-            detail = DiagnosticDetail.RESPONSE_LOGIN_PAGE,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            mediaType = failure.mediaType,
-            bodyType = failure.bodyType,
-            phase = phase,
-        )
-        failure.exceptionType == DiagnosticExceptionType.TLS -> ServiceFailure(
-            TimetableConnection.NETWORK_UNAVAILABLE,
-            "无法安全连接学校服务，请稍后重试。",
-            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_TLS,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            phase = phase,
-        )
-        failure.exceptionType == DiagnosticExceptionType.TIMEOUT -> ServiceFailure(
-            TimetableConnection.NETWORK_UNAVAILABLE,
-            "连接学校服务超时，请稍后重试。",
-            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_TIMEOUT,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            phase = phase,
-        )
-        failure.network -> ServiceFailure(
-            TimetableConnection.NETWORK_UNAVAILABLE,
-            "网络不可用，请稍后重试。",
-            detail = failure.detail ?: DiagnosticDetail.TRANSPORT_NETWORK,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            phase = phase,
-        )
-        failure.code == TimetableErrorCode.SCHEMA_CHANGED ||
-            failure.code == TimetableErrorCode.RESPONSE_TOO_LARGE -> ServiceFailure(
-            TimetableConnection.PROTOCOL_ERROR,
-            responseMessage(failure, hasCache),
-            detail = failure.detail,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            mediaType = failure.mediaType,
-            bodyType = failure.bodyType,
-            phase = phase,
-        )
-        else -> ServiceFailure(
-            TimetableConnection.PROTOCOL_ERROR,
-            upstreamMessage(hasCache),
-            detail = failure.detail,
-            httpStatus = failure.httpStatus,
-            responseBytes = failure.responseBytes,
-            exceptionType = failure.exceptionType,
-            mediaType = failure.mediaType,
-            bodyType = failure.bodyType,
-            phase = phase,
-        )
-    }
-
-    private fun responseMessage(failure: TimetableApiException, hasCache: Boolean): String {
-        val cache = if (hasCache) {
-            "已保留上次缓存。"
-        } else {
-            "暂无可用的旧缓存。"
-        }
-        return when (failure.detail) {
-            DiagnosticDetail.RESPONSE_HTML -> "课表返回了网页内容；$cache"
-            DiagnosticDetail.RESPONSE_TOO_LARGE -> "课表响应过大；$cache"
-            else -> "课表响应格式异常；$cache"
+            TimetableBackendFailureCode.TOKEN_INVALID,
+            TimetableBackendFailureCode.UNAUTHENTICATED -> ServiceFailure(
+                TimetableConnection.SESSION_EXPIRED,
+                "校方托管会话已失效，请重新绑定托管账号。",
+                detail = DiagnosticDetail.AUTH_REQUIRED,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.DISABLED -> ServiceFailure(
+                TimetableConnection.SESSION_EXPIRED,
+                "校方账号已停用，请联系学校服务管理员。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.INTERACTIVE_CHALLENGE -> ServiceFailure(
+                TimetableConnection.INTERACTION_REQUIRED,
+                "学校要求网页验证。完成学校官方验证后，请返回重试。",
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                detail = DiagnosticDetail.AUTH_INTERACTION,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED -> ServiceFailure(
+                TimetableConnection.AUTH_FAILED,
+                "请在账号设置更新校方托管密码后重试。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.VERIFICATION_BUSY -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "校方正在处理验证，请稍后重试。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.MODULE_DISABLED -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "校方暂未开放课表模块，已保留此账号的上次成功数据。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.CIRCUIT_OPEN -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "校方课表服务正在暂停请求，已保留上次成功数据。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.UPSTREAM_UNAVAILABLE -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "学校课表暂时不可用，已保留此账号的上次成功数据；可稍后重试或打开学校网页。",
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.DEPENDENCY_UNAVAILABLE -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "校方课表服务依赖暂时不可用，已保留上次成功数据；可稍后重试或打开学校网页。",
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.UPSTREAM_TIMEOUT -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "学校课表响应超时，已保留上次成功数据；可稍后重试或打开学校网页。",
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.VALIDATION_FAILED -> ServiceFailure(
+                TimetableConnection.PROTOCOL_ERROR,
+                "课表请求参数未通过校验。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.IDENTITY_UNSUPPORTED -> ServiceFailure(
+                TimetableConnection.AUTH_FAILED,
+                "当前账号暂不支持校方托管课表服务。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.UPSTREAM_PROTOCOL_ERROR -> ServiceFailure(
+                TimetableConnection.PROTOCOL_ERROR,
+                unreadableDataMessage(currentHasCache()),
+                interactionUrl = OFFICIAL_TIMETABLE_URL,
+                detail = DiagnosticDetail.RESPONSE_NON_JSON,
+                phase = phase,
+            )
+            TimetableBackendFailureCode.RATE_LIMITED -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                retryDelay?.let { "请求过于频繁，请在 $it 秒后重试。" }
+                    ?: "请求过于频繁，请稍后重试。",
+                phase = phase,
+            )
+            TimetableBackendFailureCode.NETWORK_UNAVAILABLE -> ServiceFailure(
+                TimetableConnection.NETWORK_UNAVAILABLE,
+                "网络不可用，已保留上次成功数据。",
+                phase = phase,
+            )
         }
     }
 
     private fun unreadableDataMessage(hasCache: Boolean): String =
         if (hasCache) {
-            "课表响应格式异常；已保留上次缓存。"
+            "校方返回内容格式异常，已保留上次缓存。"
         } else {
-            "课表响应格式异常；暂无可用的旧缓存。"
-        }
-
-    private fun upstreamMessage(hasCache: Boolean): String =
-        if (hasCache) {
-            "学校服务暂时不可用；已保留上次缓存。"
-        } else {
-            "学校服务暂时不可用；暂无可用的旧缓存。"
+            "校方返回内容格式异常，暂无可用的旧缓存。"
         }
 
     private fun currentHasCache(): Boolean {
@@ -2163,7 +1677,7 @@ class TimetableService(
         _todayState.update {
             it.copy(
                 accountEpoch = accountEpochValue,
-                accountSavedUnverified = true,
+                accountManagedActive = true,
                 accountBlocked = false,
                 today = today,
                 todayMeetings = meetings,
@@ -2360,7 +1874,7 @@ class TimetableService(
     private fun isBindingCurrent(binding: SchoolAccountReference): Boolean {
         val state = account.state.value
         val reference = account.accountReference.value
-        return state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
+        return state.isManagedActive &&
             !state.blocksPersonalSessions &&
             state.generation == binding.credentialGeneration &&
             reference?.accountId == binding.accountId &&
@@ -2377,16 +1891,15 @@ class TimetableService(
     private fun applyAccountStateLocked(state: SchoolAccountState) {
         val reference = account.accountReference.value
             ?.takeIf {
-                state.status == SchoolAccountStatus.SAVED_UNVERIFIED &&
+                state.isManagedActive &&
                     !state.blocksPersonalSessions &&
                     state.generation == it.credentialGeneration
             }
         val label = when {
-            state.status == SchoolAccountStatus.LOADING -> "正在恢复学校账号"
-            state.cleanupRequired || state.blocksPersonalSessions -> "学校账号正在清理或切换"
-            state.status == SchoolAccountStatus.NOT_CONFIGURED -> "未设置学校账号"
-            state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION -> "需要重新保存学校账号"
-            else -> state.maskedAccount?.let { "$it · 已保存" } ?: "已保存"
+            state.status == SchoolAccountStatus.LOADING -> "正在恢复校方托管账号"
+            state.cleanupRequired || state.blocksPersonalSessions -> "校方托管账号正在清理"
+            !state.isManagedActive -> "未绑定校方托管账号"
+            else -> "校方托管账号已连接"
         }
         val previous = currentBinding
         if (reference == null) {
@@ -2400,13 +1913,12 @@ class TimetableService(
             currentBinding = null
             lastIndex = null
             explicitSelection = false
-            interactiveContext = null
             _state.update {
                 it.copy(
                     accountEpoch = accountEpochValue,
                     accountStatusLabel = label,
                     maskedAccount = state.maskedAccount,
-                    accountSavedUnverified = state.isCredentialSaved,
+                    accountManagedActive = state.isManagedActive,
                     accountBlocked = state.blocksPersonalSessions ||
                         state.status == SchoolAccountStatus.LOADING,
                     connection = when {
@@ -2428,12 +1940,12 @@ class TimetableService(
                     weekFetchedAtEpochMillis = null,
                     message = when {
                         state.status == SchoolAccountStatus.LOADING ->
-                            "正在恢复本机账号；完成前不会查询个人课表。"
+                            "正在恢复校方托管账号；完成前不会查询个人课表。"
                         state.blocksPersonalSessions ->
-                            "学校账号正在清理或切换；完成前不会登录或显示旧课表。"
+                            "学校账号正在清理或切换；完成前不会读取后端或显示旧课表。"
                         state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION ->
-                            "学校账号密文不可用，请重新保存后再使用课表。"
-                        else -> "请先在“首页 → 设置 → 学校账号”保存学校账号。"
+                            "校方托管会话不可用，请在账号设置重新绑定。"
+                        else -> "请先在“首页 → 设置 → 学校账号”绑定校方托管账号。"
                     },
                     interactionUrl = null,
                     isBusy = false,
@@ -2453,7 +1965,6 @@ class TimetableService(
             accountEpochValue += 1
             explicitSelection = false
             lastIndex = null
-            interactiveContext = null
             _state.update {
                 it.copy(
                     accountEpoch = accountEpochValue,
@@ -2473,7 +1984,7 @@ class TimetableService(
             }
             _todayState.value = TimetableTodayUiState(
                 accountEpoch = accountEpochValue,
-                accountSavedUnverified = true,
+                accountManagedActive = true,
                 accountBlocked = false,
                 today = todayProvider(),
                 todayState = TimetableTodayState.NOT_SYNCED,
@@ -2484,7 +1995,7 @@ class TimetableService(
             it.copy(
                 accountStatusLabel = label,
                 maskedAccount = state.maskedAccount,
-                accountSavedUnverified = state.isCredentialSaved,
+                accountManagedActive = state.isManagedActive,
                 accountBlocked = false,
                 connection = if (it.weekState == TimetableWeekState.NOT_QUERIED) {
                     TimetableConnection.IDLE
@@ -2496,7 +2007,7 @@ class TimetableService(
         _todayState.update {
             it.copy(
                 accountEpoch = accountEpochValue,
-                accountSavedUnverified = state.isCredentialSaved,
+                accountManagedActive = state.isManagedActive,
                 accountBlocked = false,
             )
         }
@@ -2523,7 +2034,7 @@ class TimetableService(
         }
         val message = when {
             state.status == SchoolAccountStatus.LOADING ->
-                "正在恢复学校账号。"
+                "正在恢复校方托管账号。"
             state.cleanupRequired && state.errorCode in setOf(
                 SchoolAccountErrorCode.CLEANUP_FAILED,
                 SchoolAccountErrorCode.CLEANUP_REQUIRED,
@@ -2531,12 +2042,12 @@ class TimetableService(
             state.blocksPersonalSessions ->
                 "学校账号正在清理或切换，今日课程暂不可用。"
             state.status == SchoolAccountStatus.NEEDS_RECONFIGURATION ->
-                "学校账号密文不可用，请重新保存。"
-            else -> "请先保存学校账号。"
+                "校方托管会话不可用，请重新绑定。"
+            else -> "请先绑定校方托管账号。"
         }
         _todayState.value = TimetableTodayUiState(
             accountEpoch = accountEpochValue,
-            accountSavedUnverified = state.isCredentialSaved,
+            accountManagedActive = state.isManagedActive,
             accountBlocked = state.blocksPersonalSessions ||
                 state.status == SchoolAccountStatus.LOADING,
             today = todayProvider(),
@@ -2544,28 +2055,6 @@ class TimetableService(
             todayMessage = message,
         )
     }
-
-    private fun parseCookieHeader(header: String): List<TimetableCookie> =
-        header.split(';')
-            .mapNotNull { part ->
-                val trimmed = part.trim()
-                val index = trimmed.indexOf('=')
-                if (index <= 0) return@mapNotNull null
-                val name = trimmed.substring(0, index).trim()
-                val value = trimmed.substring(index + 1).trim()
-                runCatching {
-                    TimetableCookie(
-                        name = name,
-                        value = value,
-                        domain = "app.upc.edu.cn",
-                        path = "/",
-                        secure = true,
-                        httpOnly = true,
-                    )
-                }.getOrNull()
-            }
-            .distinctBy { it.name }
-            .take(TimetableStorage.MAX_COOKIES)
 
     internal fun meetingComparator(): Comparator<TimetableMeeting> =
         compareBy<TimetableMeeting>(

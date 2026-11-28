@@ -85,6 +85,41 @@ internal object TimetableStorage {
     }
 }
 
+/** Legacy local school cookie record retained only so the cleanup path can delete it. */
+@Serializable
+data class TimetableCookie(
+    val name: String,
+    val value: String,
+    val domain: String = "app.upc.edu.cn",
+    val path: String = "/",
+    val secure: Boolean = true,
+    val httpOnly: Boolean = true,
+    val expiresAtEpochSeconds: Long? = null,
+) {
+    init {
+        require(name.matches(Regex("[!#$%&'*+\\-.^_`|~0-9A-Za-z]{1,256}"))) { "非法 Cookie 名" }
+        require(value.length <= 4096 && value.all { it in '\u0021'..'\u007e' }) { "非法 Cookie 值" }
+        require(domain == "app.upc.edu.cn") { "课表 Cookie 只能属于 app.upc.edu.cn" }
+        require(path.startsWith("/") && path.none { it == '\r' || it == '\n' || it == '\u0000' }) {
+            "非法 Cookie 路径"
+        }
+        require(expiresAtEpochSeconds == null || expiresAtEpochSeconds > 0) { "非法 Cookie 到期时间" }
+    }
+
+    fun matches(host: String, path: String, secure: Boolean, nowEpochSeconds: Long): Boolean {
+        if (host != domain) return false
+        if (this.secure && !secure) return false
+        if (expiresAtEpochSeconds != null && expiresAtEpochSeconds <= nowEpochSeconds) return false
+        if (this.path == "/") return true
+        if (path == this.path) return true
+        if (!path.startsWith(this.path)) return false
+        return this.path.endsWith("/") || path[this.path.length] == '/'
+    }
+
+    override fun toString(): String =
+        "TimetableCookie(name=$name, domain=$domain, path=$path, value=[REDACTED])"
+}
+
 @Serializable
 data class TimetableSession(
     val accountId: String,

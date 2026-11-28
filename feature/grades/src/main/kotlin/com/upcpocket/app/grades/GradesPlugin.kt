@@ -17,7 +17,6 @@ import com.upcpocket.app.plugin.ui.UiCategory
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
-import com.upcpocket.app.upcauth.GradesAuthenticator
 
 object GradesCapabilities {
     val read = capabilityKey<GradesService>("grades.read")
@@ -26,10 +25,10 @@ object GradesCapabilities {
 class GradesPlugin(
     context: Context,
     private val account: SchoolAccountReferenceReader,
-    authenticator: GradesAuthenticator,
+    backend: GradesBackendSource,
     private val openOfficialPage: (Context) -> Unit,
 ) : Plugin, PluginUiContributor {
-    private val service = GradesService(account, authenticator, context.noBackupFilesDir)
+    private val service = GradesService(account, backend, context.noBackupFilesDir)
 
     override val descriptor = PluginDescriptor(
         id = PluginId.parse("grades"),

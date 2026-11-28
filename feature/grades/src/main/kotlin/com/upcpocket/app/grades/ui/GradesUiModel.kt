@@ -23,17 +23,17 @@ data class GradesUiState(
 /**
  * 学校账号的可用状态。
  *
- * “未保存账号”“恢复中”“清理中”都会阻止同步，并与已保存可同步明确区分；
+ * “未绑定账号”“恢复中”“清理中”都会阻止同步，并与已托管可同步明确区分；
  * 其中清理中是账号数据清理流程，不能在此期间进入账号设置。
  */
 enum class GradesAccountState {
-    /** 已保存账号，可以同步。 */
+    /** 已绑定校方托管账号，可以同步。 */
     READY,
 
-    /** 本机没有保存学校账号。 */
+    /** 本机没有绑定校方托管账号。 */
     ACCOUNT_REQUIRED,
 
-    /** 正在恢复已保存账号。 */
+    /** 正在恢复校方托管账号。 */
     RESTORING,
 
     /** 正在清理学校账号数据。 */
@@ -55,13 +55,19 @@ sealed interface GradesSyncState {
     data class Ready(val syncedAtMillis: Long? = null) : GradesSyncState
 
     /** 同步失败；已有记录仍可查看，由页面按是否还有数据分别表达。 */
-    data class Failed(val reason: GradesSyncFailure) : GradesSyncState
+    data class Failed(
+        val reason: GradesSyncFailure,
+        val retryAfterSeconds: Long? = null,
+    ) : GradesSyncState
 }
 
 /** 固定的失败原因，只映射为短文案，不携带异常消息、URL 或响应内容。 */
 enum class GradesSyncFailure {
     NETWORK,
     AUTH,
+    SERVICE_NOT_READY,
+    CREDENTIAL_UPDATE_REQUIRED,
+    VERIFICATION_BUSY,
 
     /** 本机成绩读取或保存失败；可以重新同步。 */
     STORAGE,
@@ -69,6 +75,13 @@ enum class GradesSyncFailure {
     /** 学校要求交互验证；与 [AUTH] 一样提供官方网页入口。 */
     INTERACTION,
     SERVER,
+    MODULE_DISABLED,
+    CIRCUIT_OPEN,
+    UPSTREAM_UNAVAILABLE,
+    UPSTREAM_TIMEOUT,
+    VALIDATION_FAILED,
+    IDENTITY_UNSUPPORTED,
+    RATE_LIMITED,
     UNSUPPORTED,
     UNKNOWN,
 }

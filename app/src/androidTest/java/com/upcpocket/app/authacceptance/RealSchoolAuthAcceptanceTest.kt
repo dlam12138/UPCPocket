@@ -20,10 +20,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /** Offline credential seeding and exact owned-account cleanup for manual Release UI acceptance. */
 @RunWith(AndroidJUnit4::class)
+@Ignore("This harness seeded a locally saved school password; bind now requires the configured Pocket backend.")
 class RealSchoolAuthAcceptanceTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
@@ -97,7 +99,7 @@ class RealSchoolAuthAcceptanceTest {
             report.stage = Stage.ACCOUNT_SAVE
             report.accountSaveAttempted = true
             val saveResult = try {
-                account.save(credentials.account, credentials.password)
+                account.bind(credentials.account, credentials.password, acceptCustody = true)
             } finally {
                 credentials.clear()
                 fixture = null
@@ -520,7 +522,7 @@ class RealSchoolAuthAcceptanceTest {
             requireAcceptance(writeMarker(marker), FailureCode.MARKER_WRITE_FAILED)
         }
 
-        val deleteResult = repository.delete()
+        val deleteResult = repository.signOut()
         requireAcceptance(deleteResult == SchoolAccountWriteResult.Success, FailureCode.ACCOUNT_DELETE_FAILED)
         requireAcceptance(isDeletedState(repository, marker), FailureCode.CLEANUP_NOT_CONFIRMED)
         requireAcceptance(deleteOwnedMarker(marker.runId), FailureCode.MARKER_DELETE_FAILED)

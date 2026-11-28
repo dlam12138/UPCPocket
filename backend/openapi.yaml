@@ -1,14 +1,15 @@
 openapi: 3.1.0
 info:
-  title: UPC Pocket account custody API
-  version: 1.0.0
-  description: Student account binding/session management and school administrator operations.
+  title: UPC Pocket backend API
+  version: 1.1.0
+  description: Student account custody, read-only campus services, and school administrator operations. API responses are private and use Cache-Control: no-store, including error responses.
 servers:
   - url: https://pocket.example.invalid
 security: []
 tags:
   - name: Student authentication
   - name: Student account
+  - name: Campus services
   - name: School administration
 paths:
   /api/v1/auth/sessions:
@@ -178,6 +179,288 @@ paths:
           $ref: '#/components/responses/Unavailable'
         default:
           $ref: '#/components/responses/InternalError'
+  /api/v1/timetable/index:
+    get:
+      tags: [Campus services]
+      summary: Read the authenticated student's timetable term index
+      description: Fixed GET with no query parameters or request body. The response is private and no-store.
+      operationId: getTimetableIndex
+      security:
+        - PocketBearer: []
+      responses:
+        '200':
+          description: Timetable terms and current-week metadata
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimetableIndex'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/timetable/week:
+    get:
+      tags: [Campus services]
+      summary: Read one authenticated timetable week
+      description: The year, term, and week are validated against the student's term index. No identity, URL, or body override is accepted.
+      operationId: getTimetableWeek
+      security:
+        - PocketBearer: []
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: term
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: week
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 30
+      responses:
+        '200':
+          description: One seven-day timetable window; business data is not stored by the server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimetableWeek'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/card/balance:
+    get:
+      tags: [Campus services]
+      summary: Read the balance belonging to the authenticated student's supported numeric identity
+      description: The student number is derived from the verified login and bound to the Pocket token. It is never a query parameter or returned in the response.
+      operationId: getCardBalance
+      security:
+        - PocketBearer: []
+      responses:
+        '200':
+          description: Card amounts only; private and no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardBalance'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/IdentityUnsupported'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/card/transactions:
+    get:
+      tags: [Campus services]
+      summary: Read a page of the authenticated student's card transactions
+      operationId: getCardTransactions
+      security:
+        - PocketBearer: []
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: A page of redacted transaction rows; payment numbers and upstream fields are omitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardTransactions'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/card/transactions/summary:
+    get:
+      tags: [Campus services]
+      summary: Read the authenticated student's card transaction totals
+      operationId: getCardTransactionSummary
+      security:
+        - PocketBearer: []
+      parameters:
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$'
+      responses:
+        '200':
+          description: Income and expense totals in fen
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardTransactionSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/grades/terms:
+    get:
+      tags: [Campus services]
+      summary: Read the authenticated student's grade term index
+      operationId: getGradeTerms
+      security:
+        - PocketBearer: []
+      responses:
+        '200':
+          description: Grade terms, with current term when supplied by the source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradesTerms'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/grades/courses:
+    get:
+      tags: [Campus services]
+      summary: Read the authenticated student's courses for one grade term
+      operationId: getGradeCourses
+      security:
+        - PocketBearer: []
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+        - name: term
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 64
+      responses:
+        '200':
+          description: The courses for the requested term; business records are returned only in this response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GradesCourses'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamProtocolError'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '504':
+          $ref: '#/components/responses/UpstreamTimeout'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/admin/v1/account-lookups:
     post:
       tags: [School administration]
@@ -211,6 +494,83 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/modules/{moduleKey}/status:
+    get:
+      tags: [School administration]
+      summary: Read a campus module switch and health summary
+      description: Requires module.read scope and a valid MFA JWT. Returns a quoted revision ETag.
+      operationId: getModuleStatus
+      security:
+        - AdminJwt: []
+      parameters:
+        - $ref: '#/components/parameters/ModuleKey'
+      responses:
+        '200':
+          description: Module state and adapter readiness
+          headers:
+            ETag:
+              schema:
+                type: string
+                example: '"1"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [School administration]
+      summary: Enable or disable a campus module
+      description: Requires module.manage scope and a valid MFA JWT. State, revision, event, and detail row commit atomically.
+      operationId: setModuleEnabled
+      security:
+        - AdminJwt: []
+      parameters:
+        - $ref: '#/components/parameters/ModuleKey'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+            example: '"1"'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModuleEnabledRequest'
+      responses:
+        '200':
+          description: Updated module state with a new ETag
+          headers:
+            ETag:
+              schema:
+                type: string
+                example: '"2"'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModuleStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '412':
+          $ref: '#/components/responses/RevisionChanged'
         '503':
           $ref: '#/components/responses/Unavailable'
         default:
@@ -409,6 +769,13 @@ components:
       bearerFormat: JWT
       description: JWT must pass issuer, audience, expiry, MFA, and route-specific scope checks.
   parameters:
+    ModuleKey:
+      name: moduleKey
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [timetable, card, grades]
     AccountId:
       name: id
       in: path
@@ -557,13 +924,251 @@ components:
                 enum: [OK, DENIED, CONFLICT, FAILED, PARTIAL]
         nextCursor:
           type: [string, 'null']
+    ModuleStatus:
+      type: object
+      required: [moduleKey, enabled, revision, adapterReady, circuitState]
+      properties:
+        moduleKey:
+          type: string
+          enum: [timetable, card, grades]
+        enabled:
+          type: boolean
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        adapterReady:
+          type: boolean
+        circuitState:
+          type: string
+          enum: [CLOSED, OPEN, HALF_OPEN]
+    ModuleEnabledRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    TimetableTerm:
+      type: object
+      required: [year, term, label, startDay, totalWeeks]
+      properties:
+        year:
+          type: string
+        term:
+          type: string
+        label:
+          type: string
+        startDay:
+          type: string
+          format: date
+        totalWeeks:
+          type: integer
+          minimum: 1
+          maximum: 30
+    TimetableIndex:
+      type: object
+      required: [terms]
+      properties:
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimetableTerm'
+        currentYear:
+          type: [string, 'null']
+        currentTerm:
+          type: [string, 'null']
+        currentWeek:
+          type: [integer, 'null']
+          minimum: 1
+          maximum: 30
+        weekDates:
+          type: [array, 'null']
+          items:
+            type: string
+            format: date
+        compatibilityNote:
+          type: [string, 'null']
+    TimetableMeeting:
+      type: object
+      required: [courseName, date, dayOfWeek, startPeriod, endPeriod]
+      properties:
+        courseName:
+          type: string
+        date:
+          type: string
+          format: date
+        dayOfWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+        startPeriod:
+          type: integer
+          minimum: 1
+          maximum: 14
+        endPeriod:
+          type: integer
+          minimum: 1
+          maximum: 14
+        rawPeriod:
+          type: [string, 'null']
+        teacher:
+          type: [string, 'null']
+        location:
+          type: [string, 'null']
+        weeksLabel:
+          type: [string, 'null']
+        courseCode:
+          type: [string, 'null']
+        classGroup:
+          type: [string, 'null']
+    TimetableWeek:
+      type: object
+      required: [year, term, week, weekDates, meetings, complete, fetchedAtEpochMillis]
+      properties:
+        year:
+          type: string
+        term:
+          type: string
+        week:
+          type: integer
+          minimum: 1
+          maximum: 30
+        weekDates:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            type: string
+            format: date
+        meetings:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimetableMeeting'
+        complete:
+          type: boolean
+        fetchedAtEpochMillis:
+          type: integer
+          format: int64
+          minimum: 0
+    CardBalance:
+      type: object
+      required: [balanceCents, transitionCents, fetchedAtEpochMillis]
+      properties:
+        balanceCents:
+          type: integer
+          format: int64
+        transitionCents:
+          type: integer
+          format: int64
+        fetchedAtEpochMillis:
+          type: integer
+          format: int64
+          minimum: 0
+    CardTransactionRow:
+      type: object
+      required: [rowKey, title, time, amountFen]
+      properties:
+        rowKey:
+          type: string
+        title:
+          type: string
+        time:
+          type: string
+        amountFen:
+          type: integer
+          format: int64
+    CardTransactions:
+      type: object
+      required: [page, size, total, pages, rows]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+        pages:
+          type: integer
+          format: int64
+          minimum: 0
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CardTransactionRow'
+    CardTransactionSummary:
+      type: object
+      required: [incomeFen, expenseFen]
+      properties:
+        incomeFen:
+          type: integer
+          format: int64
+        expenseFen:
+          type: integer
+          format: int64
+    GradesTerm:
+      type: object
+      required: [year, term]
+      properties:
+        year:
+          type: string
+        term:
+          type: string
+    GradesTerms:
+      type: object
+      required: [terms]
+      properties:
+        terms:
+          type: array
+          items:
+            $ref: '#/components/schemas/GradesTerm'
+        currentTerm:
+          oneOf:
+            - $ref: '#/components/schemas/GradesTerm'
+            - type: 'null'
+    GradesCourse:
+      type: object
+      required: [courseName]
+      properties:
+        courseName:
+          type: string
+        score:
+          type: [string, 'null']
+        credits:
+          type: [string, 'null']
+        courseType:
+          type: [string, 'null']
+        examType:
+          type: [string, 'null']
+    GradesCourses:
+      type: object
+      required: [year, term, courses, complete, fetchedAtEpochMillis]
+      properties:
+        year:
+          type: string
+        term:
+          type: string
+        courses:
+          type: array
+          items:
+            $ref: '#/components/schemas/GradesCourse'
+        complete:
+          type: boolean
+        fetchedAtEpochMillis:
+          type: integer
+          format: int64
+          minimum: 0
     ErrorResponse:
       type: object
       required: [code, requestId]
       properties:
         code:
           type: string
-          enum: [VALIDATION_FAILED, CUSTODY_ACCEPTANCE_REQUIRED, SIGN_IN_FAILED, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VERIFICATION_BUSY, INTERACTIVE_CHALLENGE, CREDENTIAL_UPDATE_REQUIRED, KEY_VERSION_CONFLICT, RATE_LIMITED, REVISION_CHANGED, UPSTREAM_UNAVAILABLE, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
+          enum: [VALIDATION_FAILED, CUSTODY_ACCEPTANCE_REQUIRED, SIGN_IN_FAILED, TOKEN_INVALID, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VERIFICATION_BUSY, INTERACTIVE_CHALLENGE, CREDENTIAL_UPDATE_REQUIRED, KEY_VERSION_CONFLICT, RATE_LIMITED, REVISION_CHANGED, MODULE_DISABLED, CIRCUIT_OPEN, UPSTREAM_UNAVAILABLE, UPSTREAM_TIMEOUT, DEPENDENCY_UNAVAILABLE, IDENTITY_UNSUPPORTED, UPSTREAM_PROTOCOL_ERROR, INTERNAL_ERROR]
         requestId:
           type: string
           format: uuid
@@ -581,7 +1186,7 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthenticated:
-      description: Missing or invalid bearer token
+      description: Missing Pocket authentication or an invalid, revoked, expired, or disabled Pocket token.
       content:
         application/json:
           schema:
@@ -599,7 +1204,31 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     RevisionChanged:
-      description: If-Match gate revision no longer matches.
+      description: If-Match account or module revision no longer matches.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Interactive challenge, required credential update, or verification contention.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    IdentityUnsupported:
+      description: The verified login name does not have a supported numeric student number.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UpstreamProtocolError:
+      description: The configured adapter returned an invalid response; upstream content is omitted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UpstreamTimeout:
+      description: The module-specific total upstream timeout elapsed.
       content:
         application/json:
           schema:

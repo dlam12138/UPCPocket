@@ -1,30 +1,22 @@
 package com.upcpocket.app.data.ecard
 
+import android.app.Application
+import com.upcpocket.app.card.CardBackendBalance
+import com.upcpocket.app.card.CardBackendDataSource
+import com.upcpocket.app.card.CardBackendTransactionPage
+import com.upcpocket.app.card.CardBackendTransactionsSummary
+import com.upcpocket.app.card.CardBackendException
+import com.upcpocket.app.card.CardBackendFailureCode
+import com.upcpocket.app.platform.RefreshInvalidatedException
 import java.io.File
-import java.io.IOException
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import com.upcpocket.app.data.card.CardDiagnosticRecorder
-import com.upcpocket.app.platform.diagnostics.DiagnosticDetail
-import com.upcpocket.app.platform.diagnostics.DiagnosticReason
-import com.upcpocket.app.platform.diagnostics.DiagnosticResult
-import com.upcpocket.app.platform.diagnostics.DiagnosticSink
-import com.upcpocket.app.platform.diagnostics.DiagnosticPhase
-import com.upcpocket.app.platform.diagnostics.Diagnostics
-import kotlinx.coroutines.Dispatchers
+import java.time.YearMonth
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
-import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -33,342 +25,97 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [31])
+@Config(sdk = [31], application = Application::class)
 class DirectCardBalanceTest {
     @get:Rule
     val temp = TemporaryFolder()
 
-    private val recorder = CardDiagnosticRecorder()
-
-    @After
-    fun detachDiagnostics() {
-        Diagnostics.install(null)
+    private open class Backend : CardBackendDataSource {
+        var response = CardBackendBalance(12345, 678, 1_700_000_000_000)
+        var failure: Exception? = null
+        open override suspend fun balance(): CardBackendBalance {
+            failure?.let { throw it }
+            return response
+        }
+        open override suspend fun transactions(month: YearMonth?, page: Int, size: Int) =
+            CardBackendTransactionPage(page, size, 0, 0, emptyList())
+        open override suspend fun transactionsSummary(month: YearMonth?) =
+            CardBackendTransactionsSummary(0, 0)
     }
+
+    private fun activeAccount() = FakeAccountIdentity().also { it.bind() }
+    private fun repository(directory: File, account: FakeAccountIdentity, backend: CardBackendDataSource = Backend()) =
+        DirectCardBalanceRepository(DirectCardBalanceStore(directory), account, backend)
 
     @Test
-    fun `HTTP transport accepts school text plain JSON instead of triggering 406`() {
-        val server = java.net.ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"))
-        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
-        val worker = kotlin.concurrent.thread(isDaemon = true) {
-            try {
-                server.accept().use { socket ->
-                    socket.soTimeout = 5000
-                    val reader = socket.getInputStream().bufferedReader()
-                    check(reader.readLine().startsWith("POST /balance "))
-                    val headers = mutableMapOf<String, String>()
-                    while (true) {
-                        val line = reader.readLine() ?: error("incomplete headers")
-                        if (line.isEmpty()) break
-                        headers[line.substringBefore(':').lowercase()] = line.substringAfter(':').trim()
-                    }
-                    val length = headers.getValue("content-length").toInt()
-                    val sentBody = CharArray(length)
-                    var offset = 0
-                    while (offset < length) {
-                        val count = reader.read(sentBody, offset, length - offset)
-                        check(count > 0)
-                        offset += count
-                    }
-                    check(String(sentBody) == DirectCardBalanceProtocol.form(id))
-                    check(headers["cookie"].isNullOrEmpty())
-                    val accepted = headers["accept"] == "*/*"
-                    val bytes = (if (accepted) body() else "<html>406</html>").toByteArray()
-                    val status = if (accepted) "200 OK" else "406 Not Acceptable"
-                    socket.getOutputStream().write(
-                        ("HTTP/1.1 $status\r\nContent-Type: text/plain;charset=UTF-8\r\n" +
-                            "Content-Length: ${bytes.size}\r\nConnection: close\r\n\r\n").toByteArray() + bytes,
-                    )
-                }
-            } catch (e: Throwable) {
-                failure.set(e)
-            }
-        }
-        try {
-            val response = requestDirectCardBalance(
-                DirectCardBalanceProtocol.form(id),
-                "http://127.0.0.1:${server.localPort}/balance",
-            )
-            assertEquals(12345L, DirectCardBalanceProtocol.parse(response, id, 1).balanceCents)
-        } finally {
-            server.close()
-            worker.join(6000)
-        }
-        failure.get()?.let { throw AssertionError("HTTP fixture failed", it) }
-    }
-
-    private val id = "2099000123" // fictitious; never sent to school
-
-    private fun body(balance: String = "12345", transition: String = "678") =
-        """{"retcode":"0","card":[{"sno":"$id","db_balance":"$balance","unsettle_amount":"$transition","name":"discard-fixture"}]}"""
-
-    private fun accountBinding(studentId: String = id): FakeAccountIdentity = FakeAccountIdentity().also {
-        it.bind(studentId = studentId)
-    }
-
-    private fun store(): DirectCardBalanceStore = DirectCardBalanceStore(temp.newFolder())
-
-    @Test
-    fun `form uses supplied contract with matching student identifiers`() {
-        assertEquals("sno=$id&xxbh=synjones&idtype=sno&id=$id", DirectCardBalanceProtocol.form(id))
-        listOf("", "2099000123&token=x", "１２３４５６７８", "12345678901234567").forEach {
-            assertThrows(IllegalArgumentException::class.java) { DirectCardBalanceProtocol.form(it) }
-        }
-        val invalidId = assertThrows(IllegalArgumentException::class.java) { DirectCardBalanceProtocol.form("123") }
-        assertEquals("学号格式无效", invalidId.message)
-    }
-
-    @Test
-    fun `prefixed student id remains complete through balance and cache readback`() = runBlocking {
-        val studentId = "S99999999"
-        val response = """{"retcode":"0","card":[{"sno":"$studentId","db_balance":"12345","unsettle_amount":"678"}]}"""
-        assertEquals(
-            "sno=$studentId&xxbh=synjones&idtype=sno&id=$studentId",
-            DirectCardBalanceProtocol.form(studentId),
-        )
-        assertEquals(studentId, DirectCardBalanceProtocol.parse(response, studentId, 123).studentId)
-        assertThrows(CampusCardException::class.java) {
-            DirectCardBalanceProtocol.parse(response.replace(studentId, "99999999"), studentId, 123)
-        }
-
-        val cache = store()
-        val account = accountBinding(studentId)
-        val repository = DirectCardBalanceRepository(cache, account) { response }
-        val saved = repository.refreshCurrent()
-        assertEquals(studentId, saved.studentId)
-        assertTrue(saved.belongsTo(repository.currentBinding()!!))
-
-        val restored = DirectCardBalanceRepository(cache, accountBinding(studentId)) { error("no network") }.cached()
-        assertEquals(studentId, restored?.studentId)
-    }
-
-    @Test
-    fun `balances remain separate exact cents with negative and zero support`() {
-        val result = DirectCardBalanceProtocol.parse(body(), id, 123)
-        assertEquals("123.45", result.balanceText)
-        assertEquals("6.78", result.transitionText)
-        assertEquals("130.23", result.totalBalanceText)
-        assertEquals("0.30", DirectCardBalanceProtocol.parse(body("10", "20"), id, 123).totalBalanceText)
-        assertEquals("0.99", DirectCardBalanceProtocol.parse(body("100", "-1"), id, 123).totalBalanceText)
-        assertEquals("-0.01", DirectCardBalanceProtocol.parse(body("-1"), id, 123).balanceText)
-        assertEquals("0.00", DirectCardBalanceProtocol.parse(body("0", "0"), id, 123).transitionText)
-    }
-
-    @Test
-    fun `malformed failed multiple cards and wrong account never become zero`() {
-        listOf(
-            "<html>无效token</html>", "{}", "[]", body().replace("\"0\"", "\"1\""),
-            body().replace(id, "2099000124"), body().replace("\"unsettle_amount\":\"678\",", ""),
-            body().replace("\"db_balance\":\"12345\"", "\"db_balance\":null"),
-            """{"retcode":0,"card":[]}""", """{"retcode":0,"card":[{},{}]}""",
-            body("1.5"), body("999999999999999999999999"), body("NaN"),
-        ).forEach {
-            assertThrows(CampusCardException::class.java) {
-                DirectCardBalanceProtocol.parse(it, id, 123)
-            }
-        }
-    }
-
-    @Test
-    fun `numeric fields accepted and server data excluded from exception`() {
-        assertEquals(12L, DirectCardBalanceProtocol.parse(body().replace("\"12345\"", "12"), id, 123).balanceCents)
-        val error = assertThrows(CampusCardException::class.java) {
-            DirectCardBalanceProtocol.parse("private-fixture", id, 1)
-        }
-        assertFalse(error.message.orEmpty().contains(id))
-        assertFalse(error.message.orEmpty().contains("private-fixture"))
-    }
-
-    @Test
-    fun `successful snapshot survives restart with same owner and clear keeps binding`() = runBlocking {
-        val cache = store()
-        val account = accountBinding()
-        val repository = DirectCardBalanceRepository(cache, account) { body() }
-        val value = repository.refreshCurrent()
-        assertEquals(id, value.studentId)
-        assertEquals("acct_test_account_a", value.accountId)
-        assertEquals(value, DirectCardBalanceRepository(cache, accountBinding()) { error("no network") }.cached())
-        assertEquals("123.45", repository.snapshot.first()?.balanceText)
-        repository.clearCache()
-        assertNull(repository.cached())
-        // 清余额缓存不删除账号绑定。
-        assertNotNull(repository.currentBinding())
-        assertEquals(id, repository.currentBinding()?.studentId)
-    }
-
-    @Test
-    fun `network and validation failures preserve same-owner previous snapshot`() = runBlocking {
-        val cache = store()
-        val account = accountBinding()
-        val original = DirectCardBalanceRepository(cache, account) { body() }.refreshCurrent()
-        val broken = DirectCardBalanceRepository(cache, accountBinding()) {
-            throw java.io.IOException("offline fixture")
-        }
-        try {
-            broken.refreshCurrent()
-            fail()
-        } catch (_: java.io.IOException) {
-        }
-        assertEquals(original, broken.cached())
-
-        val mismatch = DirectCardBalanceRepository(cache, accountBinding()) { body().replace(id, "2099000124") }
-        try {
-            mismatch.refreshCurrent()
-            fail()
-        } catch (_: CampusCardException) {
-        }
-        assertEquals(original, mismatch.cached())
-    }
-
-    @Test
-    fun `no configured account makes zero network requests and no cache`() = runBlocking {
-        Diagnostics.install(recorder)
-        var requests = 0
-        val repository = DirectCardBalanceRepository(store(), FakeAccountIdentity()) {
-            requests++
-            body()
-        }
-        try {
-            repository.refreshCurrent()
-            fail("no binding must not query")
-        } catch (_: com.upcpocket.app.platform.RefreshInvalidatedException) {
-        }
-        assertNull(repository.cached())
-        assertNull(repository.cachedBlocking())
-        assertEquals(0, requests)
-        assertEquals(DiagnosticResult.BLOCKED,
-            recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single().result)
-        assertEquals(DiagnosticReason.ACCOUNT,
-            recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single().reason)
-    }
-
-    @Test
-    fun `saved account without valid student id never queries`() = runBlocking {
-        var requests = 0
-        val account = FakeAccountIdentity().also { it.savedWithoutStudentId() }
-        val repository = DirectCardBalanceRepository(store(), account) {
-            requests++
-            body()
-        }
-        try {
-            repository.refreshCurrent()
-            fail("invalid student id must not query")
-        } catch (_: com.upcpocket.app.platform.RefreshInvalidatedException) {
-        }
-        assertEquals(0, requests)
-        assertEquals(CardBindingAvailability.STUDENT_ID_UNAVAILABLE, cardBindingStatus(account).availability)
-    }
-
-    @Test
-    fun `bound account without prior snapshot still queries current student id`() = runBlocking {
-        var requested: String? = null
-        val account = accountBinding()
-        val repository = DirectCardBalanceRepository(store(), account) { form ->
-            requested = form
-            body()
-        }
-        assertNull(repository.cachedBlocking())
-        repository.refreshCurrent()
-        assertEquals(DirectCardBalanceProtocol.form(id), requested)
-    }
-
-    @Test
-    fun `v1 cache is never displayed without a matching binding`() = runBlocking {
+    fun `new format is owned by account reference and stores no student identity`() = runBlocking {
         val directory = temp.newFolder()
-        File(directory, "card-balance-v1.json").writeText(
-            """{"studentId":"$id","balanceCents":12345,"transitionCents":678,"fetchedAt":1234}""",
-        )
-        val repository = DirectCardBalanceRepository(
-            DirectCardBalanceStore(directory),
-            FakeAccountIdentity(),
-        ) { body() }
-        assertNull(repository.cached())
+        val account = activeAccount()
+        val store = DirectCardBalanceStore(directory)
+        val value = repository(directory, account).refreshCurrent()
+        assertEquals(12345L, value.balanceCents)
+        assertEquals(account.accountReference.value, store.loadCurrent(repository(directory, account).currentBinding()!!)?.accountReference)
+        val encoded = File(directory, "card-balance-v3.json").readText()
+        assertTrue(encoded.contains("accountId"))
+        assertFalse(encoded.contains("studentId"))
     }
 
     @Test
-    fun `balance query records success only after its snapshot is stored and published`() = runBlocking {
-        Diagnostics.install(recorder)
-        val repository = DirectCardBalanceRepository(store(), accountBinding()) { body() }
+    fun `legacy student id balance file is ignored and clear removes every sibling`() {
+        val directory = temp.newFolder()
+        val account = activeAccount()
+        val legacy = File(directory, "card-balance-v2.json")
+        legacy.writeText("""{"studentId":"2099999999","balanceCents":12345}""")
+        File(legacy.path + ".bak").writeText("old backup")
+        File(legacy.path + ".new").writeText("old new")
+        val store = DirectCardBalanceStore(directory)
 
-        val value = repository.refreshCurrent()
-
-        assertEquals(value, repository.cached())
-        val events = recorder.forDetail(DiagnosticDetail.CARD_BALANCE_QUERY)
-        assertEquals(listOf(DiagnosticResult.PENDING, DiagnosticResult.OK), events.map { it.result })
-        assertEquals(DiagnosticPhase.PUBLISH, events.last().phase)
-        assertEquals(1, events.map { it.operationId }.distinct().size)
+        assertNull(store.loadCurrent(repository(directory, account).currentBinding()!!))
+        store.clearAll()
+        assertFalse(legacy.exists())
+        assertFalse(File(legacy.path + ".bak").exists())
+        assertFalse(File(legacy.path + ".new").exists())
     }
 
     @Test
-    fun `balance parser and storage failures keep old cache without a false success event`() = runBlocking {
-        Diagnostics.install(recorder)
-        val cache = store()
-        val account = accountBinding()
-        val original = DirectCardBalanceRepository(cache, account) { body() }.refreshCurrent()
-        recorder.events.clear()
+    fun `module disabled preserves cached amount and original fetch time`() = runBlocking {
+        val directory = temp.newFolder()
+        val account = activeAccount()
+        val backend = Backend()
+        val repo = repository(directory, account, backend)
+        val first = repo.refreshCurrent()
+        backend.failure = CardBackendException(CardBackendFailureCode.MODULE_DISABLED)
 
-        val invalid = DirectCardBalanceRepository(cache, accountBinding()) { "not-json" }
-        assertTrue(runCatching { invalid.refreshCurrent() }.exceptionOrNull() is CampusCardException)
-        assertEquals(DiagnosticReason.SCHEMA, recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single().reason)
-        assertEquals(listOf(DiagnosticResult.PENDING, DiagnosticResult.FAIL),
-            recorder.forDetail(DiagnosticDetail.CARD_BALANCE_QUERY).map { it.result })
-        assertEquals(original, invalid.cached())
-
-        recorder.events.clear()
-        val storageFailure = DirectCardBalanceRepository(
-            cache,
-            accountBinding(),
-            beforeStoreSave = { throw IOException("storage canary") },
-            request = { body() },
-        )
-        assertTrue(runCatching { storageFailure.refreshCurrent() }.exceptionOrNull() is CampusCardException)
-        assertEquals(DiagnosticReason.STORAGE, recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single().reason)
-        assertEquals(listOf(DiagnosticResult.PENDING, DiagnosticResult.FAIL),
-            recorder.forDetail(DiagnosticDetail.CARD_BALANCE_QUERY).map { it.result })
-        assertEquals(original, storageFailure.cached())
-    }
-
-    @Test
-    fun `balance cancellation and account rotation close with real terminal states`() = runBlocking {
-        Diagnostics.install(recorder)
-        val cache = store()
-        val account = accountBinding()
-        val original = DirectCardBalanceRepository(cache, account) { body() }.refreshCurrent()
-        recorder.events.clear()
-
-        val requestStarted = CountDownLatch(1)
-        val cancelled = DirectCardBalanceRepository(cache, accountBinding()) {
-            requestStarted.countDown()
-            awaitCancellation()
+        try {
+            repo.refreshCurrent()
+            org.junit.Assert.fail("module disabled should fail the request")
+        } catch (_: Exception) {
         }
-        val job = async(Dispatchers.IO) { cancelled.refreshCurrent() }
-        assertTrue(requestStarted.await(2, TimeUnit.SECONDS))
-        job.cancelAndJoin()
-        assertEquals(DiagnosticResult.CANCELLED,
-            recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single().result)
-        assertEquals(original, cancelled.cached())
 
-        recorder.events.clear()
-        val rotatingAccount = accountBinding()
-        val rotated = DirectCardBalanceRepository(cache, rotatingAccount) {
-            rotatingAccount.bind(generation = 2)
-            body()
-        }
-        assertTrue(runCatching { rotated.refreshCurrent() }.exceptionOrNull() is
-            com.upcpocket.app.platform.RefreshInvalidatedException)
-        val terminal = recorder.terminals(DiagnosticDetail.CARD_BALANCE_QUERY).single()
-        assertEquals(DiagnosticResult.BLOCKED, terminal.result)
-        assertEquals(DiagnosticReason.STALE, terminal.reason)
+        val cached = repo.cached()
+        assertEquals(first.balanceCents, cached?.balanceCents)
+        assertEquals(first.fetchedAt, cached?.fetchedAt)
     }
 
     @Test
-    fun `balance diagnostics sink failure never changes a saved query`() = runBlocking {
-        Diagnostics.install(object : DiagnosticSink {
-            override fun record(event: com.upcpocket.app.platform.diagnostics.DiagnosticEvent) {
-                error("diagnostic sink failure")
+    fun `late balance response cannot write after account changes`() = runBlocking {
+        val directory = temp.newFolder()
+        val account = activeAccount()
+        val started = CompletableDeferred<Unit>()
+        val response = CompletableDeferred<CardBackendBalance>()
+        val backend = object : Backend() {
+            override suspend fun balance(): CardBackendBalance {
+                started.complete(Unit)
+                return response.await()
             }
-        })
-        val repository = DirectCardBalanceRepository(store(), accountBinding()) { body() }
+        }
+        val repo = repository(directory, account, backend)
+        val request = async { runCatching { repo.refreshCurrent() } }
+        started.await()
+        account.bind(accountId = "acct_test_account_b", generation = 2)
+        response.complete(CardBackendBalance(999, 0, 1_700_000_000_001))
 
-        assertEquals("123.45", repository.refreshCurrent().balanceText)
+        assertTrue(request.await().exceptionOrNull() is RefreshInvalidatedException)
+        assertNull(repo.cached())
     }
 }

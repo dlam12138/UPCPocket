@@ -95,7 +95,7 @@ private fun PreviewContent(homeToday: Boolean, promo: Boolean) {
     val state = TimetableUiState(
         accountStatusLabel = "视觉预览",
         maskedAccount = null,
-        accountSavedUnverified = true,
+        accountManagedActive = true,
         connection = TimetableConnection.CONNECTED,
         terms = listOf(term),
         selectedYear = term.year,
@@ -121,7 +121,7 @@ private fun PreviewContent(homeToday: Boolean, promo: Boolean) {
     }
     val homeState = TimetableTodayUiState(
         accountEpoch = 1,
-        accountSavedUnverified = true,
+        accountManagedActive = true,
         accountBlocked = false,
         today = homeDate,
         todayMeetings = homeMeetings,
@@ -197,7 +197,7 @@ fun PromotionTodaySection() {
         "promotion", "2026-2027|1", meetings.map(::courseColorKey),
     ) }
     TodayPanel(state = TimetableTodayUiState(
-        accountEpoch = 1, accountSavedUnverified = true, accountBlocked = false,
+        accountEpoch = 1, accountManagedActive = true, accountBlocked = false,
         today = today, todayMeetings = meetings, todayCourseColorSlots = colors,
         todayState = TimetableTodayState.READY, todayLoaded = true,
     ), onCourseClick = {}, showDate = false)

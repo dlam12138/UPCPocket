@@ -39,6 +39,7 @@ dependencies {
     implementation(project(":core:account-api"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:platform"))
+    implementation(project(":core:campus-backend-client"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -52,6 +53,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+    testImplementation("com.squareup.okhttp3:mockwebserver:${libs.versions.okhttp.get()}")
     testImplementation(libs.androidx.compose.ui.test.junit4)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.androidx.activity.compose)

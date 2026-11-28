@@ -35,7 +35,7 @@ internal fun GradesScreen(
     val snapshot by service.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val owner = reference?.takeIf {
-        accountState.isCredentialSaved && !accountState.blocksPersonalSessions &&
+        accountState.isManagedActive && !accountState.blocksPersonalSessions &&
             accountState.generation == it.credentialGeneration
     }
 
@@ -48,7 +48,7 @@ internal fun GradesScreen(
             DisplayState(account = GradesAccountState.RESTORING)
         accountState.blocksPersonalSessions ->
             DisplayState(account = GradesAccountState.CLEANING)
-        owner == null && accountState.isCredentialSaved ->
+        owner == null && accountState.isManagedActive ->
             DisplayState(account = GradesAccountState.RESTORING)
         owner == null ->
             DisplayState(account = GradesAccountState.ACCOUNT_REQUIRED)
@@ -79,7 +79,10 @@ private fun GradesUiState.toDisplayState(): DisplayState {
         GradesConnection.INTERACTION_REQUIRED,
         GradesConnection.AUTH_FAILED,
         GradesConnection.NETWORK_UNAVAILABLE,
-        GradesConnection.PROTOCOL_ERROR -> GradesSyncState.Failed(lastFailure.toDisplayFailure())
+        GradesConnection.PROTOCOL_ERROR -> GradesSyncState.Failed(
+            reason = lastFailure.toDisplayFailure(),
+            retryAfterSeconds = retryAfterSeconds,
+        )
     }
     val syncedTerms = termResults.mapTo(mutableSetOf()) { it.term }
     val failedTerms = (lastSyncRetainedTerms + lastSyncFailedTerms).toSet()
@@ -154,8 +157,22 @@ private fun GradesFailure?.toDisplayFailure(): GradesSyncFailure = when (this) {
     GradesFailure.AUTH_INTERACTION -> GradesSyncFailure.INTERACTION
     GradesFailure.AUTH_INVALID,
     GradesFailure.AUTH_EXPIRED,
+    GradesFailure.TOKEN_INVALID,
+    GradesFailure.UNAUTHENTICATED,
+    GradesFailure.DISABLED,
     GradesFailure.ACCESS_DENIED,
     GradesFailure.ACCOUNT_REQUIRED -> GradesSyncFailure.AUTH
+    GradesFailure.SERVICE_NOT_READY -> GradesSyncFailure.SERVICE_NOT_READY
+    GradesFailure.CREDENTIAL_UPDATE_REQUIRED -> GradesSyncFailure.CREDENTIAL_UPDATE_REQUIRED
+    GradesFailure.VERIFICATION_BUSY -> GradesSyncFailure.VERIFICATION_BUSY
+    GradesFailure.MODULE_DISABLED -> GradesSyncFailure.MODULE_DISABLED
+    GradesFailure.CIRCUIT_OPEN -> GradesSyncFailure.CIRCUIT_OPEN
+    GradesFailure.UPSTREAM_UNAVAILABLE,
+    GradesFailure.DEPENDENCY_UNAVAILABLE -> GradesSyncFailure.UPSTREAM_UNAVAILABLE
+    GradesFailure.UPSTREAM_TIMEOUT -> GradesSyncFailure.UPSTREAM_TIMEOUT
+    GradesFailure.VALIDATION_FAILED -> GradesSyncFailure.VALIDATION_FAILED
+    GradesFailure.IDENTITY_UNSUPPORTED -> GradesSyncFailure.IDENTITY_UNSUPPORTED
+    GradesFailure.RATE_LIMITED -> GradesSyncFailure.RATE_LIMITED
     GradesFailure.UPSTREAM_ERROR,
     GradesFailure.PARTIAL_FAILURE -> GradesSyncFailure.SERVER
     GradesFailure.PROTOCOL_ERROR -> GradesSyncFailure.UNSUPPORTED

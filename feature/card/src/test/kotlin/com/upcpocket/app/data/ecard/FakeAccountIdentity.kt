@@ -2,18 +2,18 @@ package com.upcpocket.app.data.ecard
 
 import com.upcpocket.app.account.api.AccountGeneration
 import com.upcpocket.app.account.api.SchoolAccountId
+import com.upcpocket.app.account.api.SchoolAccountReference
+import com.upcpocket.app.account.api.SchoolAccountReferenceReader
 import com.upcpocket.app.account.api.SchoolAccountState
 import com.upcpocket.app.account.api.SchoolAccountStatus
-import com.upcpocket.app.account.api.SchoolAccountStudentIdentityReader
-import com.upcpocket.app.account.api.SchoolStudentIdentity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** 测试替身：只模拟受控身份面，不包含密码或任意解密能力。 */
+/** Test-only managed account surface. It never models a login name, password, or student ID. */
 class FakeAccountIdentity(
     initialStatus: SchoolAccountStatus = SchoolAccountStatus.NOT_CONFIGURED,
     initialGeneration: AccountGeneration = AccountGeneration.None,
-) : SchoolAccountStudentIdentityReader {
+) : SchoolAccountReferenceReader {
     private val mutableState = MutableStateFlow(
         SchoolAccountState(
             status = initialStatus,
@@ -21,58 +21,45 @@ class FakeAccountIdentity(
             cleanupRequired = initialStatus == SchoolAccountStatus.LOADING,
         ),
     )
-    private val mutableIdentity = MutableStateFlow<SchoolStudentIdentity?>(null)
+    private val mutableReference = MutableStateFlow<SchoolAccountReference?>(null)
 
     override val state: StateFlow<SchoolAccountState> = mutableState
-    override val studentIdentity: StateFlow<SchoolStudentIdentity?> = mutableIdentity
+    override val accountReference: StateFlow<SchoolAccountReference?> = mutableReference
 
     fun bind(
         accountId: String = "acct_test_account_a",
-        studentId: String = "2099000999",
         generation: Long = 1,
     ) {
-        val id = SchoolAccountId(accountId)
         val gen = AccountGeneration(generation)
-        mutableIdentity.value = SchoolStudentIdentity(id, studentId, gen)
+        mutableReference.value = SchoolAccountReference(SchoolAccountId(accountId), gen)
         mutableState.value = SchoolAccountState(
-            status = SchoolAccountStatus.SAVED_UNVERIFIED,
+            status = SchoolAccountStatus.MANAGED_ACTIVE,
             generation = gen,
-            maskedAccount = "20••••99",
-            maskedStudentId = "20••••99",
-            studentIdAvailable = true,
-            savedAtEpochMillis = 1_700_000_000_000,
+            deviceId = "device_test",
         )
     }
 
-    fun savedWithoutStudentId(generation: Long = 1) {
-        mutableIdentity.value = null
-        mutableState.value = SchoolAccountState(
-            status = SchoolAccountStatus.SAVED_UNVERIFIED,
-            generation = AccountGeneration(generation),
-            maskedAccount = "alias••••",
-            studentIdAvailable = false,
-        )
-    }
-
-    fun cleaning(
-        status: SchoolAccountStatus = SchoolAccountStatus.UPDATING,
-        generation: Long = 2,
-        errorCode: com.upcpocket.app.account.api.SchoolAccountErrorCode? = null,
+    fun setUnavailable(
+        status: SchoolAccountStatus = SchoolAccountStatus.NOT_CONFIGURED,
+        generation: Long = 0,
+        cleanupRequired: Boolean = false,
     ) {
-        mutableIdentity.value = null
+        mutableReference.value = null
         mutableState.value = SchoolAccountState(
             status = status,
             generation = AccountGeneration(generation),
-            cleanupRequired = true,
-            errorCode = errorCode,
+            cleanupRequired = cleanupRequired,
         )
     }
 
-    fun unbind(generation: Long = 2) {
-        mutableIdentity.value = null
-        mutableState.value = SchoolAccountState(
-            status = SchoolAccountStatus.NOT_CONFIGURED,
-            generation = AccountGeneration(generation),
-        )
-    }
+    fun cleaning(generation: Long = 2) = setUnavailable(
+        status = SchoolAccountStatus.UPDATING,
+        generation = generation,
+        cleanupRequired = true,
+    )
+
+    fun unbind(generation: Long = 2) = setUnavailable(
+        status = SchoolAccountStatus.NOT_CONFIGURED,
+        generation = generation,
+    )
 }

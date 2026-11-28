@@ -44,3 +44,32 @@ pocket:
     service: ${POCKET_CAS_SERVICE:}
     connect-timeout-ms: ${POCKET_CAS_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${POCKET_CAS_READ_TIMEOUT_MS:5000}
+  proxy:
+    not-configured-adapters: true
+    single-flight:
+      max-entries: 512
+      max-waiters-per-entry: 32
+      wait-timeout-ms: 15000
+    account-rate-limit:
+      window-ms: 60000
+      max-requests: 60
+      max-tracked-accounts: 100000
+    modules:
+      timetable:
+        timeout-ms: 15000
+        max-concurrency: 4
+        queue-capacity: 8
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 30000
+      card:
+        timeout-ms: 12000
+        max-concurrency: 4
+        queue-capacity: 8
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 30000
+      grades:
+        timeout-ms: 20000
+        max-concurrency: 3
+        queue-capacity: 6
+        circuit-failure-threshold: 3
+        circuit-cooldown-ms: 60000

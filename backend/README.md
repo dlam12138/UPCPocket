@@ -1,6 +1,22 @@
 # UPC Pocket Backend
 
-这是独立部署的 Spring Boot 服务端工程，不属于 Android Gradle 工程，也不会打入 APK。当前阶段提供账号密文存储、AES-GCM 信封加密与 CAS SPI；默认 CAS 适配器不发起网络请求。接入校方 CAS 前，必须先完成校方对服务标识、测试环境、出口白名单和安全流程的确认。
+这是独立部署的 Spring Boot 服务端工程，不属于 Android Gradle 工程，也不会打入 APK。当前阶段提供账号密文存储、AES-GCM 信封加密、CAS SPI，以及课表、校园卡、成绩三个只读业务转发模块。默认 CAS 与三个业务适配器均未配置，不发起网络请求。接入校方 CAS 或业务接口前，必须先完成校方对服务标识、测试环境、出口白名单和安全流程的确认。
+
+## 阶段二 A：只读校园模块
+
+学生端固定 GET 接口为：
+
+- `GET /api/v1/timetable/index`、`GET /api/v1/timetable/week?year=...&term=...&week=...`
+- `GET /api/v1/card/balance`、`GET /api/v1/card/transactions`、`GET /api/v1/card/transactions/summary`
+- `GET /api/v1/grades/terms`、`GET /api/v1/grades/courses?year=...&term=...`
+
+本人身份只取自 Pocket Bearer Token。服务端拒绝未声明的查询参数和 GET 请求体；业务正文只在当前请求内存中经过，不写入数据库、日志或共享缓存，所有 API 响应（包括错误）均带 `Cache-Control: no-store`。余额学号由 CAS 返回的规范化登录名在签发 Pocket Token 时派生，仅接受 8–16 位 ASCII 数字，并只跟随该 Token 留在会话内存中；余额接口核对上游 `sno` 后只返回金额。流水 `rowKey` 会在服务端变成不透明散列值。
+
+三个模块的开关和修订号由 Flyway V2 初始化为关闭。校方管理员使用带 MFA 的 JWT 与 `module.read` / `module.manage` scope 读取或修改 `/internal/admin/v1/modules/{moduleKey}/status`。更新必须携带当前 `If-Match`，服务端以同一数据库事务写入开关、修订号、既有 `DISABLE`/`RESTORE` 审计事件和 `module_switch_detail`。关闭或再次打开会提升修订号，迟到的请求结果会被丢弃。
+
+生产默认适配器是 `NotConfigured`，状态显示 `adapterReady=false`。模块关闭或适配器未就绪时，服务端不会解密账密、验证 CAS 或发起外网请求。适配器就绪后，每个模块仍独立使用超时、在途并发、短时熔断和按账号限流。缓存命中的业务会话可复用；登录缓存未命中时，按账号、凭据代次和模块修订后的服务键合并并发登录。Single-flight 只共享登录完成信号，不共享课表、流水或成绩响应。
+
+H2 MockMvc 验收 Fake 只位于 `src/test/`，不会进入 `bootJar`。Fake 不连接学校系统，也不替代真实 CAS 验收。真实校园联调须由校方授权后另行完成。
 
 ## 本地构建与 H2 验证
 

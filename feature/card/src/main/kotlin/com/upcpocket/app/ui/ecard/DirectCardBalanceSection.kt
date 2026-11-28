@@ -42,8 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.data.ecard.CardBindingAvailability
+import com.upcpocket.app.data.ecard.CampusCardException
 import com.upcpocket.app.data.ecard.DirectCardSnapshot
-import com.upcpocket.app.platform.AccountMask
 import com.upcpocket.app.platform.RefreshInvalidatedException
 import com.upcpocket.app.ui.components.GlassCard
 import com.upcpocket.app.ui.components.IconBadge
@@ -56,9 +56,7 @@ import kotlinx.coroutines.launch
 /**
  * 校园卡余额功能区（主页上的紧凑卡片）。
  *
- * 查询目标只来自当前统一账号的受控学号，不提供独立输入框，也不从旧快照、组件
- * 参数或草稿里取目标。M5 把说明折叠到“数据说明”，但保留脱敏绑定、缓存清除、
- * 查询失败历史值、Keystore/账号归属等安全语义。
+ * 查询通过校方托管服务完成，页面不接收或展示学号。余额缓存按托管账号引用归属。
  */
 @Composable
 fun DirectCardBalanceSection(
@@ -112,7 +110,12 @@ fun DirectCardBalanceSection(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failure.message?.takeIf { it.isNotBlank() } ?: "查询失败，请重试"
+                val detail = (failure as? CampusCardException)?.message ?: "本次读取未完成"
+                error = if (visibleSnapshot != null) {
+                    "$detail，已保留上次余额。"
+                } else {
+                    "$detail，请稍后重试。"
+                }
             } finally {
                 querying = false
                 loading = false
@@ -146,10 +149,7 @@ fun DirectCardBalanceSection(
             Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("总余额", style = MaterialTheme.typography.titleMedium)
-                    BindingStatus(
-                        availability = status.availability,
-                        maskedStudentId = status.binding?.studentId?.let(AccountMask::mask).orEmpty(),
-                    )
+                    BindingStatus(availability = status.availability)
                 }
                 Spacer(Modifier.width(10.dp))
                 IconBadge(
@@ -280,8 +280,7 @@ fun DirectCardBalanceSection(
                     )
                     Text(
                         "总余额包含卡内余额与过渡余额。添加校园卡组件后约每 30 分钟自动更新，系统省电时可能延迟。" +
-                            "余额来自学校校园卡接口；接口使用 HTTP 明文传输，学号和金额可能被同网段看到。" +
-                            "缓存保存在本机应用私有目录，不参与备份，未单独加密。",
+                            "余额来自校方托管服务。缓存按校方账号引用保存在本机应用私有目录，不参与备份，未单独加密。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -294,26 +293,24 @@ fun DirectCardBalanceSection(
 @Composable
 private fun BindingStatus(
     availability: CardBindingAvailability,
-    maskedStudentId: String,
 ) {
     val text = when (availability) {
         CardBindingAvailability.LOADING -> "正在读取账号…"
-        CardBindingAvailability.NO_ACCOUNT -> "先设置学校账号。"
+        CardBindingAvailability.NO_ACCOUNT -> "请先绑定校方托管账号。"
         CardBindingAvailability.NEEDS_RECONFIGURATION ->
             "请重新保存学校账号。"
         CardBindingAvailability.CLEANING ->
             "正在清理旧账号。"
-        CardBindingAvailability.STUDENT_ID_UNAVAILABLE ->
-            "当前账号不是有效学号，无法查询余额。"
+        CardBindingAvailability.BACKEND_NOT_READY -> "校方服务未就绪。"
         CardBindingAvailability.READY ->
-            "已绑定 ${maskedStudentId.ifBlank { "账号" }}"
+            "校方托管账号已绑定"
     }
     Text(
         text = text,
         style = MaterialTheme.typography.bodySmall,
         color = if (
             availability == CardBindingAvailability.NEEDS_RECONFIGURATION ||
-            availability == CardBindingAvailability.STUDENT_ID_UNAVAILABLE
+            availability == CardBindingAvailability.BACKEND_NOT_READY
         ) {
             MaterialTheme.colorScheme.error
         } else {

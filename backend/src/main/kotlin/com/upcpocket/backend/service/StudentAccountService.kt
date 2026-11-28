@@ -28,6 +28,7 @@ import com.upcpocket.backend.session.IssuedPocketSession
 import com.upcpocket.backend.session.PocketSessionIdentity
 import com.upcpocket.backend.session.SessionCapacityException
 import com.upcpocket.backend.session.SessionIssueFence
+import com.upcpocket.backend.session.SessionBusinessFence
 import com.upcpocket.backend.session.SessionRevokedDuringIssuanceException
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -160,7 +161,17 @@ class StudentAccountService(
                         throw ApiException(ApiErrorCode.SIGN_IN_FAILED)
                     }
                     try {
-                        sessions.issue(clearedAccount, device, issueFence ?: throw ApiException(ApiErrorCode.SIGN_IN_FAILED))
+                        val studentId = supportedNumericStudentId(verified.normalizedLoginName)
+                        try {
+                            sessions.issue(
+                                clearedAccount,
+                                device,
+                                issueFence ?: throw ApiException(ApiErrorCode.SIGN_IN_FAILED),
+                                studentId,
+                            )
+                        } finally {
+                            studentId?.fill('\u0000')
+                        }
                     } catch (_: SessionRevokedDuringIssuanceException) {
                         throw ApiException(ApiErrorCode.SIGN_IN_FAILED)
                     }
@@ -267,6 +278,39 @@ class StudentAccountService(
 
     fun devices(accountId: UUID): List<DeviceSessionView> = sessions.devices(accountId)
 
+    fun captureBusinessFence(identity: PocketSessionIdentity): SessionBusinessFence {
+        val account = findBusinessAccount(identity.accountId)
+        if (account == null || account.disabled) throw ApiException(ApiErrorCode.TOKEN_INVALID)
+        if (account.reauthRequired || account.credentialGeneration != identity.credentialGeneration) {
+            throw ApiException(ApiErrorCode.CREDENTIAL_UPDATE_REQUIRED)
+        }
+        if (account.gateRevision != identity.gateRevision) throw ApiException(ApiErrorCode.TOKEN_INVALID)
+        return try {
+            sessions.captureBusinessFence(identity) ?: throw ApiException(ApiErrorCode.TOKEN_INVALID)
+        } catch (error: ApiException) {
+            throw error
+        } catch (_: Exception) {
+            throw ApiException(ApiErrorCode.DEPENDENCY_UNAVAILABLE)
+        }
+    }
+
+    fun assertBusinessFenceCurrent(fence: SessionBusinessFence) {
+        val account = findBusinessAccount(fence.accountId)
+        if (account == null || account.disabled || account.gateRevision != fence.gateRevision) {
+            throw ApiException(ApiErrorCode.TOKEN_INVALID)
+        }
+        if (account.reauthRequired || account.credentialGeneration != fence.credentialGeneration) {
+            throw ApiException(ApiErrorCode.CREDENTIAL_UPDATE_REQUIRED)
+        }
+        if (!sessions.isBusinessFenceCurrent(fence)) throw ApiException(ApiErrorCode.TOKEN_INVALID)
+    }
+
+    private fun findBusinessAccount(accountId: UUID): AccountRecord? = try {
+        accounts.findByAccountId(accountId)
+    } catch (_: Exception) {
+        throw ApiException(ApiErrorCode.DEPENDENCY_UNAVAILABLE)
+    }
+
     fun signOut(identity: PocketSessionIdentity) {
         sessions.revokeCurrent(identity)
     }
@@ -295,6 +339,7 @@ class StudentAccountService(
         deviceId: UUID,
         serviceKey: String,
         requestId: UUID,
+        beforeCredentialUse: () -> Unit = {},
         loginOperation: (CredentialLease) -> BusinessLoginResult,
     ): BusinessSessionValue {
         val captured = accounts.findByAccountId(accountId) ?: throw ApiException(ApiErrorCode.NOT_FOUND)
@@ -324,7 +369,9 @@ class StudentAccountService(
                         it.gateRevision == captured.gateRevision
                 }
                 ?: throw ApiException(ApiErrorCode.VERIFICATION_BUSY)
+            beforeCredentialUse()
             return vault.withCredential(accountWithAttempt, CredentialUsePurpose.AUTO_BUSINESS_LOGIN) { lease ->
+                beforeCredentialUse()
                 val verification = verifyCas(lease.loginName, lease.password)
                 when (verification) {
                     CasVerificationResult.InvalidCredentials -> {
@@ -347,7 +394,14 @@ class StudentAccountService(
                             throw ApiException(ApiErrorCode.SIGN_IN_FAILED)
                         }
                         val result = try {
+                            beforeCredentialUse()
                             loginOperation(lease)
+                        } catch (error: ApiException) {
+                            clearAttempt(captured, attemptId)
+                            throw error
+                        } catch (error: com.upcpocket.backend.contract.CampusAdapterException) {
+                            clearAttempt(captured, attemptId)
+                            throw ApiException(error.errorCode)
                         } catch (_: Exception) {
                             clearAttempt(captured, attemptId)
                             throw ApiException(ApiErrorCode.UPSTREAM_UNAVAILABLE)
@@ -455,7 +509,12 @@ class StudentAccountService(
                 throw ApiException(ApiErrorCode.DEPENDENCY_UNAVAILABLE)
             }
             try {
-                sessions.issue(account, device, issueFence)
+                val studentId = supportedNumericStudentId(verified.normalizedLoginName)
+                try {
+                    sessions.issue(account, device, issueFence, studentId)
+                } finally {
+                    studentId?.fill('\u0000')
+                }
             } catch (_: SessionRevokedDuringIssuanceException) {
                 sessions.discardUnusedIssueFence(issueFence)
                 throw ApiException(ApiErrorCode.SIGN_IN_FAILED)
@@ -473,6 +532,9 @@ class StudentAccountService(
         } catch (_: Exception) {
             CasVerificationResult.UpstreamUnavailable
         }
+
+    private fun supportedNumericStudentId(loginName: CharArray): CharArray? =
+        loginName.takeIf { value -> value.size in 8..16 && value.all { it in '0'..'9' } }?.copyOf()
 
     private fun registerAttempt(
         account: AccountRecord,
@@ -573,9 +635,10 @@ class StudentAccountService(
         } finally {
             recoveryAttempts.remove(account.accountId, attemptId)
             activePendingAttempts.remove(account.accountId, attemptId)
-            // Revoke volatile sessions even if the audit transaction rolls back. A persisted
-            // pending attempt then continues to block automatic login until manual recovery.
-            revocations.revokeAccountAll(account.accountId)
+            // Revoke volatile business sessions even if the audit transaction rolls back so cached
+            // upstream sessions cannot be reused, while keeping the device token recognizable to
+            // return 409 CREDENTIAL_UPDATE_REQUIRED until manual password update revokes all tokens.
+            revocations.revokeBusinessSessions(account.accountId)
         }
     }
 

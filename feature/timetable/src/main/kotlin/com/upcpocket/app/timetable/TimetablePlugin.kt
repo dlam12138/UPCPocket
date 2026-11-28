@@ -16,7 +16,6 @@ import com.upcpocket.app.plugin.ui.PluginUiRegistry
 import com.upcpocket.app.plugin.ui.UiEntryId
 import com.upcpocket.app.plugin.ui.UiIcon
 import com.upcpocket.app.plugin.ui.UiSurface
-import com.upcpocket.app.upcauth.TimetableAuthenticator
 
 object TimetableCapabilities {
     val week = capabilityKey<TimetableService>("timetable.week")
@@ -33,13 +32,13 @@ fun interface TimetableCampusMap {
 /**
  * 只读课表插件。
  *
- * 构造只装配协议、加密会话/缓存与认证适配，不联网、不读取账号、不预取整学期。
- * 认证由 :core:upc-auth 适配完成；插件只拿到业务 Cookie，不接触密码。
+ * 构造只装配后端只读 source 与本地缓存，不联网、不读取账号、不预取整学期。
+ * Pocket 身份凭证由宿主适配持有，feature 只获得课表结果。
  */
 class TimetablePlugin(
     context: Context,
     account: SchoolAccountReferenceReader,
-    authenticator: TimetableAuthenticator,
+    backend: TimetableBackendSource,
     private val resolveCampusMap: () -> TimetableCampusMap? = { null },
 ) : Plugin, PluginUiContributor {
 
@@ -51,8 +50,7 @@ class TimetablePlugin(
 
     val service: TimetableService = TimetableService(
         account = account,
-        authenticator = authenticator,
-        api = TimetableApi(),
+        backend = backend,
         sessionStore = TimetableSessionStore(context.applicationContext),
         cacheStore = TimetableCacheStore(context.applicationContext),
         colorStore = TimetableColorStore(context.applicationContext),

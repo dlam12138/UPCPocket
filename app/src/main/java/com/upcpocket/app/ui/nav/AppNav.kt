@@ -214,8 +214,6 @@ fun AppNav(
         { TimetablePersonalAgendaTodayCard(agenda = personalAgenda) }
     }
     val accountState by AppGraph.account.state.collectAsStateWithLifecycle()
-    val legacyCardStudentId by AppGraph.cardInputRepository.studentId
-        .collectAsStateWithLifecycle(initialValue = "")
     val storedPrefs: UiPrefs? by AppGraph.uiPrefsStore.flow
         .collectAsStateWithLifecycle(initialValue = null)
     val prefs = storedPrefs ?: UiPrefs()
@@ -678,7 +676,6 @@ fun AppNav(
                     SchoolAccountScreen(
                         accounts = AppGraph.account,
                         onBack = { navController.popBackStack() },
-                        legacyStudentIdHint = legacyCardStudentId.takeIf { it.isNotBlank() },
                     )
                 }
                 composable(AppRoutes.APPEARANCE) {

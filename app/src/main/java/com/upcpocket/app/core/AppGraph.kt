@@ -8,6 +8,13 @@ import android.util.Log
 import com.upcpocket.app.BuildConfig
 import com.upcpocket.app.MainActivity
 import com.upcpocket.app.account.SchoolAccountRepository
+import com.upcpocket.app.campusbackend.BackendOriginPolicy
+import com.upcpocket.app.campusbackend.BackendErrorCode
+import com.upcpocket.app.campusbackend.BackendFailure
+import com.upcpocket.app.campusbackend.BackendResult
+import com.upcpocket.app.campusbackend.CampusBackendClient
+import com.upcpocket.app.campusbackend.CampusDeviceKind
+import com.upcpocket.app.data.chaoxing.ChaoxingWebCookies
 import com.upcpocket.app.account.api.AccountDataScope
 import com.upcpocket.app.account.api.AccountInvalidationFailure
 import com.upcpocket.app.account.api.AccountInvalidationRequest
@@ -20,11 +27,18 @@ import com.upcpocket.app.card.CardBalanceService
 import com.upcpocket.app.data.cardrecharge.CardRechargeService
 import com.upcpocket.app.card.CardCapabilities
 import com.upcpocket.app.card.CardPlugin
+import com.upcpocket.app.card.CardBackendBalance
+import com.upcpocket.app.card.CardBackendDataSource
+import com.upcpocket.app.card.CardBackendException
+import com.upcpocket.app.card.CardBackendFailureCode
+import com.upcpocket.app.card.CardBackendTransaction
+import com.upcpocket.app.card.CardBackendTransactionPage
+import com.upcpocket.app.card.CardBackendTransactionsSummary
 import com.upcpocket.app.classroom.ClassroomPlugin
 import com.upcpocket.app.data.classroom.DataStoreFreeClassroomCampusStore
 import com.upcpocket.app.data.prefs.UiPrefsStore
 import com.upcpocket.app.data.ecard.DirectCardBalanceStore
-import com.upcpocket.app.data.repo.CardInputRepository
+import com.upcpocket.app.data.prefs.SchoolSessionStore
 import com.upcpocket.app.data.repo.PowerInputRepository
 import com.upcpocket.app.diagnostics.DiagnosticStore
 import com.upcpocket.app.directory.DirectoryCampus
@@ -36,6 +50,13 @@ import com.upcpocket.app.focus.FocusPlugin
 import com.upcpocket.app.grades.GradesCapabilities
 import com.upcpocket.app.grades.GradesFiles
 import com.upcpocket.app.grades.GradesPlugin
+import com.upcpocket.app.grades.GradesBackendSource
+import com.upcpocket.app.grades.GradesBackendFailure
+import com.upcpocket.app.grades.GradesBackendFailureCode
+import com.upcpocket.app.grades.GradesBackendTerm
+import com.upcpocket.app.grades.GradesBackendTerms
+import com.upcpocket.app.grades.GradesBackendCourse
+import com.upcpocket.app.grades.GradesBackendCourses
 import com.upcpocket.app.data.library.LibraryUser
 import com.upcpocket.app.library.ChaoxingAccountAuthResult
 import com.upcpocket.app.library.ChaoxingAccountAuthenticator
@@ -60,6 +81,13 @@ import com.upcpocket.app.timetable.TimetableCampusMap
 import com.upcpocket.app.timetable.TimetableFiles
 import com.upcpocket.app.timetable.TimetablePlugin
 import com.upcpocket.app.timetable.TimetableService
+import com.upcpocket.app.timetable.TimetableBackendSource
+import com.upcpocket.app.timetable.TimetableBackendFailure
+import com.upcpocket.app.timetable.TimetableBackendFailureCode
+import com.upcpocket.app.timetable.TimetableBackendIndex
+import com.upcpocket.app.timetable.TimetableBackendTerm
+import com.upcpocket.app.timetable.TimetableBackendWeek
+import com.upcpocket.app.timetable.TimetableBackendMeeting
 import com.upcpocket.app.todo.PersonalScheduleStore
 import com.upcpocket.app.todo.TodoCapabilities
 import com.upcpocket.app.todo.TodoLaunchContract
@@ -71,11 +99,9 @@ import com.upcpocket.app.ui.official.OfficialWebCatalog
 import com.upcpocket.app.upcauth.UpcChaoxingAuthFailure
 import com.upcpocket.app.upcauth.UpcChaoxingAuthResult
 import com.upcpocket.app.upcauth.UpcChaoxingAuthenticator
-import com.upcpocket.app.upcauth.UpcGradesAuthenticator
 import com.upcpocket.app.upcauth.UpcLibraryAuthFailure
 import com.upcpocket.app.upcauth.UpcLibraryAuthResult
 import com.upcpocket.app.upcauth.UpcLibraryAuthenticator
-import com.upcpocket.app.upcauth.UpcTimetableAuthenticator
 import com.upcpocket.app.upcauth.UpcShiguangAuthenticator
 import com.upcpocket.app.shiguang.ShiguangPlugin
 import com.upcpocket.app.shiguang.ShiguangCapabilities
@@ -83,22 +109,15 @@ import com.upcpocket.app.upcauth.UpcServicePortalAuthenticator
 import com.upcpocket.app.serviceportal.ServicePortalCapabilities
 import com.upcpocket.app.serviceportal.ServicePortalPlugin
 import com.upcpocket.app.widget.WidgetKind
+import com.upcpocket.app.widget.WidgetAutoRefresh
 import com.upcpocket.app.widget.WidgetStateStore
 import com.upcpocket.app.widget.WidgetUpdates
 import com.upcpocket.app.widget.WidgetWork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import com.upcpocket.app.data.cardhistory.CardHistoryAuthenticator
-import com.upcpocket.app.data.cardhistory.CardHistoryException
-import com.upcpocket.app.data.cardhistory.CardHistoryFailure
-import com.upcpocket.app.data.cardhistory.CardHistoryInteractiveAuthenticator
-import com.upcpocket.app.data.cardhistory.CardHistoryWebNavigation
-import com.upcpocket.app.upcauth.UpcCardAuthFailure
-import com.upcpocket.app.upcauth.UpcCardAuthResult
-import com.upcpocket.app.upcauth.UpcCardAuthenticator
-import com.upcpocket.app.upcauth.UpcCardWebLoginPolicy
-import com.upcpocket.app.upcauth.UpcCardWebNavigation
+import java.time.LocalDate
+import java.time.YearMonth
 
 /**
  * 宿主手动装配容器。
@@ -108,8 +127,8 @@ import com.upcpocket.app.upcauth.UpcCardWebNavigation
  *  - 专注：数据库、偏好、前台计时；
  *  - 空闲教室：公开查询；
  *  - 图书馆座位：学校官方 CAS 登录后的内存会话；
- *  - 校园卡余额：按当前统一账号受控学号直接读取学校余额接口，不需要平台登录；
- *  - 课表：正常 CAS 建立的独立只读业务会话与账号归属周缓存；
+ *  - 校园卡：由校方托管会话经后端读取余额与只读流水；
+ *  - 课表和成绩：由校方托管会话经后端读取，只在本机保留受控账号缓存；
  *  - 唐岛湾宿舍剩余电量：无需登录的只读页面查询。
  *
  * 旧课表编辑/导入/旧学校同步与桌面组件已整体删除；M3 新增的是只读课表插件，
@@ -150,6 +169,18 @@ object AppGraph {
      */
     val diagnostics: DiagnosticStore by lazy { DiagnosticStore(appContext) }
 
+    /** Construction is local only; a blank Release origin disables all campus requests. */
+    val campusBackendOrigin: String?
+        get() = BuildConfig.CAMPUS_BACKEND_ORIGIN.takeIf { it.isNotBlank() }
+
+    val campusBackendClient: CampusBackendClient by lazy {
+        CampusBackendClient.create(
+            origin = campusBackendOrigin,
+            policy = if (BuildConfig.DEBUG) BackendOriginPolicy.Debug
+            else BackendOriginPolicy.Release(approvedHttpsOrigins = emptySet()),
+        )
+    }
+
     fun installDiagnostics() {
         Diagnostics.install(diagnostics)
     }
@@ -164,11 +195,308 @@ object AppGraph {
     val account: SchoolAccountRepository by lazy {
         SchoolAccountRepository(
             context = appContext,
+            backendClient = campusBackendClient,
+            backendOrigin = campusBackendOrigin,
             invalidators = listOf(
                 SchoolAccountInvalidator { request -> invalidateSchoolAccountData(request) },
             ),
+            onSessionClosed = {
+                runCatching { WidgetWork.cancel(appContext, WidgetKind.CARD) }
+                runCatching { WidgetAutoRefresh.cancel(appContext, WidgetKind.CARD) }
+                // Fence account state is already closed when this callback runs. Publish
+                // placeholder RemoteViews synchronously before cache invalidation continues.
+                runCatching {
+                    WidgetUpdates.updateKindNow(
+                        appContext,
+                        WidgetKind.CARD,
+                        scheduleTicker = false,
+                    )
+                }
+                runCatching {
+                    WidgetUpdates.updateKindNow(
+                        appContext,
+                        WidgetKind.TIMETABLE,
+                        scheduleTicker = false,
+                    )
+                }
+                runCatching { WidgetAutoRefresh.reconcile(appContext) }
+            },
+            deviceKindProvider = {
+                if (appContext.resources.configuration.smallestScreenWidthDp >= 600) {
+                    CampusDeviceKind.TABLET
+                } else {
+                    CampusDeviceKind.PHONE
+                }
+            },
         )
     }
+
+    fun hasUsableManagedSession(): Boolean = account.hasUsableManagedSession()
+
+    fun installationIdForWidgetCadence(): String? = account.installationId()
+
+    /** Feature-scoped read sources keep Pocket bearer tokens inside the host adapter. */
+    private val timetableBackendSource: TimetableBackendSource by lazy {
+        object : TimetableBackendSource {
+            override suspend fun index(): TimetableBackendIndex = campusRead(
+                unavailable = { TimetableBackendFailure(TimetableBackendFailureCode.SERVICE_NOT_READY) },
+                stale = { TimetableBackendFailure(TimetableBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toTimetableFailure() },
+                request = campusBackendClient::getTimetableIndex,
+            ).let { response ->
+                try {
+                    TimetableBackendIndex(
+                        terms = response.terms.map {
+                            TimetableBackendTerm(
+                                year = it.year,
+                                term = it.term,
+                                label = it.label,
+                                startDay = LocalDate.parse(it.startDay),
+                                totalWeeks = it.totalWeeks,
+                            )
+                        },
+                        currentYear = response.currentYear,
+                        currentTerm = response.currentTerm,
+                        currentWeek = response.currentWeek,
+                        weekDates = response.weekDates?.map(LocalDate::parse),
+                        compatibilityNote = response.compatibilityNote,
+                    )
+                } catch (_: Exception) {
+                    throw TimetableBackendFailure(TimetableBackendFailureCode.UPSTREAM_PROTOCOL_ERROR)
+                }
+            }
+
+            override suspend fun week(year: String, term: String, week: Int): TimetableBackendWeek =
+                campusRead(
+                    unavailable = { TimetableBackendFailure(TimetableBackendFailureCode.SERVICE_NOT_READY) },
+                    stale = { TimetableBackendFailure(TimetableBackendFailureCode.NETWORK_UNAVAILABLE) },
+                    mapFailure = { it.toTimetableFailure() },
+                    request = { token -> campusBackendClient.getTimetableWeek(token, year, term, week) },
+                ).let { response ->
+                    try {
+                        TimetableBackendWeek(
+                            year = response.year,
+                            term = response.term,
+                            week = response.week,
+                            weekDates = response.weekDates.map(LocalDate::parse),
+                            meetings = response.meetings.map {
+                                TimetableBackendMeeting(
+                                    courseName = it.courseName,
+                                    date = LocalDate.parse(it.date),
+                                    dayOfWeek = it.dayOfWeek,
+                                    startPeriod = it.startPeriod,
+                                    endPeriod = it.endPeriod,
+                                    rawPeriod = it.rawPeriod,
+                                    teacher = it.teacher,
+                                    location = it.location,
+                                    weeksLabel = it.weeksLabel,
+                                    courseCode = it.courseCode,
+                                    classGroup = it.classGroup,
+                                )
+                            },
+                            complete = response.complete,
+                            fetchedAtEpochMillis = response.fetchedAtEpochMillis,
+                        )
+                    } catch (_: Exception) {
+                        throw TimetableBackendFailure(TimetableBackendFailureCode.UPSTREAM_PROTOCOL_ERROR)
+                    }
+                }
+        }
+    }
+
+    private val gradesBackendSource: GradesBackendSource by lazy {
+        object : GradesBackendSource {
+            override suspend fun terms(): GradesBackendTerms = campusRead(
+                unavailable = { GradesBackendFailure(GradesBackendFailureCode.SERVICE_NOT_READY) },
+                stale = { GradesBackendFailure(GradesBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toGradesFailure() },
+                request = campusBackendClient::getGradesTerms,
+            ).let { response ->
+                GradesBackendTerms(
+                    terms = response.terms.map { GradesBackendTerm(it.year, it.term) },
+                    currentTerm = response.currentTerm?.let { GradesBackendTerm(it.year, it.term) },
+                    complete = true,
+                )
+            }
+
+            override suspend fun courses(year: String, term: String): GradesBackendCourses = campusRead(
+                unavailable = { GradesBackendFailure(GradesBackendFailureCode.SERVICE_NOT_READY) },
+                stale = { GradesBackendFailure(GradesBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toGradesFailure() },
+                request = { token -> campusBackendClient.getGradesCourses(token, year, term) },
+            ).let { response ->
+                GradesBackendCourses(
+                    courses = response.courses.map {
+                        GradesBackendCourse(
+                            courseName = it.courseName,
+                            score = it.scoreText,
+                            credits = it.creditsText?.toDoubleOrNull(),
+                            courseType = it.courseType,
+                            examType = it.examType,
+                        )
+                    },
+                    complete = response.complete,
+                    fetchedAtEpochMillis = response.fetchedAtEpochMillis,
+                )
+            }
+        }
+    }
+
+    private val cardBackendSource: CardBackendDataSource by lazy {
+        object : CardBackendDataSource {
+            override suspend fun balance(): CardBackendBalance = campusRead(
+                unavailable = { CardBackendException(CardBackendFailureCode.BACKEND_NOT_READY) },
+                stale = { CardBackendException(CardBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toCardBackendException() },
+                request = campusBackendClient::getCardBalance,
+            ).let {
+                CardBackendBalance(it.balanceCents, it.transitionCents, it.fetchedAtEpochMillis)
+            }
+
+            override suspend fun transactions(
+                month: YearMonth?,
+                page: Int,
+                size: Int,
+            ): CardBackendTransactionPage = campusRead(
+                unavailable = { CardBackendException(CardBackendFailureCode.BACKEND_NOT_READY) },
+                stale = { CardBackendException(CardBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toCardBackendException() },
+                request = { token ->
+                    campusBackendClient.getCardTransactions(token, month?.toString(), page, size)
+                },
+            ).let { response ->
+                if (response.total !in 0..Int.MAX_VALUE.toLong() || response.pages !in 0..Int.MAX_VALUE) {
+                    throw CardBackendException(CardBackendFailureCode.UPSTREAM_PROTOCOL_ERROR)
+                }
+                CardBackendTransactionPage(
+                    page = response.page,
+                    size = response.size,
+                    total = response.total.toInt(),
+                    pages = response.pages,
+                    rows = response.rows.map(::toCardTransaction),
+                )
+            }
+
+            override suspend fun transactionsSummary(
+                month: YearMonth?,
+            ): CardBackendTransactionsSummary = campusRead(
+                unavailable = { CardBackendException(CardBackendFailureCode.BACKEND_NOT_READY) },
+                stale = { CardBackendException(CardBackendFailureCode.NETWORK_UNAVAILABLE) },
+                mapFailure = { it.toCardBackendException() },
+                request = { token ->
+                    campusBackendClient.getCardTransactionsSummary(token, month?.toString())
+                },
+            ).let { CardBackendTransactionsSummary(it.incomeFen, it.expenseFen) }
+        }
+    }
+
+    private fun toCardTransaction(value: com.upcpocket.app.campusbackend.CampusCardTransactionResponse) =
+        CardBackendTransaction(value.rowKey, value.title, value.time, value.amountFen)
+
+    private suspend fun <T> campusRead(
+        unavailable: () -> Throwable,
+        stale: () -> Throwable,
+        mapFailure: (BackendFailure) -> Throwable,
+        request: suspend (String) -> BackendResult<T>,
+    ): T {
+        val lease = account.captureSessionLease() ?: throw unavailable()
+        return when (val result = request(lease.accessToken)) {
+            is BackendResult.Success -> {
+                if (!account.isSessionLeaseCurrent(lease)) throw stale()
+                result.value
+            }
+            BackendResult.NoContent -> throw mapFailure(
+                BackendFailure(code = BackendErrorCode.UPSTREAM_PROTOCOL_ERROR),
+            )
+            is BackendResult.Failure -> {
+                if (result.error.code in setOf(
+                        BackendErrorCode.TOKEN_INVALID,
+                        BackendErrorCode.UNAUTHENTICATED,
+                        BackendErrorCode.DISABLED,
+                    )
+                ) {
+                    account.invalidateSessionIfCurrent(lease)
+                }
+                throw mapFailure(result.error)
+            }
+        }
+    }
+
+    private fun BackendFailure.toCardBackendException() = CardBackendException(
+        code = when (code) {
+            BackendErrorCode.NOT_CONFIGURED, BackendErrorCode.INVALID_ORIGIN -> CardBackendFailureCode.BACKEND_NOT_READY
+            BackendErrorCode.TOKEN_INVALID -> CardBackendFailureCode.TOKEN_INVALID
+            BackendErrorCode.UNAUTHENTICATED -> CardBackendFailureCode.UNAUTHENTICATED
+            BackendErrorCode.DISABLED -> CardBackendFailureCode.DISABLED
+            BackendErrorCode.SIGN_IN_FAILED -> CardBackendFailureCode.SIGN_IN_FAILED
+            BackendErrorCode.INTERACTIVE_CHALLENGE -> CardBackendFailureCode.INTERACTIVE_CHALLENGE
+            BackendErrorCode.CREDENTIAL_UPDATE_REQUIRED -> CardBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED
+            BackendErrorCode.VERIFICATION_BUSY -> CardBackendFailureCode.VERIFICATION_BUSY
+            BackendErrorCode.MODULE_DISABLED -> CardBackendFailureCode.MODULE_DISABLED
+            BackendErrorCode.CIRCUIT_OPEN -> CardBackendFailureCode.CIRCUIT_OPEN
+            BackendErrorCode.UPSTREAM_UNAVAILABLE -> CardBackendFailureCode.UPSTREAM_UNAVAILABLE
+            BackendErrorCode.DEPENDENCY_UNAVAILABLE -> CardBackendFailureCode.DEPENDENCY_UNAVAILABLE
+            BackendErrorCode.UPSTREAM_TIMEOUT, BackendErrorCode.NETWORK_TIMEOUT -> CardBackendFailureCode.UPSTREAM_TIMEOUT
+            BackendErrorCode.VALIDATION_FAILED -> CardBackendFailureCode.VALIDATION_FAILED
+            BackendErrorCode.IDENTITY_UNSUPPORTED -> CardBackendFailureCode.IDENTITY_UNSUPPORTED
+            BackendErrorCode.UPSTREAM_PROTOCOL_ERROR -> CardBackendFailureCode.UPSTREAM_PROTOCOL_ERROR
+            BackendErrorCode.RATE_LIMITED -> CardBackendFailureCode.RATE_LIMITED
+            BackendErrorCode.NETWORK_UNAVAILABLE -> CardBackendFailureCode.NETWORK_UNAVAILABLE
+            BackendErrorCode.TLS_ERROR, BackendErrorCode.REDIRECT_REJECTED -> CardBackendFailureCode.TLS_ERROR
+            else -> CardBackendFailureCode.UNKNOWN
+        },
+        retryAfterMillis = retryAfterMillis,
+    )
+
+    private fun BackendFailure.toTimetableFailure() = TimetableBackendFailure(
+        code = when (code) {
+            BackendErrorCode.NOT_CONFIGURED, BackendErrorCode.INVALID_ORIGIN -> TimetableBackendFailureCode.SERVICE_NOT_READY
+            BackendErrorCode.TOKEN_INVALID -> TimetableBackendFailureCode.TOKEN_INVALID
+            BackendErrorCode.UNAUTHENTICATED -> TimetableBackendFailureCode.UNAUTHENTICATED
+            BackendErrorCode.DISABLED -> TimetableBackendFailureCode.DISABLED
+            BackendErrorCode.INTERACTIVE_CHALLENGE -> TimetableBackendFailureCode.INTERACTIVE_CHALLENGE
+            BackendErrorCode.CREDENTIAL_UPDATE_REQUIRED -> TimetableBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED
+            BackendErrorCode.VERIFICATION_BUSY -> TimetableBackendFailureCode.VERIFICATION_BUSY
+            BackendErrorCode.MODULE_DISABLED -> TimetableBackendFailureCode.MODULE_DISABLED
+            BackendErrorCode.CIRCUIT_OPEN -> TimetableBackendFailureCode.CIRCUIT_OPEN
+            BackendErrorCode.UPSTREAM_UNAVAILABLE -> TimetableBackendFailureCode.UPSTREAM_UNAVAILABLE
+            BackendErrorCode.UPSTREAM_TIMEOUT, BackendErrorCode.NETWORK_TIMEOUT -> TimetableBackendFailureCode.UPSTREAM_TIMEOUT
+            BackendErrorCode.DEPENDENCY_UNAVAILABLE -> TimetableBackendFailureCode.DEPENDENCY_UNAVAILABLE
+            BackendErrorCode.VALIDATION_FAILED -> TimetableBackendFailureCode.VALIDATION_FAILED
+            BackendErrorCode.IDENTITY_UNSUPPORTED -> TimetableBackendFailureCode.IDENTITY_UNSUPPORTED
+            BackendErrorCode.UPSTREAM_PROTOCOL_ERROR -> TimetableBackendFailureCode.UPSTREAM_PROTOCOL_ERROR
+            BackendErrorCode.RATE_LIMITED -> TimetableBackendFailureCode.RATE_LIMITED
+            BackendErrorCode.NETWORK_UNAVAILABLE, BackendErrorCode.TLS_ERROR, BackendErrorCode.REDIRECT_REJECTED ->
+                TimetableBackendFailureCode.NETWORK_UNAVAILABLE
+            else -> TimetableBackendFailureCode.UPSTREAM_UNAVAILABLE
+        },
+        retryAfterSeconds = retryAfterMillis?.let { (it + 999L) / 1_000L },
+    )
+
+    private fun BackendFailure.toGradesFailure() = GradesBackendFailure(
+        code = when (code) {
+            BackendErrorCode.NOT_CONFIGURED, BackendErrorCode.INVALID_ORIGIN -> GradesBackendFailureCode.SERVICE_NOT_READY
+            BackendErrorCode.TOKEN_INVALID -> GradesBackendFailureCode.TOKEN_INVALID
+            BackendErrorCode.UNAUTHENTICATED -> GradesBackendFailureCode.UNAUTHENTICATED
+            BackendErrorCode.DISABLED -> GradesBackendFailureCode.DISABLED
+            BackendErrorCode.INTERACTIVE_CHALLENGE -> GradesBackendFailureCode.INTERACTIVE_CHALLENGE
+            BackendErrorCode.CREDENTIAL_UPDATE_REQUIRED -> GradesBackendFailureCode.CREDENTIAL_UPDATE_REQUIRED
+            BackendErrorCode.VERIFICATION_BUSY -> GradesBackendFailureCode.VERIFICATION_BUSY
+            BackendErrorCode.MODULE_DISABLED -> GradesBackendFailureCode.MODULE_DISABLED
+            BackendErrorCode.CIRCUIT_OPEN -> GradesBackendFailureCode.CIRCUIT_OPEN
+            BackendErrorCode.UPSTREAM_UNAVAILABLE -> GradesBackendFailureCode.UPSTREAM_UNAVAILABLE
+            BackendErrorCode.UPSTREAM_TIMEOUT, BackendErrorCode.NETWORK_TIMEOUT -> GradesBackendFailureCode.UPSTREAM_TIMEOUT
+            BackendErrorCode.DEPENDENCY_UNAVAILABLE -> GradesBackendFailureCode.DEPENDENCY_UNAVAILABLE
+            BackendErrorCode.VALIDATION_FAILED -> GradesBackendFailureCode.VALIDATION_FAILED
+            BackendErrorCode.IDENTITY_UNSUPPORTED -> GradesBackendFailureCode.IDENTITY_UNSUPPORTED
+            BackendErrorCode.UPSTREAM_PROTOCOL_ERROR -> GradesBackendFailureCode.UPSTREAM_PROTOCOL_ERROR
+            BackendErrorCode.RATE_LIMITED -> GradesBackendFailureCode.RATE_LIMITED
+            BackendErrorCode.NETWORK_UNAVAILABLE, BackendErrorCode.TLS_ERROR, BackendErrorCode.REDIRECT_REJECTED ->
+                GradesBackendFailureCode.NETWORK_UNAVAILABLE
+            else -> GradesBackendFailureCode.UPSTREAM_UNAVAILABLE
+        },
+        retryAfterSeconds = retryAfterMillis?.let { (it + 999L) / 1_000L },
+    )
 
     private suspend fun invalidateSchoolAccountData(
         request: AccountInvalidationRequest,
@@ -199,8 +527,18 @@ object AppGraph {
             // 学校域名清理并等待，避免换号后自动带回旧身份。
             failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
         }
+        if (library == null) {
+            if (!runCatching { SchoolSessionStore(appContext).clearAll(); true }.getOrDefault(false)) {
+                failure = AccountInvalidationFailure.SESSION_CLEAR_FAILED
+            }
+        }
         val chaoxing = activePlugins.capability(LibraryCapabilities.chaoxing)
-        if (chaoxing != null && !chaoxing.signOutForAccountChange()) {
+        val chaoxingCleared = if (chaoxing != null) {
+            chaoxing.signOutForAccountChange()
+        } else {
+            runCatching { ChaoxingWebCookies.clearAllAndAwait() }.getOrDefault(false)
+        }
+        if (!chaoxingCleared) {
             failure = AccountInvalidationFailure.COOKIE_CLEAR_TIMEOUT
         }
         val timetable = activePlugins.capability(TimetableCapabilities.week)
@@ -240,7 +578,7 @@ object AppGraph {
                     failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
                 }
             }
-            if (runCatching { cardInputRepository.clear() }.isFailure) {
+            if (runCatching { uiPrefsStore.clearCardStudentId() }.isFailure) {
                 failure = AccountInvalidationFailure.PERSONAL_DATA_CLEAR_FAILED
             }
             WidgetWork.cancel(appContext, WidgetKind.TIMETABLE)
@@ -252,78 +590,15 @@ object AppGraph {
             ?: AccountInvalidationResult.Success
     }
 
-    private fun UpcCardAuthResult.Failure.toCardHistoryFailure(): CardHistoryFailure = when (reason) {
-        UpcCardAuthFailure.ACCOUNT_CHANGED -> CardHistoryFailure.ACCOUNT_CHANGED
-        UpcCardAuthFailure.ACCOUNT_UNAVAILABLE -> CardHistoryFailure.ACCOUNT_UNAVAILABLE
-        UpcCardAuthFailure.INTERACTION_REQUIRED -> CardHistoryFailure.INTERACTION_REQUIRED
-        UpcCardAuthFailure.INVALID_CREDENTIALS -> CardHistoryFailure.INVALID_CREDENTIALS
-        UpcCardAuthFailure.NETWORK_UNAVAILABLE, UpcCardAuthFailure.TLS_ERROR -> CardHistoryFailure.NETWORK
-        UpcCardAuthFailure.PROTOCOL_ERROR -> CardHistoryFailure.PROTOCOL
-        UpcCardAuthFailure.ACCESS_DENIED -> CardHistoryFailure.ACCESS_DENIED
-        UpcCardAuthFailure.UPSTREAM_ERROR -> CardHistoryFailure.UPSTREAM
-    }
-
-    /**
-     * 校园卡余额插件。
-     *
-     * 插件自己持有协议、快照与 Repository；宿主只提供受控账号身份、旧学号草稿清理
-     * 和组件刷新回调。余额快照使用带账号归属的 v2，并保留对旧 v1 的同号迁移。
-     */
     private val cardPlugin: CardPlugin by lazy {
         CardPlugin(
             context = appContext,
             account = account,
-            inputStore = cardInputRepository,
+            backend = cardBackendSource,
+            onOpenOfficialPortal = {
+                OfficialWebCatalog.open(appContext, OfficialWebCatalog.digitalUpc)
+            },
             onSnapshotChanged = { WidgetUpdates.requestCard(appContext) },
-            historyAuthenticator = CardHistoryAuthenticator { identity ->
-                when (val result = UpcCardAuthenticator(account).authenticate(identity.accountId, identity.credentialGeneration.value)) {
-                    is UpcCardAuthResult.Success -> result.token
-                    is UpcCardAuthResult.Failure -> throw CardHistoryException(result.toCardHistoryFailure())
-                }
-            },
-            interactiveHistoryAuthenticator = object : CardHistoryInteractiveAuthenticator {
-                override val entryUrl: String = UpcCardWebLoginPolicy.entryUrl
-
-                override fun inspectNavigation(
-                    url: String,
-                    method: String,
-                    isMainFrame: Boolean,
-                ): CardHistoryWebNavigation = inspectNavigation(url, method, isMainFrame, null)
-
-                override fun inspectNavigation(
-                    url: String,
-                    method: String,
-                    isMainFrame: Boolean,
-                    operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation?,
-                ): CardHistoryWebNavigation = when (
-                    val decision = UpcCardWebLoginPolicy.inspect(url, method, isMainFrame, operation)
-                ) {
-                    UpcCardWebNavigation.Allow -> CardHistoryWebNavigation.Allow
-                    UpcCardWebNavigation.Block -> CardHistoryWebNavigation.Block
-                    is UpcCardWebNavigation.Upgrade -> CardHistoryWebNavigation.Upgrade(decision.url)
-                    is UpcCardWebNavigation.Complete -> CardHistoryWebNavigation.Complete(decision.url)
-                }
-
-                override suspend fun completeResult(
-                    identity: com.upcpocket.app.account.api.SchoolStudentIdentity,
-                    resultUrl: String,
-                ): String = completeResult(identity, resultUrl, null)
-
-                override suspend fun completeResult(
-                    identity: com.upcpocket.app.account.api.SchoolStudentIdentity,
-                    resultUrl: String,
-                    operation: com.upcpocket.app.platform.diagnostics.DiagnosticOperation?,
-                ): String =
-                    when (val result = UpcCardAuthenticator(account).completeWebLoginResult(
-                        identity.accountId,
-                        identity.credentialGeneration.value,
-                        resultUrl,
-                        operation,
-                    )) {
-                        is UpcCardAuthResult.Success -> result.token
-                        is UpcCardAuthResult.Failure -> throw CardHistoryException(result.toCardHistoryFailure())
-                    }
-            },
         )
     }
 
@@ -479,19 +754,11 @@ object AppGraph {
         )
     }
 
-    /**
-     * 课表认证适配：只有这里读取统一账号凭据；课表插件只拿到业务 Cookie。
-     * 构造不联网，真正认证由用户进入课表或主动刷新触发。
-     */
-    private val timetableAuthenticator: UpcTimetableAuthenticator by lazy {
-        UpcTimetableAuthenticator(account)
-    }
-
     private val timetablePlugin: TimetablePlugin by lazy {
         TimetablePlugin(
             context = appContext,
             account = account,
-            authenticator = timetableAuthenticator,
+            backend = timetableBackendSource,
             resolveCampusMap = {
                 activePlugins.capability(CampusMapCapabilities.PLACE_REQUESTS)?.let { requests ->
                     TimetableCampusMap { location ->
@@ -509,7 +776,7 @@ object AppGraph {
     }
 
     private val gradesPlugin: GradesPlugin by lazy {
-        GradesPlugin(appContext, account, UpcGradesAuthenticator(account)) { context ->
+        GradesPlugin(appContext, account, gradesBackendSource) { context ->
             OfficialWebCatalog.open(context, OfficialWebCatalog.academicScores)
         }
     }
@@ -671,18 +938,9 @@ object AppGraph {
         }
     }
 
-    /**
-     * 电费输入（楼号＋房间号）与旧版校园卡学号草稿的持久层。
-     *
-     * 旧学号草稿只用于账号设置提示/迁移清理，不再是余额查询来源；余额查询只读
-     * 当前统一账号的受控学号。
-     */
+    /** 电费输入由宿主偏好拥有；校园卡旧学号只在升级/解绑清理时直接删除。 */
     val powerInputRepository: PowerInputRepository by lazy {
         PowerInputRepository(uiPrefsStore)
-    }
-
-    val cardInputRepository: CardInputRepository by lazy {
-        CardInputRepository(uiPrefsStore)
     }
 
     /**

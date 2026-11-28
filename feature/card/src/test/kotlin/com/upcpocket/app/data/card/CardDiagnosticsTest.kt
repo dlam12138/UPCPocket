@@ -1,6 +1,5 @@
 package com.upcpocket.app.data.card
 
-import com.upcpocket.app.data.cardrecharge.RechargeFailure
 import com.upcpocket.app.platform.diagnostics.*
 import java.io.IOException
 import org.junit.After
@@ -50,13 +49,13 @@ class CardDiagnosticsTest {
         Diagnostics.install(recorder)
         val canary = "synthetic-account-url-ip-order-canary"
         CardDiagnostics.begin(DiagnosticDetail.CARD_ORDER_CREATE, DiagnosticPhase.RESPONSE)
-            .fail(RechargeFailure(canary), uncertain = true)
+            .fail(IOException(canary), uncertain = true)
         val opaque = object : IOException() {
             override val message: String get() = error("message must not be inspected")
             override val cause: Throwable get() = error("cause must not be inspected")
         }
         CardDiagnostics.begin(DiagnosticDetail.CARD_HISTORY_PAGE, DiagnosticPhase.PARSE).fail(opaque)
-        assertEquals(DiagnosticReason.UNKNOWN, recorder.terminals(DiagnosticDetail.CARD_ORDER_CREATE).single().reason)
+        assertEquals(DiagnosticReason.NETWORK, recorder.terminals(DiagnosticDetail.CARD_ORDER_CREATE).single().reason)
         assertEquals(DiagnosticResult.UNKNOWN, recorder.terminals(DiagnosticDetail.CARD_ORDER_CREATE).single().result)
         assertEquals(DiagnosticReason.SCHEMA, recorder.terminals(DiagnosticDetail.CARD_HISTORY_PAGE).single().reason)
         assertFalse(recorder.events.joinToString().contains(canary))

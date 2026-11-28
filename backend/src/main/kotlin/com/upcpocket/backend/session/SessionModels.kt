@@ -27,6 +27,18 @@ data class BusinessSessionWriteFence internal constructor(
     val businessEpoch: Long,
 )
 
+data class SessionBusinessFence internal constructor(
+    val accountId: UUID,
+    val deviceId: UUID,
+    val credentialGeneration: Long,
+    val gateRevision: Long,
+    val businessEpoch: Long,
+    internal val tokenDigest: String,
+) {
+    override fun toString(): String =
+        "SessionBusinessFence(accountId=$accountId, deviceId=$deviceId, credentialGeneration=$credentialGeneration, gateRevision=$gateRevision, businessEpoch=$businessEpoch)"
+}
+
 data class PocketSessionIdentity(
     val deviceId: UUID,
     val accountId: UUID,
@@ -38,7 +50,10 @@ data class PocketSessionIdentity(
     val expiresAt: Instant,
     /** Digest key used only for revoking the current bearer; never the raw bearer token. */
     internal val tokenDigest: String,
-)
+) {
+    override fun toString(): String =
+        "PocketSessionIdentity(deviceId=$deviceId, accountId=$accountId, credentialGeneration=$credentialGeneration, gateRevision=$gateRevision)"
+}
 
 data class DeviceSessionView(
     val deviceId: UUID,

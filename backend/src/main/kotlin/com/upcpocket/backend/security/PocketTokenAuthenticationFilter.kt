@@ -10,7 +10,6 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
-import org.springframework.security.authentication.BadCredentialsException
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.http.MediaType
@@ -36,17 +35,28 @@ class PocketTokenAuthenticationFilter(
             val header = request.getHeader("Authorization")
             if (header != null) {
                 if (!header.startsWith("Bearer ") || header.length <= BEARER_PREFIX_LENGTH) {
-                    throw BadCredentialsException("Invalid Pocket token")
+                    writeError(request, response, ApiErrorCode.TOKEN_INVALID)
+                    return
                 }
                 val identity = sessions.authenticate(header.substring(BEARER_PREFIX_LENGTH))
-                    ?: throw BadCredentialsException("Invalid Pocket token")
+                    ?: run {
+                        writeError(request, response, ApiErrorCode.TOKEN_INVALID)
+                        return
+                    }
                 val account = accounts.findByAccountId(identity.accountId)
-                if (account == null || account.disabled || account.reauthRequired ||
-                    account.credentialGeneration != identity.credentialGeneration ||
-                    account.gateRevision != identity.gateRevision
-                ) {
+                if (account == null || account.disabled || account.credentialGeneration != identity.credentialGeneration) {
                     sessions.revokeCurrent(identity)
-                    throw BadCredentialsException("Invalid Pocket token")
+                    writeError(request, response, ApiErrorCode.TOKEN_INVALID)
+                    return
+                }
+                if (account.reauthRequired) {
+                    writeError(request, response, ApiErrorCode.CREDENTIAL_UPDATE_REQUIRED)
+                    return
+                }
+                if (account.gateRevision != identity.gateRevision) {
+                    sessions.revokeCurrent(identity)
+                    writeError(request, response, ApiErrorCode.TOKEN_INVALID)
+                    return
                 }
                 val principal = PocketPrincipal(identity)
                 val authentication = UsernamePasswordAuthenticationToken(
@@ -56,15 +66,9 @@ class PocketTokenAuthenticationFilter(
                 )
                 SecurityContextHolder.getContext().authentication = authentication
             }
-        } catch (error: BadCredentialsException) {
-            throw error
         } catch (_: Exception) {
             SecurityContextHolder.clearContext()
-            response.status = ApiErrorCode.DEPENDENCY_UNAVAILABLE.httpStatus
-            response.contentType = MediaType.APPLICATION_JSON_VALUE
-            response.characterEncoding = Charsets.UTF_8.name()
-            val requestId = request.getAttribute(RequestIdFilter.REQUEST_ID_ATTRIBUTE) as? UUID ?: UUID.randomUUID()
-            mapper.writeValue(response.outputStream, ErrorResponse(ApiErrorCode.DEPENDENCY_UNAVAILABLE.name, requestId))
+            writeError(request, response, ApiErrorCode.DEPENDENCY_UNAVAILABLE)
             return
         }
         filterChain.doFilter(request, response)
@@ -72,5 +76,14 @@ class PocketTokenAuthenticationFilter(
 
     companion object {
         private const val BEARER_PREFIX_LENGTH = 7
+    }
+
+    private fun writeError(request: HttpServletRequest, response: HttpServletResponse, code: ApiErrorCode) {
+        SecurityContextHolder.clearContext()
+        response.status = code.httpStatus
+        response.contentType = MediaType.APPLICATION_JSON_VALUE
+        response.characterEncoding = Charsets.UTF_8.name()
+        val requestId = request.getAttribute(RequestIdFilter.REQUEST_ID_ATTRIBUTE) as? UUID ?: UUID.randomUUID()
+        mapper.writeValue(response.outputStream, ErrorResponse(code.name, requestId))
     }
 }

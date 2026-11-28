@@ -64,7 +64,7 @@ class TimetableScreenStateTest {
     ): TimetableUiState = TimetableUiState(
         accountStatusLabel = "20••••01 · 已保存",
         maskedAccount = "20••••01",
-        accountSavedUnverified = true,
+        accountManagedActive = true,
         connection = connection,
         terms = listOf(term),
         selectedYear = term.year,
@@ -85,7 +85,7 @@ class TimetableScreenStateTest {
         message: String? = null,
     ): TimetableTodayUiState = TimetableTodayUiState(
         accountEpoch = 1,
-        accountSavedUnverified = true,
+        accountManagedActive = true,
         accountBlocked = false,
         today = LocalDate.now(ZoneId.of("Asia/Shanghai")),
         todayMeetings = meetings,
@@ -222,8 +222,8 @@ class TimetableScreenStateTest {
                 )
             }
         }
-        rule.onNodeWithText("学校登录").performClick()
-        rule.onNodeWithText("在学校页面完成登录后继续。").assertIsDisplayed()
+        rule.onNodeWithText("打开学校官方页").performClick()
+        rule.onNodeWithText("请在学校官方页面完成验证后返回重试。").assertIsDisplayed()
         assertEquals(true, opened)
     }
 

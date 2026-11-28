@@ -63,7 +63,7 @@ class TimetableWeekLayoutTest {
         )
         val dates = (0..6).map { weekStart.plusDays(it.toLong()) }
         val state = TimetableUiState(
-            accountSavedUnverified = true,
+            accountManagedActive = true,
             connection = TimetableConnection.CONNECTED,
             terms = listOf(term),
             selectedYear = term.year,
@@ -462,7 +462,7 @@ class TimetableWeekLayoutTest {
 
     private fun weekState(weekStart: LocalDate, meetings: List<TimetableMeeting>) =
         TimetableUiState(
-            accountSavedUnverified = true,
+            accountManagedActive = true,
             connection = TimetableConnection.CONNECTED,
             terms = listOf(
                 TimetableTerm(

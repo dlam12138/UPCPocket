@@ -2,7 +2,6 @@ package com.upcpocket.app.timetable
 
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.net.Uri
 import android.net.http.SslError
 import android.view.ViewGroup
 import android.webkit.CookieManager
@@ -33,7 +32,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,131 +45,28 @@ import com.upcpocket.app.platform.diagnostics.DiagnosticOperation
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
 import com.upcpocket.app.platform.diagnostics.DiagnosticResult
 import com.upcpocket.app.platform.diagnostics.Diagnostics
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
-private const val TIMETABLE_APP_HOST = "app.upc.edu.cn"
-
-/**
- * 学校正常网页登录回退。
- *
- * WebView 只打开官方 CAS 课表入口；不注入 JS 接口、不读取表单值、不导出密码。
- * 页面完成时仅读取 `app.upc.edu.cn` 的 Cookie 文本，由业务层再向 get-index 验证
- * 并绑定打开时的账号/代次；验证失败不保存。
- */
-internal data class CookieHeaderValue(val name: String, val value: String)
-
-internal fun parseCookieHeaderValues(header: String?): List<CookieHeaderValue> =
-    header.orEmpty()
-        .split(';')
-        .map(String::trim)
-        .filter { it.isNotEmpty() }
-        .mapNotNull { part ->
-            val index = part.indexOf('=')
-            val name = if (index > 0) part.substring(0, index).trim() else ""
-            if (name.isEmpty()) {
-                null
-            } else {
-                CookieHeaderValue(
-                    name = name,
-                    value = part.substring(index + 1).trim(),
-                )
-            }
-        }
-
-/**
- * CookieManager 只返回“适用于该 URL”的 Cookie，且不暴露 path。按业务路径、
- * 页面路径、根路径的顺序读取，同名时优先选择“只在更具体路径出现”的值；
- * 若同名只有根路径值，则保留根路径值。结果仍交给 Service 按账号/代次验证。
- */
-internal fun mergeCookieHeadersByTarget(headers: List<String?>): String? {
-    if (headers.all { it.isNullOrBlank() }) return null
-    val rootValues = parseCookieHeaderValues(headers.lastOrNull())
-        .groupBy({ it.name }, { it.value })
-    val merged = LinkedHashMap<String, String>()
-    headers.forEachIndexed { index, header ->
-        val pairs = parseCookieHeaderValues(header)
-        pairs.forEach pairLoop@{ pair ->
-            if (merged.containsKey(pair.name)) return@pairLoop
-            val rootForName = rootValues[pair.name].orEmpty()
-            val specific = if (index < headers.lastIndex) {
-                pairs.asSequence()
-                    .filter { it.name == pair.name && it.value !in rootForName }
-                    .map { it.value }
-                    .firstOrNull()
-            } else {
-                null
-            }
-            merged[pair.name] = specific ?: pair.value
-        }
-    }
-    return merged.entries
-        .joinToString("; ") { "${it.key}=${it.value}" }
-        .ifBlank { null }
-}
+/** The official page is only a verification handoff; its cookies are never read by this feature. */
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun TimetableLoginDialog(
     url: String,
     hint: String?,
-    onCookies: (String, DiagnosticOperation, (Boolean) -> Unit) -> Unit,
     onClose: () -> Unit,
 ) {
-    val currentOnCookies by rememberUpdatedState(onCookies)
     val cookieManager = remember { CookieManager.getInstance() }
-    val attempted = remember { AtomicBoolean(false) }
     var webViewAlive by remember { mutableStateOf(true) }
     var generation by remember { mutableIntStateOf(0) }
     var pageLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    var statusHint by remember { mutableStateOf<String?>(null) }
     val diagnosticOperation = remember(generation) { Diagnostics.beginOperation() }
 
-    fun readCookieHeader(): String? = runCatching {
-        cookieManager.flush()
-        mergeCookieHeadersByTarget(
-            listOf(
-                cookieManager.getCookie(
-                    "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-datatmp",
-                ),
-                cookieManager.getCookie(
-                    "https://$TIMETABLE_APP_HOST/timetable/wap/default/get-index",
-                ),
-                cookieManager.getCookie(
-                    "https://$TIMETABLE_APP_HOST/site/weekschedule/index",
-                ),
-                cookieManager.getCookie("https://$TIMETABLE_APP_HOST/"),
-            ),
-        )
-    }.getOrNull()
-
-    fun submitCookies(auto: Boolean) {
-        val header = readCookieHeader()
-        if (header.isNullOrBlank()) {
-            if (!auto) {
-                statusHint = "还没有检测到登录状态，请完成登录后再试。"
-            }
-            return
-        }
-        if (auto && !attempted.compareAndSet(false, true)) return
-        statusHint = null
-        currentOnCookies(header, diagnosticOperation) { accepted ->
-            // 自动提交失败后允许后续页面完成/用户点“完成”再试；不循环认证。
-            if (!accepted) attempted.set(false)
-        }
-    }
-
-    fun verifyCookies() {
-        submitCookies(auto = false)
-    }
-
     fun reload() {
-        attempted.set(false)
         webViewAlive = true
         pageLoading = true
         error = null
-        statusHint = null
         generation += 1
     }
 
@@ -194,7 +89,7 @@ fun TimetableLoginDialog(
                         modifier = Modifier.padding(start = 16.dp),
                     )
                     Row {
-                        com.upcpocket.app.ui.components.CampusTextButton(onClick = { verifyCookies() }) { Text("完成") }
+                        com.upcpocket.app.ui.components.CampusTextButton(onClick = onClose) { Text("返回设置") }
                         com.upcpocket.app.ui.components.CampusTextButton(onClick = onClose) { Text("关闭") }
                     }
                 }
@@ -204,14 +99,6 @@ fun TimetableLoginDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
-                statusHint?.let { message ->
-                    Text(
-                        message,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-                    )
-                }
                 Box(Modifier.fillMaxWidth().weight(1f)) {
                     if (webViewAlive) {
                         key(generation) {
@@ -259,7 +146,6 @@ fun TimetableLoginDialog(
                                                 super.onPageFinished(view, currentUrl)
                                                 if (pageGeneration != generation) return
                                                 pageLoading = false
-                                                cookieManager.flush()
                                                 val destination = currentUrl?.let(
                                                     TimetableLoginPolicy::destination,
                                                 )
@@ -279,20 +165,6 @@ fun TimetableLoginDialog(
                                                         },
                                                     operation = diagnosticOperation,
                                                 )
-                                                val host = currentUrl?.let {
-                                                    runCatching { Uri.parse(it).host }.getOrNull()
-                                                }
-                                                if (host.equals(TIMETABLE_APP_HOST, ignoreCase = true)) {
-                                                    // 页面脚本可能在 onPageFinished 之后才写入
-                                                    // 业务 Cookie；稍等再读一次，避免过早回报。
-                                                    view.postDelayed({
-                                                        if (pageGeneration == generation &&
-                                                            error == null
-                                                        ) {
-                                                            submitCookies(auto = true)
-                                                        }
-                                                    }, 350L)
-                                                }
                                             }
 
                                             override fun shouldOverrideUrlLoading(

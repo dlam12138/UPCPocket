@@ -1,41 +1,47 @@
 package com.upcpocket.app.account
 
 import java.io.File
-import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [31])
+/** Legacy AtomicFile cleanup removes only the old-password paths and their recovery siblings. */
 class AtomicAccountFileStoreTest {
-
-    @get:Rule
-    val temporaryFolder = TemporaryFolder()
+    @get:Rule val temporary = TemporaryFolder()
 
     @Test
-    fun `atomic store replaces reads and deletes only its own file`() {
-        val directory = File(temporaryFolder.root, "school-account")
-        val store = AtomicAccountFileStore(directory)
-        val file = File(directory, AccountFormat.ACCOUNT_FILE)
+    fun purgerRemovesEveryLegacyPasswordArtifactAndOldAlias() {
+        val directory = temporary.newFolder("school-account")
+        val legacyFiles = LegacySchoolCredentialPurger.legacyNames.flatMap { name ->
+            listOf(name, "$name.bak", "$name.new")
+        }.map { name -> File(directory, name).apply { writeText("synthetic-old-ciphertext") } }
+        val alias = LegacySchoolCredentialPurger.LEGACY_KEY_ALIAS
+        val aliases = FakeAliases(mutableSetOf(alias))
 
-        assertNull(store.read(AccountFormat.ACCOUNT_FILE, 1024))
-        store.write(AccountFormat.ACCOUNT_FILE, byteArrayOf(1, 2, 3))
-        assertArrayEquals(byteArrayOf(1, 2, 3), store.read(AccountFormat.ACCOUNT_FILE, 1024))
-        val backup = File(directory, "${AccountFormat.ACCOUNT_FILE}.bak")
-        val inProgress = File(directory, "${AccountFormat.ACCOUNT_FILE}.new")
-        backup.writeText("synthetic-backup")
-        inProgress.writeText("synthetic-in-progress")
+        assertTrue(LegacySchoolCredentialPurger(directory, aliases).purge())
+        assertFalse(aliases.contains(alias))
+        assertTrue(legacyFiles.none(File::exists))
+    }
 
-        store.delete(AccountFormat.ACCOUNT_FILE)
-        assertNull(store.read(AccountFormat.ACCOUNT_FILE, 1024))
-        assertFalse(file.exists())
-        assertFalse(backup.exists())
-        assertFalse(inProgress.exists())
+    @Test
+    fun aliasDeletionFailureLeavesArtifactsForAVisibleRetry() {
+        val directory = temporary.newFolder("school-account-retry")
+        val old = File(directory, LegacySchoolCredentialPurger.legacyNames.first()).apply {
+            writeText("synthetic-old-ciphertext")
+        }
+        val aliases = object : LegacyAliasStore {
+            override fun contains(alias: String): Boolean = true
+            override fun delete(alias: String) = Unit
+        }
+
+        assertFalse(LegacySchoolCredentialPurger(directory, aliases).purge())
+        assertTrue(old.isFile)
+    }
+
+    private class FakeAliases(private val values: MutableSet<String>) : LegacyAliasStore {
+        override fun contains(alias: String): Boolean = alias in values
+        override fun delete(alias: String) { values.remove(alias) }
     }
 }

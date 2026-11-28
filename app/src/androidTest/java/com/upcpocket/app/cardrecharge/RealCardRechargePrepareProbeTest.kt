@@ -21,11 +21,13 @@ import java.net.URI
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.Assume.assumeTrue
+import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Explicitly authorized, one-use credential fixture. No account save, order, pay, UI or raw logging. */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Native card recharge was removed; this legacy real-school probe is no longer applicable.")
 class RealCardRechargePrepareProbeTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext

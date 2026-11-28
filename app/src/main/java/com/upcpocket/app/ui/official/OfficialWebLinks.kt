@@ -85,6 +85,15 @@ object OfficialWebCatalog {
         group = "学习",
     )
 
+    val digitalUpc = OfficialLink(
+        title = "数字石大",
+        subtitle = "学校门户",
+        url = "https://i.upc.edu.cn/",
+        icon = Icons.Filled.Apps,
+        group = "学习",
+        serviceId = DIGITAL_UPC_SERVICE_ID,
+    )
+
     val learning: List<OfficialLink> = listOf(
         OfficialLink(
             title = "课表",
@@ -121,14 +130,7 @@ object OfficialWebCatalog {
             group = "学习",
             serviceId = ACADEMIC_SYSTEM_SERVICE_ID,
         ),
-        OfficialLink(
-            title = "数字石大",
-            subtitle = "学校门户",
-            url = "https://i.upc.edu.cn/",
-            icon = Icons.Filled.Apps,
-            group = "学习",
-            serviceId = DIGITAL_UPC_SERVICE_ID,
-        ),
+        digitalUpc,
         OfficialLink(
             title = "教务处官网",
             subtitle = "教务通知与办事指南",

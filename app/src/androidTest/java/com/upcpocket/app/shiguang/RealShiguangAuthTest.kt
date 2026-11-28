@@ -19,10 +19,12 @@ import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
+import org.junit.Ignore
 import org.junit.runner.RunWith
 
 /** Explicit opt-in fixture in private files only. Auth includes one activity page and a read-only identity query. */
 @RunWith(AndroidJUnit4::class)
+@Ignore("Legacy local-password CAS acceptance is disabled after local school-password removal.")
 class RealShiguangAuthTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val input = File(context.filesDir, "shiguang-credentials.json")
@@ -41,7 +43,7 @@ class RealShiguangAuthTest {
         activeService = null
         if (createdAccount) {
             runBlocking {
-                val result = runCatching { SchoolAccountRepository(context).delete() }
+                val result = runCatching { SchoolAccountRepository(context).signOut() }
                 assertTrue("ACCOUNT_CLEANUP_FAILED", result.isSuccess && !existingAccount.exists())
             }
             createdAccount = false
@@ -62,7 +64,7 @@ class RealShiguangAuthTest {
             // Set before save, so any partially completed write is cleaned up as well.
             createdAccount = true
             try {
-                assertEquals(SchoolAccountWriteResult.Success, repository.save(account, password))
+                assertEquals(SchoolAccountWriteResult.Success, repository.bind(account, password, acceptCustody = true))
             } finally { password.fill('\u0000') }
             val reference = repository.accountReference.value
             assertTrue("ACCOUNT_REFERENCE_ABSENT", reference != null)

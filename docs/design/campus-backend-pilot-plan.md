@@ -96,8 +96,19 @@ UPC Pocket 项目组　｜　供信息化建设处及相关部门讨论　｜　
 
 ## 五、当前工程进展（2026-11-28）
 
-**阶段一（第 2 周账密托管与会话核心服务）**已在独立子目录 [`backend/`](../../backend/README.md) 完成首版落地（Kotlin 2.2.21 + Spring Boot 3.5.16 + Flyway PostgreSQL 16 迁移，不进入根 Android Gradle 工程，不打入 APK）：
+### 阶段一：账密托管与会话核心服务（已合入 `main`）
+
+在独立子目录 [`backend/`](../../backend/README.md) 完成首版落地（Kotlin 2.2.21 + Spring Boot 3.5.16 + Flyway PostgreSQL 16 迁移，不进入根 Android Gradle 工程，不打入 APK）：
 
 - **已实现**：独立构建与容器部署资产、AES-256-GCM 信封加密与 `CharArray` 清零、HMAC-SHA-256 盲索引与主密钥轮换（`FOR UPDATE` 策略锁互斥）、1 次错密熔断与重启孤儿 pending 恢复、有界内存 Pocket Token / 短期业务会话与 `businessEpoch` 撤权屏障、学生端 `/api/v1` 与校方管理端 `/internal/admin/v1` 双鉴权过滤链、限流、`Cache-Control: no-store`、三字段脱敏日志与 [OpenAPI 契约](../../backend/openapi.yaml)。
-- **本机已验证**：在 Temurin JDK 21 下完成 `test bootJar`（H2 PostgreSQL 兼容模式 + Fake CAS + 测试 JWT，12 类 58 项实跑全通过，2 项 POSIX 权限测试在 Windows 跳过），`bootJar` 已确认排除 H2 与测试辅助类；根 Android `settings.gradle.kts` / `build.gradle.kts` 无变更且 `checkModuleBoundaries` 通过。
-- **未验证与后续**：默认 CAS 适配器仍为 fail-closed 占位实现；真实 PostgreSQL 16 迁移与并发锁、Docker Compose 启动、真实学校 CAS 验收、校方 KMS 接入、Android 端改造及校园业务转发均待校方环境就绪后分阶段推进。
+
+### 阶段二 A：只读业务转发框架 + Android 无本地密码托管接入（独立分支 `feat/campus-backend`）
+
+为保持 `main` 面向公开 2.1.1 发布线整洁，阶段二 A 在独立分支 `feat/campus-backend` 上实现校方托管分发线（本分支手机端不再持久化学校密码）：
+
+- **后端（`backend/`）**：新增 Flyway `V2__module_switches.sql`（`V1__account_vault.sql` 保持原字节不变）、首批只读转发接口（`GET /api/v1/timetable/{index,week}`、`GET /api/v1/card/{balance,transactions,transactions/summary}`、`GET /api/v1/grades/{terms,courses}`）、单飞并发代登合并、按模块独立超时/并发/熔断器、单账号限流、撤权与模块版本号屏障、校方管理端模块急停开关（`GET/PUT /internal/admin/v1/modules/{moduleKey}/status`，含 `ETag`/`If-Match`/`412` 与事务审计）；生产默认模块适配器为 fail-closed `NotConfigured`（`adapterReady = false`），未就绪或停用时零解密、零 CAS、零出网。
+- **Android 端**：新增纯 JVM 模块 `core:campus-backend-client`（`settings.gradle.kts` 共 23 个模块）；彻底关闭 `core:account` 本地学校密码持久化与 `withLoginCredential` 生产读取面；启动时先执行单向离线旧凭据清理（销毁 `upcpocket.school-account.v1`、删除 `noBackupFilesDir/school-account/` 及个人业务缓存/会话/Cookie，保留待办、专注、个人日程、隐藏座位、主题与寝室配置）；使用独立 Keystore 别名 `upcpocket.managed-session.v1` 在 `noBackupFilesDir/managed-session/` 加密保存 Pocket 设备会话，支持受控可重试的 `UNBIND_PENDING` / `SIGN_OUT_PENDING` / `DEVICE_REVOKE_PENDING` 待撤权状态（待撤权与在途撤权期间封闭业务访问并拒绝重新绑定或改密，避免覆盖待确认撤权记录）；完成 `feature:timetable`、`feature:card`（去强制学号，充值改为校方官方渠道引导）、`feature:grades`、`app` 设置页与组件调度（校园卡组件 25–35 分钟稳定随机抖动，WorkData 不存 Bearer）；Release 后端 origin 与白名单默认保持为空（fail-closed）。
+- **本机已验证**：
+  - 后端：`.\backend\gradlew.bat -p backend --no-daemon --no-parallel --max-workers=1 test bootJar` 通过（H2 PostgreSQL 兼容模式 + Fake CAS/业务适配器 + 测试 JWT，13 类 71 项全通过，2 项 Windows 非 POSIX 权限测试跳过；`bootJar` 排除 H2 与测试辅助类），并获独立 `reviewer` 签收通过。
+  - Android：`checkModuleBoundaries` 通过；6 个目标模块单测全通过（`core:campus-backend-client` 10/10、`core:account` 26/26、`feature:timetable` 220/220、`feature:card` 47/47、`feature:grades` 54/54、`app` 227/227 另有 1 项预期跳过 `RealUpdateNetworkTest`）；`:app:assembleDebug` 通过。
+- **未验证与后续**：默认 CAS 与业务适配器均为 fail-closed 占位实现；真实 PostgreSQL 16 迁移与并发锁、Docker Compose 启动、真实学校 CAS 与三模块上游联调、校方 KMS 接入、真机覆盖升级离线清理冒烟、真实 Release origin 与签名包验收，以及图书馆/石光/e站通/写操作（阶段二 B）均待校方环境就绪后推进。

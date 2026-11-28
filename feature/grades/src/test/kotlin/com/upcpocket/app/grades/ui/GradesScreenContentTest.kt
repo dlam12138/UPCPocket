@@ -298,7 +298,7 @@ class GradesScreenContentTest {
             onOpenOfficialPage = { openedOfficialPage++ },
         )
 
-        rule.onNodeWithText("学校登录已失效 · 1 个学期同步失败，已保留已同步记录")
+        rule.onNodeWithText("校方托管会话已失效 · 1 个学期同步失败，已保留已同步记录")
             .assertIsDisplayed()
         rule.onNodeWithText("3/4 个学期已同步 · 7 门课程 · 1 个学期同步失败")
             .assertIsDisplayed()
@@ -328,6 +328,22 @@ class GradesScreenContentTest {
             .assertIsDisplayed()
         rule.onNodeWithTag("grades_official_action").assertIsDisplayed().performClick()
         assertEquals(1, openedOfficialPage)
+    }
+
+    @Test
+    fun rateLimitDisplaysTheBoundedRetryAfterHint() {
+        render(
+            state = readyState(
+                sync = GradesSyncState.Failed(
+                    reason = GradesSyncFailure.RATE_LIMITED,
+                    retryAfterSeconds = 45,
+                ),
+            ),
+        )
+
+        rule.onNodeWithText(
+            "请求过于频繁，请在 45 秒后重试 · 1 个学期同步失败，已保留已同步记录",
+        ).assertIsDisplayed()
     }
 
     @Test
@@ -447,7 +463,7 @@ class GradesScreenContentTest {
             }
         }
 
-        rule.onNodeWithText("保存学校账号后可同步教务成绩。").assertIsDisplayed()
+        rule.onNodeWithText("绑定校方托管账号后可同步教务成绩。").assertIsDisplayed()
         rule.onNodeWithTag("grades_sync_action").assertIsNotEnabled()
         rule.onNodeWithTag("grades_account_action").performClick()
         assertEquals(1, openedAccount)
@@ -458,7 +474,7 @@ class GradesScreenContentTest {
         rule.onNodeWithTag("grades_sync_action").assertIsNotEnabled()
 
         rule.runOnIdle { account.value = GradesAccountState.CLEANING }
-        rule.onNodeWithText("清理完成后可重新设置账号并同步。").assertIsDisplayed()
+        rule.onNodeWithText("清理完成后可重新绑定账号并同步。").assertIsDisplayed()
         rule.onNodeWithTag("grades_account_action").assertDoesNotExist()
         rule.onNodeWithTag("grades_sync_action").assertIsNotEnabled()
 
