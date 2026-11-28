@@ -1,9 +1,14 @@
 package com.upcpocket.app.widget
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.Context
-import android.content.res.Configuration
+import android.os.Build
+import android.os.Bundle
+import android.os.Parcelable
 import android.util.Log
+import android.util.SizeF
+import android.widget.RemoteViews
 import com.upcpocket.app.card.CardWidgetRead
 import com.upcpocket.app.card.CardWidgetRevision
 import com.upcpocket.app.card.CardWidgetViewState
@@ -11,6 +16,7 @@ import com.upcpocket.app.core.AppGraph
 import com.upcpocket.app.data.ecard.CardBindingAvailability
 import com.upcpocket.app.data.ecard.CardBindingStatus
 import com.upcpocket.app.data.power.PowerSnapshot
+import com.upcpocket.app.designsystem.WidgetAppearance
 import com.upcpocket.app.platform.diagnostics.DiagnosticAction
 import com.upcpocket.app.platform.diagnostics.DiagnosticModule
 import com.upcpocket.app.platform.diagnostics.DiagnosticReason
@@ -446,30 +452,79 @@ object WidgetUpdates {
     ) {
         val manager = AppWidgetManager.getInstance(context)
         val fontScale = context.resources.configuration.fontScale
-        val orientation = context.resources.configuration.orientation
         instances.forEach { (id, variant) ->
-            val size = todayTomorrowWidgetSize(manager, id, orientation)
-            val layout = TimetableTodayTomorrowWidgetLayout.forSize(
-                widthDp = size.widthDp,
-                heightDp = size.heightDp,
-                fontScale = fontScale,
-            )
-            Log.d("UPCWidgetSize", "todayTomorrow layout=$layout size=$size")
-            manager.updateAppWidget(
+            val openIntent = WidgetIntents.openApp(
+                context,
+                WidgetLaunchTarget.TIMETABLE,
                 id,
-                TimetableTodayTomorrowWidgetRenderer.render(
-                    context = context,
-                    snapshot = snapshot,
-                    layout = layout,
-                    openIntent = WidgetIntents.openApp(
-                        context,
-                        WidgetLaunchTarget.TIMETABLE,
-                        id,
-                    ),
-                    appearance = appearanceFor(variant),
-                ),
             )
+            val appearance = appearanceFor(variant)
+            val options = manager.getAppWidgetOptions(id)
+            val sizes = todayTomorrowWidgetSizeCandidates(
+                reportedSizes = readAppWidgetSizes(options),
+                minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0),
+                maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0),
+                minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0),
+                maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
+            )
+            val remoteViews = if (sizes.size >= 2) {
+                val responsiveViews = linkedMapOf<SizeF, RemoteViews>()
+                sizes.forEach { size ->
+                    responsiveViews[size] = renderTodayTomorrowWidget(
+                        context = context,
+                        widgetId = id,
+                        snapshot = snapshot,
+                        size = size,
+                        fontScale = fontScale,
+                        openIntent = openIntent,
+                        appearance = appearance,
+                    )
+                }
+                RemoteViews(responsiveViews)
+            } else {
+                renderTodayTomorrowWidget(
+                    context = context,
+                    widgetId = id,
+                    snapshot = snapshot,
+                    size = sizes.singleOrNull(),
+                    fontScale = fontScale,
+                    openIntent = openIntent,
+                    appearance = appearance,
+                )
+            }
+            manager.updateAppWidget(id, remoteViews)
         }
+    }
+
+    private fun renderTodayTomorrowWidget(
+        context: Context,
+        widgetId: Int,
+        snapshot: TimetableTodayTomorrowWidgetSnapshot,
+        size: SizeF?,
+        fontScale: Float,
+        openIntent: PendingIntent,
+        appearance: WidgetAppearance,
+    ): RemoteViews {
+        // SizeF retains fractional dp for RemoteViews selection; layout sizing rounds down so
+        // the row count never assumes more space than the host actually supplied.
+        val widthDp = size?.width?.toInt() ?: 0
+        val heightDp = size?.height?.toInt() ?: 0
+        val layout = TimetableTodayTomorrowWidgetLayout.forSize(
+            widthDp = widthDp,
+            heightDp = heightDp,
+            fontScale = fontScale,
+        )
+        Log.d(
+            "UPCWidgetSize",
+            "id=$widgetId todayTomorrow layout=$layout size=${size ?: "default"}",
+        )
+        return TimetableTodayTomorrowWidgetRenderer.render(
+            context = context,
+            snapshot = snapshot,
+            layout = layout,
+            openIntent = openIntent,
+            appearance = appearance,
+        )
     }
 
     /**
@@ -827,44 +882,101 @@ object WidgetUpdates {
         )
     }
 
-    private fun todayTomorrowWidgetSize(
-        manager: AppWidgetManager,
-        widgetId: Int,
-        orientation: Int,
-    ): WidgetSize {
-        val options = manager.getAppWidgetOptions(widgetId)
-        return todayTomorrowWidgetSizeForOrientation(
-            minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0),
-            maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0),
-            minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0),
-            maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
-            orientation = orientation,
-        )
-    }
-
-    /** 今明组件按当前屏幕方向选择 Launcher 提供的当前边界，缺值时使用另一边正值兜底。 */
-    internal fun todayTomorrowWidgetSizeForOrientation(
+    /**
+     * Prefer API 31+ Launcher sizes. A lone size is supplemented by all valid legacy bounds;
+     * if its lower-height bound is unknown, retain an additional safe-height layout when needed.
+     * Without usable Launcher sizes, incomplete bounds use a conservative fallback.
+     */
+    internal fun todayTomorrowWidgetSizeCandidates(
+        reportedSizes: List<SizeF?>?,
         minWidth: Int,
         maxWidth: Int,
         minHeight: Int,
         maxHeight: Int,
-        orientation: Int,
-    ): WidgetSize {
-        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
-        val (width, height) = if (isLandscape) {
-            maxWidth to minHeight
-        } else {
-            minWidth to maxHeight
+    ): List<SizeF> {
+        val supplied = ArrayList<SizeF>(MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS)
+        val seen = HashSet<SizeF>()
+        for (size in reportedSizes.orEmpty()) {
+            if (size != null && isUsableWidgetSize(size) && seen.add(size)) {
+                supplied += size
+                if (supplied.size == MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS) break
+            }
         }
-        val (fallbackWidth, fallbackHeight) = if (isLandscape) {
-            minWidth to maxHeight
-        } else {
-            maxWidth to minHeight
+        if (supplied.size >= 2) return supplied
+
+        val hasBothHeightBounds = minHeight > 0 && maxHeight > 0
+        if (supplied.size == 1) {
+            val candidates = (supplied + legacyResponsiveWidgetSizes(
+                minWidth = minWidth,
+                maxWidth = maxWidth,
+                minHeight = minHeight,
+                maxHeight = maxHeight,
+            )).distinct()
+            if (minHeight <= 0 &&
+                candidates.all { it.height > DEFAULT_SAFE_WIDGET_HEIGHT_DP.toFloat() }
+            ) {
+                val safeWidth = candidates.minOf { it.width }
+                return (candidates + SizeF(safeWidth, DEFAULT_SAFE_WIDGET_HEIGHT_DP.toFloat()))
+                    .distinct()
+                    .take(MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS)
+            }
+            return candidates
+                .distinct()
+                .take(MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS)
         }
-        return WidgetSize(
-            widthDp = positiveOrFallback(width, fallbackWidth),
-            heightDp = positiveOrFallback(height, fallbackHeight),
-        )
+
+        return when {
+            hasBothHeightBounds -> legacyResponsiveWidgetSizes(
+                minWidth = minWidth,
+                maxWidth = maxWidth,
+                minHeight = minHeight,
+                maxHeight = maxHeight,
+            )
+            minHeight <= 0 && maxHeight > 0 -> legacyResponsiveWidgetSizes(
+                minWidth = minWidth,
+                maxWidth = maxWidth,
+                minHeight = minOf(maxHeight, DEFAULT_SAFE_WIDGET_HEIGHT_DP),
+                maxHeight = minOf(maxHeight, DEFAULT_SAFE_WIDGET_HEIGHT_DP),
+            )
+            minHeight > 0 && maxHeight <= 0 -> {
+                val width = positiveOrFallback(maxWidth, minWidth)
+                if (width > 0) listOf(SizeF(width.toFloat(), minHeight.toFloat())) else emptyList()
+            }
+            else -> emptyList()
+        }.take(MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS)
+    }
+
+    private fun legacyResponsiveWidgetSizes(
+        minWidth: Int,
+        maxWidth: Int,
+        minHeight: Int,
+        maxHeight: Int,
+    ): List<SizeF> {
+        val portraitWidth = positiveOrFallback(minWidth, maxWidth)
+        val landscapeWidth = positiveOrFallback(maxWidth, minWidth)
+        return buildList {
+            if (portraitWidth > 0 && maxHeight > 0) {
+                add(SizeF(portraitWidth.toFloat(), maxHeight.toFloat()))
+            }
+            if (landscapeWidth > 0 && minHeight > 0) {
+                add(SizeF(landscapeWidth.toFloat(), minHeight.toFloat()))
+            }
+        }.distinct()
+    }
+
+    private fun isUsableWidgetSize(size: SizeF): Boolean =
+        size.width.isFinite() && size.height.isFinite() && size.width > 0f && size.height > 0f
+
+    @Suppress("DEPRECATION")
+    private fun readAppWidgetSizes(options: Bundle): List<SizeF>? {
+        val key = AppWidgetManager.OPTION_APPWIDGET_SIZES
+        return runCatching<List<SizeF>?> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                options.getParcelableArrayList(key, SizeF::class.java)
+            } else {
+                options.getParcelableArrayList<Parcelable>(key)?.mapNotNull { it as? SizeF }
+            }
+        }.getOrNull()
     }
 
     private fun positiveOrFallback(primary: Int, fallback: Int): Int =
@@ -896,5 +1008,7 @@ object WidgetUpdates {
         val heightDp: Int,
     )
 
+    private const val MAX_RESPONSIVE_WIDGET_SIZE_OPTIONS = 16
+    private const val DEFAULT_SAFE_WIDGET_HEIGHT_DP = 140
     private const val TODO_READ_BUDGET_MS = 5_000L
 }

@@ -1,7 +1,9 @@
 package com.upcpocket.app.widget
 
-import android.content.res.Configuration
+import android.util.SizeF
+import com.upcpocket.app.timetable.TimetableTodayTomorrowWidgetLayout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -55,53 +57,190 @@ class WidgetSizeTest {
     }
 
     @Test
-    fun `today tomorrow widget uses portrait current bounds`() {
-        val size = WidgetUpdates.todayTomorrowWidgetSizeForOrientation(
+    fun `today tomorrow widget prefers supplied sizes and removes invalid duplicates`() {
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = listOf(
+                SizeF(180f, 140f),
+                null,
+                SizeF(0f, 140f),
+                SizeF(320f, 200f),
+                SizeF(180f, 140f),
+                SizeF(-1f, 140f),
+            ),
             minWidth = 180,
             maxWidth = 320,
-            minHeight = 180,
-            maxHeight = 360,
-            orientation = Configuration.ORIENTATION_PORTRAIT,
+            minHeight = 140,
+            maxHeight = 200,
         )
 
-        assertEquals(180, size.widthDp)
-        assertEquals(360, size.heightDp)
+        assertEquals(listOf(SizeF(180f, 140f), SizeF(320f, 200f)), sizes)
     }
 
     @Test
-    fun `today tomorrow widget uses landscape current bounds`() {
-        val size = WidgetUpdates.todayTomorrowWidgetSizeForOrientation(
+    fun `today tomorrow widget builds portrait and landscape candidates from bounds`() {
+        val expected = listOf(SizeF(180f, 300f), SizeF(320f, 110f))
+        val fromMissingOption = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = null,
             minWidth = 180,
             maxWidth = 320,
-            minHeight = 180,
-            maxHeight = 360,
-            orientation = Configuration.ORIENTATION_LANDSCAPE,
+            minHeight = 110,
+            maxHeight = 300,
+        )
+        val fromEmptyOption = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = emptyList(),
+            minWidth = 180,
+            maxWidth = 320,
+            minHeight = 110,
+            maxHeight = 300,
         )
 
-        assertEquals(320, size.widthDp)
-        assertEquals(180, size.heightDp)
+        assertEquals(expected, fromMissingOption)
+        assertEquals(expected, fromEmptyOption)
     }
 
     @Test
-    fun `today tomorrow widget falls back to the other positive bound`() {
-        val portrait = WidgetUpdates.todayTomorrowWidgetSizeForOrientation(
-            minWidth = 0,
-            maxWidth = 320,
-            minHeight = 0,
-            maxHeight = 240,
-            orientation = Configuration.ORIENTATION_PORTRAIT,
+    fun `today tomorrow widget deduplicates equal or one-sided orientation bounds`() {
+        val sameBounds = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = null,
+            minWidth = 240,
+            maxWidth = 240,
+            minHeight = 140,
+            maxHeight = 140,
         )
-        val landscape = WidgetUpdates.todayTomorrowWidgetSizeForOrientation(
+        val oneUsableOrientation = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = null,
             minWidth = 180,
             maxWidth = 0,
             minHeight = 0,
-            maxHeight = 140,
-            orientation = Configuration.ORIENTATION_LANDSCAPE,
+            maxHeight = 340,
         )
 
-        assertEquals(320, portrait.widthDp)
-        assertEquals(240, portrait.heightDp)
-        assertEquals(180, landscape.widthDp)
-        assertEquals(140, landscape.heightDp)
+        assertEquals(listOf(SizeF(240f, 140f)), sameBounds)
+        assertEquals(listOf(SizeF(180f, 140f)), oneUsableOrientation)
+    }
+
+    @Test
+    fun `one supplied size keeps both legacy orientation candidates`() {
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = listOf(SizeF(210f, 150f)),
+            minWidth = 180,
+            maxWidth = 320,
+            minHeight = 110,
+            maxHeight = 300,
+        )
+
+        assertEquals(
+            listOf(
+                SizeF(210f, 150f),
+                SizeF(180f, 300f),
+                SizeF(320f, 110f),
+            ),
+            sizes,
+        )
+        assertTrue(
+            TimetableTodayTomorrowWidgetLayout.forSize(320, 110, 1f).maxCoursesPerDay <
+                TimetableTodayTomorrowWidgetLayout.forSize(180, 300, 1f).maxCoursesPerDay,
+        )
+    }
+
+    @Test
+    fun `single tall reported size gets an additional safe height candidate`() {
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = listOf(SizeF(210f, 300f)),
+            minWidth = 0,
+            maxWidth = 0,
+            minHeight = 0,
+            maxHeight = 0,
+        )
+
+        assertEquals(listOf(SizeF(210f, 300f), SizeF(210f, 140f)), sizes)
+        assertTrue(
+            TimetableTodayTomorrowWidgetLayout.forSize(210, 140, 1f).maxCoursesPerDay <
+                TimetableTodayTomorrowWidgetLayout.forSize(210, 300, 1f).maxCoursesPerDay,
+        )
+    }
+
+    @Test
+    fun `single tall reported size adds safe height when legacy bounds add another tall candidate`() {
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = listOf(SizeF(210f, 300f)),
+            minWidth = 180,
+            maxWidth = 0,
+            minHeight = 0,
+            maxHeight = 300,
+        )
+
+        assertEquals(
+            listOf(
+                SizeF(210f, 300f),
+                SizeF(180f, 300f),
+                SizeF(180f, 140f),
+            ),
+            sizes,
+        )
+        assertTrue(
+            TimetableTodayTomorrowWidgetLayout.forSize(180, 140, 1f).maxCoursesPerDay <
+                TimetableTodayTomorrowWidgetLayout.forSize(180, 300, 1f).maxCoursesPerDay,
+        )
+    }
+
+    @Test
+    fun `incomplete height bounds stay conservative`() {
+        val cappedMissingMinimum = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = null,
+            minWidth = 180,
+            maxWidth = 320,
+            minHeight = 0,
+            maxHeight = 340,
+        )
+        val keepsKnownMinimum = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = emptyList(),
+            minWidth = 180,
+            maxWidth = 320,
+            minHeight = 120,
+            maxHeight = 0,
+        )
+
+        assertEquals(
+            listOf(SizeF(180f, 140f), SizeF(320f, 140f)),
+            cappedMissingMinimum,
+        )
+        assertEquals(listOf(SizeF(320f, 120f)), keepsKnownMinimum)
+    }
+
+    @Test
+    fun `today tomorrow widget returns no candidates when every bound is missing`() {
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = null,
+            minWidth = 0,
+            maxWidth = 0,
+            minHeight = 0,
+            maxHeight = 0,
+        )
+
+        assertEquals(emptyList<SizeF>(), sizes)
+        // An empty candidate list selects the single RemoteViews path; zero dimensions let
+        // forSize use its standard 250×140dp default.
+        assertEquals(
+            5,
+            TimetableTodayTomorrowWidgetLayout.forSize(0, 0, 1f).maxCoursesPerDay,
+        )
+    }
+
+    @Test
+    fun `today tomorrow widget caps responsive options at the platform limit`() {
+        val reported = (1..20).map { index ->
+            SizeF((100 + index).toFloat(), (120 + index).toFloat())
+        }
+        val sizes = WidgetUpdates.todayTomorrowWidgetSizeCandidates(
+            reportedSizes = reported,
+            minWidth = 0,
+            maxWidth = 0,
+            minHeight = 0,
+            maxHeight = 0,
+        )
+
+        assertEquals(16, sizes.size)
+        assertEquals(reported.take(16), sizes)
     }
 }

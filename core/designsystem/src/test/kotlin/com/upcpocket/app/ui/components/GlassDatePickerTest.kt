@@ -11,9 +11,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.window.DialogProperties
 import com.upcpocket.app.designsystem.DarkMode
@@ -23,6 +25,7 @@ import com.upcpocket.app.ui.theme.LocalUiStyle
 import com.upcpocket.app.ui.theme.UpcPocketTheme
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -34,7 +37,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [31], qualifiers = "en-rUS-w412dp-h915dp")
 class GlassDatePickerTest {
 
     @get:Rule
@@ -94,56 +97,76 @@ class GlassDatePickerTest {
 
     @Test
     fun yearPickerRendersInLightGlassDarkGlassAndMaterialStyles() {
-        val darkTheme = mutableStateOf(false)
-        val style = mutableStateOf(UiStyle.LIQUID_GLASS)
-        val initialDateMillis = LocalDate.of(2024, 1, 15)
-            .atStartOfDay(ZoneOffset.UTC)
-            .toInstant()
-            .toEpochMilli()
+        val previousLocale = Locale.getDefault()
+        Locale.setDefault(Locale.US)
+        try {
+            val darkTheme = mutableStateOf(false)
+            val style = mutableStateOf(UiStyle.LIQUID_GLASS)
+            val initialDateMillis = LocalDate.of(2024, 1, 15)
+                .atStartOfDay(ZoneOffset.UTC)
+                .toInstant()
+                .toEpochMilli()
 
-        composeRule.setContent {
-            UpcPocketTheme(
-                darkMode = if (darkTheme.value) DarkMode.DARK else DarkMode.LIGHT,
-                preset = ThemePreset.BLUE,
-            ) {
-                CompositionLocalProvider(LocalUiStyle provides style.value) {
-                    val state = rememberDatePickerState(
-                        initialSelectedDateMillis = initialDateMillis,
-                    )
-                    GlassDatePickerDialog(
-                        onDismissRequest = {},
-                        confirmButton = {
-                            TextButton(onClick = {}) { Text("确定") }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = {}) { Text("取消") }
-                        },
-                        properties = DialogProperties(usePlatformDefaultWidth = false),
-                    ) {
-                        GlassDatePicker(
-                            state = state,
-                            colors = if (style.value == UiStyle.LIQUID_GLASS) {
-                                DatePickerDefaults.colors(containerColor = Color.Transparent)
-                            } else {
-                                DatePickerDefaults.colors()
-                            },
+            composeRule.setContent {
+                UpcPocketTheme(
+                    darkMode = if (darkTheme.value) DarkMode.DARK else DarkMode.LIGHT,
+                    preset = ThemePreset.BLUE,
+                ) {
+                    CompositionLocalProvider(LocalUiStyle provides style.value) {
+                        val state = rememberDatePickerState(
+                            initialSelectedDateMillis = initialDateMillis,
                         )
+                        GlassDatePickerDialog(
+                            onDismissRequest = {},
+                            confirmButton = {
+                                TextButton(onClick = {}) { Text("确定") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = {}) { Text("取消") }
+                            },
+                            properties = DialogProperties(usePlatformDefaultWidth = false),
+                        ) {
+                            GlassDatePicker(
+                                state = state,
+                                colors = if (style.value == UiStyle.LIQUID_GLASS) {
+                                    DatePickerDefaults.colors(containerColor = Color.Transparent)
+                                } else {
+                                    DatePickerDefaults.colors()
+                                },
+                            )
+                        }
                     }
                 }
             }
+
+            composeRule.waitForIdle()
+            openYearPickerAndSelectVisibleYear(displayedYear = 2024, selectedYear = 2023)
+
+            composeRule.runOnIdle { darkTheme.value = true }
+            composeRule.waitForIdle()
+            openYearPickerAndSelectVisibleYear(displayedYear = 2023, selectedYear = 2024)
+
+            composeRule.runOnIdle { style.value = UiStyle.MATERIAL3 }
+            composeRule.waitForIdle()
+            openYearPickerAndSelectVisibleYear(displayedYear = 2024, selectedYear = 2023)
+        } finally {
+            Locale.setDefault(previousLocale)
         }
+    }
 
+    private fun openYearPickerAndSelectVisibleYear(displayedYear: Int, selectedYear: Int) {
+        composeRule.onNode(
+            hasClickAction() and hasText("January $displayedYear", substring = true),
+        ).assertExists().assertHasClickAction().performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("2024").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("2023").assertIsDisplayed()
 
-        composeRule.runOnIdle { darkTheme.value = true }
+        val yearNode = composeRule.onNode(
+            hasClickAction() and hasText(selectedYear.toString(), substring = true),
+        )
+        yearNode
+            .assertIsDisplayed()
+            .assertHasClickAction()
+            .performClick()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("2023").assertIsDisplayed()
-
-        composeRule.runOnIdle { style.value = UiStyle.MATERIAL3 }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("2023").assertIsDisplayed()
     }
 }
