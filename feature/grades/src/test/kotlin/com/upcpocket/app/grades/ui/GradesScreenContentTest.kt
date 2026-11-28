@@ -5,16 +5,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
@@ -91,6 +97,23 @@ class GradesScreenContentTest {
         unsavedChanges = unsavedChanges,
     )
 
+    private fun mixedTermState(
+        sync: GradesSyncState = GradesSyncState.Failed(GradesSyncFailure.SERVER),
+    ) = readyState(
+        sync = sync,
+        termList = listOf(
+            GradesTerm("t1", "合成学期甲"),
+            GradesTerm("t2", "合成学期乙", syncFailed = true),
+            GradesTerm("t3", "合成已同步空学期"),
+            GradesTerm("t4", "合成首次失败学期", isSynced = false, syncFailed = true),
+            GradesTerm("t5", "合成未同步学期", isSynced = false),
+            GradesTerm("t6", "合成第二个空学期"),
+        ),
+        courseList = courses.map { course ->
+            if (course.id == "c8") course.copy(termId = "t2") else course
+        },
+    )
+
     private fun render(
         state: GradesUiState = readyState(),
         onSync: () -> Unit = {},
@@ -131,6 +154,22 @@ class GradesScreenContentTest {
             .performScrollToNode(hasTestTag(tag))
     }
 
+    private fun selectTab(label: String) {
+        val tab = rule.onNode(hasText(label) and hasClickAction())
+        tab.performSemanticsAction(SemanticsActions.OnClick)
+        tab.assertIsSelected()
+    }
+
+    private fun emptyStateText(text: String) = rule.onNode(
+        hasText(text) and hasAnyAncestor(hasTestTag("grades_empty_state")),
+        useUnmergedTree = true,
+    )
+
+    private fun detailEmptyText(text: String) = rule.onNode(
+        hasText(text) and hasAnyAncestor(hasTestTag("grades_detail_empty")),
+        useUnmergedTree = true,
+    )
+
     private fun boundsOf(tag: String) =
         rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
 
@@ -139,7 +178,7 @@ class GradesScreenContentTest {
         render()
 
         rule.onNodeWithText("成绩与学分").assertIsDisplayed()
-        rule.onNodeWithText("已同步").assertIsDisplayed()
+        rule.onNodeWithText("同步未完成").assertIsDisplayed()
 
         rule.onNodeWithTag("grades_metric_总 GPA").assertIsDisplayed()
         rule.onNodeWithText("3.13").assertIsDisplayed()
@@ -298,8 +337,9 @@ class GradesScreenContentTest {
             onOpenOfficialPage = { openedOfficialPage++ },
         )
 
-        rule.onNodeWithText("学校登录已失效 · 1 个学期同步失败，已保留已同步记录")
-            .assertIsDisplayed()
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "学校登录已失效 · 1 个学期同步失败，已保留已同步记录；1 个学期尚未同步",
+        )
         rule.onNodeWithText("3/4 个学期已同步 · 7 门课程 · 1 个学期同步失败")
             .assertIsDisplayed()
         rule.onNodeWithTag("grades_sync_action").assertIsEnabled()
@@ -324,8 +364,9 @@ class GradesScreenContentTest {
             onOpenOfficialPage = { openedOfficialPage++ },
         )
 
-        rule.onNodeWithText("学校要求交互验证 · 1 个学期同步失败，已保留已同步记录")
-            .assertIsDisplayed()
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "学校要求交互验证 · 1 个学期同步失败，已保留已同步记录；1 个学期尚未同步",
+        )
         rule.onNodeWithTag("grades_official_action").assertIsDisplayed().performClick()
         assertEquals(1, openedOfficialPage)
     }
@@ -362,10 +403,11 @@ class GradesScreenContentTest {
 
         rule.onNodeWithText("3/4 个学期已同步 · 7 门课程 · 1 个学期同步失败")
             .assertIsDisplayed()
-        rule.onNodeWithText(
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
             "教务系统暂时不可用 · 1 个学期同步失败，已保留已同步记录；" +
+                "1 个学期尚未同步；" +
                 "本次更新未保存，重启后会恢复到上次保存的成绩",
-        ).assertIsDisplayed()
+        )
 
         // 部分覆盖有结果但课程全部为空：未保存提示仍须可见，不能显示成完成后的空结果。
         rule.runOnIdle {
@@ -375,16 +417,21 @@ class GradesScreenContentTest {
                 unsavedChanges = true,
             )
         }
-        rule.onNodeWithText(
-            "教务系统暂时不可用 · 请稍后重试；本次更新未保存，重启后会恢复到上次保存的成绩",
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "教务系统暂时不可用 · 请稍后重试；1 个学期同步失败且无记录；" +
+                "1 个学期尚未同步；本次更新未保存，重启后会恢复到上次保存的成绩",
+        )
+        emptyStateText(
+            "教务系统暂时不可用。未获取到成绩，请稍后重试。 " +
+                "1 个学期同步失败且无记录；1 个学期尚未同步；2 个学期已同步但无记录。",
         ).assertIsDisplayed()
-        rule.onNodeWithText("教务系统暂时不可用。未获取到成绩，请稍后重试。")
-            .assertIsDisplayed()
-        rule.onNodeWithText("暂无成绩记录").assertDoesNotExist()
+        emptyStateText("暂无成绩记录").assertDoesNotExist()
 
         // 同步完成但结果未写入本机时，也不能表现为已保存。
         rule.runOnIdle { state.value = readyState(unsavedChanges = true) }
-        rule.onNodeWithText("本次更新未保存，重启后会恢复到上次保存的成绩")
+        rule.onNodeWithText(
+            "1 个学期尚未同步；本次更新未保存，重启后会恢复到上次保存的成绩",
+        )
             .assertIsDisplayed()
     }
 
@@ -407,9 +454,21 @@ class GradesScreenContentTest {
             state.value = GradesUiState(sync = GradesSyncState.Failed(GradesSyncFailure.NETWORK))
         }
         rule.onNodeWithText("网络不可用。未获取到成绩，请稍后重试。").assertIsDisplayed()
+        emptyStateText("同步失败").assertIsDisplayed()
 
         rule.runOnIdle { state.value = GradesUiState(sync = GradesSyncState.Ready()) }
-        rule.onNodeWithText("教务系统没有返回本科成绩记录。").assertIsDisplayed()
+        rule.onNodeWithText("状态未知").assertIsDisplayed()
+        rule.onNodeWithText("学期状态未知").assertIsDisplayed()
+        rule.onNodeWithText("教务没有返回学期列表或成绩记录。").assertIsDisplayed()
+
+        rule.runOnIdle {
+            state.value = GradesUiState(
+                sync = GradesSyncState.Ready(),
+                terms = listOf(GradesTerm("b1", "合成已同步空学期")),
+            )
+        }
+        emptyStateText("暂无成绩记录").assertIsDisplayed()
+        emptyStateText("教务系统没有返回本科成绩记录。").assertIsDisplayed()
 
         rule.runOnIdle {
             state.value = GradesUiState(
@@ -417,16 +476,29 @@ class GradesScreenContentTest {
                 terms = listOf(GradesTerm("u1", "合成未同步学期", isSynced = false)),
             )
         }
-        rule.onNodeWithText("学期成绩尚未同步").assertIsDisplayed()
+        emptyStateText("学期成绩尚未同步").assertIsDisplayed()
 
         rule.runOnIdle {
             state.value = GradesUiState(
                 sync = GradesSyncState.Ready(),
-                terms = listOf(GradesTerm("f1", "合成失败学期", syncFailed = true)),
+                terms = listOf(
+                    GradesTerm("f1", "合成失败学期", isSynced = false, syncFailed = true),
+                ),
             )
         }
-        rule.onNodeWithText("学期成绩同步失败").assertIsDisplayed()
-        rule.onNodeWithText("没有可显示的历史记录，请重试。").assertIsDisplayed()
+        emptyStateText("学期成绩同步失败").assertIsDisplayed()
+        emptyStateText("1 个学期同步失败且无记录；0 个学期尚未同步；0 个学期已同步但无记录。")
+            .assertIsDisplayed()
+
+        rule.runOnIdle {
+            state.value = GradesUiState(
+                sync = GradesSyncState.Failed(GradesSyncFailure.SERVER),
+                terms = listOf(GradesTerm("all-failed", "合成全部失败学期", syncFailed = true)),
+            )
+        }
+        emptyStateText("学期成绩同步失败").assertIsDisplayed()
+        emptyStateText("教务系统暂时不可用。未获取到成绩，请稍后重试。 1 个学期同步失败且无记录。")
+            .assertIsDisplayed()
     }
 
     @Test
@@ -480,9 +552,12 @@ class GradesScreenContentTest {
     @Test
     fun unsyncedAndEmptyTermStatesAreDistinct() {
         val state = readyState(
-            termList = terms + GradesTerm("t5", "合成学期空"),
+            termList = terms + GradesTerm("t5", "合成学期空") +
+                GradesTerm("t6", "合成首次失败学期", isSynced = false, syncFailed = true),
         )
         render(state = state)
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
 
         rule.onNodeWithTag("grades_term_chip_t3").performScrollTo().performClick()
         rule.onNodeWithText("该学期尚未同步。").assertIsDisplayed()
@@ -496,6 +571,357 @@ class GradesScreenContentTest {
         rule.onNodeWithTag("grades_term_chip_t5").performScrollTo().performClick()
         rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
         rule.onNodeWithText("可切换其他学期或查看全部学期。").assertIsDisplayed()
+    }
+
+    @Test
+    fun noRecordTermsAreHiddenByDefaultAndExpansionKeepsFullStatistics() {
+        var syncs = 0
+        render(state = mixedTermState(), onSync = { syncs++ })
+
+        rule.onNodeWithTag("grades_term_chip_t1").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_t2").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_t3").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_chip_t4").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_chip_t5").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_chip_t6").assertDoesNotExist()
+        scrollOverviewTo("grades_term_row_t1")
+        scrollOverviewTo("grades_term_row_t2")
+        rule.onNodeWithTag("grades_term_row_t3").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_row_t4").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_row_t5").assertDoesNotExist()
+        rule.onNodeWithTag("grades_term_row_t6").assertDoesNotExist()
+
+        rule.onNodeWithText("4/6 个学期已同步 · 7 门课程 · 2 个学期同步失败")
+            .assertIsDisplayed()
+        rule.onNodeWithText("3.13").assertIsDisplayed()
+        rule.onNodeWithTag("grades_toggle_empty_terms")
+            .assertIsDisplayed()
+            .performClick()
+
+        rule.onNodeWithText("隐藏无记录学期").assertIsDisplayed()
+        listOf("t1", "t2", "t3", "t4", "t5", "t6").forEach { id ->
+            rule.onNodeWithTag("grades_term_chip_$id").performScrollTo().assertIsDisplayed()
+        }
+        listOf("t1", "t2", "t3", "t4", "t5", "t6").forEach { id ->
+            scrollOverviewTo("grades_term_row_$id")
+        }
+        rule.onNodeWithText("4/6 个学期已同步 · 7 门课程 · 2 个学期同步失败")
+            .assertIsDisplayed()
+        rule.onNodeWithText("3.13").assertIsDisplayed()
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        rule.onNodeWithTag("grades_term_chip_t3").assertDoesNotExist()
+        rule.onNodeWithText("4/6 个学期已同步 · 7 门课程 · 2 个学期同步失败")
+            .assertIsDisplayed()
+        assertEquals(0, syncs)
+    }
+
+    @Test
+    fun readySyncCallsOutFailedAndUnsyncedEmptyTermsAlongsideUnsavedHint() {
+        render(
+            state = mixedTermState(sync = GradesSyncState.Ready()).copy(unsavedChanges = true),
+        )
+
+        rule.onNodeWithText("同步未完成").assertIsDisplayed()
+        rule.onNodeWithText(
+            "1 个学期同步失败且无记录；1 个学期尚未同步；" +
+                "本次更新未保存，重启后会恢复到上次保存的成绩",
+        ).assertIsDisplayed()
+        rule.onNodeWithText("6 个学期 · 7 门课程").assertIsDisplayed()
+        rule.onNodeWithText("3.13").assertIsDisplayed()
+    }
+
+    @Test
+    fun collapsingSelectedEmptyTermReturnsToAllAndDoesNotRestoreItWhenExpandedAgain() {
+        var syncs = 0
+        render(state = mixedTermState(), onSync = { syncs++ })
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        scrollOverviewTo("grades_term_row_t3")
+        rule.onNodeWithTag("grades_term_row_t3").performClick()
+        rule.onNodeWithText("筛选：合成已同步空学期").assertIsDisplayed()
+        rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("仅显示已计入统计的记录。").assertIsDisplayed()
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        rule.onNodeWithTag("grades_metric_总 GPA").assertIsDisplayed()
+        rule.onNodeWithText("3.13").assertIsDisplayed()
+        rule.onNodeWithText("全部成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("共 7 门").assertIsDisplayed()
+        rule.onNodeWithText("待核 1 门").assertIsDisplayed()
+        scrollDetailTo("grades_course_c6")
+        rule.onNodeWithTag("grades_course_c6").assertIsDisplayed()
+        rule.onNodeWithTag("grades_course_status_c6")
+            .assertTextEquals("未计入统计 · 同名重修待核")
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        rule.onNodeWithTag("grades_detail_list").performScrollToIndex(0)
+        rule.onNodeWithText("全部成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("共 7 门").assertIsDisplayed()
+        rule.onNodeWithText("筛选：合成已同步空学期").assertDoesNotExist()
+        scrollDetailTo("grades_course_c6")
+        rule.onNodeWithTag("grades_course_status_c6")
+            .assertTextEquals("未计入统计 · 同名重修待核")
+        assertEquals(0, syncs)
+    }
+
+    @Test
+    fun missingSelectedTermIsKeptDuringLoadingThenClearedAfterRefreshRemovesIt() {
+        val state = mutableStateOf(mixedTermState())
+        rule.setContent {
+            MaterialTheme {
+                GradesScreenContent(state = state.value, onBack = {}, onSync = {})
+            }
+        }
+        rule.waitForIdle()
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        selectTab("课程明细")
+        rule.onNodeWithTag("grades_detail_list").assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_t3").performScrollTo().performClick()
+        rule.onNodeWithTag("grades_term_chip_t3").assertIsSelected()
+        rule.onNodeWithText("筛选：合成已同步空学期").assertIsDisplayed()
+
+        rule.runOnIdle {
+            state.value = GradesUiState(sync = GradesSyncState.Loading)
+        }
+        rule.runOnIdle { state.value = mixedTermState() }
+        rule.onNodeWithText("筛选：合成已同步空学期").assertIsDisplayed()
+        rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
+
+        rule.runOnIdle {
+            state.value = state.value.copy(terms = state.value.terms.filterNot { it.id == "t3" })
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("全部成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("共 7 门").assertIsDisplayed()
+        rule.onNodeWithText("3.13").assertIsDisplayed()
+    }
+
+    @Test
+    fun emptyTermExpansionAndSelectionSurviveStateRestoration() {
+        val restoration = StateRestorationTester(rule)
+        restoration.setContent {
+            MaterialTheme {
+                GradesScreenContent(
+                    state = mixedTermState(),
+                    onBack = {},
+                    onSync = {},
+                )
+            }
+        }
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        selectTab("课程明细")
+        rule.onNodeWithTag("grades_detail_list").assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_t3").performScrollTo().performClick()
+        rule.onNodeWithTag("grades_term_chip_t3").assertIsSelected()
+        rule.onNodeWithText("筛选：合成已同步空学期").assertIsDisplayed()
+
+        restoration.emulateSavedInstanceStateRestore()
+        rule.waitForIdle()
+
+        rule.onNodeWithText("隐藏无记录学期").assertIsDisplayed()
+        rule.onNodeWithText("筛选：合成已同步空学期").assertIsDisplayed()
+        rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
+    }
+
+    @Test
+    fun wholePageEmptyStateExplainsMixedTermStatusesAndCanExpandTheirList() {
+        var syncs = 0
+        render(
+            state = readyState(
+                termList = listOf(
+                    GradesTerm("b", "合成已同步空学期"),
+                    GradesTerm("c", "合成首次失败学期", isSynced = false, syncFailed = true),
+                    GradesTerm("d", "合成未同步学期", isSynced = false),
+                ),
+                courseList = emptyList(),
+            ),
+            onSync = { syncs++ },
+        )
+
+        rule.onNodeWithText("学期成绩同步未完成").assertIsDisplayed()
+        rule.onNodeWithText(
+            "1 个学期同步失败且无记录；1 个学期尚未同步；1 个学期已同步但无记录。",
+        ).assertIsDisplayed()
+        rule.onNodeWithText("重试").assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_b").assertDoesNotExist()
+        rule.onNodeWithTag("grades_toggle_empty_terms")
+            .assertIsDisplayed()
+            .performClick()
+        rule.onNodeWithTag("grades_empty_term_b").assertIsDisplayed()
+        rule.onNodeWithTag("grades_empty_term_c").assertIsDisplayed()
+        rule.onNodeWithTag("grades_empty_term_d").assertIsDisplayed()
+        rule.onNodeWithText("已同步，无成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("同步失败").assertIsDisplayed()
+        rule.onNodeWithText("尚未同步").assertIsDisplayed()
+        rule.onNodeWithText("隐藏无记录学期").assertIsDisplayed()
+        assertEquals(0, syncs)
+    }
+
+    @Test
+    fun failedWholePageEmptyStateCanExpandTermsAndKeepsFailureAndUnsavedMessages() {
+        val state = readyState(
+            sync = GradesSyncState.Failed(GradesSyncFailure.NETWORK),
+            termList = listOf(
+                GradesTerm("b", "合成已同步空学期"),
+                GradesTerm("c", "合成首次失败学期", isSynced = false, syncFailed = true),
+                GradesTerm("d", "合成未同步学期", isSynced = false),
+            ),
+            courseList = emptyList(),
+            unsavedChanges = true,
+        )
+        render(state = state)
+
+        rule.onNodeWithTag("grades_sync_summary").assertTextEquals("未获取到成绩")
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "网络不可用 · 请稍后重试；1 个学期同步失败且无记录；" +
+                "1 个学期尚未同步；本次更新未保存，重启后会恢复到上次保存的成绩",
+        )
+        emptyStateText("学期成绩同步未完成").assertIsDisplayed()
+        emptyStateText(
+            "网络不可用。未获取到成绩，请稍后重试。 " +
+                "1 个学期同步失败且无记录；1 个学期尚未同步；1 个学期已同步但无记录。",
+        ).assertIsDisplayed()
+        emptyStateText("重试").assertIsDisplayed()
+        rule.onNodeWithTag("grades_official_action").assertDoesNotExist()
+        rule.onNodeWithTag("grades_empty_term_b").assertDoesNotExist()
+        rule.onNodeWithText("显示无记录学期（3）").assertIsDisplayed().performClick()
+
+        rule.onNodeWithTag("grades_empty_term_b").assertIsDisplayed()
+        rule.onNodeWithTag("grades_empty_term_c").assertIsDisplayed()
+        rule.onNodeWithTag("grades_empty_term_d").assertIsDisplayed()
+        emptyStateText("重试").assertIsDisplayed()
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "网络不可用 · 请稍后重试；1 个学期同步失败且无记录；" +
+                "1 个学期尚未同步；本次更新未保存，重启后会恢复到上次保存的成绩",
+        )
+    }
+
+    @Test
+    fun failedSyncDetailIncludesNoRecordFailureAndUnsyncedCountsWithRetainedCourses() {
+        render(
+            state = mixedTermState().copy(unsavedChanges = true),
+        )
+
+        rule.onNodeWithTag("grades_sync_summary").assertTextEquals(
+            "4/6 个学期已同步 · 7 门课程 · 2 个学期同步失败",
+        )
+        rule.onNodeWithTag("grades_sync_detail").assertTextEquals(
+            "教务系统暂时不可用 · 2 个学期同步失败，已保留已同步记录；" +
+                "1 个学期同步失败且无记录；1 个学期尚未同步；" +
+                "本次更新未保存，重启后会恢复到上次保存的成绩",
+        )
+    }
+
+    @Test
+    fun emptyTermsShowCorrectOverviewAndDetailStates() {
+        var syncs = 0
+        val state = readyState(
+            termList = terms + listOf(
+                GradesTerm("t5", "合成已同步空学期"),
+                GradesTerm("t6", "合成首次失败学期", isSynced = false, syncFailed = true),
+            ),
+        )
+        render(state = state, onSync = { syncs++ })
+
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+        rule.onNodeWithTag("grades_term_chip_t3").performScrollTo().performClick()
+        rule.onNodeWithText("该学期尚未同步").assertIsDisplayed()
+        rule.onNodeWithText("该学期尚未同步。").assertIsDisplayed()
+
+        rule.onNodeWithTag("grades_term_chip_t5").performScrollTo().performClick()
+        rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("可切换其他学期或查看全部学期。").assertIsDisplayed()
+
+        rule.onNodeWithTag("grades_term_chip_t6").performScrollTo().performClick()
+        rule.onNodeWithText("该学期同步失败，暂无记录。").assertIsDisplayed()
+
+        selectTab("课程明细")
+        rule.onNodeWithTag("grades_detail_list").assertIsDisplayed()
+        rule.onNodeWithTag("grades_term_chip_t5").performScrollTo().performClick()
+        scrollDetailTo("grades_detail_empty")
+        rule.onNodeWithText("该学期暂无成绩记录").assertIsDisplayed()
+        rule.onNodeWithText("查看全部学期").assertIsDisplayed()
+
+        rule.onNodeWithTag("grades_term_chip_t6").performScrollTo().performClick()
+        scrollDetailTo("grades_detail_empty")
+        rule.onNodeWithText("该学期同步失败").assertIsDisplayed()
+        rule.onNodeWithText("重试").assertIsDisplayed()
+
+        rule.onNodeWithTag("grades_term_chip_t3").performScrollTo().performClick()
+        scrollDetailTo("grades_detail_empty")
+        rule.onNodeWithText("该学期尚未同步").assertIsDisplayed()
+        detailEmptyText("教务同步").assertIsDisplayed()
+        assertEquals(0, syncs)
+    }
+
+    @Test
+    fun overviewTermEntryKeepsEmptyTermStatesAheadOfStatisticsScopeEmptyState() {
+        var syncs = 0
+        render(
+            state = readyState(
+                termList = terms + listOf(
+                    GradesTerm("t5", "合成已同步空学期"),
+                    GradesTerm("t6", "合成首次失败学期", isSynced = false, syncFailed = true),
+                ),
+            ),
+            onSync = { syncs++ },
+        )
+        rule.onNodeWithTag("grades_toggle_empty_terms").performClick()
+
+        scrollOverviewTo("grades_term_row_t5")
+        rule.onNodeWithTag("grades_term_row_t5").performClick()
+        rule.onNodeWithText("仅显示已计入统计的记录。").assertIsDisplayed()
+        detailEmptyText("该学期暂无成绩记录").assertIsDisplayed()
+        detailEmptyText("查看全部学期").assertIsDisplayed()
+        rule.onNodeWithText("统计中没有可计入的记录").assertDoesNotExist()
+
+        rule.onNodeWithText("清除筛选").performClick()
+        selectTab("成绩总览")
+        rule.onNodeWithTag("grades_overview_list").assertIsDisplayed()
+        scrollOverviewTo("grades_term_row_t6")
+        rule.onNodeWithTag("grades_term_row_t6").performClick()
+        rule.onNodeWithText("仅显示已计入统计的记录。").assertIsDisplayed()
+        detailEmptyText("该学期同步失败").assertIsDisplayed()
+        detailEmptyText("重试").assertIsDisplayed()
+        rule.onNodeWithText("统计中没有可计入的记录").assertDoesNotExist()
+
+        rule.onNodeWithText("清除筛选").performClick()
+        selectTab("成绩总览")
+        rule.onNodeWithTag("grades_overview_list").assertIsDisplayed()
+        scrollOverviewTo("grades_term_row_t3")
+        rule.onNodeWithTag("grades_term_row_t3").performClick()
+        rule.onNodeWithText("仅显示已计入统计的记录。").assertIsDisplayed()
+        detailEmptyText("该学期尚未同步").assertIsDisplayed()
+        detailEmptyText("教务同步").assertIsDisplayed()
+        rule.onNodeWithText("统计中没有可计入的记录").assertDoesNotExist()
+        assertEquals(0, syncs)
+    }
+
+    @Test
+    fun pendingOnlyCourseKeepsItsTermVisibleByDefault() {
+        render(
+            state = readyState(
+                termList = listOf(GradesTerm("pending", "合成待核学期")),
+                courseList = listOf(
+                    course(
+                        "pending",
+                        "pending",
+                        "合成待核课程",
+                        "",
+                        GradesScore.Missing,
+                        null,
+                        null,
+                    ),
+                ),
+            ),
+        )
+
+        rule.onNodeWithTag("grades_term_chip_pending").assertIsDisplayed()
+        rule.onNodeWithTag("grades_toggle_empty_terms").assertDoesNotExist()
+        scrollOverviewTo("grades_term_row_pending")
+        rule.onNodeWithTag("grades_term_row_pending").assertIsDisplayed()
     }
 
     @Test

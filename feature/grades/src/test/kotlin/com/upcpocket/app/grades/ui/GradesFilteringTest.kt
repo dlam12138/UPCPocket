@@ -39,6 +39,106 @@ class GradesFilteringTest {
     private fun ids(filtered: List<GradesCourse>) = filtered.map { it.id }
 
     @Test
+    fun termVisibilityClassifiesEmptyTermsAndKeepsOriginalOrder() {
+        val terms = listOf(
+            GradesTerm("a-pending", "待核课程学期", isSynced = false),
+            GradesTerm("b", "已同步空学期"),
+            GradesTerm("a-failed", "有旧记录的失败学期", syncFailed = true),
+            GradesTerm("c", "首次同步失败学期", isSynced = false, syncFailed = true),
+            GradesTerm("d", "尚未同步学期", isSynced = false),
+            GradesTerm("a-last", "末尾有课程学期"),
+        )
+        val termCourses = listOf(
+            GradesCourse(
+                id = "pending",
+                termId = "a-pending",
+                name = "待核课程",
+                rawGrade = "",
+                score = GradesScore.Missing,
+                credits = null,
+                nature = null,
+            ),
+            course("old", "a-failed", 88.0, 2.0, requirement),
+            course("last", "a-last", 91.0, 1.0, elective),
+        )
+
+        val collapsed = deriveGradesTermVisibility(
+            terms = terms,
+            courses = termCourses,
+            showTermsWithoutRecords = false,
+        )
+        assertEquals(listOf("a-pending", "a-failed", "a-last"),
+            collapsed.visibleTerms.map { it.id })
+        assertEquals(3, collapsed.withoutRecordsCount)
+        assertEquals(1, collapsed.syncedEmptyCount)
+        assertEquals(1, collapsed.failedWithoutRecordsCount)
+        assertEquals(1, collapsed.unsyncedWithoutRecordsCount)
+
+        val expanded = deriveGradesTermVisibility(
+            terms = terms,
+            courses = termCourses,
+            showTermsWithoutRecords = true,
+        )
+        assertEquals(terms.map { it.id }, expanded.visibleTerms.map { it.id })
+        assertEquals(3, expanded.withoutRecordsCount)
+        assertEquals(1, expanded.syncedEmptyCount)
+        assertEquals(1, expanded.failedWithoutRecordsCount)
+        assertEquals(1, expanded.unsyncedWithoutRecordsCount)
+    }
+
+    @Test
+    fun termVisibilityCountsEmptyAndFailedWithoutRecordsSeparatelyFromCourseTerms() {
+        val terms = listOf(
+            GradesTerm("with-records", "有课程", syncFailed = true),
+            GradesTerm("synced-empty", "已同步空学期"),
+            GradesTerm("failed-empty", "曾为空后刷新失败", syncFailed = true),
+            GradesTerm("unsynced-empty", "未同步空学期", isSynced = false),
+        )
+        val visibility = deriveGradesTermVisibility(
+            terms = terms,
+            courses = listOf(course("record", "with-records", 90.0, 1.0, requirement)),
+            showTermsWithoutRecords = false,
+        )
+
+        assertEquals(listOf("with-records"), visibility.visibleTerms.map { it.id })
+        assertEquals(3, visibility.withoutRecordsCount)
+        assertEquals(1, visibility.syncedEmptyCount)
+        assertEquals(1, visibility.failedWithoutRecordsCount)
+        assertEquals(1, visibility.unsyncedWithoutRecordsCount)
+    }
+
+    @Test
+    fun termVisibilityHasZeroWithoutRecordCountWhenEveryTermHasCourses() {
+        val terms = listOf(GradesTerm("a", "学期甲"), GradesTerm("b", "学期乙"))
+        val visibility = deriveGradesTermVisibility(
+            terms = terms,
+            courses = listOf(
+                course("a-course", "a", 90.0, 1.0, requirement),
+                course("b-course", "b", 80.0, 2.0, elective),
+            ),
+            showTermsWithoutRecords = false,
+        )
+
+        assertEquals(terms.map { it.id }, visibility.visibleTerms.map { it.id })
+        assertEquals(0, visibility.withoutRecordsCount)
+        assertEquals(0, visibility.syncedEmptyCount)
+        assertEquals(0, visibility.failedWithoutRecordsCount)
+        assertEquals(0, visibility.unsyncedWithoutRecordsCount)
+    }
+
+    @Test
+    fun termVisibilityHasZeroWithoutRecordCountForNoTerms() {
+        val visibility = deriveGradesTermVisibility(
+            terms = emptyList(),
+            courses = courses,
+            showTermsWithoutRecords = true,
+        )
+
+        assertTrue(visibility.visibleTerms.isEmpty())
+        assertEquals(0, visibility.withoutRecordsCount)
+    }
+
+    @Test
     fun termFilterKeepsAllRecordsOfThatTerm() {
         assertEquals(
             listOf("a1", "a2", "a3"),

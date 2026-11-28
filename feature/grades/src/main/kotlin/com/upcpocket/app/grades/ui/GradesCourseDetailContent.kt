@@ -226,43 +226,52 @@ private fun detailEmptySpec(
     onShowAllRecords: () -> Unit,
     onShowAllTerms: () -> Unit,
     onSync: () -> Unit,
-): DetailEmptySpec = when {
-    selectedTerm != null && !selectedTerm.isSynced -> DetailEmptySpec(
-        title = "该学期尚未同步",
-        subtitle = "教务同步后显示该学期成绩。",
-        actionLabel = "教务同步",
-        action = onSync,
-    )
-    selectedTerm != null &&
-        selectedTerm.syncFailed &&
-        allCourses.none { it.termId == selectedTerm.id } -> DetailEmptySpec(
-        title = "该学期同步失败",
-        subtitle = "没有可显示的历史记录，请重试。",
-        actionLabel = "重试",
-        action = onSync,
-    )
-    includedOnly && pendingCount > 0 -> DetailEmptySpec(
-        title = "统计中没有可计入的记录",
-        subtitle = "本筛选下另有 $pendingCount 门待核记录。",
-        actionLabel = "含待核记录",
-        action = onShowAllRecords,
-    )
-    activeFilters -> DetailEmptySpec(
-        title = "没有符合筛选的成绩",
-        subtitle = "清除筛选后可查看全部记录。",
-        actionLabel = "清除筛选",
-        action = onClearFilters,
-    )
-    selectedTerm != null -> DetailEmptySpec(
-        title = "该学期暂无成绩记录",
-        subtitle = "可切换其他学期或查看全部学期。",
-        actionLabel = "查看全部学期",
-        action = onShowAllTerms,
-    )
-    else -> DetailEmptySpec(
-        title = "暂无成绩记录",
-        subtitle = "教务没有返回本科成绩记录。",
-    )
+): DetailEmptySpec {
+    val selectedTermHasCourses = selectedTerm?.let { term ->
+        allCourses.any { it.termId == term.id }
+    } == true
+
+    if (selectedTerm != null && !selectedTermHasCourses) {
+        return when {
+            selectedTerm.syncFailed -> DetailEmptySpec(
+                title = "该学期同步失败",
+                subtitle = "没有可显示的历史记录，请重试。",
+                actionLabel = "重试",
+                action = onSync,
+            )
+            !selectedTerm.isSynced -> DetailEmptySpec(
+                title = "该学期尚未同步",
+                subtitle = "教务同步后显示该学期成绩。",
+                actionLabel = "教务同步",
+                action = onSync,
+            )
+            else -> DetailEmptySpec(
+                title = "该学期暂无成绩记录",
+                subtitle = "可切换其他学期或查看全部学期。",
+                actionLabel = "查看全部学期",
+                action = onShowAllTerms,
+            )
+        }
+    }
+
+    return when {
+        includedOnly && pendingCount > 0 -> DetailEmptySpec(
+            title = "统计中没有可计入的记录",
+            subtitle = "本筛选下另有 $pendingCount 门待核记录。",
+            actionLabel = "含待核记录",
+            action = onShowAllRecords,
+        )
+        activeFilters -> DetailEmptySpec(
+            title = "没有符合筛选的成绩",
+            subtitle = "清除筛选后可查看全部记录。",
+            actionLabel = "清除筛选",
+            action = onClearFilters,
+        )
+        else -> DetailEmptySpec(
+            title = "暂无成绩记录",
+            subtitle = "教务没有返回本科成绩记录。",
+        )
+    }
 }
 
 @Composable

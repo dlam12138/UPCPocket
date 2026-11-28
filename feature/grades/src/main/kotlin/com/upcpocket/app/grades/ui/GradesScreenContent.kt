@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,11 +77,18 @@ fun GradesScreenContent(
     var selectedBandName by rememberSaveable { mutableStateOf(NO_FILTER) }
     var showDetails by rememberSaveable { mutableStateOf(false) }
     var includedOnly by rememberSaveable { mutableStateOf(false) }
+    var showTermsWithoutRecords by rememberSaveable { mutableStateOf(false) }
 
+    val termVisibility = deriveGradesTermVisibility(
+        terms = state.terms,
+        courses = state.courses,
+        showTermsWithoutRecords = showTermsWithoutRecords,
+    )
+    val visibleTerms = termVisibility.visibleTerms
     val effectiveTermId = selectedTermId.takeIf { id ->
-        id.isNotEmpty() && state.terms.any { it.id == id }
+        id.isNotEmpty() && visibleTerms.any { it.id == id }
     }
-    val selectedTerm = effectiveTermId?.let { id -> state.terms.firstOrNull { it.id == id } }
+    val selectedTerm = effectiveTermId?.let { id -> visibleTerms.firstOrNull { it.id == id } }
     val natureFilter = selectedNature.takeIf { it.isNotEmpty() }
     val bandFilter = selectedBandName.takeIf { it.isNotEmpty() }
         ?.let { name -> GradesScoreBand.entries.firstOrNull { it.name == name } }
@@ -112,6 +120,29 @@ fun GradesScreenContent(
     val selectTerm: (String?) -> Unit = { termId ->
         selectedTermId = termId ?: NO_FILTER
         includedOnly = false
+    }
+    val toggleTermsWithoutRecords: () -> Unit = {
+        if (showTermsWithoutRecords) {
+            val collapsedTerms = deriveGradesTermVisibility(
+                terms = state.terms,
+                courses = state.courses,
+                showTermsWithoutRecords = false,
+            ).visibleTerms
+            if (selectedTermId.isNotEmpty() && collapsedTerms.none { it.id == selectedTermId }) {
+                selectTerm(null)
+            }
+            showTermsWithoutRecords = false
+        } else {
+            showTermsWithoutRecords = true
+        }
+    }
+    LaunchedEffect(selectedTermId, visibleTerms, state.sync) {
+        if (state.sync !is GradesSyncState.Loading &&
+            selectedTermId.isNotEmpty() &&
+            visibleTerms.none { it.id == selectedTermId }
+        ) {
+            selectTerm(null)
+        }
     }
     val openTerm: (String) -> Unit = { termId ->
         selectedTermId = termId
@@ -173,14 +204,18 @@ fun GradesScreenContent(
         ) {
             GradesStatusHeader(
                 state = state,
+                termVisibility = termVisibility,
                 onOpenAccount = onOpenAccount,
                 onOpenOfficialPage = onOpenOfficialPage,
             )
             if (hasData && state.terms.isNotEmpty()) {
                 GradesTermSelector(
-                    terms = state.terms,
+                    terms = visibleTerms,
                     selectedTermId = effectiveTermId,
                     onSelect = selectTerm,
+                    withoutRecordsCount = termVisibility.withoutRecordsCount,
+                    showTermsWithoutRecords = showTermsWithoutRecords,
+                    onToggleTermsWithoutRecords = toggleTermsWithoutRecords,
                 )
                 selectedTerm?.let { term ->
                     val status = selectedTermStatus(term, overviewCourses.isNotEmpty())
@@ -229,7 +264,7 @@ fun GradesScreenContent(
                         pendingCount = pendingCount,
                         onClearFilters = clearFilters,
                         onShowAllRecords = { includedOnly = false },
-                        onShowAllTerms = { selectedTermId = NO_FILTER },
+                        onShowAllTerms = { selectTerm(null) },
                         onSync = onSync,
                         modifier = Modifier.weight(1f),
                     )
@@ -237,14 +272,14 @@ fun GradesScreenContent(
                     GradesOverview(
                         allCourses = state.courses,
                         courses = overviewCourses,
-                        terms = state.terms,
+                        terms = visibleTerms,
                         selectedTermId = effectiveTermId,
                         selectedTerm = selectedTerm,
                         stats = stats,
                         onTermClick = openTerm,
                         onNatureClick = openNature,
                         onBandClick = openBand,
-                        onShowAllTerms = { selectedTermId = NO_FILTER },
+                        onShowAllTerms = { selectTerm(null) },
                         onSync = onSync,
                         modifier = Modifier.weight(1f),
                     )
@@ -252,9 +287,12 @@ fun GradesScreenContent(
             } else {
                 GradesSyncEmptyState(
                     state = state,
+                    termVisibility = termVisibility,
                     onSync = onSync,
                     onOpenAccount = onOpenAccount,
                     onOpenOfficialPage = onOpenOfficialPage,
+                    showTermsWithoutRecords = showTermsWithoutRecords,
+                    onToggleTermsWithoutRecords = toggleTermsWithoutRecords,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -272,6 +310,7 @@ private fun selectedTermStatus(term: GradesTerm, hasCourses: Boolean): String? =
 @Composable
 private fun GradesStatusHeader(
     state: GradesUiState,
+    termVisibility: GradesTermVisibility,
     onOpenAccount: () -> Unit,
     onOpenOfficialPage: () -> Unit,
 ) {
@@ -342,8 +381,14 @@ private fun GradesStatusHeader(
                 Triple("未同步", scheme.surfaceVariant, scheme.onSurfaceVariant)
             GradesSyncState.Syncing ->
                 Triple("同步中", scheme.tertiaryContainer, scheme.onTertiaryContainer)
-            is GradesSyncState.Ready ->
-                Triple("已同步", scheme.secondaryContainer, scheme.onSecondaryContainer)
+            is GradesSyncState.Ready -> when {
+                state.terms.isEmpty() ->
+                    Triple("状态未知", scheme.surfaceVariant, scheme.onSurfaceVariant)
+                state.terms.any { it.syncFailed || !it.isSynced } ->
+                    Triple("同步未完成", scheme.tertiaryContainer, scheme.onTertiaryContainer)
+                else ->
+                    Triple("已同步", scheme.secondaryContainer, scheme.onSecondaryContainer)
+            }
             is GradesSyncState.Failed ->
                 Triple("同步失败", scheme.errorContainer, scheme.onErrorContainer)
         }
@@ -373,7 +418,7 @@ private fun GradesStatusHeader(
                     .testTag("grades_sync_summary"),
             )
         }
-        syncDetail(state)?.let { detail ->
+        syncDetail(state, termVisibility)?.let { detail ->
             Text(
                 text = detail,
                 style = summaryStyle,
@@ -403,6 +448,9 @@ private fun GradesTermSelector(
     terms: List<GradesTerm>,
     selectedTermId: String?,
     onSelect: (String?) -> Unit,
+    withoutRecordsCount: Int,
+    showTermsWithoutRecords: Boolean,
+    onToggleTermsWithoutRecords: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -410,12 +458,34 @@ private fun GradesTermSelector(
             .padding(top = 2.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = "学期",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "学期",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (withoutRecordsCount > 0) {
+                CampusTextButton(
+                    onClick = onToggleTermsWithoutRecords,
+                    modifier = Modifier.testTag("grades_toggle_empty_terms"),
+                ) {
+                    Text(
+                        if (showTermsWithoutRecords) {
+                            "隐藏无记录学期"
+                        } else {
+                            "显示无记录学期（$withoutRecordsCount）"
+                        },
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -444,12 +514,21 @@ private fun GradesTermSelector(
 @Composable
 private fun GradesSyncEmptyState(
     state: GradesUiState,
+    termVisibility: GradesTermVisibility,
     onSync: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenOfficialPage: () -> Unit,
+    showTermsWithoutRecords: Boolean,
+    onToggleTermsWithoutRecords: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spec = emptySpec(state, onSync, onOpenAccount, onOpenOfficialPage)
+    val spec = emptySpec(
+        state = state,
+        onSync = onSync,
+        onOpenAccount = onOpenAccount,
+        onOpenOfficialPage = onOpenOfficialPage,
+        termVisibility = termVisibility,
+    )
 
     Column(
         modifier = modifier
@@ -466,6 +545,79 @@ private fun GradesSyncEmptyState(
                 .fillMaxWidth()
                 .testTag("grades_empty_state"),
         )
+        if (state.account == GradesAccountState.READY &&
+            state.terms.isNotEmpty() &&
+            (state.sync is GradesSyncState.Ready || state.sync is GradesSyncState.Failed) &&
+            termVisibility.withoutRecordsCount > 0
+        ) {
+            CampusTextButton(
+                onClick = onToggleTermsWithoutRecords,
+                modifier = Modifier.testTag("grades_toggle_empty_terms"),
+            ) {
+                Text(
+                    if (showTermsWithoutRecords) {
+                        "隐藏无记录学期"
+                    } else {
+                        "显示无记录学期（${termVisibility.withoutRecordsCount}）"
+                    },
+                    maxLines = 1,
+                )
+            }
+            if (showTermsWithoutRecords) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .testTag("grades_empty_term_list"),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    state.terms.forEach { term ->
+                        EmptyTermStatusRow(term)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyTermStatusRow(term: GradesTerm) {
+    val (label, containerColor, contentColor) = when {
+        term.syncFailed -> Triple(
+            "同步失败",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer,
+        )
+        !term.isSynced -> Triple(
+            "尚未同步",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        else -> Triple(
+            "已同步，无成绩记录",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .testTag("grades_empty_term_${term.id}"),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = term.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        StatusPill(
+            text = label,
+            containerColor = containerColor,
+            contentColor = contentColor,
+        )
     }
 }
 
@@ -474,6 +626,7 @@ private fun emptySpec(
     onSync: () -> Unit,
     onOpenAccount: () -> Unit,
     onOpenOfficialPage: () -> Unit,
+    termVisibility: GradesTermVisibility,
 ): GradesEmptySpec = when (state.account) {
     GradesAccountState.ACCOUNT_REQUIRED -> GradesEmptySpec(
         title = "未设置学校账号",
@@ -505,37 +658,82 @@ private fun emptySpec(
             subtitle = "完成后会显示成绩与统计。",
         )
         is GradesSyncState.Ready -> when {
-            state.terms.isNotEmpty() && state.terms.none { it.isSynced } -> GradesEmptySpec(
-                title = "学期成绩尚未同步",
-                subtitle = "学期列表来自教务，成绩尚未同步。",
-                actionLabel = "教务同步",
+            state.terms.isEmpty() -> GradesEmptySpec(
+                title = "学期状态未知",
+                subtitle = "教务没有返回学期列表或成绩记录。",
+                actionLabel = "重新同步",
                 action = onSync,
             )
-            state.terms.any { it.syncFailed } -> GradesEmptySpec(
-                title = "学期成绩同步失败",
-                subtitle = "没有可显示的历史记录，请重试。",
-                actionLabel = "重试",
-                action = onSync,
-            )
-            else -> GradesEmptySpec(
+            termVisibility.syncedEmptyCount == state.terms.size -> GradesEmptySpec(
                 title = "暂无成绩记录",
                 subtitle = "教务系统没有返回本科成绩记录。",
                 actionLabel = "重新同步",
                 action = onSync,
             )
+            termVisibility.unsyncedWithoutRecordsCount == state.terms.size -> GradesEmptySpec(
+                title = "学期成绩尚未同步",
+                subtitle = "学期列表来自教务，成绩尚未同步。",
+                actionLabel = "教务同步",
+                action = onSync,
+            )
+            else -> {
+                val failed = termVisibility.failedWithoutRecordsCount
+                val unsynced = termVisibility.unsyncedWithoutRecordsCount
+                val syncedEmpty = termVisibility.syncedEmptyCount
+                val counts = buildList {
+                    add("$failed 个学期同步失败且无记录")
+                    add("$unsynced 个学期尚未同步")
+                    add("$syncedEmpty 个学期已同步但无记录")
+                }.joinToString("；")
+                GradesEmptySpec(
+                    title = when {
+                        failed == state.terms.size -> "学期成绩同步失败"
+                        failed > 0 -> "学期成绩同步未完成"
+                        else -> "学期成绩尚未同步"
+                    },
+                    subtitle = "$counts。",
+                    actionLabel = if (failed > 0) "重试" else "教务同步",
+                    action = onSync,
+                )
+            }
         }
         is GradesSyncState.Failed -> {
             val official = sync.reason.opensOfficialPage()
+            val failedWithoutRecords = termVisibility.failedWithoutRecordsCount
+            val title = when {
+                state.terms.isEmpty() -> "同步失败"
+                failedWithoutRecords == state.terms.size -> "学期成绩同步失败"
+                failedWithoutRecords > 0 -> "学期成绩同步未完成"
+                else -> "同步失败"
+            }
+            val failureMessage = "${sync.reason.displayLabel()}。未获取到成绩，" +
+                "${failureHint(sync.reason)}。"
+            val termStatusMessage = noRecordTermCounts(termVisibility)
             GradesEmptySpec(
-                title = "同步失败",
-                subtitle = "${sync.reason.displayLabel()}。未获取到成绩，" +
-                    "${failureHint(sync.reason)}。",
+                title = title,
+                subtitle = if (termStatusMessage == null) {
+                    failureMessage
+                } else {
+                    "$failureMessage $termStatusMessage。"
+                },
                 actionLabel = if (official) "打开学校成绩网页" else "重试",
                 action = if (official) onOpenOfficialPage else onSync,
             )
         }
     }
 }
+
+private fun noRecordTermCounts(termVisibility: GradesTermVisibility): String? = buildList {
+    if (termVisibility.failedWithoutRecordsCount > 0) {
+        add("${termVisibility.failedWithoutRecordsCount} 个学期同步失败且无记录")
+    }
+    if (termVisibility.unsyncedWithoutRecordsCount > 0) {
+        add("${termVisibility.unsyncedWithoutRecordsCount} 个学期尚未同步")
+    }
+    if (termVisibility.syncedEmptyCount > 0) {
+        add("${termVisibility.syncedEmptyCount} 个学期已同步但无记录")
+    }
+}.takeIf { it.isNotEmpty() }?.joinToString("；")
 
 private fun accountSummary(state: GradesUiState): String {
     val history = if (state.courses.isNotEmpty()) {
@@ -597,14 +795,23 @@ private fun failedSummaryWithRecords(state: GradesUiState): String {
     }
 }
 
-private fun syncDetail(state: GradesUiState): String? = when (val sync = state.sync) {
-    is GradesSyncState.Ready -> appendUnsavedHint(
-        detail = sync.syncedAtMillis?.takeIf { it > 0L }
-            ?.let { "上次同步 ${RelativeTime.ago(it)}" },
-        unsavedChanges = state.unsavedChanges,
-    )
-    is GradesSyncState.Failed -> appendUnsavedHint(
-        detail = if (state.courses.isNotEmpty()) {
+private fun syncDetail(
+    state: GradesUiState,
+    termVisibility: GradesTermVisibility,
+): String? = when (val sync = state.sync) {
+    is GradesSyncState.Ready -> {
+        val details = buildList {
+            sync.syncedAtMillis?.takeIf { it > 0L }
+                ?.let { add("上次同步 ${RelativeTime.ago(it)}") }
+            addAll(noRecordSyncDetails(termVisibility))
+        }.joinToString("；").takeIf { it.isNotEmpty() }
+        appendUnsavedHint(
+            detail = details,
+            unsavedChanges = state.unsavedChanges,
+        )
+    }
+    is GradesSyncState.Failed -> {
+        val retainedSummary = if (state.courses.isNotEmpty()) {
             val syncedTerms = state.terms.count { it.isSynced }
             val failedTerms = state.terms.count { it.syncFailed }
             "${sync.reason.displayLabel()} · " + when {
@@ -614,14 +821,28 @@ private fun syncDetail(state: GradesUiState): String? = when (val sync = state.s
             }
         } else {
             "${sync.reason.displayLabel()} · ${failureHint(sync.reason)}"
-        },
-        unsavedChanges = state.unsavedChanges,
-    )
+        }
+        appendUnsavedHint(
+            detail = (listOf(retainedSummary) + noRecordSyncDetails(termVisibility))
+                .joinToString("；"),
+            unsavedChanges = state.unsavedChanges,
+        )
+    }
     GradesSyncState.Syncing ->
         if (state.courses.isNotEmpty()) "完成后会更新当前记录" else null
     GradesSyncState.Loading -> null
     GradesSyncState.NotSynced ->
         if (state.courses.isNotEmpty()) null else "同步后可查看成绩与学分"
+}
+
+/** 同步详情中需要直接披露的、无课程记录的失败与未同步学期数量。 */
+private fun noRecordSyncDetails(termVisibility: GradesTermVisibility): List<String> = buildList {
+    if (termVisibility.failedWithoutRecordsCount > 0) {
+        add("${termVisibility.failedWithoutRecordsCount} 个学期同步失败且无记录")
+    }
+    if (termVisibility.unsyncedWithoutRecordsCount > 0) {
+        add("${termVisibility.unsyncedWithoutRecordsCount} 个学期尚未同步")
+    }
 }
 
 /**

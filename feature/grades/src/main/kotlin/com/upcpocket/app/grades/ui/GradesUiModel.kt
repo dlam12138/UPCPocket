@@ -88,6 +88,43 @@ data class GradesTerm(
     val syncFailed: Boolean = false,
 )
 
+/**
+ * 成绩页学期列表的派生状态。
+ *
+ * 无记录学期按完整课程行集合分类：成功同步的空学期、失败且无记录学期、
+ * 尚未同步学期分别计数。带有课程行的学期始终可见，即使课程仍待核或同步失败。
+ */
+internal data class GradesTermVisibility(
+    val visibleTerms: List<GradesTerm>,
+    val withoutRecordsCount: Int,
+    val syncedEmptyCount: Int,
+    val failedWithoutRecordsCount: Int,
+    val unsyncedWithoutRecordsCount: Int,
+)
+
+/** 按教务原顺序派生成绩页学期列表与无记录状态数量。 */
+internal fun deriveGradesTermVisibility(
+    terms: List<GradesTerm>,
+    courses: List<GradesCourse>,
+    showTermsWithoutRecords: Boolean,
+): GradesTermVisibility {
+    val termIdsWithCourses = courses.mapTo(mutableSetOf()) { it.termId }
+    val withoutRecords = terms.filter { it.id !in termIdsWithCourses }
+    val visibleTerms = if (showTermsWithoutRecords) {
+        terms
+    } else {
+        terms.filter { it.id in termIdsWithCourses }
+    }
+
+    return GradesTermVisibility(
+        visibleTerms = visibleTerms,
+        withoutRecordsCount = withoutRecords.size,
+        syncedEmptyCount = withoutRecords.count { it.isSynced && !it.syncFailed },
+        failedWithoutRecordsCount = withoutRecords.count { it.syncFailed },
+        unsyncedWithoutRecordsCount = withoutRecords.count { !it.isSynced && !it.syncFailed },
+    )
+}
+
 /** 课程性质来自教务字段；[isRequired] 为空表示来源没有明确必修标记。 */
 @Immutable
 data class GradesCourseNature(
