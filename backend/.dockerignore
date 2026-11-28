@@ -1,0 +1,11 @@
+.git
+.gradle
+**/.gradle
+build
+**/build
+.env
+.env.*
+secrets/
+*.log
+hs_err_pid*
+*.apk

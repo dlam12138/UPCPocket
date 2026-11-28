@@ -1,0 +1,87 @@
+services:
+  postgres:
+    image: postgres:16.16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POCKET_DB_NAME:-pocket}
+      POSTGRES_USER: ${POCKET_DB_USERNAME:-pocket}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - database_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  pocket-backend:
+    image: upcpocket-backend:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: ${PORT:-8080}
+      POCKET_DB_URL: jdbc:postgresql://postgres:5432/${POCKET_DB_NAME:-pocket}
+      POCKET_DB_USERNAME: ${POCKET_DB_USERNAME:-pocket}
+      POCKET_DB_PASSWORD_FILE: /run/secrets/db_password
+      POCKET_VAULT_MASTER_KEYS_FILE: /run/secrets/master_keys
+      POCKET_VAULT_INITIAL_WRITE_KEY_VERSION: ${POCKET_VAULT_INITIAL_WRITE_KEY_VERSION:-v1}
+      POCKET_VAULT_LOGIN_INDEX_KEY_FILE: /run/secrets/login_index_key
+      POCKET_VAULT_AUDIT_INDEX_KEY_FILE: /run/secrets/audit_index_key
+      POCKET_ADMIN_JWT_JWK_SET_URI: ${POCKET_ADMIN_JWT_JWK_SET_URI:-https://issuer.example.invalid/.well-known/jwks.json}
+      POCKET_ADMIN_JWT_ISSUER: ${POCKET_ADMIN_JWT_ISSUER:-https://issuer.example.invalid/}
+      POCKET_ADMIN_JWT_AUDIENCE: ${POCKET_ADMIN_JWT_AUDIENCE:-upcpocket-admin}
+      POCKET_CAS_ENABLED: ${POCKET_CAS_ENABLED:-false}
+      POCKET_CAS_LOGIN_URL: ${POCKET_CAS_LOGIN_URL:-}
+      POCKET_CAS_SERVICE: ${POCKET_CAS_SERVICE:-}
+      POCKET_CAS_CONNECT_TIMEOUT_MS: ${POCKET_CAS_CONNECT_TIMEOUT_MS:-3000}
+      POCKET_CAS_READ_TIMEOUT_MS: ${POCKET_CAS_READ_TIMEOUT_MS:-5000}
+    secrets:
+      - db_password
+      - master_keys
+      - login_index_key
+      - audit_index_key
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    networks:
+      - database_internal
+      - backend_egress
+
+secrets:
+  db_password:
+    file: ${POCKET_DB_PASSWORD_SOURCE_FILE:?Set POCKET_DB_PASSWORD_SOURCE_FILE in .env}
+  master_keys:
+    file: ${POCKET_VAULT_MASTER_KEYS_SOURCE_FILE:?Set POCKET_VAULT_MASTER_KEYS_SOURCE_FILE in .env}
+  login_index_key:
+    file: ${POCKET_VAULT_LOGIN_INDEX_KEY_SOURCE_FILE:?Set POCKET_VAULT_LOGIN_INDEX_KEY_SOURCE_FILE in .env}
+  audit_index_key:
+    file: ${POCKET_VAULT_AUDIT_INDEX_KEY_SOURCE_FILE:?Set POCKET_VAULT_AUDIT_INDEX_KEY_SOURCE_FILE in .env}
+
+volumes:
+  postgres_data:
+
+networks:
+  database_internal:
+    internal: true
+  backend_egress:
+    driver: bridge

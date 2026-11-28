@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: upcpocket-backend
+  datasource:
+    url: ${POCKET_DB_URL:jdbc:postgresql://localhost:5432/pocket}
+    username: ${POCKET_DB_USERNAME:pocket}
+    password: ${POCKET_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  mvc:
+    log-request-details: false
+
+server:
+  port: ${PORT:8080}
+
+logging:
+  level:
+    org.springframework.jdbc.core: WARN
+    org.springframework.jdbc.core.StatementCreatorUtils: OFF
+    org.springframework.web: WARN
+    org.springframework.web.filter.CommonsRequestLoggingFilter: OFF
+    org.hibernate.SQL: OFF
+    org.hibernate.orm.jdbc.bind: OFF
+
+pocket:
+  vault:
+    master-keys: ${POCKET_VAULT_MASTER_KEYS:}
+    master-keys-file: ${POCKET_VAULT_MASTER_KEYS_FILE:}
+    initial-write-key-version: ${POCKET_VAULT_INITIAL_WRITE_KEY_VERSION:v1}
+    login-index-key: ${POCKET_VAULT_LOGIN_INDEX_KEY:}
+    login-index-key-file: ${POCKET_VAULT_LOGIN_INDEX_KEY_FILE:}
+    audit-index-key: ${POCKET_VAULT_AUDIT_INDEX_KEY:}
+    audit-index-key-file: ${POCKET_VAULT_AUDIT_INDEX_KEY_FILE:}
+  admin:
+    jwt:
+      jwk-set-uri: ${POCKET_ADMIN_JWT_JWK_SET_URI:https://issuer.example.invalid/.well-known/jwks.json}
+      issuer: ${POCKET_ADMIN_JWT_ISSUER:https://issuer.example.invalid/}
+      audience: ${POCKET_ADMIN_JWT_AUDIENCE:upcpocket-admin}
+  cas:
+    enabled: ${POCKET_CAS_ENABLED:false}
+    login-url: ${POCKET_CAS_LOGIN_URL:}
+    service: ${POCKET_CAS_SERVICE:}
+    connect-timeout-ms: ${POCKET_CAS_CONNECT_TIMEOUT_MS:3000}
+    read-timeout-ms: ${POCKET_CAS_READ_TIMEOUT_MS:5000}

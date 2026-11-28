@@ -18,7 +18,8 @@ M0–M5 文档保留各阶段的实施、真实证据与当时限制；其中“
 | --- | --- |
 | [用户使用手册](USER-GUIDE.md) | Android 2.1.0 的安装、课表、校园服务、待办、桌面组件和反馈 |
 | [学校使用手册](SCHOOL-GUIDE.md) | Android 2.1.0 的服务接入范围、数据处理、核对和反馈 |
-| [校内后端建设计划书](design/campus-backend-pilot-plan.md) | 现有校园接口不变，校方托管加密账密并代发请求的安全架构、运维分工与验收 |
+| [校内后端建设计划书](design/campus-backend-pilot-plan.md) | 现有校园接口不变，校方托管加密账密并代发请求的安全架构、运维分工、验收与阶段一工程进度 |
+| [校内后端工程说明](../backend/README.md) | 独立 `backend/`（Spring Boot + PostgreSQL）阶段一账密托管与会话核心服务、构建部署与 [OpenAPI 契约](../backend/openapi.yaml) |
 | [校方收编与推广潜在问题清单](design/campus-adoption-risk-checklist.md) | 高危风险、校园高峰与老系统保护、合规分发、客服分流及毕业交接排查清单 |
 | [iOS 网页版（静态 PWA）](web.md) | 静态站点范围、本机数据、Safari 安装与离线、学期课表导入和学校官方入口 |
 | [UPC Pocket 技术系列](articles/README.md) | 架构、安全、校园协议、离线地图和工程治理五篇开发故事 |

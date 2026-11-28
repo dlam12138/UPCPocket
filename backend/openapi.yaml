@@ -1,0 +1,628 @@
+openapi: 3.1.0
+info:
+  title: UPC Pocket account custody API
+  version: 1.0.0
+  description: Student account binding/session management and school administrator operations.
+servers:
+  - url: https://pocket.example.invalid
+security: []
+tags:
+  - name: Student authentication
+  - name: Student account
+  - name: School administration
+paths:
+  /api/v1/auth/sessions:
+    post:
+      tags: [Student authentication]
+      summary: Bind an account or sign in on a device
+      description: Verifies credentials through UPC CAS, stores an encrypted credential envelope, and returns a one-time Pocket bearer token.
+      operationId: createStudentSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInRequest'
+      responses:
+        '200':
+          description: Pocket device session issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SignInFailed'
+        '409':
+          description: Verification is busy, interactive challenge is required, or the managed credential must be updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/auth/credential-updates:
+    post:
+      tags: [Student authentication]
+      summary: Update the managed credential without a Pocket token
+      operationId: updateManagedCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialUpdateRequest'
+      responses:
+        '204':
+          description: Credential updated; all Pocket device tokens and business sessions were revoked.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SignInFailed'
+        '409':
+          description: Verification is busy or an interactive challenge is required.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/me:
+    get:
+      tags: [Student account]
+      summary: Read the current account state
+      operationId: getMyAccount
+      security:
+        - PocketBearer: []
+      responses:
+        '200':
+          description: Current account summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudentAccount'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Student account]
+      summary: Unbind and hard-delete the current managed account
+      operationId: unbindMyAccount
+      security:
+        - PocketBearer: []
+      responses:
+        '204':
+          description: Account row deleted and all sessions revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/me/devices:
+    get:
+      tags: [Student account]
+      summary: List this account's active Pocket devices
+      operationId: listMyDevices
+      security:
+        - PocketBearer: []
+      responses:
+        '200':
+          description: Active device sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/me/devices/{deviceId}:
+    delete:
+      tags: [Student account]
+      summary: Revoke one device and the shared upstream business sessions
+      operationId: revokeMyDevice
+      security:
+        - PocketBearer: []
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Device revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /api/v1/me/session:
+    delete:
+      tags: [Student account]
+      summary: Sign out the current device and clear shared business sessions
+      operationId: signOutCurrentDevice
+      security:
+        - PocketBearer: []
+      responses:
+        '204':
+          description: Current device revoked
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/account-lookups:
+    post:
+      tags: [School administration]
+      summary: Look up a managed account by login name
+      description: Requires the account.read administrator scope.
+      operationId: lookupManagedAccount
+      security:
+        - AdminJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountLookupRequest'
+      responses:
+        '200':
+          description: Lookup result; a missing account is represented by a null account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [account]
+                properties:
+                  account:
+                    oneOf:
+                      - $ref: '#/components/schemas/AdminAccount'
+                      - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/accounts/{id}/disabled:
+    put:
+      tags: [School administration]
+      summary: Disable or restore an account
+      description: Requires the account.manage administrator scope.
+      operationId: setAccountDisabled
+      security:
+        - AdminJwt: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: If-Match
+          in: header
+          required: true
+          description: Current gate revision, optionally quoted as an ETag.
+          schema:
+            type: string
+            example: '"3"'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [disabled]
+              properties:
+                disabled:
+                  type: boolean
+      responses:
+        '200':
+          description: New account state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/accounts/{id}/sessions:
+    delete:
+      tags: [School administration]
+      summary: Revoke every Pocket device and business session
+      description: Requires the account.manage administrator scope.
+      operationId: revokeAccountSessions
+      security:
+        - AdminJwt: []
+      parameters:
+        - $ref: '#/components/parameters/AccountId'
+        - name: If-Match
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Sessions revoked and gate revision advanced
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/RevisionChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/key-rotations:
+    post:
+      tags: [School administration]
+      summary: Switch the active write key and rewrap a bounded batch of DEKs
+      description: Requires the key.rotate administrator scope.
+      operationId: rotateMasterKey
+      security:
+        - AdminJwt: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetVersion, expectedWriteVersion]
+              properties:
+                targetVersion:
+                  type: string
+                expectedWriteVersion:
+                  type: string
+      responses:
+        '200':
+          description: Rotation batch progress
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyRotation'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Target key is not configured or write version changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/health:
+    get:
+      tags: [School administration]
+      summary: Check DB, Flyway, key provider, and CAS configuration
+      description: Requires health.read. Does not perform a school login.
+      operationId: getAdminHealth
+      security:
+        - AdminJwt: []
+      responses:
+        '200':
+          description: All dependencies are ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+  /internal/admin/v1/audit-events:
+    get:
+      tags: [School administration]
+      summary: Read a sanitized audit page
+      description: Requires the audit.read administrator scope.
+      operationId: listAuditEvents
+      security:
+        - AdminJwt: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        '200':
+          description: Audit rows contain only fixed codes and opaque identifiers; references and login names are omitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    PocketBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    AdminJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT must pass issuer, audience, expiry, MFA, and route-specific scope checks.
+  parameters:
+    AccountId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    SignInRequest:
+      type: object
+      required: [loginName, password, acceptCustody, installationId, platform, kind]
+      properties:
+        loginName:
+          type: string
+        password:
+          type: string
+          format: password
+          writeOnly: true
+        acceptCustody:
+          type: boolean
+          const: true
+        installationId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+          enum: [ANDROID, IOS, OTHER]
+        kind:
+          type: string
+          enum: [PHONE, TABLET, OTHER]
+    CredentialUpdateRequest:
+      type: object
+      required: [loginName, password]
+      properties:
+        loginName:
+          type: string
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    AccountLookupRequest:
+      type: object
+      required: [loginName]
+      properties:
+        loginName:
+          type: string
+    SessionResponse:
+      type: object
+      required: [token, deviceId, expiresAt]
+      properties:
+        token:
+          type: string
+          description: Shown only at issuance; server stores its SHA-256 digest.
+        deviceId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+    StudentAccount:
+      $ref: '#/components/schemas/AdminAccount'
+    AdminAccount:
+      type: object
+      required: [accountId, state, credentialGeneration, gateRevision]
+      properties:
+        accountId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [ACTIVE, REAUTH_REQUIRED, DISABLED]
+        credentialGeneration:
+          type: integer
+          format: int64
+        gateRevision:
+          type: integer
+          format: int64
+    Device:
+      type: object
+      required: [deviceId, installationId, platform, kind, expiresAt]
+      properties:
+        deviceId:
+          type: string
+          format: uuid
+        installationId:
+          type: string
+          format: uuid
+        platform:
+          type: string
+          enum: [ANDROID, IOS, OTHER]
+        kind:
+          type: string
+          enum: [PHONE, TABLET, OTHER]
+        expiresAt:
+          type: string
+          format: date-time
+    KeyRotation:
+      type: object
+      required: [writeVersion, rewrapped, remaining, complete]
+      properties:
+        writeVersion:
+          type: string
+        rewrapped:
+          type: integer
+        remaining:
+          type: integer
+          format: int64
+        complete:
+          type: boolean
+    Health:
+      type: object
+      required: [database, migrations, masterKeyProvider, casVerifier]
+      properties:
+        database:
+          type: boolean
+        migrations:
+          type: boolean
+        masterKeyProvider:
+          type: boolean
+        casVerifier:
+          type: boolean
+    AuditPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [eventId, occurredAt, requestId, actionCode, resultCode]
+            properties:
+              eventId:
+                type: string
+                format: uuid
+              occurredAt:
+                type: string
+                format: date-time
+              requestId:
+                type: string
+                format: uuid
+              actionCode:
+                type: string
+                enum: [LOOKUP, DISABLE, RESTORE, REVOKE_ALL, ROTATE_KEY, READ_AUDIT, UNBIND, TRIP_REAUTH, UPDATE_CREDENTIAL]
+              resultCode:
+                type: string
+                enum: [OK, DENIED, CONFLICT, FAILED, PARTIAL]
+        nextCursor:
+          type: [string, 'null']
+    ErrorResponse:
+      type: object
+      required: [code, requestId]
+      properties:
+        code:
+          type: string
+          enum: [VALIDATION_FAILED, CUSTODY_ACCEPTANCE_REQUIRED, SIGN_IN_FAILED, UNAUTHENTICATED, FORBIDDEN, NOT_FOUND, VERIFICATION_BUSY, INTERACTIVE_CHALLENGE, CREDENTIAL_UPDATE_REQUIRED, KEY_VERSION_CONFLICT, RATE_LIMITED, REVISION_CHANGED, UPSTREAM_UNAVAILABLE, DEPENDENCY_UNAVAILABLE, INTERNAL_ERROR]
+        requestId:
+          type: string
+          format: uuid
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    SignInFailed:
+      description: Anonymous sign-in failed; account existence and status are not disclosed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthenticated:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: The authenticated administrator lacks the required scope or MFA claim.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource does not exist or is not owned by the current account.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RevisionChanged:
+      description: If-Match gate revision no longer matches.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Authentication rate limit exceeded; includes Retry-After.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unavailable:
+      description: Upstream or required dependency is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalError:
+      description: Unexpected server failure; the body contains only a fixed code and request identifier.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'

@@ -93,3 +93,11 @@ UPC Pocket 项目组　｜　供信息化建设处及相关部门讨论　｜　
 4. **学校运维能独立接管**：校方运维照着交接手册，独立演练一次停用入口、撤销会话、密钥轮换，并在隔离环境里把加密账密库备份恢复出来。项目组交回试点期间的临时权限。
 
 账密托管服务与业务转发可以分阶段签验收。上线后如需新增校园功能或切换为学校统一认证免密接口，均沿用同一套“校方审批、隔离测试、可一键停用”的机制推进。
+
+## 五、当前工程进展（2026-11-28）
+
+**阶段一（第 2 周账密托管与会话核心服务）**已在独立子目录 [`backend/`](../../backend/README.md) 完成首版落地（Kotlin 2.2.21 + Spring Boot 3.5.16 + Flyway PostgreSQL 16 迁移，不进入根 Android Gradle 工程，不打入 APK）：
+
+- **已实现**：独立构建与容器部署资产、AES-256-GCM 信封加密与 `CharArray` 清零、HMAC-SHA-256 盲索引与主密钥轮换（`FOR UPDATE` 策略锁互斥）、1 次错密熔断与重启孤儿 pending 恢复、有界内存 Pocket Token / 短期业务会话与 `businessEpoch` 撤权屏障、学生端 `/api/v1` 与校方管理端 `/internal/admin/v1` 双鉴权过滤链、限流、`Cache-Control: no-store`、三字段脱敏日志与 [OpenAPI 契约](../../backend/openapi.yaml)。
+- **本机已验证**：在 Temurin JDK 21 下完成 `test bootJar`（H2 PostgreSQL 兼容模式 + Fake CAS + 测试 JWT，12 类 58 项实跑全通过，2 项 POSIX 权限测试在 Windows 跳过），`bootJar` 已确认排除 H2 与测试辅助类；根 Android `settings.gradle.kts` / `build.gradle.kts` 无变更且 `checkModuleBoundaries` 通过。
+- **未验证与后续**：默认 CAS 适配器仍为 fail-closed 占位实现；真实 PostgreSQL 16 迁移与并发锁、Docker Compose 启动、真实学校 CAS 验收、校方 KMS 接入、Android 端改造及校园业务转发均待校方环境就绪后分阶段推进。
