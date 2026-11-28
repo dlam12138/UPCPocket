@@ -29,7 +29,7 @@ class TimetableTodayTomorrowWidgetTest {
         // 字符预算只有 7，而“13–14节”本身约占 4.3 个中文字符宽。
         val layout = TimetableTodayTomorrowWidgetLayout.forSize(180, 110, 1.5f)
 
-        assertEquals(1, layout.maxCoursesPerDay)
+        assertEquals(3, layout.maxCoursesPerDay)
         assertEquals(7, layout.maxCourseChars)
         assertTrue(layout.compactPeriod)
         assertTrue(layout.compactDate)
@@ -71,7 +71,7 @@ class TimetableTodayTomorrowWidgetTest {
     fun `wide layout uses full period and more rows`() {
         val layout = TimetableTodayTomorrowWidgetLayout.forSize(320, 200, 1f)
 
-        assertEquals(3, layout.maxCoursesPerDay)
+        assertEquals(8, layout.maxCoursesPerDay)
         assertFalse(layout.compactPeriod)
         assertFalse(layout.compactDate)
         assertFalse(layout.dense)
@@ -86,24 +86,34 @@ class TimetableTodayTomorrowWidgetTest {
     }
 
     @Test
+    fun `course capacity grows with usable height and reaches eight rows`() {
+        val defaultLayout = TimetableTodayTomorrowWidgetLayout.forSize(250, 140, 1f)
+        val heights = listOf(140, 160, 180, 200, 280, 360)
+        val capacities = heights.map { height ->
+            TimetableTodayTomorrowWidgetLayout.forSize(320, height, 1f).maxCoursesPerDay
+        }
+
+        assertTrue(defaultLayout.maxCoursesPerDay in 4..5)
+        assertEquals(5, defaultLayout.maxCoursesPerDay)
+        assertEquals(listOf(5, 6, 7, 8, 8, 8), capacities)
+        assertTrue(capacities.all { it in 1..MAX_TODAY_TOMORROW_COURSE_LINES })
+    }
+
+    @Test
     fun `overflow count is the actual number of hidden courses`() {
         val lines = todayTomorrowCourseLines(
-            courses = listOf(
-                course("高等数学", 1, 2),
-                course("大学物理", 3, 4),
-                course("英语读写", 5, 6),
-                course("程序设计", 7, 8),
-                course("体育", 9, 10),
-            ),
-            maxCourses = 2,
+            courses = List(10) { index ->
+                course("课程${index + 1}", start = index + 1, end = index + 1)
+            },
+            maxCourses = MAX_TODAY_TOMORROW_COURSE_LINES,
             maxChars = 12,
             compactPeriod = true,
         )
 
-        assertEquals(2, lines.lines.size)
-        assertEquals(3, lines.hiddenCount)
-        assertTrue(lines.lines[0].endsWith("高等数学"))
-        assertTrue(lines.lines[1].endsWith("大学物理"))
+        assertEquals(8, lines.lines.size)
+        assertEquals(2, lines.hiddenCount)
+        assertTrue(lines.lines[0].endsWith("课程1"))
+        assertTrue(lines.lines[1].endsWith("课程2"))
     }
 
     @Test

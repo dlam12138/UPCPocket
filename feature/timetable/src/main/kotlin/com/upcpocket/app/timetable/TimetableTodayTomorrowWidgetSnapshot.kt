@@ -120,7 +120,7 @@ data class TimetableTodayTomorrowWidgetSnapshot(
  *   有效字号封顶，两日和各自的隐藏数仍然可见。
  */
 data class TimetableTodayTomorrowWidgetLayout(
-    val maxCoursesPerDay: Int = 2,
+    val maxCoursesPerDay: Int = 5,
     val maxCourseChars: Int = 9,
     val compactPeriod: Boolean = true,
     val compactDate: Boolean = false,
@@ -131,11 +131,6 @@ data class TimetableTodayTomorrowWidgetLayout(
         fun forSize(widthDp: Int, heightDp: Int, fontScale: Float): TimetableTodayTomorrowWidgetLayout {
             val width = widthDp.takeIf { it >= 100 } ?: 250
             val height = heightDp.takeIf { it >= 100 } ?: 140
-            val maxCourses = when {
-                height >= 180 && fontScale < 1.15f -> 3
-                height >= 120 && fontScale < 1.35f -> 2
-                else -> 1
-            }
             // 组件物理尺寸不随系统字号增长。窄卡上限更低，给双位数节次和课名
             // 留出实际宽度；宽卡才允许接近 1.15× 的课程字号。
             val maxTextScale = when {
@@ -143,7 +138,24 @@ data class TimetableTodayTomorrowWidgetLayout(
                 width < 260 -> 1.1f
                 else -> 1.15f
             }
-            val effectiveFontScale = minOf(fontScale, maxTextScale)
+            val requestedFontScale = fontScale.takeIf { it > 0f } ?: 1f
+            val effectiveFontScale = minOf(requestedFontScale, maxTextScale)
+            val compactDate = width < 240 || requestedFontScale >= 1.3f
+            val dense = requestedFontScale >= 1.3f || height < 120
+            // Keep these measurements in sync with widget_timetable_today_tomorrow.xml:
+            // 9dp top + 8dp bottom padding and a 20dp minimum date header.
+            val contentHeight = height - CONTENT_PADDING_VERTICAL_DP
+            val dateTextSp = if (compactDate) 10.5f else 11.5f
+            val dateLineHeight = dateTextSp * effectiveFontScale * TEXT_LINE_HEIGHT_FACTOR
+            val headerHeight = maxOf(DATE_HEADER_MIN_HEIGHT_DP, dateLineHeight)
+            val courseTextSp = if (dense) 10f else 10.5f
+            val estimatedCourseLineHeight =
+                courseTextSp * effectiveFontScale * TEXT_LINE_HEIGHT_FACTOR + COURSE_LINE_SAFETY_DP
+            val availableCourseHeight =
+                contentHeight - headerHeight - VERTICAL_LAYOUT_SAFETY_DP
+            val maxCourses = (availableCourseHeight / estimatedCourseLineHeight)
+                .toInt()
+                .coerceIn(1, MAX_TODAY_TOMORROW_COURSE_LINES)
             // 两列等宽：组件内边距 10+10dp，中间间隔 8dp。
             val columnWidth = (width - 28f) / 2f
             val maxChars = (columnWidth / (10.5f * effectiveFontScale))
@@ -153,11 +165,21 @@ data class TimetableTodayTomorrowWidgetLayout(
                 maxCoursesPerDay = maxCourses,
                 maxCourseChars = maxChars,
                 compactPeriod = width < 300,
-                compactDate = width < 240 || fontScale >= 1.3f,
-                dense = fontScale >= 1.3f || height < 120,
-                textScale = if (fontScale > maxTextScale) maxTextScale / fontScale else 1f,
+                compactDate = compactDate,
+                dense = dense,
+                textScale = if (requestedFontScale > maxTextScale) {
+                    maxTextScale / requestedFontScale
+                } else {
+                    1f
+                },
             )
         }
+
+        private const val CONTENT_PADDING_VERTICAL_DP = 17f
+        private const val DATE_HEADER_MIN_HEIGHT_DP = 20f
+        private const val COURSE_LINE_SAFETY_DP = 5f
+        private const val VERTICAL_LAYOUT_SAFETY_DP = 3f
+        private const val TEXT_LINE_HEIGHT_FACTOR = 1.3f
     }
 }
 
@@ -226,7 +248,7 @@ private const val NARROW_GLYPH_UNITS = 0.55f
 private const val SPACE_UNITS = 0.55f
 private const val ELLIPSIS_UNITS = 0.55f
 
-internal const val MAX_TODAY_TOMORROW_COURSE_LINES: Int = 3
+internal const val MAX_TODAY_TOMORROW_COURSE_LINES: Int = 8
 
 /** 同一份已复核缓存读取同时产出的周版与今明版；未请求的一侧为 null。 */
 data class TimetableCalendarWidgetSnapshots(

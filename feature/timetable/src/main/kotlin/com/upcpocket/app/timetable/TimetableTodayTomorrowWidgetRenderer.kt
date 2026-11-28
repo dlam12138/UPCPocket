@@ -35,11 +35,21 @@ object TimetableTodayTomorrowWidgetRenderer {
             R.id.widget_timetable_tt_today_course_1,
             R.id.widget_timetable_tt_today_course_2,
             R.id.widget_timetable_tt_today_course_3,
+            R.id.widget_timetable_tt_today_course_4,
+            R.id.widget_timetable_tt_today_course_5,
+            R.id.widget_timetable_tt_today_course_6,
+            R.id.widget_timetable_tt_today_course_7,
+            R.id.widget_timetable_tt_today_course_8,
         ),
         intArrayOf(
             R.id.widget_timetable_tt_tomorrow_course_1,
             R.id.widget_timetable_tt_tomorrow_course_2,
             R.id.widget_timetable_tt_tomorrow_course_3,
+            R.id.widget_timetable_tt_tomorrow_course_4,
+            R.id.widget_timetable_tt_tomorrow_course_5,
+            R.id.widget_timetable_tt_tomorrow_course_6,
+            R.id.widget_timetable_tt_tomorrow_course_7,
+            R.id.widget_timetable_tt_tomorrow_course_8,
         ),
     )
 

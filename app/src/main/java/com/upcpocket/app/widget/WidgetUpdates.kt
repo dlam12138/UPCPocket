@@ -2,6 +2,7 @@ package com.upcpocket.app.widget
 
 import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.res.Configuration
 import android.util.Log
 import com.upcpocket.app.card.CardWidgetRead
 import com.upcpocket.app.card.CardWidgetRevision
@@ -445,8 +446,9 @@ object WidgetUpdates {
     ) {
         val manager = AppWidgetManager.getInstance(context)
         val fontScale = context.resources.configuration.fontScale
+        val orientation = context.resources.configuration.orientation
         instances.forEach { (id, variant) ->
-            val size = calendarWidgetSize(manager, id)
+            val size = todayTomorrowWidgetSize(manager, id, orientation)
             val layout = TimetableTodayTomorrowWidgetLayout.forSize(
                 widthDp = size.widthDp,
                 heightDp = size.heightDp,
@@ -809,10 +811,8 @@ object WidgetUpdates {
     }
 
     /**
-     * 今明/本周课表取组件当前可用的最小尺寸。部分 Launcher 对横竖屏给出不同的
-     * 上下界；沿用今日组件“高度取上限”的读法会在横屏较矮时高估高度，把周版
-     * 七日行或今明两日的课程裁掉。这里宽高都取较小正值，合法最小尺寸下仍保留
-     * 两日/七日与各自的状态。
+     * 本周课表保守采用组件上下界中的较小正值。横屏高度较矮时避免高估空间，
+     * 保证七日行在 Launcher 提供的最小尺寸下仍能完整显示。
      */
     private fun calendarWidgetSize(
         manager: AppWidgetManager,
@@ -826,6 +826,49 @@ object WidgetUpdates {
             maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
         )
     }
+
+    private fun todayTomorrowWidgetSize(
+        manager: AppWidgetManager,
+        widgetId: Int,
+        orientation: Int,
+    ): WidgetSize {
+        val options = manager.getAppWidgetOptions(widgetId)
+        return todayTomorrowWidgetSizeForOrientation(
+            minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0),
+            maxWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 0),
+            minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0),
+            maxHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0),
+            orientation = orientation,
+        )
+    }
+
+    /** 今明组件按当前屏幕方向选择 Launcher 提供的当前边界，缺值时使用另一边正值兜底。 */
+    internal fun todayTomorrowWidgetSizeForOrientation(
+        minWidth: Int,
+        maxWidth: Int,
+        minHeight: Int,
+        maxHeight: Int,
+        orientation: Int,
+    ): WidgetSize {
+        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        val (width, height) = if (isLandscape) {
+            maxWidth to minHeight
+        } else {
+            minWidth to maxHeight
+        }
+        val (fallbackWidth, fallbackHeight) = if (isLandscape) {
+            minWidth to maxHeight
+        } else {
+            maxWidth to minHeight
+        }
+        return WidgetSize(
+            widthDp = positiveOrFallback(width, fallbackWidth),
+            heightDp = positiveOrFallback(height, fallbackHeight),
+        )
+    }
+
+    private fun positiveOrFallback(primary: Int, fallback: Int): Int =
+        primary.takeIf { it > 0 } ?: fallback.takeIf { it > 0 } ?: 0
 
     /** 仅供本周课表选择保守尺寸；纯函数便于单测覆盖上下界组合。 */
     internal fun conservativeWidgetSize(

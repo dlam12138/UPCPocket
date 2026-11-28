@@ -96,6 +96,56 @@
                     android:textColor="@color/widget_primary"
                     android:textSize="10.5sp"
                     android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_today_course_4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_today_course_5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_today_course_6"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_today_course_7"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_today_course_8"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
             </LinearLayout>
 
             <LinearLayout
@@ -160,6 +210,56 @@
 
                 <TextView
                     android:id="@+id/widget_timetable_tt_tomorrow_course_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_tomorrow_course_4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_tomorrow_course_5"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_tomorrow_course_6"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_tomorrow_course_7"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/widget_primary"
+                    android:textSize="10.5sp"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_timetable_tt_tomorrow_course_8"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:ellipsize="end"
