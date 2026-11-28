@@ -1,4 +1,4 @@
-const VERSION = "v26";
+const VERSION = "v27";
 const scope = new URL(self.registration.scope);
 const CACHE_PREFIX = `upc-pocket-static:${encodeURIComponent(scope.href)}:`;
 const CACHE_NAME = CACHE_PREFIX + VERSION;
@@ -8,7 +8,7 @@ const STATIC_URLS = new Set([
   "./index.html",
   "./appearance.js?v=26",
   "./styles.css?v=26",
-  "./app.js?v=26",
+  "./app.js?v=27",
   "./db.js?v=24",
   "./todo.js?v=26",
   "./focus.js?v=26",
@@ -26,12 +26,13 @@ const STATIC_URLS = new Set([
   "./campus-map.js?v=26",
   "./campus-map-routing.js",
   "./campus-map.css?v=26",
-  "./floorplan.js?v=26",
-  "./floorplan.css?v=26",
+  "./floorplan.js?v=27",
+  "./floorplan.css?v=27",
   "./data/campus_map.json",
   "./data/campus_directory.json",
   "./data/zhuoyue-floor-plans/a.json",
   "./data/zhuoyue-floor-plans/b.json",
+  "./data/zhuoyue-floor-plans/page-5.json",
   "./manifest.webmanifest",
   "./app-icon.svg?v=26",
   "./campus.webp",

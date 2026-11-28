@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -86,17 +87,34 @@ internal class FloorPlanViewportState(
     }
 }
 
-internal val FloorPlanViewportStateSaver: Saver<FloorPlanViewportState, Any> = listSaver(
+internal fun floorPlanViewportStateSaver(
+    viewportKey: String,
+): Saver<FloorPlanViewportState, Any> = listSaver(
     save = { state ->
-        listOf<Any>(state.zoom, state.centerX, state.centerY, state.handledFocusRevision)
+        listOf<Any>(viewportKey, state.zoom, state.centerX, state.centerY, state.handledFocusRevision)
     },
     restore = { saved ->
-        FloorPlanViewportState(
-            zoom = saved[0] as Float,
-            centerX = saved[1] as Float,
-            centerY = saved[2] as Float,
-            handledFocusRevision = saved[3] as Int,
-        )
+        // rememberSaveable 的 inputs 不参与校验恢复出的 Saver 数据。旧单栋状态没有图面键，
+        // 因而不能恢复到新共绘图；新状态只有图面键完全相同才可恢复。
+        val values = when {
+            saved.size == 5 && saved[0] == viewportKey -> saved.drop(1)
+            saved.size == 4 && !viewportKey.startsWith("page-5:") -> saved
+            else -> null
+        }
+        val zoom = values?.getOrNull(0) as? Float
+        val centerX = values?.getOrNull(1) as? Float
+        val centerY = values?.getOrNull(2) as? Float
+        val handledFocusRevision = values?.getOrNull(3) as? Int
+        if (zoom == null || centerX == null || centerY == null || handledFocusRevision == null) {
+            null
+        } else {
+            FloorPlanViewportState(
+                zoom = zoom,
+                centerX = centerX,
+                centerY = centerY,
+                handledFocusRevision = handledFocusRevision,
+            )
+        }
     },
 )
 
@@ -104,6 +122,8 @@ internal val FloorPlanViewportStateSaver: Saver<FloorPlanViewportState, Any> = l
 internal fun FloorPlanCanvas(
     building: FloorPlanBuilding,
     sheet: FloorPlanSheet,
+    renderedSheets: List<FloorPlanSheet>,
+    sharedLinework: FloorPlanSharedLinework?,
     highlight: FloorPlanRoomRef?,
     focusRevision: Int,
     viewport: FloorPlanViewportState,
@@ -122,8 +142,10 @@ internal fun FloorPlanCanvas(
     val highlightFill = colors.primaryContainer
     val highlightOutline = colors.primary
     val highlightLabelColor = colors.onPrimaryContainer
+    val sharedLineColor = colors.onSurfaceVariant.copy(alpha = 0.78f)
 
     val textMeasurer = rememberTextMeasurer()
+    val sharedPath = remember(sharedLinework) { sharedLinework?.asPath() }
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current
     val fitPadding = with(density) { 12.dp.toPx() }
@@ -214,8 +236,16 @@ internal fun FloorPlanCanvas(
                     }
                 }
                 .semantics {
-                    contentDescription =
-                        "${building.label}${sheet.level}平面图，来源第${sheet.sourcePage}页"
+                    val figureLabels = renderedSheets
+                        .map { it.level }
+                        .distinct()
+                        .joinToString(" / ") { "图注「$it」" }
+                    contentDescription = if (sharedLinework == null) {
+                        "${building.label}${sheet.displayLevel}平面图，来源第${sheet.sourcePage}页，$figureLabels"
+                    } else {
+                        "${renderedSheets.joinToString(" / ") { "${it.building.label}${it.buildingLevel ?: it.displayLevel}" }}联图，" +
+                            "来源第${sharedLinework.sourcePage}页，$figureLabels"
+                    }
                 },
         ) {
             drawRect(color = canvasBackground)
@@ -238,35 +268,64 @@ internal fun FloorPlanCanvas(
                 translate(origin.x, origin.y)
                 scale(totalScale, totalScale, pivot = Offset.Zero)
             }) {
-                sheet.areas.forEach { area ->
-                    val path = area.points.asPath()
-                    drawPath(
-                        path = path,
-                        color = when (area.kind) {
-                            FloorPlanAreaKind.FLOOR -> floorFill
-                            FloorPlanAreaKind.STAIRS -> stairsFill
-                            FloorPlanAreaKind.ELEVATOR -> elevatorFill
-                        },
-                    )
-                    drawPath(
-                        path = path,
-                        color = floorOutline,
-                        style = Stroke(width = hairline),
-                    )
-                }
-                sheet.rooms.forEach { room ->
-                    val path = room.points.asPath()
-                    drawPath(path = path, color = roomFill)
-                    drawPath(path = path, color = roomOutline, style = Stroke(width = hairline))
-                }
-                highlight?.let { room ->
-                    val path = room.room.points.asPath()
-                    drawPath(path = path, color = highlightFill)
-                    drawPath(
-                        path = path,
-                        color = highlightOutline,
-                        style = Stroke(width = outlineWidth),
-                    )
+                if (sharedPath == null) {
+                    sheet.areas.forEach { area ->
+                        val path = area.points.asPath()
+                        drawPath(
+                            path = path,
+                            color = when (area.kind) {
+                                FloorPlanAreaKind.FLOOR -> floorFill
+                                FloorPlanAreaKind.STAIRS -> stairsFill
+                                FloorPlanAreaKind.ELEVATOR -> elevatorFill
+                            },
+                        )
+                        drawPath(
+                            path = path,
+                            color = floorOutline,
+                            style = Stroke(width = hairline),
+                        )
+                    }
+                    sheet.rooms.forEach { room ->
+                        val path = room.points.asPath()
+                        drawPath(path = path, color = roomFill)
+                        drawPath(path = path, color = roomOutline, style = Stroke(width = hairline))
+                    }
+                    highlight?.let { room ->
+                        val path = room.room.points.asPath()
+                        drawPath(path = path, color = highlightFill)
+                        drawPath(
+                            path = path,
+                            color = highlightOutline,
+                            style = Stroke(width = outlineWidth),
+                        )
+                    }
+                } else {
+                    renderedSheets.forEach { renderSheet ->
+                        renderSheet.areas.forEach { area ->
+                            if (area.kind == FloorPlanAreaKind.FLOOR) {
+                                drawPath(area.points.asPath(), floorFill)
+                            }
+                        }
+                    }
+                    renderedSheets.forEach { renderSheet ->
+                        renderSheet.areas.forEach { area ->
+                            val fill = when (area.kind) {
+                                FloorPlanAreaKind.FLOOR -> null
+                                FloorPlanAreaKind.STAIRS -> stairsFill
+                                FloorPlanAreaKind.ELEVATOR -> elevatorFill
+                            }
+                            if (fill != null) drawPath(area.points.asPath(), fill)
+                        }
+                    }
+                    renderedSheets.forEach { renderSheet ->
+                        renderSheet.rooms.forEachIndexed { index, room ->
+                            val selectedRoom = highlight?.let {
+                                it.sheet.id == renderSheet.id && it.roomIndex == index
+                            } == true
+                            drawPath(room.points.asPath(), if (selectedRoom) highlightFill else roomFill)
+                        }
+                    }
+                    drawPath(sharedPath, sharedLineColor)
                 }
             }
 
@@ -276,55 +335,63 @@ internal fun FloorPlanCanvas(
                 right = origin.x + sheet.width * totalScale,
                 bottom = origin.y + sheet.height * totalScale,
             ) {
-                sheet.areas.forEach { area ->
-                    val marker = area.kind.markerLabel ?: return@forEach
-                    drawMapLabel(
-                        textMeasurer = textMeasurer,
-                        text = marker,
-                        bounds = area.bounds,
-                        origin = origin,
-                        scale = totalScale,
-                        style = TextStyle(
-                            color = publicLabelColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        minWidth = minLabelWidth,
-                        minHeight = minLabelHeight,
-                        padding = labelPadding,
-                    )
+                renderedSheets.forEach { renderSheet ->
+                    renderSheet.areas.forEach { area ->
+                        area.kind.markerLabel?.let { marker ->
+                            drawMapLabel(
+                                textMeasurer = textMeasurer,
+                                text = marker,
+                                bounds = area.bounds,
+                                origin = origin,
+                                scale = totalScale,
+                                style = TextStyle(
+                                    color = publicLabelColor,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Medium,
+                                ),
+                                minWidth = minLabelWidth,
+                                minHeight = minLabelHeight,
+                                padding = labelPadding,
+                            )
+                        }
+                    }
+                    renderSheet.rooms.forEachIndexed { index, room ->
+                        val selectedRoom = highlight?.let {
+                            it.sheet.id == renderSheet.id && it.roomIndex == index
+                        } == true
+                        drawMapLabel(
+                            textMeasurer = textMeasurer,
+                            text = room.label,
+                            bounds = room.bounds,
+                            origin = origin,
+                            scale = totalScale,
+                            style = TextStyle(
+                                color = if (selectedRoom) highlightLabelColor else roomLabelColor,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Medium,
+                            ),
+                            minWidth = minLabelWidth,
+                            minHeight = minLabelHeight,
+                            padding = labelPadding,
+                        )
+                    }
                 }
-                sheet.rooms.forEach { room ->
-                    drawMapLabel(
-                        textMeasurer = textMeasurer,
-                        text = room.label,
-                        bounds = room.bounds,
-                        origin = origin,
-                        scale = totalScale,
-                        style = TextStyle(
-                            color = roomLabelColor,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Medium,
-                        ),
-                        minWidth = minLabelWidth,
-                        minHeight = minLabelHeight,
-                        padding = labelPadding,
-                    )
-                }
-                highlight?.let { room ->
-                    drawHighlightLabel(
-                        textMeasurer = textMeasurer,
-                        text = room.room.label,
-                        bounds = room.room.bounds,
-                        origin = origin,
-                        scale = totalScale,
-                        style = TextStyle(
-                            color = highlightLabelColor,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        ),
-                        background = highlightFill,
-                    )
+                if (sharedLinework == null) {
+                    highlight?.let { room ->
+                        drawHighlightLabel(
+                            textMeasurer = textMeasurer,
+                            text = room.room.label,
+                            bounds = room.room.bounds,
+                            origin = origin,
+                            scale = totalScale,
+                            style = TextStyle(
+                                color = highlightLabelColor,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            ),
+                            background = highlightFill,
+                        )
+                    }
                 }
             }
         }
@@ -333,18 +400,33 @@ internal fun FloorPlanCanvas(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(8.dp)
-                .fillMaxWidth(0.64f),
+                .fillMaxWidth(if (sharedLinework == null) 0.64f else 0.76f),
         ) {
+            val title = if (sharedLinework == null) {
+                "${building.label} · ${sheet.displayLevel}"
+            } else {
+                renderedSheets.joinToString(" / ") {
+                    "${it.building.label}${it.buildingLevel ?: it.displayLevel}"
+                }
+            }
+            val sourceDetail = if (sharedLinework == null) {
+                "来源第 ${sheet.sourcePage} 页 · 图注「${sheet.level}」"
+            } else {
+                "来源第 ${sharedLinework.sourcePage} 页 · " + renderedSheets
+                    .map { it.level }
+                    .distinct()
+                    .joinToString(" / ") { "图注「$it」" }
+            }
             Column(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                 verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
                 Text(
-                    text = "${building.label} · ${sheet.level}",
+                    text = title,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = "来源第 ${sheet.sourcePage} 页 · 图注「${sheet.level}」",
+                    text = sourceDetail,
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.onSurfaceVariant,
                 )
@@ -388,7 +470,15 @@ internal fun FloorPlanCanvas(
                         style = MaterialTheme.typography.titleSmall,
                     )
                     Text(
-                        text = "${room.building.label} · ${room.sheet.level} · 来源第 ${room.sheet.sourcePage} 页",
+                        text = buildString {
+                            append(room.building.label)
+                            append(" · ")
+                            append(room.sheet.displayLevel)
+                            if (room.sheet.buildingLevel != null) {
+                                append(" · 图注「${room.sheet.level}」")
+                            }
+                            append(" · 来源第 ${room.sheet.sourcePage} 页")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.onSurfaceVariant,
                     )
@@ -455,6 +545,18 @@ private fun FloorPlanViewportState.clampTo(
     )
     centerX = clamped.x
     centerY = clamped.y
+}
+
+private fun FloorPlanSharedLinework.asPath(): Path = Path().apply {
+    fillType = PathFillType.EvenOdd
+    contours.forEach { points ->
+        if (points.isEmpty()) return@forEach
+        moveTo(points.first().x.toFloat(), points.first().y.toFloat())
+        for (index in 1 until points.size) {
+            lineTo(points[index].x.toFloat(), points[index].y.toFloat())
+        }
+        close()
+    }
 }
 
 private fun List<FloorPlanPoint>.asPath(): Path = Path().apply {

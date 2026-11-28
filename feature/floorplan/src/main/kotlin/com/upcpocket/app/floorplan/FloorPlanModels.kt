@@ -80,6 +80,19 @@ internal data class FloorPlanSheet(
     val height: Int,
     val areas: List<FloorPlanArea>,
     val rooms: List<FloorPlanRoom>,
+    /** 有来源依据的实际楼栋楼层；空值表示只能展示原图图注。 */
+    val buildingLevel: String? = null,
+) {
+    val displayLevel: String get() = buildingLevel ?: "图注$level"
+}
+
+/** A 三层与 B 五层共享的教务处第 5 页线稿。 */
+internal data class FloorPlanSharedLinework(
+    val sourcePage: Int,
+    val sheetIds: List<String>,
+    val width: Int,
+    val height: Int,
+    val contours: List<List<FloorPlanPoint>>,
 )
 
 /** 一处图上房间。房间身份是「图层 + 房间下标」，label 可能重复，不能作为主键。 */
@@ -103,7 +116,10 @@ internal sealed interface FloorPlanSearchResult {
     data class NotFound(val query: String) : FloorPlanSearchResult
 }
 
-internal class FloorPlanCatalog(sheets: List<FloorPlanSheet>) {
+internal class FloorPlanCatalog(
+    sheets: List<FloorPlanSheet>,
+    val sharedLinework: FloorPlanSharedLinework? = null,
+) {
     val sheets: List<FloorPlanSheet> = sheets.toList()
     val buildings: List<FloorPlanBuilding> = this.sheets.map { it.building }.distinct()
     private val sheetsById: Map<String, FloorPlanSheet> = this.sheets.associateBy { it.id }
@@ -121,11 +137,42 @@ internal class FloorPlanCatalog(sheets: List<FloorPlanSheet>) {
         require(this.sheets.isNotEmpty()) { "平面图至少需要一个图层" }
         require(sheetsById.size == this.sheets.size) { "平面图图层 ID 重复" }
         require(buildings.isNotEmpty()) { "平面图缺少楼区" }
+        sharedLinework?.let { linework ->
+            require(linework.sheetIds == PAGE_5_SHEET_IDS) { "第 5 页共用图层无效" }
+            val members = linework.sheetIds.map { id ->
+                requireNotNull(sheetsById[id]) { "第 5 页缺少图层 $id" }
+            }
+            require(linework.sourcePage == 5) { "第 5 页来源非法" }
+            require(members.all { sheet ->
+                sheet.sourcePage == linework.sourcePage &&
+                    sheet.width == linework.width && sheet.height == linework.height
+            }) { "第 5 页共用图层尺寸或来源不一致" }
+        }
     }
 
     val defaultBuilding: FloorPlanBuilding get() = buildings.first()
 
     fun sheetsFor(building: FloorPlanBuilding): List<FloorPlanSheet> = sheets.filter { it.building == building }
+
+    fun sheetsForCanvas(sheet: FloorPlanSheet): List<FloorPlanSheet> {
+        val shared = sharedLinework?.takeIf { sheet.id in it.sheetIds } ?: return listOf(sheet)
+        return shared.sheetIds.mapNotNull(sheetsById::get)
+    }
+
+    fun sharedLineworkFor(sheet: FloorPlanSheet): FloorPlanSharedLinework? =
+        sharedLinework?.takeIf { sheet.id in it.sheetIds }
+
+    fun viewportKey(sheet: FloorPlanSheet): String = sharedLineworkFor(sheet)?.let { linework ->
+        "page-${linework.sourcePage}:${linework.width}x${linework.height}"
+    } ?: "sheet-v2:${sheet.id}:${sheet.width}x${sheet.height}"
+
+    fun sheetForBuildingSwitch(current: FloorPlanSheet, target: FloorPlanBuilding): FloorPlanSheet =
+        sharedLineworkFor(current)
+            ?.sheetIds
+            ?.asSequence()
+            ?.mapNotNull(sheetsById::get)
+            ?.firstOrNull { it.building == target }
+            ?: defaultSheet(target)
 
     fun sheet(buildingId: String, sheetId: String): FloorPlanSheet? {
         val building = FloorPlanBuilding.fromId(buildingId) ?: return null
@@ -143,3 +190,5 @@ internal class FloorPlanCatalog(sheets: List<FloorPlanSheet>) {
     fun defaultSheet(building: FloorPlanBuilding): FloorPlanSheet =
         sheetsFor(building).firstOrNull() ?: this.sheets.first()
 }
+
+private val PAGE_5_SHEET_IDS = listOf("a-3", "b-3")

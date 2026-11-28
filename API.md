@@ -24,7 +24,7 @@
 
 2.1.1 开发版的成绩使用 `grades.home` 作为服务入口 ID 和应用内路由。宿主为该页注入仅打开固定学校成绩网页的回调，用户主动选择后由系统浏览器处理。 [成绩插件](feature/grades/src/main/kotlin/com/upcpocket/app/grades/GradesPlugin.kt) · [官方网页目录](app/src/main/java/com/upcpocket/app/ui/official/OfficialWebLinks.kt)
 
-卓越楼平面图使用 `floorplan.home` 作为「学习与空间」服务入口 ID 和应用内路由。服务搜索和首页固定共用该贡献。楼区、图注楼层、来源页、房间轮廓和图上房号由插件的离线资源提供。楼层图插件缺失时，宿主省略对应入口和页面。 [平面图插件](feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)
+卓越楼平面图使用 `floorplan.home` 作为「学习与空间」服务入口 ID 和应用内路由。服务搜索和首页固定共用该贡献。楼区、原图图注、有来源依据的楼栋楼层、来源页、房间轮廓和图上房号由插件离线资源提供。A 栋三层与 B 栋五层共用第 5 页线稿，各自的房间由图层及房间下标标识。没有楼层旁证时显示原图图注。楼层图插件缺失时，宿主省略对应入口和页面。 [平面图插件](feature/floorplan/src/main/kotlin/com/upcpocket/app/floorplan/FloorPlanPlugin.kt)
 
 2.1.0 中，宿主在待办页和待办能力可用时，把同一 `TodoScheduleSection` 装配到所选宿主的 CompositionLocal 槽位：默认注入 `LocalTimetableTodoSlot`，在 `timetable.week` 的滚动区域顶部显示；选择专注页时注入 `LocalFocusTodoSlot`，在计时控制与标签之间显示。上区从 `TodoStore.tasks` 按设备本地日期派生，可在学校账号恢复和课表未同步时使用。选择只保存在宿主 `UiPrefsStore`，缺键回退课表页，不改变待办数据、提醒或系统入口。两个宿主都不可用时两个槽位都不注入；只剩一个宿主且偏好指向缺失页面时，`todo.list` 保留为一级页且不改写偏好。`todo.list` 继续承载完整清单以及通知和组件请求的编辑器。宿主把它作为二级页打开时，通过 `LocalTodoListBack` 提供返回动作。 [课表页](feature/timetable/src/main/kotlin/com/upcpocket/app/timetable/TimetableScreen.kt) · [专注页](feature/focus/src/main/kotlin/com/upcpocket/app/ui/focus/FocusScreen.kt) · [日程待办](feature/todo/src/main/kotlin/com/upcpocket/app/ui/todo/TodoScheduleSection.kt) · [宿主导航](app/src/main/java/com/upcpocket/app/ui/nav/AppNav.kt)
 
@@ -134,7 +134,7 @@ Todo 新增 `pendingCreateRequest: StateFlow<String?>`、`openCreate(): String`�
 
 ## Web 本机导入契约
 
-[`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、日程、待办、专注和偏好使用浏览器本机能力。通讯录、地图和卓越楼图层是随站资源。校历显示固定官方原图，其他学校业务由官方页处理。
+[`web/`](web/) 是静态站点，没有本项目提供的远程接口。课表导入、日程、待办、专注和偏好使用浏览器本机能力。通讯录、地图、卓越楼 A/B 矢量图层和第 5 页共用线稿是随站资源。校历显示固定官方原图，其他学校业务由官方页处理。
 
 来源：[V3 解析器](web/timetable-import.js)、[本机存储](web/timetable-store.js)、[IndexedDB 封装](web/db.js)、[课表页面](web/timetable.js)。
 

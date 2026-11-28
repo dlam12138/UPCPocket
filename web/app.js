@@ -125,7 +125,7 @@ function showPage(moveFocus) {
     });
   }
   if (activeRoute === "floorplan") {
-    openStaticFeature(() => import("./floorplan.js?v=26"), page, "campus-floorplan-app",
+    openStaticFeature(() => import("./floorplan.js?v=27"), page, "campus-floorplan-app",
       module => module.showFloorplan(params.get("room")));
   }
   if (moveFocus) {

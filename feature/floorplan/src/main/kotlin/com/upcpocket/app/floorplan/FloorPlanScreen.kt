@@ -31,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,6 +96,8 @@ internal fun FloorPlanScreen(
         ?: initialBuilding
     val sheets = catalog.sheetsFor(building)
     val sheet = sheets.firstOrNull { it.id == sheetId } ?: sheets.firstOrNull() ?: initialSheet
+    val renderedSheets = catalog.sheetsForCanvas(sheet)
+    val sharedLinework = catalog.sharedLineworkFor(sheet)
     val highlight = highlightSheetId?.let { highlightedSheet ->
         highlightRoomIndex?.let { index -> catalog.roomRef(highlightedSheet, index) }
     }?.takeIf { it.sheet.id == sheet.id }
@@ -102,7 +105,9 @@ internal fun FloorPlanScreen(
 
     // 视口放在 BoxWithConstraints 之外，随 sheet 保存缩放、图面中心和已消费的定位代次；
     // 旋转或键盘切换紧凑/常规布局时画布重建也不会丢当前视图。
-    val viewport = rememberSaveable(sheet.id, saver = FloorPlanViewportStateSaver) {
+    val viewportKey = catalog.viewportKey(sheet)
+    val viewportSaver = remember(viewportKey) { floorPlanViewportStateSaver(viewportKey) }
+    val viewport = rememberSaveable(viewportKey, saver = viewportSaver) {
         FloorPlanViewportState.initial(sheet)
     }
 
@@ -193,7 +198,7 @@ internal fun FloorPlanScreen(
                         onSearch = ::submitSearch,
                         onClearQuery = ::clearQuery,
                         onBuilding = { option ->
-                            selectSheet(option, catalog.defaultSheet(option))
+                            selectSheet(option, catalog.sheetForBuildingSwitch(sheet, option))
                         },
                         onSheet = { option -> selectSheet(building, option) },
                     )
@@ -221,6 +226,8 @@ internal fun FloorPlanScreen(
                 FloorPlanCanvas(
                     building = building,
                     sheet = sheet,
+                    renderedSheets = renderedSheets,
+                    sharedLinework = sharedLinework,
                     highlight = highlight,
                     focusRevision = focusRevision,
                     viewport = viewport,
@@ -327,7 +334,7 @@ private fun FloorPlanControls(
                 CampusFilterChip(
                     selected = option.id == sheet.id,
                     onClick = { onSheet(option) },
-                    label = { Text(option.level) },
+                    label = { Text(option.displayLevel) },
                 )
             }
         }
@@ -471,7 +478,7 @@ private fun floorPlanCandidateDetail(
     return buildString {
         append(room.building.label)
         append(" · ")
-        append(room.sheet.level)
+        append(room.sheet.displayLevel)
         if (ordinal > 0) {
             append(" · 本层第 ")
             append(ordinal)
@@ -480,13 +487,18 @@ private fun floorPlanCandidateDetail(
         append(" · 来源第 ")
         append(room.sheet.sourcePage)
         append(" 页")
+        if (room.sheet.buildingLevel != null) {
+            append(" · 图注「")
+            append(room.sheet.level)
+            append("」")
+        }
     }
 }
 
 @Composable
 private fun FloorPlanHint() {
     Text(
-        text = "双指缩放 · 单指平移 · 楼层以图上图注为准，现场门牌请再核对",
+        text = "双指缩放 · 单指平移 · 未核实的楼层注明为图注，现场门牌请再核对",
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -4,6 +4,7 @@ import androidx.compose.runtime.saveable.SaverScope
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -71,15 +72,37 @@ class FloorPlanViewportTest {
         val scope = object : SaverScope {
             override fun canBeSaved(value: Any): Boolean = true
         }
-        val saved = with(FloorPlanViewportStateSaver) {
+        val saver = floorPlanViewportStateSaver("sheet-v2:a-3:650x420")
+        val saved = with(saver) {
             scope.save(state)
         }
         assertNotNull(saved)
 
-        val restored = requireNotNull(FloorPlanViewportStateSaver.restore(requireNotNull(saved)))
+        val restored = requireNotNull(saver.restore(requireNotNull(saved)))
         assertEquals(state.zoom, restored.zoom, 0f)
         assertEquals(state.centerX, restored.centerX, 0f)
         assertEquals(state.centerY, restored.centerY, 0f)
         assertEquals(state.handledFocusRevision, restored.handledFocusRevision)
+    }
+
+    @Test
+    fun `restoration only reuses a viewport saved for the same drawing`() {
+        val scope = object : SaverScope {
+            override fun canBeSaved(value: Any): Boolean = true
+        }
+        val state = FloorPlanViewportState(
+            zoom = 2.4f,
+            centerX = 123.5f,
+            centerY = 456.5f,
+            handledFocusRevision = 7,
+        )
+        val singleSheetSaver = floorPlanViewportStateSaver("sheet-v2:a-3:650x420")
+        val sharedPageSaver = floorPlanViewportStateSaver("page-5:650x420")
+        val singleSheetSave = with(singleSheetSaver) { scope.save(state) }
+        val sharedPageSave = with(sharedPageSaver) { scope.save(state) }
+
+        assertNull(sharedPageSaver.restore(requireNotNull(singleSheetSave)))
+        assertNull(sharedPageSaver.restore(listOf(2.4f, 123.5f, 456.5f, 7)))
+        assertNotNull(sharedPageSaver.restore(requireNotNull(sharedPageSave)))
     }
 }
