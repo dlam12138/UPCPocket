@@ -37,8 +37,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.isSpecified
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -180,13 +183,36 @@ fun GlassDatePicker(
         state = state,
         modifier = decoration,
         dateFormatter = dateFormatter,
-        colors = if (glass) colors.copy(
-            containerColor = Color.Transparent,
-            dateTextFieldColors = glassInputColors(colors.dateTextFieldColors),
-        ) else colors,
+        colors = glassDatePickerColors(colors, glass),
         showModeToggle = showModeToggle,
     )
 }
+
+/** Keep the native year picker opaque while giving its backing a subtle, theme-matched glass tint. */
+@Composable
+internal fun glassDatePickerContainerColor(containerColor: Color): Color {
+    val scheme = MaterialTheme.colorScheme
+    val baseColor = if (containerColor.isSpecified) {
+        containerColor.compositeOver(scheme.surface)
+    } else {
+        scheme.surface
+    }
+    val tintAlpha = if (scheme.surface.luminance() < 0.5f) 0.32f else 0.20f
+    return scheme.surfaceContainerHigh.copy(alpha = tintAlpha)
+        .compositeOver(baseColor)
+        .copy(alpha = 1f)
+}
+
+@Composable
+internal fun glassDatePickerColors(colors: DatePickerColors, glass: Boolean): DatePickerColors =
+    if (glass) {
+        colors.copy(
+            containerColor = glassDatePickerContainerColor(colors.containerColor),
+            dateTextFieldColors = glassInputColors(colors.dateTextFieldColors),
+        )
+    } else {
+        colors
+    }
 
 /** 透出宿主弹窗材质，选择中/禁用文本及时间盘交互仍由原生控件维护。 */
 @Composable

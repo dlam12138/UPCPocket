@@ -327,9 +327,15 @@ fun GlassDatePickerDialog(
 ) {
     val glass = glassWindowActive()
     val reveal = if (glass) rememberWindowReveal(durationMillis = 280) else null
+    // Match the year-list surface to the dialog's opaque glass backing.
+    val backingColor = if (glass) {
+        glassDatePickerContainerColor(colors.containerColor)
+    } else {
+        colors.containerColor
+    }
     val decoration = if (reveal != null) {
         modifier.glassWindowEntrance { reveal.value }
-            .glassWindowMaterial(shape, colors.containerColor, reveal = { reveal.value })
+            .glassWindowMaterial(shape, backingColor, reveal = { reveal.value })
     } else modifier
     GlassNestedSurface {
         DatePickerDialog(
